@@ -1,0 +1,24 @@
+# .gitignore
+
+# python stuff to be ignored
+__pycache__/
+*.py[cod]
+*$py.class
+
+# jupyter notebooks stuff to be ignored
+.ipynb_checkpoints/
+
+# vscode stuff
+.vscode/
+
+# CLAUDE
+CLAUDE.md
+.claude
+
+
+# MacOS stuff to be ignored
+.DS_Store
+
+# too much detail
+charts/**
+.readabs_cache/**
