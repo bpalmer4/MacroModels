@@ -184,59 +184,6 @@ def get_abs_data(wanted: ReqsDict, verbose: bool = False) -> dict[str, DataSerie
 # --- Convenience functions for common series ---
 
 
-def get_gdp(gdp_type: str = "CP", seasonal: str = "SA") -> DataSeries:
-    """Fetch ABS GDP Series from the key aggregates table.
-
-    Args:
-        gdp_type: Type of series - "CP" (Current price) or "CVM" (Chain volume measures)
-        seasonal: Seasonal adjustment - "SA", "T" (Trend), or "O" (Original)
-
-    Returns:
-        DataSeries containing GDP data and metadata
-
-    """
-    did_cvm = "Gross domestic product: Chain volume measures ;"
-    did_cp = "Gross domestic product: Current prices ;"
-    gdp_types = {
-        "CP": did_cp,
-        "Current price": did_cp,
-        "Current prices": did_cp,
-        "CVM": did_cvm,
-        "Volumetric": did_cvm,
-    }
-    seasonals = {
-        "SA": "Seasonally Adjusted",
-        "S": "Seasonally Adjusted",
-        "T": "Trend",
-        "O": "Original",
-    }
-    if gdp_type not in gdp_types:
-        raise ValueError(f"Invalid GDP type: {gdp_type}")
-    if seasonal not in seasonals:
-        raise ValueError(f"Invalid seasonal adjustment type: {seasonal}")
-
-    cat = "5206.0"
-    seo = "5206001_Key_Aggregates"
-    gdp_data, gdp_meta = ra.read_abs_cat(cat, single_excel_only=seo, verbose=False)
-    selector = {
-        gdp_types[gdp_type]: mc.did,
-        seasonals[seasonal]: mc.stype,
-    }
-    table, series_id, units = ra.find_abs_id(gdp_meta, selector, verbose=False)
-    gdp = gdp_data[table][series_id]
-
-    return DataSeries(
-        data=gdp,
-        source="ABS",
-        units=units,
-        description=gdp_types[gdp_type].rstrip(" ;"),
-        series_id=series_id,
-        table=table,
-        cat=cat,
-        stype=seasonals[seasonal],
-    )
-
-
 def get_population(
     state: str = "Australia",
     project: bool = True,

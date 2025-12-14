@@ -18,13 +18,19 @@ disciplined by inflation dynamics. For policy-relevant estimates, prefer
 models that incorporate Phillips curve information.
 """
 
+import argparse
 from dataclasses import dataclass, field
+from pathlib import Path
 
+import matplotlib.pyplot as plt
+import mgplot as mg
 import numpy as np
 import pandas as pd
+import readabs as ra
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
-from src.data.abs_loader import get_gdp, get_abs_data
+from src.data.abs_loader import get_abs_data
+from src.data.gdp import get_gdp
 from src.data.series_specs import (
     CAPITAL_STOCK,
     HOURS_WORKED,
@@ -76,8 +82,6 @@ def load_data(
     Returns:
         CobbDouglasData with aligned series
     """
-    import readabs as ra
-
     # Fetch data (raw frequencies from ABS)
     gdp_result = get_gdp(gdp_type="CVM", seasonal="SA")
     abs_data = get_abs_data({
@@ -557,9 +561,6 @@ def run_decomposition(
 
 def plot_raw_data(result: DecompositionResult, show: bool = True) -> None:
     """Plot the raw input data series."""
-    import matplotlib.pyplot as plt
-    import mgplot as mg
-
     data = result.data.aligned
 
     fig, axes = plt.subplots(3, 1, figsize=(9.0, 9.0))
@@ -602,9 +603,6 @@ def plot_raw_data(result: DecompositionResult, show: bool = True) -> None:
 
 def plot_mfp_trend(result: DecompositionResult, show: bool = True) -> None:
     """Plot MFP: raw vs trend (2 panels)."""
-    import matplotlib.pyplot as plt
-    import mgplot as mg
-
     mfp = result.mfp[["MFP Raw", "MFP Trend"]].dropna()
 
     fig, axes = plt.subplots(2, 1, figsize=(9.0, 9.0))
@@ -663,9 +661,6 @@ def plot_mfp_trend(result: DecompositionResult, show: bool = True) -> None:
 
 def plot_potential_gdp(result: DecompositionResult, show: bool = True) -> None:
     """Plot actual vs potential GDP and output gap (3 panels)."""
-    import matplotlib.pyplot as plt
-    import mgplot as mg
-
     pot = result.potential
     anchor_points = pot.attrs.get("anchor_points", [])
 
@@ -772,8 +767,6 @@ def plot_potential_gdp(result: DecompositionResult, show: bool = True) -> None:
 
 def plot_growth_decomposition(result: DecompositionResult, show: bool = True) -> None:
     """Plot annual stacked bar chart of growth decomposition."""
-    import mgplot as mg
-
     # Prepare annual data (sum of quarterly)
     annual = pd.DataFrame({
         "Capital": result.growth["contrib_Capital"],
@@ -801,7 +794,11 @@ def plot_growth_decomposition(result: DecompositionResult, show: bool = True) ->
     )
 
     # Add GDP growth line on top
-    gdp_line = pd.Series(gdp_annual.values, index=annual_sum.index, name="Actual GDP Growth")
+    gdp_line = pd.Series(
+        gdp_annual.values,
+        index=pd.PeriodIndex([pd.Period(y, freq="Y") for y in annual_sum.index]),
+        name="Actual GDP Growth",
+    )
     mg.line_plot(gdp_line, ax=ax, color="black", width=1.5, marker="o", markersize=4)
 
     mg.finalise_plot(
@@ -819,8 +816,6 @@ def plot_growth_decomposition(result: DecompositionResult, show: bool = True) ->
 
 def plot_sensitivity(result: DecompositionResult, show: bool = True) -> None:
     """Plot MFP trends for different alpha values."""
-    import mgplot as mg
-
     if result.sensitivity is None:
         return
 
@@ -851,9 +846,6 @@ def plot_sensitivity(result: DecompositionResult, show: bool = True) -> None:
 
 def plot_phillips_crosscheck(result: DecompositionResult, show: bool = True) -> None:
     """Plot Phillips curve cross-check (4 panels)."""
-    import matplotlib.pyplot as plt
-    import mgplot as mg
-
     if result.phillips is None:
         return
 
@@ -965,86 +957,86 @@ def plot_all(result: DecompositionResult, show: bool = True) -> None:
 # --- Summary Output ---
 
 
-def print_summary(result: DecompositionResult) -> None:
-    """Print comprehensive summary statistics."""
-    print("\n" + "=" * 70)
+def print_summary(result: DecompositionResult, verbose: bool = False) -> None:
+    """Print summary statistics."""
     print("SUMMARY: Cobb-Douglas MFP Decomposition")
-    print("=" * 70)
 
-    print("\nModel Parameters:")
-    print(f"  Capital share (α):     {result.alpha}")
-    print(f"  Labour share (1-α):    {1 - result.alpha}")
-    print(f"  HP filter lambda:      {HP_LAMBDA}")
+    if verbose:
+        print(f"\nModel Parameters:")
+        print(f"  Capital share (α):     {result.alpha}")
+        print(f"  Labour share (1-α):    {1 - result.alpha}")
+        print(f"  HP filter lambda:      {HP_LAMBDA}")
 
-    idx = result.growth["g_MFP"].dropna().index
-    print(f"\nSample Period: {idx[0]} to {idx[-1]} ({len(idx)} quarters)")
+        idx = result.growth["g_MFP"].dropna().index
+        print(f"\nSample Period: {idx[0]} to {idx[-1]} ({len(idx)} quarters)")
 
-    # Re-anchoring info
-    reanchor_log = result.potential.attrs.get("reanchor_log", [])
-    anchor_points = result.potential.attrs.get("anchor_points", [])
-    if anchor_points:
-        print(f"\nPotential GDP Anchor Points: {['Start'] + anchor_points}")
-        if reanchor_log:
-            print("  Re-anchoring adjustments (gap before reset):")
-            for period, gap in reanchor_log:
-                print(f"    {period}: {gap:.2f}%")
+        # Re-anchoring info
+        reanchor_log = result.potential.attrs.get("reanchor_log", [])
+        anchor_points = result.potential.attrs.get("anchor_points", [])
+        if anchor_points:
+            print(f"\nPotential GDP Anchor Points: {['Start'] + anchor_points}")
+            if reanchor_log:
+                print("  Re-anchoring adjustments (gap before reset):")
+                for period, gap in reanchor_log:
+                    print(f"    {period}: {gap:.2f}%")
 
-    # Growth by decade
-    print("\nMean Annual Growth by Decade:")
-    decade_summary = result.summary_by_decade()
-    print(decade_summary.round(2).to_string())
+        # Growth by decade
+        print("\nMean Annual Growth by Decade:")
+        decade_summary = result.summary_by_decade()
+        print(decade_summary.round(2).to_string())
 
-    # Latest values
-    print(f"\nLatest Values:")
-    print(f"  Output gap:        {result.potential['output_gap'].dropna().iloc[-1]:.2f}%")
-    print(f"  MFP trend growth:  {result.mfp['MFP Trend'].iloc[-1] * 4:.2f}% p.a.")
+        # Latest values
+        print(f"\nLatest Values:")
+        print(f"  Output gap:        {result.potential['output_gap'].dropna().iloc[-1]:.2f}%")
+        print(f"  MFP trend growth:  {result.mfp['MFP Trend'].iloc[-1] * 4:.2f}% p.a.")
 
-    # Sensitivity summary
-    if result.sensitivity is not None:
-        print("\nSensitivity Analysis (α):")
-        print("         Raw MFP      Trend MFP     Recent Trend")
-        print("  α     (Q mean)      (Q mean)       (2015+)")
-        print("-" * 55)
-        for _, row in result.sensitivity.iterrows():
-            print(f" {row['alpha']:.2f}    {row['mfp_raw_mean']:.3f}%        {row['mfp_trend_mean']:.3f}%        {row['mfp_recent']:.3f}%")
+        # Sensitivity summary
+        if result.sensitivity is not None:
+            print("\nSensitivity Analysis (α):")
+            print("         Raw MFP      Trend MFP     Recent Trend")
+            print("  α     (Q mean)      (Q mean)       (2015+)")
+            print("-" * 55)
+            for _, row in result.sensitivity.iterrows():
+                print(f" {row['alpha']:.2f}    {row['mfp_raw_mean']:.3f}%        {row['mfp_trend_mean']:.3f}%        {row['mfp_recent']:.3f}%")
 
-    # Phillips curve
-    if result.phillips is not None:
-        corr = result.phillips.attrs.get("corr_deviation", np.nan)
-        slope = result.phillips.attrs.get("slope", np.nan)
-        print(f"\nPhillips Curve Cross-Check:")
-        print(f"  Correlation (gap vs inflation deviation): {corr:.3f}")
-        print(f"  Slope (gap → inflation deviation):        {slope:.3f}")
-        if corr > 0.3:
-            print("  ✓ Positive relationship suggests some validity")
-        elif corr < -0.1:
-            print("  ✗ Negative relationship - gap may be poorly identified")
-        else:
-            print("  ~ Weak relationship - gap may not capture demand pressure well")
-
-    print("\n" + "=" * 70)
+        # Phillips curve
+        if result.phillips is not None:
+            corr = result.phillips.attrs.get("corr_deviation", np.nan)
+            slope = result.phillips.attrs.get("slope", np.nan)
+            print(f"\nPhillips Curve Cross-Check:")
+            print(f"  Correlation (gap vs inflation deviation): {corr:.3f}")
+            print(f"  Slope (gap → inflation deviation):        {slope:.3f}")
+            if corr > 0.3:
+                print("  ✓ Positive relationship suggests some validity")
+            elif corr < -0.1:
+                print("  ✗ Negative relationship - gap may be poorly identified")
+            else:
+                print("  ~ Weak relationship - gap may not capture demand pressure well")
 
 
 # --- CLI Entry Point ---
 
 
-if __name__ == "__main__":
-    import mgplot as mg
-    from pathlib import Path
-
-    # Set output directory for charts
+def main(verbose: bool = False) -> None:
+    """Run Cobb-Douglas MFP decomposition from command line."""
     chart_dir = Path(__file__).parent.parent.parent / "charts" / "cobb_douglas"
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
 
-    print("Running Cobb-Douglas MFP Decomposition...\n")
+    print("Running Cobb-Douglas MFP Decomposition...")
 
     result = run_decomposition(start="1985Q1")
 
-    # Print comprehensive summary
-    print_summary(result)
+    print_summary(result, verbose=verbose)
 
-    # Generate all plots (save only, don't display)
     plot_all(result, show=False)
 
-    print(f"\nCharts saved to: {chart_dir}")
+    print(f"Charts saved to: {chart_dir}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run Cobb-Douglas MFP Decomposition")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed output")
+    args = parser.parse_args()
+
+    main(verbose=args.verbose)

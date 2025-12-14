@@ -26,24 +26,35 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
-from src.data import load_series, get_abs_data, hma, DataSeries, splice_series
-from src.data.series_specs import (
-    CPI_TRIMMED_MEAN_QUARTERLY,
-    CPI_TRIMMED_MEAN_ANNUAL,
-    GDP_CVM,
-    HOURS_WORKED_INDEX,
-    CAPITAL_STOCK,
-    HOURS_WORKED,
-    LABOUR_FORCE_TOTAL,
-    UNEMPLOYED_TOTAL,
-    MFP_HOURS_WORKED,
-    COMPENSATION_OF_EMPLOYEES,
-    HISTORICAL_RATE_FILE,
+from src.data import (
+    hma,
+    DataSeries,
+    # GDP
+    get_log_gdp,
+    get_gdp_growth,
+    # Labour force
+    get_unemployment_rate_qrtly,
+    get_labour_force_growth_qrtly,
+    get_hours_worked_qrtly,
+    # Capital
+    get_capital_growth_qrtly,
+    # MFP
+    get_mfp_annual,
+    # Inflation
+    get_inflation_qrtly,
+    get_inflation_annual,
+    # Interest rates
+    get_cash_rate_qrtly,
+    get_cash_rate_monthly,
+    # Costs
+    get_ulc_growth_qrtly,
+    # Trade
+    get_import_price_growth_annual,
+    # Supply shocks
+    get_gscpi_qrtly,
 )
 from src.data.rba_loader import (
-    get_cash_rate as rba_get_cash_rate,
-    get_historical_interbank_rate,
-    get_inflation_anchor as rba_get_inflation_anchor,
+    get_inflation_anchor,
     PI_TARGET,
     PI_TARGET_START,
     PI_TARGET_FULL,
@@ -124,50 +135,7 @@ ANNUAL_TARGET = {
 # --- Data Preparation ---
 
 
-def get_unemployment_data() -> dict[str, pd.Series]:
-    """Load unemployment rate and compute derived series.
-
-    Uses Modellers Database (1364.0.15.003) which provides quarterly data
-    covering total population including defence/non-civilian employment.
-    Unemployment rate is calculated as: unemployed / labour_force * 100
-    """
-    data = get_abs_data({
-        "LF": LABOUR_FORCE_TOTAL,
-        "Unemp": UNEMPLOYED_TOTAL,
-    })
-
-    lf = data["LF"].data
-    unemp = data["Unemp"].data
-
-    # Calculate unemployment rate
-    U = (unemp / lf) * 100
-
-    ΔU = U.diff(1)
-    ΔU_1 = ΔU.shift(1)
-
-    return {
-        "U": U,
-        "ΔU": ΔU,
-        "ΔU_1": ΔU_1,
-        "ΔU_1_over_U": ΔU_1 / U,
-    }
-
-
-def get_gdp_data() -> dict[str, pd.Series]:
-    """Load GDP and compute log levels and growth."""
-    gdp = load_series(GDP_CVM)
-    gdp_series = gdp.data
-
-    log_gdp = np.log(gdp_series) * 100  # Scale for numerical stability
-    gdp_growth = log_gdp.diff(1)
-
-    return {
-        "log_gdp": log_gdp,
-        "gdp_growth": gdp_growth,
-    }
-
-
-def get_productivity_trend(trend_weight: float = 0.75) -> pd.Series:
+def _get_productivity_trend(trend_weight: float = 0.75) -> pd.Series:
     """Get labour productivity trend for backfilling MFP.
 
     Calculates GDP per hour worked and blends with linear trend.
@@ -179,13 +147,12 @@ def get_productivity_trend(trend_weight: float = 0.75) -> pd.Series:
     Returns:
         Blended quarterly productivity growth
     """
-    data = get_abs_data({
-        "GDP": GDP_CVM,
-        "Hours": HOURS_WORKED_INDEX,
-    })
+    from src.data.gdp import get_gdp
+    from src.data.abs_loader import load_series
+    from src.data.series_specs import HOURS_WORKED_INDEX
 
-    gdp = data["GDP"].data
-    hours = data["Hours"].data
+    gdp = get_gdp(gdp_type="CVM", seasonal="SA").data
+    hours = load_series(HOURS_WORKED_INDEX).data
 
     productivity_index = gdp / hours
     log_productivity = np.log(productivity_index) * 100
@@ -197,59 +164,16 @@ def get_productivity_trend(trend_weight: float = 0.75) -> pd.Series:
     linear_trend = pd.Series(intercept + slope * x, index=productivity_growth.index)
 
     # Blend: trend_weight × linear + (1 - trend_weight) × raw
-    productivity_blend = trend_weight * linear_trend + (1 - trend_weight) * productivity_growth
-
-    return productivity_blend
+    return trend_weight * linear_trend + (1 - trend_weight) * productivity_growth
 
 
-def get_production_inputs() -> dict[str, pd.Series]:
-    """Load production function inputs: capital, labor, MFP."""
-    import readabs as ra
+def _prepare_mfp_growth() -> pd.Series:
+    """Prepare MFP growth: smooth annual data, convert to quarterly, backfill."""
+    mfp = get_mfp_annual().data
+    mfp_smoothed = hma(mfp.dropna(), 25)
 
-    data = get_abs_data({
-        "Capital": CAPITAL_STOCK,
-        "Hours": HOURS_WORKED,
-        "LF": LABOUR_FORCE_TOTAL,
-    })
-
-    # Hours worked - convert monthly to quarterly (sum of 3 months)
-    hours_monthly = data["Hours"].data
-    hours = ra.monthly_to_qtly(hours_monthly, q_ending="DEC", f="sum")
-
-    # Capital growth (Henderson smoothed)
-    capital = data["Capital"].data
-    log_capital = np.log(capital) * 100
-    capital_growth_raw = log_capital.diff(1)
-    capital_growth = hma(capital_growth_raw.dropna(), HMA_TERM)
-    # Reindex to original
-    capital_growth = capital_growth.reindex(capital.index)
-
-    # Labor force growth (Henderson smoothed during COVID)
-    lf = data["LF"].data
-    log_lf = np.log(lf) * 100
-    lf_growth_raw = log_lf.diff(1)
-    lf_growth_smoothed = hma(lf_growth_raw.dropna(), HMA_TERM)
-    lf_growth_smoothed = lf_growth_smoothed.reindex(lf.index)
-
-    # Replace COVID period with smoothed values to keep drift smooth
-    covid_period = pd.period_range("2020Q1", "2023Q2", freq="Q")
-    lf_growth = lf_growth_raw.where(
-        ~lf_growth_raw.index.isin(covid_period),
-        other=lf_growth_smoothed,
-    )
-
-    # Get productivity trend for backfilling MFP
-    productivity_trend = get_productivity_trend()
-
-    # MFP growth (from ABS productivity tables - annual data)
-    mfp = load_series(MFP_HOURS_WORKED)
-    mfp_annual = mfp.data
-    # Smooth annual data
-    mfp_smoothed = hma(mfp_annual.dropna(), 25)
-
-    # Convert annual to quarterly contribution (÷4) and interpolate to quarterly frequency
+    # Convert annual to quarterly contribution and interpolate
     mfp_quarterly_rate = ((1 + mfp_smoothed / 100) ** 0.25 - 1) * 100
-    # Resample to quarterly: convert to timestamp, resample, back to period
     mfp_quarterly_rate = (
         mfp_quarterly_rate.to_timestamp(how="end")
         .resample("QE-DEC")
@@ -257,158 +181,44 @@ def get_production_inputs() -> dict[str, pd.Series]:
         .to_period("Q-DEC")
     ).interpolate()
 
-    # Backfill MFP with productivity_trend where MFP is unavailable
+    # Backfill with productivity trend where MFP is unavailable
+    productivity_trend = _get_productivity_trend()
     mfp_quarterly_rate = mfp_quarterly_rate.reindex(productivity_trend.index)
-    mfp_final = mfp_quarterly_rate.where(mfp_quarterly_rate.notna(), other=productivity_trend)
-
-    return {
-        "capital_growth": capital_growth,
-        "lf_growth": lf_growth,
-        "mfp_growth": mfp_final,
-    }
+    return mfp_quarterly_rate.where(mfp_quarterly_rate.notna(), other=productivity_trend)
 
 
-def get_inflation_data() -> dict[str, pd.Series]:
-    """Load inflation and anchor series.
+def _prepare_labour_force_growth() -> pd.Series:
+    """Prepare labour force growth with COVID smoothing."""
+    lf_growth_raw = get_labour_force_growth_qrtly().data
+    lf_growth_smoothed = hma(lf_growth_raw.dropna(), HMA_TERM)
+    lf_growth_smoothed = lf_growth_smoothed.reindex(lf_growth_raw.index)
 
-    Uses actual quarterly and annual trimmed mean inflation from ABS,
-    NOT computed quarterly from annual.
-    """
-    # Load actual quarterly trimmed mean (percentage change from previous period)
-    quarterly = load_series(CPI_TRIMMED_MEAN_QUARTERLY)
-    π = quarterly.data
-
-    # Load actual annual trimmed mean (percentage change from corresponding quarter)
-    annual = load_series(CPI_TRIMMED_MEAN_ANNUAL)
-    π4 = annual.data
-
-    # Inflation anchor (expectations → target transition)
-    anchor = rba_get_inflation_anchor()
-    π_anchor = anchor.data
-
-    return {
-        "π": π,
-        "π4": π4,
-        "π_anchor": π_anchor,
-    }
+    # Replace COVID period with smoothed values
+    covid_period = pd.period_range("2020Q1", "2023Q2", freq="Q")
+    return lf_growth_raw.where(
+        ~lf_growth_raw.index.isin(covid_period),
+        other=lf_growth_smoothed,
+    )
 
 
-def get_cash_rate_data() -> dict[str, pd.Series]:
-    """Load cash rate data, splicing OCR with historical interbank rate.
-
-    Combines:
-    - Modern OCR from RBA (1990-present)
-    - Historical interbank overnight rate (pre-1990)
-
-    Favours OCR where both have data. Quarterly is end-of-quarter value.
-    Note: Early OCR records with range values are excluded.
-    """
-    import readabs as ra
-
-    # Get raw data from loaders
-    ocr = rba_get_cash_rate().data
-    historical = get_historical_interbank_rate(HISTORICAL_RATE_FILE).data
-
-    # Exclude early OCR records with non-numeric (range) values
-    ocr = pd.to_numeric(ocr, errors="coerce").dropna()
-
-    # Convert historical index to PeriodIndex if needed
-    if not isinstance(historical.index, pd.PeriodIndex):
-        historical.index = pd.PeriodIndex(historical.index, freq="M")
-
-    # Splice: favour OCR where both have data
-    monthly = splice_series(ocr, historical)
-
-    # Convert to quarterly (end of quarter value)
-    quarterly = monthly.sort_index().groupby(monthly.index.asfreq("Q")).last()
-
-    return {
-        "cash_rate": quarterly,
-        "cash_rate_monthly": monthly,
-    }
+def _prepare_capital_growth() -> pd.Series:
+    """Prepare capital growth with Henderson smoothing."""
+    capital_growth_raw = get_capital_growth_qrtly().data
+    capital_growth = hma(capital_growth_raw.dropna(), HMA_TERM)
+    return capital_growth.reindex(capital_growth_raw.index)
 
 
-def get_ulc_data() -> dict[str, pd.Series]:
-    """Load unit labor costs data.
-
-    Calculates quarterly ULC growth from National Accounts:
-    - GDP (Chain volume measures)
-    - Compensation of employees
-    ULC = compensation / GDP, then log difference for growth rate.
-    """
-    data = get_abs_data({
-        "GDP": GDP_CVM,
-        "CoE": COMPENSATION_OF_EMPLOYEES,
-    })
-
-    gdp = data["GDP"].data
-    coe = data["CoE"].data
-
-    ulc = coe / gdp
-    log_ulc = np.log(ulc)
-    delta_ulc = log_ulc.diff(1).dropna() * 100
-
-    return {
-        "Δulc": delta_ulc,
-    }
-
-
-def get_import_pricing() -> dict[str, pd.Series]:
-    """Get lagged annual change in import prices.
-
-    From ABS 6457.0 Import Price Index (series A2298279F).
-    Returns 4-quarter log difference of import prices, lagged 1 and 2 periods.
-    """
-    from readabs import read_abs_series
-
-    # Import Price Index by Balance of Payments, index, original
-    trade, _trade_meta = read_abs_series(cat="6457.0", series_id="A2298279F")
-    log_import_prices = trade["A2298279F"].apply(np.log)
-    delta4_log_import_prices = log_import_prices.diff(periods=4).dropna() * 100
-    dlip_1 = delta4_log_import_prices.shift(periods=1).dropna()
-    dlip_2 = delta4_log_import_prices.shift(periods=2).dropna()
-
-    return {
-        "Δ4ρm_1": dlip_1,
-        "Δ4ρm_2": dlip_2,
-    }
-
-
-def get_gscpi() -> dict[str, pd.Series]:
-    """Global Supply Chain Price Index for COVID supply shock.
-
-    From NY Fed: https://www.newyorkfed.org/research/policy/gscpi
-    Only non-zero during COVID period (2020Q1-2023Q2).
-    """
-    from pathlib import Path
-    import readabs as ra
-
-    # Load GSCPI data from data directory
-    gscpi_path = Path(__file__).parent.parent.parent / "data" / "gscpi_data.xls"
-
-    gscpi = pd.read_excel(
-        gscpi_path,
-        sheet_name="GSCPI Monthly Data",
-        index_col=0,
-        parse_dates=True,
-    )["GSCPI"]
-    gscpi = ra.monthly_to_qtly(gscpi, q_ending="DEC", f="mean")
-    gscpi.index = pd.PeriodIndex(gscpi.index, freq="Q")
-    gscpi_1 = gscpi.shift(1)
+def _prepare_gscpi() -> pd.Series:
+    """Prepare GSCPI with COVID period masking (zero outside 2020Q1-2023Q2)."""
+    gscpi = get_gscpi_qrtly().data
     gscpi_2 = gscpi.shift(2)
 
-    # Only use during COVID period (2020Q1-2023Q2), zero otherwise
+    # Only use during COVID period, zero otherwise
     quarter = pd.Timestamp.today().to_period("Q")
     dummy = pd.Series(1, pd.period_range(start="1959Q1", end=quarter - 1, freq="Q"))
     mask = (dummy.index >= "2020Q1") & (dummy.index <= "2023Q2")
-    dummy[mask] = 0  # key dates for the COVID period
-    gscpi_1 = gscpi_1.where(dummy == 0, other=0).reindex(dummy.index).fillna(0)
-    gscpi_2 = gscpi_2.where(dummy == 0, other=0).reindex(dummy.index).fillna(0)
-
-    return {
-        "ξ_1": gscpi_1,
-        "ξ_2": gscpi_2,
-    }
+    dummy[mask] = 0
+    return gscpi_2.where(dummy == 0, other=0).reindex(dummy.index).fillna(0)
 
 
 def compute_r_star(
@@ -421,21 +231,14 @@ def compute_r_star(
 
     r* ≈ α×g_K + (1-α)×g_L + g_MFP (annualized and smoothed)
     """
-    # Quarterly potential growth
     quarterly_growth = (
         alpha * capital_growth
         + (1 - alpha) * lf_growth
         + mfp_growth
     )
-
-    # Annualize (4Q rolling sum)
     annual_growth = quarterly_growth.rolling(4).sum()
     annual_growth = annual_growth.bfill()
-
-    # Henderson smooth
-    r_star = hma(annual_growth.dropna(), HMA_TERM)
-
-    return r_star
+    return hma(annual_growth.dropna(), HMA_TERM)
 
 
 def build_observations(
@@ -445,7 +248,8 @@ def build_observations(
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex]:
     """Build observation dictionary for model.
 
-    Loads all data, aligns to common sample, and returns as numpy arrays.
+    Loads all data from library, applies model-specific transformations,
+    aligns to common sample, and returns as numpy arrays.
 
     Args:
         start: Start period (e.g., "1980Q1")
@@ -455,49 +259,69 @@ def build_observations(
     Returns:
         Tuple of (observations dict, period index)
     """
-    # Load all data
-    unemployment = get_unemployment_data()
-    gdp = get_gdp_data()
-    production = get_production_inputs()
-    inflation = get_inflation_data()
-    rates = get_cash_rate_data()
-    ulc = get_ulc_data()
-    import_prices = get_import_pricing()
-    gscpi = get_gscpi()
+    # --- Load data from library ---
+
+    # Unemployment
+    U = get_unemployment_rate_qrtly().data
+    ΔU = U.diff(1)
+    ΔU_1 = ΔU.shift(1)
+
+    # GDP
+    log_gdp = get_log_gdp().data
+    gdp_growth = get_gdp_growth().data
+
+    # Production inputs (with model-specific smoothing)
+    capital_growth = _prepare_capital_growth()
+    lf_growth = _prepare_labour_force_growth()
+    mfp_growth = _prepare_mfp_growth()
+
+    # Inflation
+    π = get_inflation_qrtly().data
+    π4 = get_inflation_annual().data
+    π_anchor = get_inflation_anchor().data
+
+    # Interest rates
+    cash_rate = get_cash_rate_qrtly().data
+
+    # Unit labour costs
+    Δulc = get_ulc_growth_qrtly().data
+
+    # Import prices (lagged)
+    import_price_growth = get_import_price_growth_annual().data
+    Δ4ρm_1 = import_price_growth.shift(1)
+
+    # GSCPI (COVID masked)
+    ξ_2 = _prepare_gscpi()
 
     # Compute r*
-    r_star = compute_r_star(
-        production["capital_growth"],
-        production["lf_growth"],
-        production["mfp_growth"],
-    )
+    r_star = compute_r_star(capital_growth, lf_growth, mfp_growth)
 
     # Build DataFrame
     observed = pd.DataFrame({
         # Inflation
-        "π": inflation["π"],
-        "π4": inflation["π4"],
-        "π_anchor": inflation["π_anchor"],
+        "π": π,
+        "π4": π4,
+        "π_anchor": π_anchor,
         # Unemployment
-        "U": unemployment["U"],
-        "ΔU": unemployment["ΔU"],
-        "ΔU_1": unemployment["ΔU_1"],
-        "ΔU_1_over_U": unemployment["ΔU_1_over_U"],
+        "U": U,
+        "ΔU": ΔU,
+        "ΔU_1": ΔU_1,
+        "ΔU_1_over_U": ΔU_1 / U,
         # GDP
-        "log_gdp": gdp["log_gdp"],
-        "gdp_growth": gdp["gdp_growth"],
+        "log_gdp": log_gdp,
+        "gdp_growth": gdp_growth,
         # Production inputs
-        "capital_growth": production["capital_growth"],
-        "lf_growth": production["lf_growth"],
-        "mfp_growth": production["mfp_growth"],
+        "capital_growth": capital_growth,
+        "lf_growth": lf_growth,
+        "mfp_growth": mfp_growth,
         # Rates
-        "cash_rate": rates["cash_rate"],
+        "cash_rate": cash_rate,
         "det_r_star": r_star,
         # Unit labor costs
-        "Δulc": ulc["Δulc"],
+        "Δulc": Δulc,
         # Import prices and supply shocks
-        "Δ4ρm_1": import_prices["Δ4ρm_1"],
-        "ξ_2": gscpi["ξ_2"],
+        "Δ4ρm_1": Δ4ρm_1,
+        "ξ_2": ξ_2,
     })
 
     # Apply sample period
@@ -554,7 +378,7 @@ def build_model(
     if nairu_const is None:
         nairu_const = {"nairu_innovation": 0.25}
     if potential_const is None:
-        potential_const = {"potential_innovation": 0.2}
+        potential_const = {"potential_innovation": 0.3}
 
     model = pm.Model()
 
@@ -1256,6 +1080,7 @@ def main(verbose: bool = False) -> None:
 
     print("\nSampling...")
     trace = sample_model(model, config)
+    print("\n\n\n\n\n")
 
     # Create results container
     results = NAIRUResults(
@@ -1341,7 +1166,7 @@ def main(verbose: bool = False) -> None:
         print(results.output_gap().tail(8).round(2))
 
     # Get cash rate and inflation data for Taylor rule plots
-    cash_rate_monthly = get_cash_rate_data()["cash_rate_monthly"]
+    cash_rate_monthly = get_cash_rate_monthly().data
     π4 = pd.Series(results.obs["π4"], index=results.obs_index)
 
     # Generate all plots
