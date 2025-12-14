@@ -101,6 +101,7 @@ def splice_series(primary: pd.Series, secondary: pd.Series) -> pd.Series:
 
     Raises:
         ValueError: If indices have different PeriodIndex frequencies
+
     """
     # Check both have PeriodIndex
     if not isinstance(primary.index, pd.PeriodIndex):

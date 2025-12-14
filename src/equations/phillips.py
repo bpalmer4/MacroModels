@@ -37,6 +37,7 @@ def price_inflation_equation(
 
     Example:
         price_inflation_equation(inputs, model, nairu)
+
     """
     if constant is None:
         constant = {}
@@ -99,6 +100,7 @@ def wage_growth_equation(
 
     Example:
         wage_growth_equation(inputs, model, nairu)
+
     """
     if constant is None:
         constant = {}

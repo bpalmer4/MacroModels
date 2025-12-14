@@ -10,9 +10,9 @@ Uses the readabs library for RBA data access.
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
-import readabs as ra
-from readabs import read_rba_ocr, read_rba_table
+from readabs import read_rba_ocr
 
 from src.data.dataseries import DataSeries
 
@@ -31,6 +31,7 @@ def get_cash_rate() -> DataSeries:
 
     Returns:
         DataSeries with monthly OCR from RBA (1990-present)
+
     """
     ocr = read_rba_ocr()
     ocr = ocr.squeeze()
@@ -52,6 +53,7 @@ def get_historical_interbank_rate(path: str | Path) -> DataSeries:
 
     Returns:
         DataSeries with monthly interbank rate (pre-1990)
+
     """
     historical = pd.read_parquet(path)
     if isinstance(historical, pd.DataFrame):
@@ -77,6 +79,7 @@ def get_inflation_expectations() -> DataSeries:
 
     Returns:
         DataSeries with annual inflation expectations
+
     """
     # Load RBA PIE_RBAQ series from CSV (in project data/ directory)
     csv_path = Path(__file__).parent.parent.parent / "data" / "PIE_RBAQ.CSV"
@@ -111,9 +114,8 @@ def get_inflation_anchor() -> DataSeries:
 
     Returns:
         DataSeries with annual inflation anchor
-    """
-    import numpy as np
 
+    """
     # Get expectations (only needed for pre-1998Q1 periods)
     exp_data = get_inflation_expectations()
     expectations = exp_data.data

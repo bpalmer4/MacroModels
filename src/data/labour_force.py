@@ -11,9 +11,9 @@ import readabs as ra
 from src.data.abs_loader import get_abs_data, load_series
 from src.data.dataseries import DataSeries
 from src.data.series_specs import (
+    HOURS_WORKED,
     LABOUR_FORCE_TOTAL,
     UNEMPLOYED_TOTAL,
-    HOURS_WORKED,
 )
 
 
@@ -22,6 +22,7 @@ def get_labour_force_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with quarterly labour force
+
     """
     return load_series(LABOUR_FORCE_TOTAL)
 
@@ -31,6 +32,7 @@ def get_unemployed_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with quarterly unemployed count
+
     """
     return load_series(UNEMPLOYED_TOTAL)
 
@@ -45,6 +47,7 @@ def get_unemployment_rate_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with unemployment rate (%)
+
     """
     data = get_abs_data({
         "LF": LABOUR_FORCE_TOTAL,
@@ -70,6 +73,7 @@ def get_unemployment_change_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with ΔU (percentage points)
+
     """
     U = get_unemployment_rate_qrtly()
     delta_U = U.data.diff(1)
@@ -89,6 +93,7 @@ def get_hours_worked_monthly() -> DataSeries:
 
     Returns:
         DataSeries with monthly hours worked
+
     """
     return load_series(HOURS_WORKED)
 
@@ -100,6 +105,7 @@ def get_hours_worked_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with quarterly hours worked
+
     """
     hours = load_series(HOURS_WORKED)
     hours_q = ra.monthly_to_qtly(hours.data, q_ending="DEC", f="sum")
@@ -121,6 +127,7 @@ def get_labour_force_growth_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with labour force growth (% per quarter)
+
     """
     lf = get_labour_force_qrtly()
     log_lf = np.log(lf.data) * 100

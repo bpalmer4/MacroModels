@@ -1,7 +1,6 @@
 """Extract variables from PyMC traces."""
 
 import arviz as az
-import numpy as np
 import pandas as pd
 
 

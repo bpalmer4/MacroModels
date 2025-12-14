@@ -1,6 +1,6 @@
 """Base utilities for PyMC model building and sampling."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ class SamplerConfig:
         sampler: NUTS implementation ("pymc", "numpyro", or "blackjax")
         target_accept: Target acceptance probability (higher = more conservative)
         random_seed: Random seed for reproducibility
+
     """
 
     draws: int = 100_000
@@ -43,6 +44,7 @@ def sample_model(
 
     Returns:
         ArviZ InferenceData with posterior samples
+
     """
     if config is None:
         config = SamplerConfig()
@@ -90,6 +92,7 @@ def set_model_coefficients(
         mc = set_model_coefficients(model, settings, constant)
         # mc["beta"] = 0.5 (fixed)
         # mc["gamma"] = pm.Normal("gamma", mu=-0.3, sigma=0.2)
+
     """
     if constant is None:
         constant = {}
@@ -128,6 +131,7 @@ def save_trace(trace: az.InferenceData, path: str | Path) -> None:
     Args:
         trace: ArviZ InferenceData to save
         path: Output file path (.nc extension recommended)
+
     """
     trace.to_netcdf(str(path))
 
@@ -140,5 +144,6 @@ def load_trace(path: str | Path) -> az.InferenceData:
 
     Returns:
         ArviZ InferenceData
+
     """
     return az.from_netcdf(str(path))

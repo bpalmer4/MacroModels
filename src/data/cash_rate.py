@@ -6,7 +6,8 @@ Provides spliced cash rate combining modern OCR with historical interbank rate.
 import pandas as pd
 
 from src.data.dataseries import DataSeries
-from src.data.rba_loader import get_cash_rate as rba_get_cash_rate, get_historical_interbank_rate
+from src.data.rba_loader import get_cash_rate as rba_get_cash_rate
+from src.data.rba_loader import get_historical_interbank_rate
 from src.data.series_specs import HISTORICAL_RATE_FILE
 from src.data.transforms import splice_series
 
@@ -22,6 +23,7 @@ def get_cash_rate_monthly() -> DataSeries:
 
     Returns:
         DataSeries with monthly cash rate (%)
+
     """
     ocr = rba_get_cash_rate()
     historical = get_historical_interbank_rate(HISTORICAL_RATE_FILE)
@@ -50,6 +52,7 @@ def get_cash_rate_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with quarterly cash rate (%)
+
     """
     monthly = get_cash_rate_monthly()
     quarterly = monthly.data.sort_index().groupby(monthly.data.index.asfreq("Q")).last()

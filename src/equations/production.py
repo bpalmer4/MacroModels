@@ -48,6 +48,7 @@ def potential_output_equation(
             inputs, model,
             constant={"potential_innovation": 0.3}
         )
+
     """
     if constant is None:
         constant = {}

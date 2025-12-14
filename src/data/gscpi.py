@@ -23,6 +23,7 @@ def get_gscpi_monthly() -> DataSeries:
 
     Returns:
         DataSeries with monthly GSCPI
+
     """
     gscpi_path = Path(__file__).parent.parent.parent / "data" / "gscpi_data.xls"
     gscpi = pd.read_excel(
@@ -47,6 +48,7 @@ def get_gscpi_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with quarterly GSCPI
+
     """
     monthly = get_gscpi_monthly()
     quarterly = ra.monthly_to_qtly(monthly.data, q_ending="DEC", f="mean")

@@ -16,5 +16,6 @@ def get_mfp_annual() -> DataSeries:
 
     Returns:
         DataSeries with annual MFP growth (%)
+
     """
     return load_series(MFP_HOURS_WORKED)

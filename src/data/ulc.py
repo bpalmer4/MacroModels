@@ -7,7 +7,7 @@ import numpy as np
 
 from src.data.abs_loader import get_abs_data
 from src.data.dataseries import DataSeries
-from src.data.series_specs import GDP_CVM, COMPENSATION_OF_EMPLOYEES
+from src.data.series_specs import COMPENSATION_OF_EMPLOYEES, GDP_CVM
 
 
 def get_ulc_growth_qrtly() -> DataSeries:
@@ -18,6 +18,7 @@ def get_ulc_growth_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with ULC growth (% per quarter)
+
     """
     data = get_abs_data({
         "GDP": GDP_CVM,

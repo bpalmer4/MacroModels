@@ -40,6 +40,7 @@ def is_equation(
 
     Example:
         is_equation(inputs, model, potential_output)
+
     """
     if constant is None:
         constant = {}

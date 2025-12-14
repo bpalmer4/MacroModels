@@ -114,6 +114,7 @@ def check_for_zero_coeffs(
 
     Returns:
         DataFrame with quantiles and significance markers.
+
     """
     if critical_params is None:
         critical_params = []

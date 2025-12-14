@@ -943,7 +943,7 @@ wheels = [
 
 [[package]]
 name = "mgplot"
-version = "0.2.14"
+version = "0.2.15"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
@@ -953,9 +953,9 @@ dependencies = [
     { name = "tabulate" },
     { name = "typing" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4f/2d/db51d56e4ff50d32e002c116fdf78880fef1af4576f788a779413965d218/mgplot-0.2.14.tar.gz", hash = "sha256:45b02e148e79b0011ec6c2c335065d7974271ad1a75f31f55fc1f90cfc864de6", size = 2614225, upload-time = "2025-12-09T19:27:24.316Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/a3/89f4d540f3a202513fb6430408d97560ee549e86701bd6c1dd6963293d7e/mgplot-0.2.15.tar.gz", hash = "sha256:5af0ca1d788b2f49746d1d6c8d0076f8da986851d5aec717330d9f031848cd89", size = 2614485, upload-time = "2025-12-14T20:01:06.104Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/fa/6b6b809d10d419140f9783667317fa88235b97f18a825f294448cdf3f668/mgplot-0.2.14-py3-none-any.whl", hash = "sha256:e22708cd69e434039b146a0b64b938722affbd4dadae67b0604839b869f7391b", size = 47547, upload-time = "2025-12-09T19:27:21.619Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/c4/ac0214e4c9a0e75aa79d4fa36dd5fe51d23b8930a4e01e570b523f8b02ab/mgplot-0.2.15-py3-none-any.whl", hash = "sha256:388b3fbb8830be118c9fdb45bd781a9fe3be5c18a541befa8bdea1f928aa7b67", size = 47587, upload-time = "2025-12-14T20:01:03.296Z" },
 ]
 
 [[package]]
@@ -1940,16 +1940,16 @@ wheels = [
 
 [[package]]
 name = "types-seaborn"
-version = "0.13.2.20250914"
+version = "0.13.2.20251214"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas-stubs" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ea/5d/518d3dd1033b5a61e5b36f0f69fb5e506dee8541e1209b6b9d66a6146e25/types_seaborn-0.13.2.20250914.tar.gz", hash = "sha256:e8697e66be6cda98a99643b04a120b884c079c55afee8bd03b091700abca524c", size = 29360, upload-time = "2025-09-14T02:57:03.056Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/16/97/d2735690f48a720d28f1489dc73eb37936826aac523246c1c9c1d5348551/types_seaborn-0.13.2.20251214.tar.gz", hash = "sha256:0f4eb7f5b7a24ab56e8c030c0892f627c1bda173b6c3bfa3542ac43ea5ff1c79", size = 29291, upload-time = "2025-12-14T03:20:32.808Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bd/5a/6b970ba04bdea1086a743eee5f85ab55b39e2077abbe288b9f58ba9fc1f8/types_seaborn-0.13.2.20250914-py3-none-any.whl", hash = "sha256:130a87771f9cc508ca259982b61507d195925c652b8e50bc7e3e14944ce02f43", size = 40943, upload-time = "2025-09-14T02:57:01.73Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/a3/787b5ba96db6a946f4d0d8501d02dbfb65b08c42423047130161adb281a5/types_seaborn-0.13.2.20251214-py3-none-any.whl", hash = "sha256:eee288a26af716971a721d9f8f249c41d83ebc66eb747144faea3f0c3bb5e7d2", size = 40844, upload-time = "2025-12-14T03:20:31.855Z" },
 ]
 
 [[package]]
@@ -2013,16 +2013,17 @@ socks = [
 
 [[package]]
 name = "watermark"
-version = "2.5.0"
+version = "2.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "importlib-metadata" },
     { name = "ipython" },
     { name = "setuptools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b2/b7/f529170d6ac23f538b758286d81c7389c8abb7ac12d8e79ba658f32123f9/watermark-2.5.0.tar.gz", hash = "sha256:108cbad9ecf0cac9dd49c1504f3749cd74a364500e02ac6c72197a1c1aa151d7", size = 10894, upload-time = "2024-09-21T00:40:13.922Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/68/21/07feaf12db051aaa3e795adf7738c7358f5cabcf09f48d3921699a0ee06e/watermark-2.5.1.tar.gz", hash = "sha256:19a807f504ce02b791a7ce8950df85515ffc876cacd37a84130ea23a0e1a783a", size = 11282, upload-time = "2025-12-14T18:09:29.902Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/ac/1847959031ce09eb65a70b16d0f07633d7ddaf8a97752cc924f9a8cbe253/watermark-2.5.0-py2.py3-none-any.whl", hash = "sha256:d775afa075f5ea15152ad9f4c82dfc95bffb9d0cb4341c9b62073b627191464d", size = 7679, upload-time = "2024-09-21T00:40:12.512Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/30/b4550fc7c426a27585744930b348044bad98d6e8b4ace91afe427a5abad7/watermark-2.5.1-py2.py3-none-any.whl", hash = "sha256:8d3f70c243afed8e10a2cf258c8744e61ef1215caa8d7862bc985e443219509d", size = 8205, upload-time = "2025-12-14T18:09:28.441Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/26/d010a3229e936372b01b30f55c740fb4ca5afebedf2c8377381d4029aba0/watermark-2.5.1-py3-none-any.whl", hash = "sha256:c20c998eb09b2a97723644ec438aa3fb25d2a3fb5cee4b5453d2a012d6d2818b", size = 7846, upload-time = "2025-12-14T18:09:29.247Z" },
 ]
 
 [[package]]

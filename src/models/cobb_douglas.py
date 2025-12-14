@@ -19,7 +19,7 @@ models that incorporate Phillips curve information.
 """
 
 import argparse
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -33,10 +33,9 @@ from src.data.abs_loader import get_abs_data
 from src.data.gdp import get_gdp
 from src.data.series_specs import (
     CAPITAL_STOCK,
-    HOURS_WORKED,
     CPI_TRIMMED_MEAN,
+    HOURS_WORKED,
 )
-
 
 # --- Constants ---
 
@@ -81,6 +80,7 @@ def load_data(
 
     Returns:
         CobbDouglasData with aligned series
+
     """
     # Fetch data (raw frequencies from ABS)
     gdp_result = get_gdp(gdp_type="CVM", seasonal="SA")
@@ -122,6 +122,7 @@ def load_inflation_data() -> pd.Series:
 
     Returns:
         Annual trimmed mean inflation (year-over-year growth)
+
     """
     inflation = get_abs_data({
         "annual": CPI_TRIMMED_MEAN,  # seek_yr_growth=True gives annual growth
@@ -141,6 +142,7 @@ def calculate_growth_rates(data: CobbDouglasData) -> pd.DataFrame:
 
     Returns:
         DataFrame with log levels and growth rates
+
     """
     df = data.aligned
     growth = pd.DataFrame(index=df.index)
@@ -179,6 +181,7 @@ def calculate_solow_residual(
 
     Returns:
         DataFrame with factor contributions and MFP
+
     """
     result = growth.copy()
 
@@ -217,6 +220,7 @@ def apply_hp_filter(
 
     Returns:
         Tuple of (trend, cycle)
+
     """
     clean = series.dropna()
     cycle, trend = hpfilter(clean, lamb=hp_lambda)
@@ -237,6 +241,7 @@ def extract_mfp_trend(
 
     Returns:
         DataFrame with trend and cycle components
+
     """
     mfp = growth["g_MFP"].dropna()
     trend, cycle = apply_hp_filter(mfp, hp_lambda)
@@ -271,6 +276,7 @@ def calculate_potential_gdp(
 
     Returns:
         DataFrame with potential GDP and output gap
+
     """
     if anchor_points is None:
         anchor_points = []
@@ -362,6 +368,7 @@ def sensitivity_analysis_alpha(
 
     Returns:
         DataFrame with MFP statistics for each alpha
+
     """
     if alphas is None:
         alphas = [0.20, 0.25, 0.30, 0.35, 0.40]
@@ -406,6 +413,7 @@ def phillips_curve_crosscheck(
 
     Returns:
         DataFrame with aligned data and statistics
+
     """
     common = pd.DataFrame({
         "Output Gap": output_gap,
@@ -505,6 +513,7 @@ def run_decomposition(
 
     Returns:
         DecompositionResult with all computed series
+
     """
     if anchor_points is None:
         anchor_points = ANCHOR_POINTS
@@ -670,7 +679,7 @@ def plot_potential_gdp(result: DecompositionResult, show: bool = True) -> None:
     gdp_levels = pd.DataFrame({
         "Actual GDP": pot["GDP_actual"],
         "Potential GDP": pot["GDP_potential"],
-    }).dropna(axis=0, how='any')
+    }).dropna(axis=0, how="any")
     mg.line_plot(
         gdp_levels,
         ax=axes[0],
@@ -962,7 +971,7 @@ def print_summary(result: DecompositionResult, verbose: bool = False) -> None:
     print("SUMMARY: Cobb-Douglas MFP Decomposition")
 
     if verbose:
-        print(f"\nModel Parameters:")
+        print("\nModel Parameters:")
         print(f"  Capital share (α):     {result.alpha}")
         print(f"  Labour share (1-α):    {1 - result.alpha}")
         print(f"  HP filter lambda:      {HP_LAMBDA}")
@@ -986,7 +995,7 @@ def print_summary(result: DecompositionResult, verbose: bool = False) -> None:
         print(decade_summary.round(2).to_string())
 
         # Latest values
-        print(f"\nLatest Values:")
+        print("\nLatest Values:")
         print(f"  Output gap:        {result.potential['output_gap'].dropna().iloc[-1]:.2f}%")
         print(f"  MFP trend growth:  {result.mfp['MFP Trend'].iloc[-1] * 4:.2f}% p.a.")
 
@@ -1003,7 +1012,7 @@ def print_summary(result: DecompositionResult, verbose: bool = False) -> None:
         if result.phillips is not None:
             corr = result.phillips.attrs.get("corr_deviation", np.nan)
             slope = result.phillips.attrs.get("slope", np.nan)
-            print(f"\nPhillips Curve Cross-Check:")
+            print("\nPhillips Curve Cross-Check:")
             print(f"  Correlation (gap vs inflation deviation): {corr:.3f}")
             print(f"  Slope (gap → inflation deviation):        {slope:.3f}")
             if corr > 0.3:

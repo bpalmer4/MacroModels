@@ -33,6 +33,7 @@ def nairu_equation(
 
     Example:
         nairu = nairu_equation(inputs, model, constant={"nairu_innovation": 0.25})
+
     """
     if constant is None:
         constant = {}

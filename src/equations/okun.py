@@ -42,6 +42,7 @@ def okun_law_equation(
 
     Example:
         okun_law_equation(inputs, model, nairu, potential_output)
+
     """
     if constant is None:
         constant = {}

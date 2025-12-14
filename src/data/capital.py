@@ -18,6 +18,7 @@ def get_capital_stock_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with quarterly capital stock
+
     """
     return load_series(CAPITAL_STOCK)
 
@@ -27,6 +28,7 @@ def get_capital_growth_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with capital growth (% per quarter)
+
     """
     capital = get_capital_stock_qrtly()
     log_capital = np.log(capital.data) * 100

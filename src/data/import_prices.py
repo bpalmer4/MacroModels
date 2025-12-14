@@ -16,6 +16,7 @@ def get_import_price_index_qrtly() -> DataSeries:
 
     Returns:
         DataSeries with import price index
+
     """
     trade, _meta = ra.read_abs_series(cat="6457.0", series_id="A2298279F")
     series = trade["A2298279F"]
@@ -35,6 +36,7 @@ def get_import_price_growth_annual() -> DataSeries:
 
     Returns:
         DataSeries with annual import price growth (%)
+
     """
     index = get_import_price_index_qrtly()
     log_prices = np.log(index.data) * 100

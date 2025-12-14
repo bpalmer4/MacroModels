@@ -19,6 +19,7 @@ def get_gdp(gdp_type: str = "CVM", seasonal: str = "SA") -> DataSeries:
 
     Returns:
         DataSeries containing GDP data and metadata
+
     """
     did_cvm = "Gross domestic product: Chain volume measures ;"
     did_cp = "Gross domestic product: Current prices ;"
@@ -67,6 +68,7 @@ def get_log_gdp() -> DataSeries:
 
     Returns:
         DataSeries with log GDP scaled for numerical stability
+
     """
     gdp = get_gdp(gdp_type="CVM", seasonal="SA")
     log_gdp = np.log(gdp.data) * 100
@@ -91,6 +93,7 @@ def get_gdp_growth(periods: int = 1) -> DataSeries:
 
     Returns:
         DataSeries with GDP growth rate
+
     """
     log_gdp = get_log_gdp()
     growth = log_gdp.data.diff(periods)
