@@ -57,6 +57,14 @@ from src.equations import (
     is_equation,
 )
 from src.models.base import SamplerConfig, sample_model
+from src.analysis import (
+    check_for_zero_coeffs,
+    check_model_diagnostics,
+    plot_posteriors_bar,
+    plot_posteriors_kde,
+    posterior_predictive_checks,
+    residual_autocorrelation_analysis,
+)
 
 
 # --- Constants ---
@@ -433,6 +441,7 @@ def compute_r_star(
 def build_observations(
     start: str | None = None,
     end: str | None = None,
+    verbose: bool = False,
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex]:
     """Build observation dictionary for model.
 
@@ -441,6 +450,7 @@ def build_observations(
     Args:
         start: Start period (e.g., "1980Q1")
         end: End period
+        verbose: Print sample info
 
     Returns:
         Tuple of (observations dict, period index)
@@ -499,7 +509,22 @@ def build_observations(
     # Drop missing
     observed = observed.dropna()
 
-    print(f"Sample: {observed.index[0]} to {observed.index[-1]} ({len(observed)} periods)")
+    # Warn if any NaNs remain (shouldn't happen after dropna)
+    if observed.isna().any().any():
+        print("WARNING: NaN values remain in observations after dropna()")
+
+    # Check index is unique
+    if not observed.index.is_unique:
+        raise ValueError("Duplicate periods in observations index")
+
+    # Check index has no gaps (missing periods)
+    expected_periods = pd.period_range(observed.index.min(), observed.index.max(), freq="Q")
+    if len(observed) != len(expected_periods):
+        missing = expected_periods.difference(observed.index)
+        raise ValueError(f"{len(missing)} missing period(s) in observations: {list(missing)}")
+
+    if verbose:
+        print(f"Sample: {observed.index[0]} to {observed.index[-1]} ({len(observed)} periods)")
 
     # Convert to dict of numpy arrays
     obs_dict = {col: observed[col].to_numpy() for col in observed.columns}
@@ -598,6 +623,7 @@ def run_model(
     start: str | None = "1980Q1",
     end: str | None = None,
     config: SamplerConfig | None = None,
+    verbose: bool = False,
 ) -> NAIRUResults:
     """Run the full NAIRU + Output Gap estimation.
 
@@ -605,6 +631,7 @@ def run_model(
         start: Start period
         end: End period
         config: Sampler configuration
+        verbose: Print progress messages
 
     Returns:
         NAIRUResults with trace and computed series
@@ -684,6 +711,7 @@ def plot_nairu(
 def plot_unemployment_gap(
     results: NAIRUResults,
     show: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Plot the unemployment gap (U - U*)."""
     import mgplot as mg
@@ -696,7 +724,8 @@ def plot_unemployment_gap(
     nairu.index = results.obs_index
     U = pd.Series(results.obs["U"], index=results.obs_index)
     u_gap = nairu.apply(lambda col: U - col)
-    print("Last data point:", u_gap.index[-1])
+    if verbose:
+        print("Last data point:", u_gap.index[-1])
 
     # Plot using shared time series function
     ax = plot_timeseries(
@@ -750,7 +779,6 @@ def plot_output_gap(
 
     # Finalise plot
     if ax is not None:
-        ax.axhline(y=0, color="darkred", linestyle="--", linewidth=1)
         mg.finalise_plot(
             ax,
             title="Output Gap Estimate for Australia",
@@ -758,6 +786,7 @@ def plot_output_gap(
             legend={"loc": "best", "fontsize": "x-small"},
             lfooter="Australia. (log Y - log Y*) / log Y* × 100. Positive = overheating/inflationary.",
             rfooter=RFOOTER_OUTPUT,
+            y0=True,
             show=show,
         )
 
@@ -809,6 +838,7 @@ def plot_potential_growth(
     results: NAIRUResults,
     r_star_trend_weight: float = 0.75,
     show: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Plot annual potential GDP growth (4Q difference of log potential).
 
@@ -841,10 +871,10 @@ def plot_potential_growth(
     trend.name = f"Trend (slope: {slope * 4:.2f}pp/year)"
     mg.line_plot(trend, ax=ax, color="darkred", width=1.5, style="--")
 
-    # Debug: print median endpoint
-    print(f"Chart 1 - Potential Growth:")
-    print(f"  Median endpoint: {median.iloc[-1]:.3f}% at {median.index[-1]}")
-    print(f"  Trend endpoint: {trend.iloc[-1]:.3f}%")
+    if verbose:
+        print(f"Chart 1 - Potential Growth:")
+        print(f"  Median endpoint: {median.iloc[-1]:.3f}% at {median.index[-1]}")
+        print(f"  Trend endpoint: {trend.iloc[-1]:.3f}%")
 
     if ax is not None:
         mg.finalise_plot(
@@ -862,12 +892,12 @@ def plot_potential_growth(
     w = r_star_trend_weight
     hybrid = (1 - w) * median + w * trend
 
-    # Debug: print values for comparison chart
-    print(f"\nChart 2 - r* Comparison:")
-    print(f"  Median (raw) endpoint: {median.iloc[-1]:.3f}%")
-    print(f"  Trend endpoint: {trend.iloc[-1]:.3f}%")
-    print(f"  Hybrid ({int(w*100)}% trend, {int((1-w)*100)}% raw) endpoint: {hybrid.iloc[-1]:.3f}%")
-    print(f"  Check: {(1-w):.2f} × {median.iloc[-1]:.3f} + {w:.2f} × {trend.iloc[-1]:.3f} = {(1-w)*median.iloc[-1] + w*trend.iloc[-1]:.3f}%")
+    if verbose:
+        print(f"\nChart 2 - r* Comparison:")
+        print(f"  Median (raw) endpoint: {median.iloc[-1]:.3f}%")
+        print(f"  Trend endpoint: {trend.iloc[-1]:.3f}%")
+        print(f"  Hybrid ({int(w*100)}% trend, {int((1-w)*100)}% raw) endpoint: {hybrid.iloc[-1]:.3f}%")
+        print(f"  Check: {(1-w):.2f} × {median.iloc[-1]:.3f} + {w:.2f} × {trend.iloc[-1]:.3f} = {(1-w)*median.iloc[-1] + w*trend.iloc[-1]:.3f}%")
 
     median.name = "$r^*$ raw median (no smoothing)"
     trend.name = "Trend only"
@@ -1041,19 +1071,24 @@ def plot_obs_grid(obs: dict[str, np.ndarray], obs_index: pd.PeriodIndex, show: b
     n_cols = 4
     n_rows = math.ceil(n_vars / n_cols)
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, 2.5 * n_rows))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(14.0, 2.5 * n_rows))
     axes = axes.flatten()
 
-    ax = None
+    last_used = 0
     for i, (name, values) in enumerate(obs.items()):
         ax = axes[i]
-        ax.plot(obs_index.to_timestamp(), values, lw=1)
-        ax.set_title(name, fontsize=9)
-        ax.axhline(0, color="grey", lw=0.5, ls="--")
-        ax.tick_params(axis="both", labelsize=7)
+        series = pd.Series(values, index=obs_index, name=name)
+        mg.line_plot(series, ax=ax, width=1)
+        mg.finalise_plot(
+            ax,
+            title=name,
+            y0=True,
+            dont_save=True,
+            dont_close=True,
+        )
+        last_used = i
 
     # Hide unused subplots
-    last_used = i
     for j in range(last_used + 1, len(axes)):
         axes[j].set_visible(False)
 
@@ -1068,7 +1103,7 @@ def plot_obs_grid(obs: dict[str, np.ndarray], obs_index: pd.PeriodIndex, show: b
     mg.finalise_plot(
         axes[last_used],
         title="Model Input Variables",
-        figsize=(14, 2.5 * n_rows),
+        figsize=(14.0, 2.5 * n_rows),
         show=show,
     )
 
@@ -1087,9 +1122,9 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
 
     results = []
 
-    # Define tests: (parameter, expected_value or 'negative'/'positive', description)
+    # Define tests: (parameter, expected_value or 'negative'/'positive'/(low,high), description)
     tests = [
-        ('alpha_capital', 0.3, 'Capital share ≈ 0.3'),
+        ('alpha_capital', (0.20, 0.35), 'Capital share ∈ (0.20, 0.35)'),
         ('beta_okun', 'negative', 'Okun coefficient < 0'),
         ('gamma_pi', 'negative', 'Phillips curve slope < 0'),
         ('gamma_wg', 'negative', 'Wage Phillips curve slope < 0'),
@@ -1107,7 +1142,21 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
         median = np.median(samples)
         hdi_90 = az.hdi(samples, hdi_prob=0.90)
 
-        if isinstance(expected, (int, float)):
+        if isinstance(expected, tuple):
+            # Test for value within range (low, high)
+            low, high = expected
+            prob_in_range = np.mean((samples >= low) & (samples <= high))
+
+            results.append({
+                'Parameter': param,
+                'Hypothesis': description,
+                'Median': f'{median:.3f}',
+                '90% HDI': f'[{hdi_90[0]:.3f}, {hdi_90[1]:.3f}]',
+                'Expected in HDI': '-',
+                f'P({low} ≤ θ ≤ {high})': f'{prob_in_range:.1%}',
+                'Result': 'PASS' if prob_in_range > 0.90 else ('WEAK' if prob_in_range > 0.50 else 'FAIL')
+            })
+        elif isinstance(expected, (int, float)):
             # Test for equality to expected value
             in_hdi = hdi_90[0] <= expected <= hdi_90[1]
             prob_above = np.mean(samples > expected)
@@ -1175,19 +1224,10 @@ def plot_all(
 # --- CLI Entry Point ---
 
 
-if __name__ == "__main__":
+def main(verbose: bool = False) -> None:
+    """Run the full NAIRU + Output Gap estimation pipeline."""
     from pathlib import Path
-
     import mgplot as mg
-
-    from src.analysis import (
-        check_for_zero_coeffs,
-        check_model_diagnostics,
-        plot_posteriors_bar,
-        plot_posteriors_kde,
-        posterior_predictive_checks,
-        residual_autocorrelation_analysis,
-    )
 
     # Set output directory for charts
     chart_dir = Path(__file__).parent.parent.parent / "charts" / "nairu_output_gap"
@@ -1209,11 +1249,9 @@ if __name__ == "__main__":
     obs, obs_index = build_observations()
 
     # Plot observation grid
-    print("\nPlotting observation grid...")
     plot_obs_grid(obs, obs_index)
 
     # Build and sample model
-    print("\nBuilding model...")
     model = build_model(obs)
 
     print("\nSampling...")
@@ -1228,21 +1266,17 @@ if __name__ == "__main__":
     )
 
     # Diagnostics
-    print("\n" + "=" * 60)
-    print("MCMC Diagnostics")
-    print("=" * 60)
     check_model_diagnostics(results.trace)
 
     # Check for zero coefficients
-    print("\nZero coefficient check:")
     zero_check = check_for_zero_coeffs(
         results.trace,
         critical_params=["gamma_pi", "gamma_wg", "beta_okun"]
     )
-    print(zero_check.T)
+    if verbose:
+        print(zero_check.T)
 
     # Plot scalar posteriors (bar and KDE)
-    print("\nPlotting posteriors...")
     plot_posteriors_bar(
         results.trace,
         model_name=MODEL_NAME,
@@ -1255,7 +1289,6 @@ if __name__ == "__main__":
     )
 
     # Posterior predictive checks and residual analysis
-    print("\nPosterior predictive checks...")
     obs_vars = {
         "okun_law": obs["ΔU"],
         "observed_price_inflation": obs["π"],
@@ -1278,7 +1311,6 @@ if __name__ == "__main__":
         show=False,
     )
 
-    print("\nResidual autocorrelation analysis...")
     residual_autocorrelation_analysis(
         ppc=ppc_data,
         obs_vars=obs_vars,
@@ -1290,35 +1322,29 @@ if __name__ == "__main__":
     )
 
     # Theoretical expectations tests
-    print("\n" + "=" * 60)
-    print("Hypothesis Tests for Theoretical Expectations")
-    print("=" * 60)
     hypothesis_results = test_theoretical_expectations(results.trace)
     print(hypothesis_results.to_string(index=False))
 
     # Print summary
-    print("\n" + "=" * 60)
-    print("Results Summary")
-    print("=" * 60)
-    print("\nRecent NAIRU estimates:")
-    nairu = results.nairu_median()
-    U = pd.Series(results.obs["U"], index=results.obs_index)
-    summary = pd.DataFrame({
-        "NAIRU": nairu,
-        "U": U,
-        "U_gap": U - nairu,
-    })
-    print(summary.tail(8).round(2))
+    if verbose:
+        print("\nRecent NAIRU estimates:")
+        nairu = results.nairu_median()
+        U = pd.Series(results.obs["U"], index=results.obs_index)
+        summary = pd.DataFrame({
+            "NAIRU": nairu,
+            "U": U,
+            "U_gap": U - nairu,
+        })
+        print(summary.tail(8).round(2))
 
-    print("\nRecent output gap:")
-    print(results.output_gap().tail(8).round(2))
+        print("\nRecent output gap:")
+        print(results.output_gap().tail(8).round(2))
 
     # Get cash rate and inflation data for Taylor rule plots
     cash_rate_monthly = get_cash_rate_data()["cash_rate_monthly"]
     π4 = pd.Series(results.obs["π4"], index=results.obs_index)
 
     # Generate all plots
-    print("\nGenerating plots...")
     plot_all(
         results,
         inflation_annual=π4,
@@ -1327,3 +1353,11 @@ if __name__ == "__main__":
     )
 
     print(f"\nCharts saved to: {chart_dir}")
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Run NAIRU + Output Gap model")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed output")
+    args = parser.parse_args()
+    main(verbose=args.verbose)

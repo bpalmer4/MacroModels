@@ -801,8 +801,8 @@ def plot_growth_decomposition(result: DecompositionResult, show: bool = True) ->
     )
 
     # Add GDP growth line on top
-    ax.plot(annual_sum.index, gdp_annual.values, "ko-", markersize=4, linewidth=1.5, label="Actual GDP Growth")
-    ax.axhline(y=0, color="black", linewidth=0.5)
+    gdp_line = pd.Series(gdp_annual.values, index=annual_sum.index, name="Actual GDP Growth")
+    mg.line_plot(gdp_line, ax=ax, color="black", width=1.5, marker="o", markersize=4)
 
     mg.finalise_plot(
         ax,
@@ -812,6 +812,7 @@ def plot_growth_decomposition(result: DecompositionResult, show: bool = True) ->
         lfooter="Australia. Stacked bars use HP-filtered trend MFP. Bars may not sum exactly to actual GDP (dots) "
                 "because the HP filter smooths cyclical MFP fluctuations.",
         rheader="ABS 5206, 1364, 6202",
+        y0=True,
         show=show,
     )
 

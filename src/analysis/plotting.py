@@ -153,7 +153,7 @@ def plot_posteriors_bar(
             i - bar_height / 2,
             i + bar_height / 2,
             color="black",
-            linestyle="--",
+            linestyle="-",
             linewidth=1,
             zorder=10,
             label="Median" if i == 0 else "_",
@@ -168,7 +168,7 @@ def plot_posteriors_bar(
             color="black",
         )
 
-    ax.axvline(x=0, color="darkred", linestyle="--", linewidth=1.5, zorder=15)
+    ax.axvline(x=0, color="darkred", linestyle="-", linewidth=1.5, zorder=15)
     ax.set_yticks(list(y_positions))
     ax.set_yticklabels([labels[var] for var in sorted_vars])
     ax.invert_yaxis()
@@ -340,17 +340,16 @@ def residual_autocorrelation_analysis(
 
         mg.finalise_plot(ax, **acf_defaults, **kwargs)
 
-    print(f"\n{model_name}: Residual Autocorrelation Summary")
-    print("-" * 50)
+    # Only print warnings for autocorrelated residuals
     for var_name, observed_data in obs_vars.items():
         ppc_samples = ppc.posterior_predictive[var_name].values
         ppc_mean = ppc_samples.reshape(-1, ppc_samples.shape[-1]).mean(axis=0)
         residuals = observed_data - ppc_mean
         lb_test = acorr_ljungbox(residuals, lags=[10], return_df=True)
         p_value = lb_test["lb_pvalue"].values[0]
-        status = "OK" if p_value > 0.05 else "*** AUTOCORRELATED ***"
-        label = var_labels.get(var_name, var_name)
-        print(f"{label:25} Ljung-Box p={p_value:.4f}  {status}")
+        if p_value <= 0.05:
+            label = var_labels.get(var_name, var_name)
+            print(f"*** WARNING: {label} residuals are autocorrelated (Ljung-Box p={p_value:.4f}) ***")
 
 
 def plot_timeseries(

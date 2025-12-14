@@ -2,6 +2,9 @@
 
 import arviz as az
 import numpy as np
+import pandas as pd
+
+from src.analysis.extraction import get_scalar_var, get_scalar_var_names
 
 
 def check_model_diagnostics(trace: az.InferenceData) -> None:
@@ -93,3 +96,59 @@ def check_model_diagnostics(trace: az.InferenceData) -> None:
     print(
         f"{warn(statistic < min_bfmi)}Minimum Bayesian fraction of missing information: {statistic:0.2f}"
     )
+
+
+def check_for_zero_coeffs(
+    trace: az.InferenceData,
+    critical_params: list[str] | None = None,
+) -> pd.DataFrame:
+    """Check scalar parameters for coefficients indistinguishable from zero.
+
+    Automatically detects scalar variables (excludes vector/time series variables).
+    Shows quantiles and flags parameters that may be indistinguishable from zero.
+
+    Args:
+        trace: InferenceData from model fitting
+        critical_params: List of parameter names that are critical (warn if any
+            quantile crosses zero). If None, uses default threshold of 2+ crossings.
+
+    Returns:
+        DataFrame with quantiles and significance markers.
+    """
+    if critical_params is None:
+        critical_params = []
+
+    q = [0.01, 0.05, 0.10, 0.25, 0.50]
+    q_tail = [1 - x for x in q[:-1]][::-1]
+    q = q + q_tail
+
+    scalar_vars = get_scalar_var_names(trace)
+
+    quantiles = {
+        var_name: get_scalar_var(var_name, trace).quantile(q)
+        for var_name in scalar_vars
+    }
+
+    df = pd.DataFrame(quantiles).T.sort_index()
+    problem_intensity = (
+        pd.DataFrame(np.sign(df.T))
+        .apply([lambda x: x.lt(0).sum(), lambda x: x.ge(0).sum()])
+        .min()
+        .astype(int)
+    )
+    marker = pd.Series(["*"] * len(problem_intensity), index=problem_intensity.index)
+    markers = (
+        marker.str.repeat(problem_intensity).reindex(problem_intensity.index).fillna("")
+    )
+    df["Check Significance"] = markers
+
+    for param in df.index:
+        if param in problem_intensity:
+            stars = problem_intensity[param]
+            if (stars > 0 if param in critical_params else stars > 2):
+                print(
+                    f"*** WARNING: Parameter '{param}' may be indistinguishable from zero "
+                    f"({stars} stars). Check model specification! ***"
+                )
+
+    return df

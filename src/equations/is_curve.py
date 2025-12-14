@@ -47,7 +47,7 @@ def is_equation(
     with model:
         settings = {
             "rho_is": {"mu": 0.85, "sigma": 0.1},    # output gap persistence
-            "beta_is": {"mu": 0.15, "sigma": 0.1},   # interest rate sensitivity
+            "beta_is": {"mu": 0.20, "sigma": 0.10, "lower": 0},  # interest rate sensitivity (positive)
             "epsilon_is": {"sigma": 0.4},            # error term
         }
         mc = set_model_coefficients(model, settings, constant)

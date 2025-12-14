@@ -103,6 +103,15 @@ def set_model_coefficients(
             elif "sigma" in params and "mu" not in params:
                 # HalfNormal for scale parameters (sigma only, no mu)
                 coefficients[name] = pm.HalfNormal(name, sigma=params["sigma"])
+            elif "lower" in params or "upper" in params:
+                # TruncatedNormal when bounds are specified
+                coefficients[name] = pm.TruncatedNormal(
+                    name,
+                    mu=params.get("mu", 0),
+                    sigma=params.get("sigma", 1),
+                    lower=params.get("lower"),
+                    upper=params.get("upper"),
+                )
             else:
                 coefficients[name] = pm.Normal(
                     name,

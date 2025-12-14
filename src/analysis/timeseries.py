@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
-    import matplotlib.pyplot as plt
+    from matplotlib.axes import Axes
 
 
 # --- Derived Series Computation ---
@@ -113,8 +113,8 @@ def compute_taylor_rule(
 
 def plot_nairu(
     stats: pd.DataFrame,
-    ax: plt.Axes | None = None,
-) -> plt.Axes:
+    ax: Axes | None = None,
+) -> Axes:
     """Plot NAIRU estimate with uncertainty bands.
 
     Args:
@@ -124,48 +124,32 @@ def plot_nairu(
     Returns:
         Matplotlib axes
     """
-    import matplotlib.pyplot as plt
+    import mgplot as mg
 
-    if ax is None:
-        _, ax = plt.subplots(figsize=(12, 6))
+    # NAIRU credible interval band
+    band = pd.DataFrame({
+        "lower": stats["NAIRU_lower"],
+        "upper": stats["NAIRU_upper"],
+    }, index=stats.index)
+    ax = mg.fill_between_plot(band, ax=ax, color="red", alpha=0.3, label="80% credible interval")
+
+    # NAIRU median
+    nairu_median = stats["NAIRU_median"].copy()
+    nairu_median.name = "NAIRU (median)"
+    ax = mg.line_plot(nairu_median, ax=ax, color="red", width=2)
 
     # Unemployment rate
-    ax.plot(
-        stats.index.to_timestamp(),
-        stats["U"].values,
-        "b-",
-        linewidth=1,
-        label="Unemployment Rate",
-        alpha=0.7,
-    )
-
-    # NAIRU with bands
-    ax.plot(
-        stats.index.to_timestamp(),
-        stats["NAIRU_median"].values,
-        "r-",
-        linewidth=2,
-        label="NAIRU (median)",
-    )
-    ax.fill_between(
-        stats.index.to_timestamp(),
-        stats["NAIRU_lower"].values,
-        stats["NAIRU_upper"].values,
-        alpha=0.3,
-        color="red",
-        label="80% credible interval",
-    )
-
-    ax.set_ylabel("Percent")
-    ax.legend(loc="upper right")
+    u_rate = stats["U"].copy()
+    u_rate.name = "Unemployment Rate"
+    ax = mg.line_plot(u_rate, ax=ax, color="blue", width=1)
 
     return ax
 
 
 def plot_unemployment_gap(
     stats: pd.DataFrame,
-    ax: plt.Axes | None = None,
-) -> plt.Axes:
+    ax: Axes | None = None,
+) -> Axes:
     """Plot unemployment gap (U - NAIRU).
 
     Args:
@@ -175,26 +159,35 @@ def plot_unemployment_gap(
     Returns:
         Matplotlib axes
     """
-    import matplotlib.pyplot as plt
-
-    if ax is None:
-        _, ax = plt.subplots(figsize=(12, 6))
+    import mgplot as mg
 
     gap = stats["U_gap"]
 
-    ax.plot(gap.index.to_timestamp(), gap.values, "b-", linewidth=1.5)
-    ax.axhline(0, color="black", linestyle="--", linewidth=0.8)
-    ax.fill_between(gap.index.to_timestamp(), 0, gap.values, alpha=0.3)
+    # Create fill bands for positive/negative
+    positive_fill = pd.DataFrame({
+        "lower": 0.0,
+        "upper": gap.clip(lower=0),
+    }, index=gap.index)
+    negative_fill = pd.DataFrame({
+        "lower": gap.clip(upper=0),
+        "upper": 0.0,
+    }, index=gap.index)
 
-    ax.set_ylabel("Percentage points (U - NAIRU)")
+    ax = mg.fill_between_plot(positive_fill, ax=ax, color="blue", alpha=0.3)
+    ax = mg.fill_between_plot(negative_fill, ax=ax, color="blue", alpha=0.3)
+
+    # Gap line
+    gap_series = gap.copy()
+    gap_series.name = "Unemployment Gap"
+    ax = mg.line_plot(gap_series, ax=ax, color="blue", width=1.5)
 
     return ax
 
 
 def plot_output_gap(
     stats: pd.DataFrame,
-    ax: plt.Axes | None = None,
-) -> plt.Axes:
+    ax: Axes | None = None,
+) -> Axes:
     """Plot output gap (log GDP - log potential).
 
     Args:
@@ -204,26 +197,35 @@ def plot_output_gap(
     Returns:
         Matplotlib axes
     """
-    import matplotlib.pyplot as plt
-
-    if ax is None:
-        _, ax = plt.subplots(figsize=(12, 6))
+    import mgplot as mg
 
     gap = stats["output_gap"]
 
-    ax.plot(gap.index.to_timestamp(), gap.values, "b-", linewidth=1.5)
-    ax.axhline(0, color="black", linestyle="--", linewidth=0.8)
-    ax.fill_between(gap.index.to_timestamp(), 0, gap.values, alpha=0.3)
+    # Create fill bands for positive/negative
+    positive_fill = pd.DataFrame({
+        "lower": 0.0,
+        "upper": gap.clip(lower=0),
+    }, index=gap.index)
+    negative_fill = pd.DataFrame({
+        "lower": gap.clip(upper=0),
+        "upper": 0.0,
+    }, index=gap.index)
 
-    ax.set_ylabel("% of potential GDP")
+    ax = mg.fill_between_plot(positive_fill, ax=ax, color="blue", alpha=0.3)
+    ax = mg.fill_between_plot(negative_fill, ax=ax, color="blue", alpha=0.3)
+
+    # Gap line
+    gap_series = gap.copy()
+    gap_series.name = "Output Gap"
+    ax = mg.line_plot(gap_series, ax=ax, color="blue", width=1.5)
 
     return ax
 
 
 def plot_gdp_vs_potential(
     stats: pd.DataFrame,
-    ax: plt.Axes | None = None,
-) -> plt.Axes:
+    ax: Axes | None = None,
+) -> Axes:
     """Plot actual GDP vs potential GDP.
 
     Args:
@@ -233,36 +235,25 @@ def plot_gdp_vs_potential(
     Returns:
         Matplotlib axes
     """
-    import matplotlib.pyplot as plt
+    import mgplot as mg
 
-    if ax is None:
-        _, ax = plt.subplots(figsize=(12, 6))
+    # Actual GDP
+    actual = stats["gdp_level"].copy()
+    actual.name = "Actual GDP"
+    ax = mg.line_plot(actual, ax=ax, color="blue", width=1.5)
 
-    ax.plot(
-        stats.index.to_timestamp(),
-        stats["gdp_level"].values,
-        "b-",
-        linewidth=1.5,
-        label="Actual GDP",
-    )
-    ax.plot(
-        stats.index.to_timestamp(),
-        stats["potential_level"].values,
-        "r--",
-        linewidth=1.5,
-        label="Potential GDP",
-    )
-
-    ax.set_ylabel("$ Millions (CVM)")
-    ax.legend(loc="upper left")
+    # Potential GDP
+    potential = stats["potential_level"].copy()
+    potential.name = "Potential GDP"
+    ax = mg.line_plot(potential, ax=ax, color="red", width=1.5, style="--")
 
     return ax
 
 
 def plot_potential_growth(
     stats: pd.DataFrame,
-    ax: plt.Axes | None = None,
-) -> plt.Axes:
+    ax: Axes | None = None,
+) -> Axes:
     """Plot potential output growth rate.
 
     Args:
@@ -272,17 +263,12 @@ def plot_potential_growth(
     Returns:
         Matplotlib axes
     """
-    import matplotlib.pyplot as plt
-
-    if ax is None:
-        _, ax = plt.subplots(figsize=(12, 6))
+    import mgplot as mg
 
     growth = stats["potential_growth"].dropna()
-
-    ax.plot(growth.index.to_timestamp(), growth.values, "b-", linewidth=1.5)
-    ax.axhline(0, color="black", linestyle="--", linewidth=0.8)
-
-    ax.set_ylabel("Annualized quarterly growth (%)")
+    growth_series = growth.copy()
+    growth_series.name = "Potential Growth"
+    ax = mg.line_plot(growth_series, ax=ax, color="blue", width=1.5)
 
     return ax
 
@@ -290,8 +276,8 @@ def plot_potential_growth(
 def plot_gaps_comparison(
     nairu_stats: pd.DataFrame,
     potential_stats: pd.DataFrame,
-    ax: plt.Axes | None = None,
-) -> plt.Axes:
+    ax: Axes | None = None,
+) -> Axes:
     """Plot output gap and unemployment gap together.
 
     Unemployment gap is inverted for visual comparison (Okun's Law).
@@ -304,28 +290,16 @@ def plot_gaps_comparison(
     Returns:
         Matplotlib axes
     """
-    import matplotlib.pyplot as plt
+    import mgplot as mg
 
-    if ax is None:
-        _, ax = plt.subplots(figsize=(12, 6))
+    # Output gap
+    output_gap = potential_stats["output_gap"].copy()
+    output_gap.name = "Output Gap"
+    ax = mg.line_plot(output_gap, ax=ax, color="blue", width=1.5)
 
-    ax.plot(
-        potential_stats.index.to_timestamp(),
-        potential_stats["output_gap"].values,
-        "b-",
-        linewidth=1.5,
-        label="Output Gap",
-    )
-    ax.plot(
-        nairu_stats.index.to_timestamp(),
-        -nairu_stats["U_gap"].values,
-        "r-",
-        linewidth=1.5,
-        label="Unemployment Gap (inverted)",
-    )
-    ax.axhline(0, color="black", linestyle="--", linewidth=0.8)
-
-    ax.set_ylabel("Percent")
-    ax.legend(loc="upper right")
+    # Unemployment gap (inverted)
+    u_gap_inv = (-nairu_stats["U_gap"]).copy()
+    u_gap_inv.name = "Unemployment Gap (inverted)"
+    ax = mg.line_plot(u_gap_inv, ax=ax, color="red", width=1.5)
 
     return ax

@@ -7,9 +7,8 @@ Includes:
 - Timeseries: Latent state analysis and plotting
 """
 
-from src.analysis.diagnostics import check_model_diagnostics
+from src.analysis.diagnostics import check_for_zero_coeffs, check_model_diagnostics
 from src.analysis.extraction import (
-    check_for_zero_coeffs,
     get_scalar_var,
     get_scalar_var_names,
     get_vector_var,
@@ -36,9 +35,9 @@ from src.analysis.timeseries import (
 
 __all__ = [
     # Diagnostics
+    "check_for_zero_coeffs",
     "check_model_diagnostics",
     # Extraction
-    "check_for_zero_coeffs",
     "get_scalar_var",
     "get_scalar_var_names",
     "get_vector_var",

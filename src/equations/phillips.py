@@ -106,21 +106,11 @@ def wage_growth_equation(
     with model:
         settings = {
             "alpha_wg": {"mu": 0, "sigma": 1.0},       # intercept
+            "gamma_wg": {"mu": -1.5, "sigma": 1.0, "upper": 0},  # U-gap slope (negative)
             "lambda_wg": {"mu": -4.0, "sigma": 2.0},   # UE rate change (speed limit)
             "epsilon_wg": {"sigma": 1.0},             # error term
         }
         mc = set_model_coefficients(model, settings, constant)
-
-        # gamma_wg: truncated normal to enforce negative (higher U-gap → lower wages)
-        if "gamma_wg" in constant:
-            gamma_wg = constant["gamma_wg"]
-        else:
-            gamma_wg = pm.TruncatedNormal(
-                "gamma_wg",
-                mu=-1.5,
-                sigma=1.0,
-                upper=0,
-            )
 
         # Unemployment gap
         u_gap = (inputs["U"] - nairu) / inputs["U"]
@@ -129,7 +119,7 @@ def wage_growth_equation(
             "observed_wage_growth",
             mu=(
                 mc["alpha_wg"]
-                + gamma_wg * u_gap
+                + mc["gamma_wg"] * u_gap
                 + mc["lambda_wg"] * inputs["ΔU_1_over_U"]
             ),
             sigma=mc["epsilon_wg"],
