@@ -12,10 +12,14 @@ Equations:
 4. Phillips Curve: Links inflation to unemployment gap
 5. Wage Phillips Curve: Links wage growth to unemployment gap
 6. IS Curve: Links output gap to real interest rate gap
+7. Participation Rate: Links participation to unemployment gap (discouraged worker)
+8. Exchange Rate: UIP-style TWI equation linking to interest rate differential
+9. Import Price Pass-Through: Links import prices to TWI changes
 
 Data sources:
-- ABS: GDP, unemployment, CPI, hours worked, capital stock, MFP
-- RBA: Cash rate, inflation expectations
+- ABS: GDP, unemployment, CPI, hours worked, capital stock, MFP, import prices,
+       participation rate
+- RBA: Cash rate, inflation expectations, Trade-Weighted Index (TWI)
 """
 
 import argparse
@@ -33,8 +37,10 @@ from scipy import stats
 from src.analysis import (
     check_for_zero_coeffs,
     check_model_diagnostics,
+    decompose_inflation,
     get_scalar_var,
     get_vector_var,
+    plot_inflation_decomposition,
     plot_obs_grid,
     plot_posterior_timeseries,
     plot_posteriors_bar,
@@ -55,10 +61,16 @@ from src.data import (
     # Inflation
     get_inflation_qrtly,
     get_labour_force_growth_qrtly,
+    get_participation_rate_change_qrtly,
     # GDP
     get_log_gdp,
     # MFP
     get_mfp_annual,
+    # Exchange rates
+    get_twi_change_annual,
+    get_twi_change_qrtly,
+    # Oil
+    get_oil_change_annual,
     # Costs
     get_ulc_growth_qrtly,
     # Labour force
@@ -75,9 +87,12 @@ from src.data.rba_loader import (
 )
 from src.data.series_specs import HOURS_WORKED_INDEX
 from src.equations import (
+    exchange_rate_equation,
+    import_price_equation,
     is_equation,
     nairu_equation,
     okun_law_equation,
+    participation_equation,
     potential_output_equation,
     price_inflation_equation,
     wage_growth_equation,
@@ -269,6 +284,10 @@ def build_observations(
     U = get_unemployment_rate_qrtly().data
     ΔU = U.diff(1)
     ΔU_1 = ΔU.shift(1)
+    U_1 = U.shift(1)
+
+    # Participation rate
+    Δpr = get_participation_rate_change_qrtly().data
 
     # GDP
     log_gdp = get_log_gdp().data
@@ -290,15 +309,29 @@ def build_observations(
     # Unit labour costs
     Δulc = get_ulc_growth_qrtly().data
 
-    # Import prices (lagged)
-    import_price_growth = get_import_price_growth_annual().data
-    Δ4ρm_1 = import_price_growth.shift(1)
+    # Import prices
+    Δ4ρm = get_import_price_growth_annual().data
+    Δ4ρm_1 = Δ4ρm.shift(1)
 
     # GSCPI (COVID masked)
     ξ_2 = _prepare_gscpi()
 
+    # TWI (Trade-Weighted Index)
+    Δtwi = get_twi_change_qrtly().data
+    Δtwi_1 = Δtwi.shift(1)
+    Δ4twi = get_twi_change_annual().data
+    Δ4twi_1 = Δ4twi.shift(1)
+
+    # Oil prices (AUD)
+    Δ4oil = get_oil_change_annual().data
+    Δ4oil_1 = Δ4oil.shift(1)
+
     # Compute r*
     r_star = compute_r_star(capital_growth, lf_growth, mfp_growth)
+
+    # Real rate gap (for exchange rate equation)
+    r_gap = cash_rate - π_anchor - r_star
+    r_gap_1 = r_gap.shift(1)
 
     # Build DataFrame
     observed = pd.DataFrame({
@@ -308,9 +341,12 @@ def build_observations(
         "π_anchor": π_anchor,
         # Unemployment
         "U": U,
+        "U_1": U_1,
         "ΔU": ΔU,
         "ΔU_1": ΔU_1,
         "ΔU_1_over_U": ΔU_1 / U,
+        # Participation
+        "Δpr": Δpr,
         # GDP
         "log_gdp": log_gdp,
         "gdp_growth": gdp_growth,
@@ -324,8 +360,18 @@ def build_observations(
         # Unit labor costs
         "Δulc": Δulc,
         # Import prices and supply shocks
+        "Δ4ρm": Δ4ρm,
         "Δ4ρm_1": Δ4ρm_1,
         "ξ_2": ξ_2,
+        # Exchange rates
+        "Δtwi": Δtwi,
+        "Δtwi_1": Δtwi_1,
+        "Δ4twi": Δ4twi,
+        "Δ4twi_1": Δ4twi_1,
+        "r_gap_1": r_gap_1,
+        # Oil prices
+        "Δ4oil": Δ4oil,
+        "Δ4oil_1": Δ4oil_1,
     })
 
     # Apply sample period
@@ -368,6 +414,12 @@ def build_model(
     obs: dict[str, np.ndarray],
     nairu_const: dict[str, Any] | None = None,
     potential_const: dict[str, Any] | None = None,
+    exchange_rate_const: dict[str, Any] | None = None,
+    import_price_const: dict[str, Any] | None = None,
+    participation_const: dict[str, Any] | None = None,
+    include_exchange_rate: bool = True,
+    include_import_price: bool = True,
+    include_participation: bool = True,
 ) -> pm.Model:
     """Build the joint NAIRU + Output Gap model.
 
@@ -375,6 +427,12 @@ def build_model(
         obs: Observation dictionary from build_observations()
         nairu_const: Fixed values for NAIRU equation
         potential_const: Fixed values for potential output equation
+        exchange_rate_const: Fixed values for exchange rate equation
+        import_price_const: Fixed values for import price equation
+        participation_const: Fixed values for participation rate equation
+        include_exchange_rate: Whether to include TWI equation (default True)
+        include_import_price: Whether to include import price pass-through (default True)
+        include_participation: Whether to include participation rate equation (default True)
 
     Returns:
         PyMC Model ready for sampling
@@ -396,6 +454,16 @@ def build_model(
     price_inflation_equation(obs, model, nairu)
     wage_growth_equation(obs, model, nairu)
     is_equation(obs, model, potential)
+
+    # Labour supply equation (optional)
+    if include_participation:
+        participation_equation(obs, model, nairu, constant=participation_const)
+
+    # Open economy equations (optional)
+    if include_exchange_rate:
+        exchange_rate_equation(obs, model, constant=exchange_rate_const)
+    if include_import_price:
+        import_price_equation(obs, model, constant=import_price_const)
 
     return model
 
@@ -873,6 +941,15 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
         ("gamma_wg", "negative", "Wage Phillips curve slope < 0"),
         ("beta_is", "positive", "IS interest rate effect > 0"),
         ("rho_is", "between_0_1", "IS persistence ∈ (0,1)"),
+        # Participation rate equation
+        ("beta_pr", "negative", "Discouraged worker effect < 0"),
+        # Exchange rate equation
+        ("beta_er_r", "positive", "ER interest rate effect > 0 (UIP)"),
+        ("rho_er", "between_0_1", "ER persistence ∈ (0,1)"),
+        # Import price pass-through
+        ("beta_pt", "negative", "Pass-through < 0"),
+        ("beta_oil", "positive", "Oil effect on import prices > 0"),
+        ("rho_pt", "between_0_1", "Import price persistence ∈ (0,1)"),
     ]
 
     for param, expected, description in tests:
@@ -1034,11 +1111,15 @@ def main(verbose: bool = False) -> None:
         "okun_law": obs["ΔU"],
         "observed_price_inflation": obs["π"],
         "observed_wage_growth": obs["Δulc"],
+        "observed_twi_change": obs["Δtwi"],
+        "observed_import_price": obs["Δ4ρm"],
     }
     var_labels = {
         "okun_law": "Change in Unemployment (pp)",
         "observed_price_inflation": "Quarterly Inflation (%)",
         "observed_wage_growth": "Unit Labour Cost Growth (%)",
+        "observed_twi_change": "TWI Change (%)",
+        "observed_import_price": "Import Price Growth (%)",
     }
 
     ppc_data = posterior_predictive_checks(
@@ -1092,6 +1173,10 @@ def main(verbose: bool = False) -> None:
         cash_rate_monthly=cash_rate_monthly,
         show=False,
     )
+
+    # Inflation decomposition (demand vs supply)
+    decomp = decompose_inflation(results.trace, results.obs, results.obs_index)
+    plot_inflation_decomposition(decomp, rfooter=RFOOTER_OUTPUT)
 
     print(f"\nCharts saved to: {chart_dir}")
 

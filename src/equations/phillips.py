@@ -35,6 +35,13 @@ def price_inflation_equation(
         nairu: NAIRU latent variable
         constant: Optional fixed values for coefficients
 
+    Note:
+        A direct oil price effect (beta_oil_pi) was tested but found to be
+        statistically indistinguishable from zero (~0.001 with tight HDI).
+        Oil's effect on Australian inflation is already captured through the
+        import price channel (Δ4ρm), which includes oil-affected import costs.
+        The direct term was removed for parsimony.
+
     Example:
         price_inflation_equation(inputs, model, nairu)
 

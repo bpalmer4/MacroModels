@@ -13,6 +13,7 @@ from src.data.dataseries import DataSeries
 from src.data.series_specs import (
     HOURS_WORKED,
     LABOUR_FORCE_TOTAL,
+    PARTICIPATION_RATE,
     UNEMPLOYED_TOTAL,
 )
 
@@ -140,4 +141,56 @@ def get_labour_force_growth_qrtly() -> DataSeries:
         description="Labour force growth (quarterly, log difference)",
         cat=lf.cat,
         table=lf.table,
+    )
+
+
+def get_participation_rate_monthly() -> DataSeries:
+    """Get participation rate from ABS Labour Force survey (monthly).
+
+    Participation rate = Labour Force / Civilian Population 15+ (%)
+
+    Returns:
+        DataSeries with monthly participation rate (%)
+
+    """
+    return load_series(PARTICIPATION_RATE)
+
+
+def get_participation_rate_qrtly() -> DataSeries:
+    """Get participation rate (quarterly average).
+
+    Returns:
+        DataSeries with quarterly participation rate (%)
+
+    """
+    monthly = get_participation_rate_monthly()
+    quarterly = ra.monthly_to_qtly(monthly.data, q_ending="DEC", f="mean")
+
+    return DataSeries(
+        data=quarterly,
+        source=monthly.source,
+        units="%",
+        description="Participation rate (quarterly average)",
+        cat=monthly.cat,
+        table=monthly.table,
+    )
+
+
+def get_participation_rate_change_qrtly() -> DataSeries:
+    """Get quarterly change in participation rate.
+
+    Returns:
+        DataSeries with Δpr (percentage points)
+
+    """
+    pr = get_participation_rate_qrtly()
+    delta_pr = pr.data.diff(1)
+
+    return DataSeries(
+        data=delta_pr,
+        source=pr.source,
+        units="pp",
+        description="Change in participation rate (quarterly)",
+        cat=pr.cat,
+        table=pr.table,
     )

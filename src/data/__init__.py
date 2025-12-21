@@ -19,12 +19,29 @@ from src.data.labour_force import (
     get_hours_worked_qrtly,
     get_labour_force_growth_qrtly,
     get_labour_force_qrtly,
+    get_participation_rate_change_qrtly,
+    get_participation_rate_monthly,
+    get_participation_rate_qrtly,
     get_unemployed_qrtly,
     get_unemployment_change_qrtly,
     get_unemployment_rate_qrtly,
 )
 from src.data.mfp import get_mfp_annual
+from src.data.oil import (
+    get_oil_change_annual,
+    get_oil_price_aud_monthly,
+    get_oil_price_aud_qrtly,
+    get_oil_price_usd_monthly,
+)
 from src.data.transforms import splice_series
+from src.data.twi import (
+    get_log_twi_qrtly,
+    get_real_twi_qrtly,
+    get_twi_change_annual,
+    get_twi_change_qrtly,
+    get_twi_monthly,
+    get_twi_qrtly,
+)
 from src.data.ulc import get_ulc_growth_qrtly
 
 __all__ = [
@@ -43,6 +60,9 @@ __all__ = [
     "get_hours_worked_qrtly",
     "get_labour_force_growth_qrtly",
     "get_labour_force_qrtly",
+    "get_participation_rate_change_qrtly",
+    "get_participation_rate_monthly",
+    "get_participation_rate_qrtly",
     "get_unemployed_qrtly",
     "get_unemployment_change_qrtly",
     "get_unemployment_rate_qrtly",
@@ -62,6 +82,18 @@ __all__ = [
     # Trade
     "get_import_price_growth_annual",
     "get_import_price_index_qrtly",
+    # Oil
+    "get_oil_change_annual",
+    "get_oil_price_aud_monthly",
+    "get_oil_price_aud_qrtly",
+    "get_oil_price_usd_monthly",
+    # Exchange rates
+    "get_log_twi_qrtly",
+    "get_real_twi_qrtly",
+    "get_twi_change_annual",
+    "get_twi_change_qrtly",
+    "get_twi_monthly",
+    "get_twi_qrtly",
     # Supply shocks
     "get_gscpi_monthly",
     "get_gscpi_qrtly",

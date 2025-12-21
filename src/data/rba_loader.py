@@ -163,14 +163,14 @@ def get_inflation_anchor() -> DataSeries:
 # --- Exchange Rates ---
 
 
-def get_exchange_rate(currency: str = "USD") -> DataSeries:
-    """Get exchange rate from RBA F11 table.
+def _load_f11_series(col_pattern: str) -> pd.Series:
+    """Load a series from RBA F11 exchange rate tables.
 
     Args:
-        currency: Currency code (default "USD")
+        col_pattern: Column pattern to match (e.g., "FXRUSD", "FXRTWI")
 
     Returns:
-        DataSeries with monthly exchange rate
+        Combined historical and current series with DatetimeIndex
 
     """
     # Historical exchange rates
@@ -181,22 +181,29 @@ def get_exchange_rate(currency: str = "USD") -> DataSeries:
     now_url = "https://www.rba.gov.au/statistics/tables/xls-hist/f11hist.xls"
     current_rates = pd.read_excel(now_url, sheet_name="Data", index_col=0, skiprows=10)
 
-    # Find the relevant column for the currency
-    col_pattern = f"FXRU{currency}"
+    # Find the relevant column
     hist_col = [c for c in hist_rates.columns if col_pattern in c]
     curr_col = [c for c in current_rates.columns if col_pattern in c]
 
-    if hist_col:
-        hist_series = hist_rates[hist_col[0]]
-    else:
-        hist_series = pd.Series(dtype=float)
-
-    if curr_col:
-        curr_series = current_rates[curr_col[0]]
-    else:
-        curr_series = pd.Series(dtype=float)
+    hist_series = hist_rates[hist_col[0]] if hist_col else pd.Series(dtype=float)
+    curr_series = current_rates[curr_col[0]] if curr_col else pd.Series(dtype=float)
 
     combined = curr_series.combine_first(hist_series)
+    combined.index = pd.to_datetime(combined.index)
+    return combined
+
+
+def get_exchange_rate(currency: str = "USD") -> DataSeries:
+    """Get exchange rate from RBA F11 table.
+
+    Args:
+        currency: Currency code (default "USD")
+
+    Returns:
+        DataSeries with monthly exchange rate
+
+    """
+    combined = _load_f11_series(f"FXRU{currency}")
 
     return DataSeries(
         data=combined,
@@ -205,6 +212,28 @@ def get_exchange_rate(currency: str = "USD") -> DataSeries:
         description=f"Exchange Rate AUD/{currency}",
         table="F11",
         series_id=f"FXRU{currency}",
+    )
+
+
+def get_twi() -> DataSeries:
+    """Get Trade-Weighted Index from RBA F11 table.
+
+    The TWI measures the value of the Australian dollar against a basket
+    of currencies weighted by trade shares. Base: May 1970 = 100.
+
+    Returns:
+        DataSeries with monthly TWI (index)
+
+    """
+    combined = _load_f11_series("FXRTWI")
+
+    return DataSeries(
+        data=combined,
+        source="RBA",
+        units="Index",
+        description="Trade-Weighted Index (May 1970 = 100)",
+        table="F11",
+        series_id="FXRTWI",
     )
 
 
