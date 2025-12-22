@@ -5,7 +5,7 @@ the estimated Phillips curve, enabling policy-relevant diagnostics.
 
 The key question this module answers:
     "Is above-target inflation driven by demand (tight labor market)
-     or supply (import prices, disruptions)?"
+     or supply (import prices, energy costs)?"
 
 This distinction matters for monetary policy:
     - Demand-driven inflation: Rate rises are effective
@@ -15,13 +15,13 @@ Components
 ----------
 The Phillips curve decomposes quarterly inflation as:
 
-    π = quarterly(π_anchor) + γ_π·u_gap + ρ_π·Δ4ρm + ξ_π·GSCPI + ε
+    π = quarterly(π_anchor) + γ_π·u_gap + ρ_π·Δ4ρm + ξ_π·GSCPI² + ε
 
 Where:
     - quarterly(π_anchor): Baseline from expectations/target (neutral)
     - γ_π·u_gap: Demand component (unemployment gap)
     - ρ_π·Δ4ρm: Supply component - import prices
-    - ξ_π·GSCPI: Supply component - global supply chain
+    - ξ_π·GSCPI²: Supply component - global supply chain pressure (COVID-era)
     - ε: Residual (unexplained)
 
 Usage
@@ -50,20 +50,22 @@ from src.analysis.extraction import get_scalar_var, get_vector_var
 from src.analysis.rate_conversion import annualize, quarterly
 
 # LaTeX equation strings for each chart type
-# Full Phillips curve: π_t = π^e_t + γ(U_t - U*_t) + λΔρ^m_t + φξ_t + ε_t
+# Full Phillips curve: π_t = π^e_t + γ(U_t - U*_t) + λΔρ^m_t + ξ·GSCPI² + ε_t
 EQ_DEMAND_SUPPLY = (
     r"$\pi_t = \pi^e_t + \underbrace{\gamma(U_t - U^*_t)}_{\mathrm{orange}}"
-    r" + \underbrace{\lambda\Delta\rho^m_t + \phi\xi_t}_{\mathrm{blue}} + \varepsilon_t$"
+    r" + \underbrace{\lambda\Delta\rho^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}"
+    r" + \varepsilon_t$"
 )
 EQ_PROPORTIONAL = (
     r"$\pi_t = \underbrace{\pi^e_t}_{\mathrm{grey}}"
     r" + \underbrace{\gamma(U_t - U^*_t)}_{\mathrm{orange}}"
-    r" + \underbrace{\lambda\Delta\rho^m_t + \phi\xi_t}_{\mathrm{blue}} + \varepsilon_t$"
+    r" + \underbrace{\lambda\Delta\rho^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}"
+    r" + \varepsilon_t$"
 )
 EQ_UNSCALED = (
     r"$\pi_t = \underbrace{\pi^e_t}_{\mathrm{grey}}"
     r" + \underbrace{\gamma(U_t - U^*_t)}_{\mathrm{orange}}"
-    r" + \underbrace{\lambda\Delta\rho^m_t + \phi\xi_t}_{\mathrm{blue}}"
+    r" + \underbrace{\lambda\Delta\rho^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}"
     r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
 )
 
@@ -100,7 +102,7 @@ class InflationDecomposition:
         anchor: Contribution from inflation anchor/target
         demand: Contribution from unemployment gap (demand pressure)
         supply_import: Contribution from import prices
-        supply_gscpi: Contribution from global supply chain pressures
+        supply_gscpi: Contribution from GSCPI (COVID supply chain pressure)
         residual: Unexplained component
         fitted: Fitted values (sum of components excl. residual)
         index: Time period index
@@ -108,8 +110,10 @@ class InflationDecomposition:
     All components are in percentage points (quarterly).
 
     Note:
-        A direct oil price component was tested but removed as oil's effect
-        on inflation is already captured through the import price channel.
+        Oil and coal price effects were tested but found to be statistically
+        indistinguishable from zero - their effects are already captured
+        through the import price channel. GSCPI captures COVID-era supply
+        chain disruptions.
     """
 
     observed: pd.Series
@@ -202,7 +206,7 @@ def decompose_inflation(
     # Extract parameters (posterior median)
     gamma_pi = get_scalar_var("gamma_pi", trace).median()
     rho_pi = get_scalar_var("rho_pi", trace).median()
-    xi_2sq_pi = get_scalar_var("xi_2sq_pi", trace).median()
+    xi_gscpi = get_scalar_var("xi_gscpi", trace).median()
 
     # Extract NAIRU (vector, use median across samples) as Series
     # Note: .values needed to extract numpy array from xarray DataArray
@@ -220,7 +224,7 @@ def decompose_inflation(
         obs.get("Δ4ρm_1", np.zeros(len(obs_index))), index=obs_index, name="delta_4_pm"
     )
 
-    # GSCPI - may not be present
+    # GSCPI (lagged) - may not be present
     gscpi = pd.Series(
         obs.get("ξ_2", np.zeros(len(obs_index))), index=obs_index, name="gscpi"
     )
@@ -239,8 +243,8 @@ def decompose_inflation(
     supply_import = rho_pi * delta_4_pm_lag1
     supply_import.name = "supply_import"
 
-    # 4. Supply - GSCPI (with quadratic/signed transformation)
-    supply_gscpi = xi_2sq_pi * (gscpi**2) * gscpi.apply(np.sign)
+    # 4. Supply - GSCPI (non-linear: squared with sign preservation)
+    supply_gscpi = xi_gscpi * gscpi ** 2 * np.sign(gscpi)
     supply_gscpi.name = "supply_gscpi"
 
     # Fitted values (excluding residual)
@@ -343,11 +347,11 @@ def plot_supply_contribution(
         supply_gscpi = df["supply_gscpi"]
         supply_total = df["supply_total"]
     supply_import.name = "Import Prices"
-    supply_gscpi.name = "GSCPI"
+    supply_gscpi.name = "GSCPI (Supply Chain)"
     supply_total.name = "Total Supply"
 
     ax = mg.line_plot(supply_import, color="blue", width=1.5)
-    mg.line_plot(supply_gscpi, ax=ax, color="green", width=1.5)
+    mg.line_plot(supply_gscpi, ax=ax, color="purple", width=1.5)
     mg.line_plot(supply_total, ax=ax, color="black", width=2)
 
     mg.finalise_plot(
@@ -372,7 +376,7 @@ def plot_inflation_drivers(
 
     Shows annualized quarterly inflation decomposed into:
     - Red bars: Demand contribution (unemployment gap)
-    - Blue bars: Supply contribution (import prices + GSCPI)
+    - Blue bars: Supply contribution (import prices + coal)
 
     Positive bars push inflation up, negative bars push it down.
     Bars stack from zero.
@@ -445,7 +449,7 @@ def plot_inflation_drivers_proportional(
     Shows annualized quarterly inflation decomposed into proportional
     contributions from demand and supply:
     - Red bars: Demand share (unemployment gap)
-    - Blue bars: Supply share (import prices + GSCPI)
+    - Blue bars: Supply share (import prices + coal)
 
     Bars are scaled so that when both are positive, they sum to observed
     inflation. Proportions calculated as:
@@ -550,7 +554,7 @@ def plot_inflation_drivers_unscaled(
     model components (no scaling/proportionalizing):
     - Grey bars: Anchor (inflation expectations/target)
     - Orange bars: Demand (unemployment gap)
-    - Dark blue bars: Supply (import prices + GSCPI)
+    - Dark blue bars: Supply (import prices + coal)
     - Light blue bars: Residual/noise
 
     Bars sum exactly to observed inflation.
@@ -625,7 +629,7 @@ def plot_inflation_decomposition(
 
     Creates four chart files:
     1. Demand Contribution (unemployment gap effect)
-    2. Supply Contributions (import prices + GSCPI)
+    2. Supply Contributions (import prices + coal)
     3. Inflation drivers (stacked bars showing demand + supply)
     4. Unscaled components with residual noise
 
@@ -773,7 +777,7 @@ def get_policy_diagnosis(
                 )
             else:
                 detail = (
-                    f"Primarily SUPPLY-driven (+{supply:.1f}pp from import/supply chain). "
+                    f"Primarily SUPPLY-driven (+{supply:.1f}pp from import/energy prices). "
                     f"Demand adds +{demand:.1f}pp. Rate rises less effective, costly."
                 )
         elif demand > 0:

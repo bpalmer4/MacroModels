@@ -35,20 +35,16 @@ def plot_obs_grid(
         ax = axes[i]
         series = pd.Series(values, index=obs_index, name=name)
         mg.line_plot(series, ax=ax, width=1, max_ticks=5)
-        mg.finalise_plot(
-            ax,
-            title=name,
-            y0=True,
-            dont_save=True,
-            dont_close=True,
-        )
+        # Set title and y0 directly (avoid calling finalise_plot per subplot)
+        ax.set_title(name, fontsize=10)
+        ax.axhline(y=0, color="grey", linewidth=0.5, linestyle="-")
         last_used = i
 
     # Hide unused subplots
     for j in range(last_used + 1, len(axes)):
         axes[j].set_visible(False)
 
-    # Finalise with suptitle for combined figure heading
+    # Finalise once at the end
     mg.finalise_plot(
         axes[last_used],
         suptitle=title,

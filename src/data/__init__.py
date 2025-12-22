@@ -27,11 +27,23 @@ from src.data.labour_force import (
     get_unemployment_rate_qrtly,
 )
 from src.data.mfp import get_mfp_annual
-from src.data.oil import (
+from src.data.energy import (
+    get_coal_change_annual,
+    get_coal_price_aud_qrtly,
+    get_coal_price_usd_monthly,
     get_oil_change_annual,
     get_oil_price_aud_monthly,
     get_oil_price_aud_qrtly,
     get_oil_price_usd_monthly,
+)
+from src.data.gov_spending import (
+    get_fiscal_impulse_qrtly,
+    get_gov_consumption_qrtly,
+    get_gov_growth_qrtly,
+)
+from src.data.household import (
+    get_saving_ratio_change_qrtly,
+    get_saving_ratio_qrtly,
 )
 from src.data.transforms import splice_series
 from src.data.twi import (
@@ -42,6 +54,7 @@ from src.data.twi import (
     get_twi_monthly,
     get_twi_qrtly,
 )
+from src.data.tot import get_tot_change_qrtly
 from src.data.ulc import get_ulc_growth_qrtly
 
 __all__ = [
@@ -82,11 +95,22 @@ __all__ = [
     # Trade
     "get_import_price_growth_annual",
     "get_import_price_index_qrtly",
-    # Oil
+    "get_tot_change_qrtly",
+    # Energy (oil and coal)
+    "get_coal_change_annual",
+    "get_coal_price_aud_qrtly",
+    "get_coal_price_usd_monthly",
     "get_oil_change_annual",
     "get_oil_price_aud_monthly",
     "get_oil_price_aud_qrtly",
     "get_oil_price_usd_monthly",
+    # Government spending
+    "get_fiscal_impulse_qrtly",
+    "get_gov_consumption_qrtly",
+    "get_gov_growth_qrtly",
+    # Household
+    "get_saving_ratio_change_qrtly",
+    "get_saving_ratio_qrtly",
     # Exchange rates
     "get_log_twi_qrtly",
     "get_real_twi_qrtly",

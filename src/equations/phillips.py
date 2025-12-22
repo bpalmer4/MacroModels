@@ -31,17 +31,16 @@ def price_inflation_equation(
             - "π": Observed quarterly inflation
             - "π_anchor": Annual inflation anchor (expectations → target blend)
             - "Δ4ρm_1": Lagged import price growth (optional control)
-            - "ξ_2": COVID indicator (optional control)
+            - "ξ_2": GSCPI (COVID supply chain pressure, optional control)
         model: PyMC model context
         nairu: NAIRU latent variable
         constant: Optional fixed values for coefficients
 
     Note:
-        A direct oil price effect (beta_oil_pi) was tested but found to be
-        statistically indistinguishable from zero (~0.001 with tight HDI).
-        Oil's effect on Australian inflation is already captured through the
-        import price channel (Δ4ρm), which includes oil-affected import costs.
-        The direct term was removed for parsimony.
+        Oil and coal price effects were tested but found to be statistically
+        indistinguishable from zero. Their effects on Australian inflation are
+        already captured through the import price channel (Δ4ρm).
+        GSCPI captures COVID-era supply chain disruptions (applied non-linearly).
 
     Example:
         price_inflation_equation(inputs, model, nairu)
@@ -54,7 +53,7 @@ def price_inflation_equation(
         settings = {
             "rho_pi": {"mu": 0.0, "sigma": 0.1},      # import prices pass-through
             "gamma_pi": {"mu": -0.5, "sigma": 0.3},   # unemployment gap
-            "xi_2sq_pi": {"mu": 0.0, "sigma": 0.1},   # COVID disruptions
+            "xi_gscpi": {"mu": 0.0, "sigma": 0.1},    # GSCPI supply chain effect
             "epsilon_pi": {"sigma": 0.25},            # error term
         }
         mc = set_model_coefficients(model, settings, constant)
@@ -72,7 +71,9 @@ def price_inflation_equation(
         if "Δ4ρm_1" in inputs:
             mu = mu + mc["rho_pi"] * inputs["Δ4ρm_1"]
         if "ξ_2" in inputs:
-            mu = mu + mc["xi_2sq_pi"] * inputs["ξ_2"] ** 2 * np.sign(inputs["ξ_2"])
+            # GSCPI: non-linear effect (squared with sign preservation)
+            # Captures asymmetric supply chain pressure during COVID
+            mu = mu + mc["xi_gscpi"] * inputs["ξ_2"] ** 2 * np.sign(inputs["ξ_2"])
 
         pm.Normal(
             "observed_price_inflation",

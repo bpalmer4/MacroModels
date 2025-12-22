@@ -59,6 +59,7 @@ from src.data import (
     get_cash_rate_monthly,
     # Interest rates
     get_cash_rate_qrtly,
+    get_coal_change_annual,
     get_gdp_growth,
     # Supply shocks
     get_gscpi_qrtly,
@@ -75,6 +76,8 @@ from src.data import (
     # Exchange rates
     get_twi_change_annual,
     get_twi_change_qrtly,
+    # Terms of trade
+    get_tot_change_qrtly,
     # Oil
     get_oil_change_annual,
     # Costs
@@ -83,6 +86,7 @@ from src.data import (
     get_unemployment_rate_qrtly,
     hma,
 )
+from src.data.gov_spending import get_fiscal_impulse_qrtly
 from src.data.abs_loader import load_series
 from src.data.gdp import get_gdp
 from src.data.rba_loader import PI_TARGET, get_inflation_anchor
@@ -183,17 +187,31 @@ def _prepare_capital_growth() -> pd.Series:
     return capital_growth.reindex(capital_growth_raw.index)
 
 
-def _prepare_gscpi() -> pd.Series:
-    """Prepare GSCPI with COVID period masking (zero outside 2020Q1-2023Q2)."""
-    gscpi = get_gscpi_qrtly().data
-    gscpi_2 = gscpi.shift(2)
+def _prepare_coal_change() -> pd.Series:
+    """Prepare coal price change (annual log change, lagged 1 quarter)."""
+    coal = get_coal_change_annual().data
+    return coal.shift(1)
 
-    # Only use during COVID period, zero otherwise
-    quarter = pd.Timestamp.today().to_period("Q")
-    dummy = pd.Series(1, pd.period_range(start="1959Q1", end=quarter - 1, freq="Q"))
-    mask = (dummy.index >= "2020Q1") & (dummy.index <= "2023Q2")
-    dummy[mask] = 0
-    return gscpi_2.where(dummy == 0, other=0).reindex(dummy.index).fillna(0)
+
+def _prepare_gscpi() -> pd.Series:
+    """Prepare GSCPI as COVID supply shock proxy (masked, lagged 2 quarters).
+
+    The GSCPI is only used during the COVID period (2020Q1-2023Q2) to capture
+    supply chain disruptions. Outside this period, it is set to zero.
+    """
+    gscpi = get_gscpi_qrtly().data
+
+    # Mask to COVID period only (zero otherwise)
+    covid_period = pd.period_range("2020Q1", "2023Q2", freq="Q")
+    gscpi_masked = gscpi.where(gscpi.index.isin(covid_period), other=0.0)
+
+    # Reindex to full range (1960Q1 to current quarter) and fill missing with 0
+    current_q = pd.Period.now("Q")
+    full_range = pd.period_range("1960Q1", current_q, freq="Q")
+    gscpi_full = gscpi_masked.reindex(full_range, fill_value=0.0)
+
+    # Lag by 2 quarters (supply chain effects take time)
+    return gscpi_full.shift(2).fillna(0.0)
 
 
 def compute_r_star(
@@ -270,7 +288,10 @@ def build_observations(
     Δ4ρm = get_import_price_growth_annual().data
     Δ4ρm_1 = Δ4ρm.shift(1)
 
-    # GSCPI (COVID masked)
+    # Coal price change (supply shock)
+    Δ4coal_1 = _prepare_coal_change()
+
+    # GSCPI (COVID supply chain pressure, masked and lagged)
     ξ_2 = _prepare_gscpi()
 
     # TWI (Trade-Weighted Index)
@@ -279,9 +300,17 @@ def build_observations(
     Δ4twi = get_twi_change_annual().data
     Δ4twi_1 = Δ4twi.shift(1)
 
+    # Terms of trade
+    Δtot = get_tot_change_qrtly().data
+    Δtot_1 = Δtot.shift(1)
+
     # Oil prices (AUD)
     Δ4oil = get_oil_change_annual().data
     Δ4oil_1 = Δ4oil.shift(1)
+
+    # Fiscal impulse (G growth - GDP growth)
+    fiscal_impulse = get_fiscal_impulse_qrtly().data
+    fiscal_impulse_1 = fiscal_impulse.shift(1)
 
     # Compute r*
     r_star = compute_r_star(capital_growth, lf_growth, mfp_growth)
@@ -319,16 +348,23 @@ def build_observations(
         # Import prices and supply shocks
         "Δ4ρm": Δ4ρm,
         "Δ4ρm_1": Δ4ρm_1,
-        "ξ_2": ξ_2,
+        "Δ4coal_1": Δ4coal_1,
+        "ξ_2": ξ_2,  # GSCPI (COVID supply chain pressure)
         # Exchange rates
         "Δtwi": Δtwi,
         "Δtwi_1": Δtwi_1,
         "Δ4twi": Δ4twi,
         "Δ4twi_1": Δ4twi_1,
         "r_gap_1": r_gap_1,
+        # Terms of trade
+        "Δtot": Δtot,
+        "Δtot_1": Δtot_1,
         # Oil prices
         "Δ4oil": Δ4oil,
         "Δ4oil_1": Δ4oil_1,
+        # Fiscal impulse
+        "fiscal_impulse": fiscal_impulse,
+        "fiscal_impulse_1": fiscal_impulse_1,
     })
 
     # Apply sample period
@@ -337,8 +373,14 @@ def build_observations(
     if end:
         observed = observed[observed.index <= pd.Period(end)]
 
+    # Fill GSCPI with 0 for periods outside its data range (pre-1998, post-2024)
+    # This must be done before dropna() to avoid truncating the sample
+    observed["ξ_2"] = observed["ξ_2"].fillna(0.0)
+
     # Drop missing
     observed = observed.dropna()
+
+    print(f"Observations: {observed.index.min()} to {observed.index.max()} ({len(observed)} periods)")
 
     # Warn if any NaNs remain (shouldn't happen after dropna)
     if observed.isna().any().any():
@@ -354,8 +396,6 @@ def build_observations(
         missing = expected_periods.difference(observed.index)
         raise ValueError(f"{len(missing)} missing period(s) in observations: {list(missing)}")
 
-    if verbose:
-        print(f"Sample: {observed.index[0]} to {observed.index[-1]} ({len(observed)} periods)")
 
     # Convert to dict of numpy arrays
     obs_dict = {col: observed[col].to_numpy() for col in observed.columns}
@@ -532,6 +572,7 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
         ("gamma_wg", "negative", "Wage Phillips curve slope < 0"),
         ("beta_is", "positive", "IS interest rate effect > 0"),
         ("rho_is", "between_0_1", "IS persistence ∈ (0,1)"),
+        # Note: gamma_fi has truncated prior (lower=0), so sign test is uninformative
         # Participation rate equation
         ("beta_pr", "negative", "Discouraged worker effect < 0"),
         # Exchange rate equation
