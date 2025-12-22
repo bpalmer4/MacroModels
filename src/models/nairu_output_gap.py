@@ -32,7 +32,6 @@ import mgplot as mg
 import numpy as np
 import pandas as pd
 import pymc as pm
-from scipy import stats
 
 from src.analysis import (
     check_for_zero_coeffs,
@@ -40,11 +39,18 @@ from src.analysis import (
     decompose_inflation,
     get_scalar_var,
     get_vector_var,
+    plot_equilibrium_rates,
+    plot_gdp_vs_potential,
     plot_inflation_decomposition,
+    plot_nairu,
     plot_obs_grid,
+    plot_output_gap,
     plot_posterior_timeseries,
     plot_posteriors_bar,
     plot_posteriors_kde,
+    plot_potential_growth,
+    plot_taylor_rule,
+    plot_unemployment_gap,
     posterior_predictive_checks,
     residual_autocorrelation_analysis,
 )
@@ -79,12 +85,7 @@ from src.data import (
 )
 from src.data.abs_loader import load_series
 from src.data.gdp import get_gdp
-from src.data.rba_loader import (
-    PI_TARGET,
-    PI_TARGET_FULL,
-    PI_TARGET_START,
-    get_inflation_anchor,
-)
+from src.data.rba_loader import PI_TARGET, get_inflation_anchor
 from src.data.series_specs import HOURS_WORKED_INDEX
 from src.equations import (
     exchange_rate_equation,
@@ -104,53 +105,9 @@ from src.models.base import SamplerConfig, sample_model
 ALPHA = 0.3  # Capital share for Cobb-Douglas
 HMA_TERM = 13  # Henderson MA smoothing term
 
-# Plotting constants (from notebook)
+# Plotting constants
 MODEL_NAME = "Joint NAIRU + Output Gap Model"
 RFOOTER_OUTPUT = "Joint NAIRU + Output Gap Model"
-START = pd.Period("1985Q1", freq="Q")
-
-# NAIRU warning region (before inflation target fully anchored)
-NAIRU_WARN = {
-    "axvspan": {
-        "xmin": START.ordinal,
-        "xmax": PI_TARGET_FULL.ordinal,
-        "label": r"NAIRU ($U^*$) WRT $\pi^e$ (before inflation target fully anchored)",
-        "color": "goldenrod",
-        "alpha": 0.2,
-        "zorder": -2,
-    }
-}
-
-# Inflation target ranges for plots
-QUARTERLY_RANGE = {
-    "axhspan": {
-        "ymin": (pow(1.02, 0.25) - 1) * 100,
-        "ymax": (pow(1.03, 0.25) - 1) * 100,
-        "color": "#ffdddd",
-        "label": "Quarterly growth consistent with 2-3% annual inflation target",
-        "zorder": -1,
-    }
-}
-
-ANNUAL_RANGE = {
-    "axhspan": {
-        "ymin": 2,
-        "ymax": 3,
-        "color": "#dddddd",
-        "label": "2-3% annual inflation target range",
-        "zorder": -1,
-    }
-}
-
-ANNUAL_TARGET = {
-    "axhline": {
-        "y": 2.5,
-        "linestyle": "dashed",
-        "linewidth": 0.75,
-        "color": "darkred",
-        "label": "2.5% annual inflation target",
-    }
-}
 
 
 # --- Data Preparation ---
@@ -552,372 +509,6 @@ def run_model(
         obs=obs,
         obs_index=obs_index,
         model=model,
-    )
-
-
-# --- Plotting Functions ---
-
-
-def plot_nairu(
-    results: NAIRUResults,
-    show: bool = False,
-) -> None:
-    """Plot the NAIRU with unemployment and inflation overlay."""
-    # NAIRU with credible intervals
-    ax = plot_posterior_timeseries(
-        trace=results.trace,
-        var="nairu",
-        index=results.obs_index,
-        legend_stem="NAIRU",
-        color="blue",
-        start=START,
-        finalise=False,
-    )
-
-    # Unemployment and inflation overlay with white background trick
-    U = pd.Series(results.obs["U"], index=results.obs_index)
-    U = U[U.index >= START]
-    π4 = pd.Series(results.obs["π4"], index=results.obs_index)
-    π4 = π4[π4.index >= START]
-
-    back, front = 3, 1.5
-    for color, width, label in zip(["white", ""], [back, front], ["_", ""]):
-        U.name = "Unemployment Rate" if not label else label
-        mg.line_plot(U, ax=ax, color=color if color else "brown", width=width)
-        π4.name = "Inflation rate" if not label else label
-        mg.line_plot(π4, ax=ax, color=color if color else "darkorange", width=width)
-
-    if ax is not None:
-        mg.finalise_plot(
-            ax,
-            title="NAIRU Estimate for Australia",
-            ylabel="Per cent",
-            legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
-            lfooter=r"Australia. $NAIRU = U^*$ "
-                    f"WRT inflation expectations → {PI_TARGET_START} → blended to target → {PI_TARGET_FULL} → inflation target. ",
-            rheader=f"From {PI_TARGET_FULL} onwards, the model estimates NAIRU as the unemployment rate needed to hit the inflation target.",
-            rfooter=RFOOTER_OUTPUT,
-            **ANNUAL_RANGE,
-            **ANNUAL_TARGET,
-            **NAIRU_WARN,
-            show=show,
-        )
-
-
-def plot_unemployment_gap(
-    results: NAIRUResults,
-    show: bool = False,
-    verbose: bool = False,
-) -> None:
-    """Plot the unemployment gap (U - U*)."""
-    # Get NAIRU samples and calculate unemployment gap for each sample
-    nairu = get_vector_var("nairu", results.trace)
-    nairu.index = results.obs_index
-    U = pd.Series(results.obs["U"], index=results.obs_index)
-    u_gap = nairu.apply(lambda col: U - col)
-    if verbose:
-        print("Last data point:", u_gap.index[-1])
-
-    plot_posterior_timeseries(
-        data=u_gap,
-        legend_stem="Unemployment Gap",
-        color="darkred",
-        start=START,
-        title="Unemployment Gap Estimate for Australia",
-        ylabel="Percentage points (U - U*)",
-        lfooter=r"Australia. $U\text{-}gap = U - U^*$. Positive = slack/disinflationary, Negative = tight/inflationary.",
-        rfooter=RFOOTER_OUTPUT,
-        legend={"loc": "best", "fontsize": "x-small"},
-        y0=True,
-        **NAIRU_WARN,
-        show=show,
-    )
-
-
-def plot_output_gap(
-    results: NAIRUResults,
-    show: bool = False,
-) -> None:
-    """Plot the output gap as percentage deviation from potential."""
-    # Get potential output samples and calculate output gap for each sample
-    potential = get_vector_var("potential_output", results.trace)
-    potential.index = results.obs_index
-
-    # Calculate output gap: (Y - Y*)/Y* * 100
-    actual_gdp = results.obs["log_gdp"]
-    output_gap = (actual_gdp[:, np.newaxis] - potential.values) / potential.values * 100
-    output_gap = pd.DataFrame(output_gap, index=results.obs_index)
-
-    plot_posterior_timeseries(
-        data=output_gap,
-        legend_stem="Output Gap",
-        color="green",
-        start=START,
-        title="Output Gap Estimate for Australia",
-        ylabel="Per cent of potential GDP",
-        legend={"loc": "best", "fontsize": "x-small"},
-        lfooter="Australia. (log Y - log Y*) / log Y* × 100. Positive = overheating/inflationary.",
-        rfooter=RFOOTER_OUTPUT,
-        y0=True,
-        show=show,
-    )
-
-
-def plot_gdp_vs_potential(
-    results: NAIRUResults,
-    show: bool = False,
-) -> None:
-    """Plot actual GDP against potential GDP estimates."""
-    # Get potential output samples
-    potential = get_vector_var("potential_output", results.trace)
-    potential.index = results.obs_index
-
-    # Plot potential GDP using shared time series function
-    ax = plot_posterior_timeseries(
-        data=potential,
-        legend_stem="Potential GDP",
-        color="green",
-        start=pd.Period("1985Q1", freq="Q"),
-        finalise=False,
-    )
-
-    # Plot actual GDP on top
-    actual = pd.Series(results.obs["log_gdp"], index=results.obs_index)
-    actual = actual.reindex(results.obs_index)
-    actual.name = "Actual GDP"
-    mg.line_plot(
-        actual,
-        ax=ax,
-        color="black",
-        width=1.5,
-    )
-
-    if ax is not None:
-        mg.finalise_plot(
-            ax,
-            title="Actual vs Potential GDP",
-            ylabel="Log GDP (scaled)",
-            legend={"loc": "upper left", "fontsize": "x-small"},
-            lfooter="Australia. Log real GDP scaled by 100. ",
-            rfooter=RFOOTER_OUTPUT,
-            show=show,
-        )
-
-
-def plot_potential_growth(
-    results: NAIRUResults,
-    r_star_trend_weight: float = 0.75,
-    show: bool = False,
-    verbose: bool = False,
-) -> None:
-    """Plot annual potential GDP growth (4Q difference of log potential).
-
-    This serves as a proxy for r* (the natural rate of interest), based on
-    the theoretical relationship r* ≈ trend real GDP growth.
-    """
-    potential = get_vector_var("potential_output", results.trace)
-    potential.index = results.obs_index
-
-    # r* = annual potential growth
-    r_star = potential.diff(4).dropna()
-
-    # Plot 1: Potential growth with credible intervals
-    ax = plot_posterior_timeseries(
-        data=r_star,
-        legend_stem="Potential Growth",
-        color="purple",
-        start=pd.Period("1985Q1", freq="Q"),
-        finalise=False,
-    )
-
-    # Add trend line
-    median = r_star.quantile(0.5, axis=1)
-    x = np.arange(len(median))
-    slope, intercept, *_ = stats.linregress(x, median.values)
-    trend = pd.Series(intercept + slope * x, index=median.index)
-    trend.name = f"Trend (slope: {slope * 4:.2f}pp/year)"
-    mg.line_plot(trend, ax=ax, color="darkred", width=1.5, style="--")
-
-    if verbose:
-        print("Chart 1 - Potential Growth:")
-        print(f"  Median endpoint: {median.iloc[-1]:.3f}% at {median.index[-1]}")
-        print(f"  Trend endpoint: {trend.iloc[-1]:.3f}%")
-
-    if ax is not None:
-        mg.finalise_plot(
-            ax,
-            title="Potential GDP Growth Rate (proxy for $r^*$)",
-            ylabel="Per cent per annum",
-            legend={"loc": "upper right", "fontsize": "x-small"},
-            lfooter="Australia. 4-quarter change in log potential GDP. r* ≈ trend growth.",
-            rfooter=RFOOTER_OUTPUT,
-            y0=True,
-            show=show,
-        )
-
-    # Plot 2: r* smoothing comparison
-    w = r_star_trend_weight
-    hybrid = (1 - w) * median + w * trend
-
-    if verbose:
-        print("\nChart 2 - r* Comparison:")
-        print(f"  Median (raw) endpoint: {median.iloc[-1]:.3f}%")
-        print(f"  Trend endpoint: {trend.iloc[-1]:.3f}%")
-        print(f"  Hybrid ({int(w*100)}% trend, {int((1-w)*100)}% raw) endpoint: {hybrid.iloc[-1]:.3f}%")
-        print(f"  Check: {(1-w):.2f} × {median.iloc[-1]:.3f} + {w:.2f} × {trend.iloc[-1]:.3f} = {(1-w)*median.iloc[-1] + w*trend.iloc[-1]:.3f}%")
-
-    median.name = "$r^*$ raw median (no smoothing)"
-    trend.name = "Trend only"
-    hybrid.name = f"Hybrid ({int(w*100)}% trend, {int((1-w)*100)}% raw)"
-
-    ax = mg.line_plot(median, color="darkblue", width=1)
-    mg.line_plot(trend, ax=ax, style="--", color="darkorange", width=1)
-    mg.line_plot(hybrid, ax=ax, width=2, color="darkred", annotate=True)
-
-    if ax is not None:
-        mg.finalise_plot(
-            ax,
-            title="Natural Rate of Interest (r*) - Comparison",
-            ylabel="Per cent per annum",
-            legend={"loc": "upper right", "fontsize": "x-small"},
-            lfooter="Australia. Raw model median vs linear trend vs hybrid.",
-            rfooter=RFOOTER_OUTPUT,
-            y0=True,
-            show=show,
-        )
-
-
-def plot_taylor_rule(
-    results: NAIRUResults,
-    inflation_annual: pd.Series,
-    cash_rate_monthly: pd.Series,
-    pi_target: float = PI_TARGET,
-    pi_coef_start: float = 1.6,
-    pi_coef_end: float = 1.25,
-    r_star_trend_weight: float = 0.75,
-    show: bool = False,
-) -> None:
-    """Plot Taylor Rule prescribed rate vs actual RBA cash rate.
-
-    Taylor Rule: i = r* + π_coef·π - 0.5·πᵗ + 0.5·y_gap
-    where πᵗ is the inflation target (2.5%)
-    """
-    potential = get_vector_var("potential_output", results.trace)
-    potential.index = results.obs_index
-
-    # r* = annual potential growth
-    r_star = potential.diff(4).dropna()
-
-    # Calculate raw median and trend for reporting
-    median = r_star.quantile(0.5, axis=1)
-    slope, intercept, *_ = stats.linregress(np.arange(len(median)), median.values)
-    trend = intercept + slope * np.arange(len(median))
-
-    # Current r* values for annotation
-    r_star_raw = median.iloc[-1]
-    r_star_trend = trend[-1]
-    w = r_star_trend_weight
-    r_star_hybrid = (1 - w) * r_star_raw + w * r_star_trend
-
-    # Smooth r* toward trend
-    if r_star_trend_weight > 0:
-        r_star = r_star.multiply(1 - w).add(trend * w, axis=0)
-
-    # Output gap: (Y - Y*)/Y* × 100
-    log_gdp = pd.Series(results.obs["log_gdp"], index=results.obs_index)
-    actual_gdp = log_gdp.reindex(results.obs_index).values
-    output_gap = (actual_gdp[:, np.newaxis] - potential.values) / potential.values * 100
-    output_gap = pd.DataFrame(output_gap, index=results.obs_index, columns=potential.columns)
-    output_gap = output_gap.reindex(r_star.index)
-
-    # Time-varying inflation coefficient
-    pi = inflation_annual.reindex(r_star.index)
-    pi_coef = pd.Series(
-        np.linspace(pi_coef_start, pi_coef_end, len(r_star)),
-        index=r_star.index
-    )
-
-    # Taylor Rule for each sample
-    taylor = (
-        r_star
-        .add(pi_coef * pi, axis=0)
-        .add(-0.5 * pi_target)
-        .add(output_gap.multiply(0.5))
-    ).dropna()
-
-    # Convert to monthly for cash rate alignment
-    monthly_idx = taylor.index.to_timestamp(how="end").to_period("M")
-    taylor_monthly = taylor.copy()
-    taylor_monthly.index = monthly_idx
-
-    # Plot
-    ax = plot_posterior_timeseries(
-        data=taylor_monthly,
-        legend_stem="Taylor Rule",
-        color="darkblue",
-        start=None,
-        finalise=False,
-    )
-
-    cash_rate_monthly.name = "RBA Cash Rate"
-    mg.line_plot(cash_rate_monthly, ax=ax, color="#dd0000", width=1,
-                drawstyle="steps-post", annotate=True)
-
-    if ax is not None:
-        mg.finalise_plot(
-            ax,
-            title="Taylor Rule vs RBA Cash Rate",
-            ylabel="Per cent per annum",
-            legend={"loc": "upper right", "fontsize": "x-small"},
-            lfooter="Australia. Taylor Rule: i = r* + π_coef·π - 0.5πᵗ + 0.5·y_gap; "
-                    f"π_coef={pi_coef_start}→{pi_coef_end}; πᵗ={pi_target}%",
-            rfooter=f"Final r*={r_star_hybrid:.1f}% ({int(w*100)}% trend {r_star_trend:.1f}%, "
-                    f"{int((1-w)*100)}% raw {r_star_raw:.1f}%)",
-            rheader=RFOOTER_OUTPUT,
-            y0=True,
-            show=show,
-        )
-
-
-def plot_equilibrium_rates(
-    results: NAIRUResults,
-    cash_rate_monthly: pd.Series,
-    pi_target: float = PI_TARGET,
-    show: bool = False,
-) -> None:
-    """Plot neutral interest rate vs actual RBA cash rate."""
-    potential = get_vector_var("potential_output", results.trace)
-    potential.index = results.obs_index
-
-    # r* trend from potential growth
-    r_star = potential.diff(4).dropna().quantile(0.5, axis=1)
-    x = np.arange(len(r_star))
-    slope, intercept, *_ = stats.linregress(x, r_star.values)
-    trend = pd.Series(intercept + slope * x, index=r_star.index)
-
-    # Neutral = trend r* + πᵗ
-    neutral = trend + pi_target
-    neutral.name = "Nominal Neutral Rate"
-
-    # Convert to monthly
-    neutral.index = neutral.index.to_timestamp(how="end").to_period("M")
-
-    # Plot
-    cash_rate_monthly.name = "RBA Cash Rate"
-    ax = mg.line_plot(neutral, color="darkorange", width=2, annotate=True)
-    ax = mg.line_plot(cash_rate_monthly, ax=ax, color="darkblue", width=1,
-                      drawstyle="steps-post", annotate=True)
-
-    mg.finalise_plot(
-        ax,
-        title="Neutral Interest Rate vs RBA Cash Rate",
-        ylabel="Per cent per annum",
-        legend={"loc": "upper right", "fontsize": "x-small"},
-        lfooter=f"Australia. Neutral rate = trend r* + πᵗ (where πᵗ = {pi_target}%).",
-        rfooter="Equilibrium rate when output gap = 0 and U = NAIRU: i = r* + πᵗ",
-        rheader=RFOOTER_OUTPUT,
-        y0=True,
-        show=show,
     )
 
 

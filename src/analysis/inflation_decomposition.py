@@ -15,10 +15,10 @@ Components
 ----------
 The Phillips curve decomposes quarterly inflation as:
 
-    π = π_anchor/4 + γ_π·u_gap + ρ_π·Δ4ρm + ξ_π·GSCPI + ε
+    π = quarterly(π_anchor) + γ_π·u_gap + ρ_π·Δ4ρm + ξ_π·GSCPI + ε
 
 Where:
-    - π_anchor/4: Baseline from expectations/target (neutral)
+    - quarterly(π_anchor): Baseline from expectations/target (neutral)
     - γ_π·u_gap: Demand component (unemployment gap)
     - ρ_π·Δ4ρm: Supply component - import prices
     - ξ_π·GSCPI: Supply component - global supply chain
@@ -47,6 +47,48 @@ import numpy as np
 import pandas as pd
 
 from src.analysis.extraction import get_scalar_var, get_vector_var
+from src.analysis.rate_conversion import annualize, quarterly
+
+# LaTeX equation strings for each chart type
+# Full Phillips curve: π_t = π^e_t + γ(U_t - U*_t) + λΔρ^m_t + φξ_t + ε_t
+EQ_DEMAND_SUPPLY = (
+    r"$\pi_t = \pi^e_t + \underbrace{\gamma(U_t - U^*_t)}_{\mathrm{orange}}"
+    r" + \underbrace{\lambda\Delta\rho^m_t + \phi\xi_t}_{\mathrm{blue}} + \varepsilon_t$"
+)
+EQ_PROPORTIONAL = (
+    r"$\pi_t = \underbrace{\pi^e_t}_{\mathrm{grey}}"
+    r" + \underbrace{\gamma(U_t - U^*_t)}_{\mathrm{orange}}"
+    r" + \underbrace{\lambda\Delta\rho^m_t + \phi\xi_t}_{\mathrm{blue}} + \varepsilon_t$"
+)
+EQ_UNSCALED = (
+    r"$\pi_t = \underbrace{\pi^e_t}_{\mathrm{grey}}"
+    r" + \underbrace{\gamma(U_t - U^*_t)}_{\mathrm{orange}}"
+    r" + \underbrace{\lambda\Delta\rho^m_t + \phi\xi_t}_{\mathrm{blue}}"
+    r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
+)
+
+
+def add_equation_box(ax, equation: str, x: float = 0.5, y: float = 0.02) -> None:
+    """Add a LaTeX equation in a text box to the axes.
+
+    Args:
+        ax: Matplotlib axes
+        equation: LaTeX equation string
+        x: x position in axes coordinates (0-1)
+        y: y position in axes coordinates (0-1)
+
+    """
+    ax.text(
+        x,
+        y,
+        equation,
+        transform=ax.transAxes,
+        fontsize=9,
+        verticalalignment="bottom",
+        horizontalalignment="center",
+        usetex=True,
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.9, "edgecolor": "grey"},
+    )
 
 
 @dataclass
@@ -87,7 +129,7 @@ class InflationDecomposition:
     @property
     def above_target(self) -> pd.Series:
         """Inflation above target (quarterly equivalent of 2.5% annual)."""
-        target_quarterly = 2.5 / 4  # 0.625%
+        target_quarterly = quarterly(2.5)
         return self.observed - target_quarterly
 
     @property
@@ -162,49 +204,61 @@ def decompose_inflation(
     rho_pi = get_scalar_var("rho_pi", trace).median()
     xi_2sq_pi = get_scalar_var("xi_2sq_pi", trace).median()
 
-    # Extract NAIRU (vector, use median across samples)
-    nairu = get_vector_var("nairu", trace).median(axis=1).values
+    # Extract NAIRU (vector, use median across samples) as Series
+    # Note: .values needed to extract numpy array from xarray DataArray
+    nairu = pd.Series(
+        get_vector_var("nairu", trace).median(axis=1).values, index=obs_index, name="nairu"
+    )
 
-    # Observed data
-    U = obs["U"]
-    pi_anchor = obs["π_anchor"]
-    pi_observed = obs["π"]
+    # Convert observed data to Series
+    U = pd.Series(obs["U"], index=obs_index, name="U")
+    pi_anchor = pd.Series(obs["π_anchor"], index=obs_index, name="pi_anchor")
+    pi_observed = pd.Series(obs["π"], index=obs_index, name="observed")
 
     # Import prices (lagged) - may not be present
-    delta_4_pm_lag1 = obs.get("Δ4ρm_1", np.zeros_like(U))
+    delta_4_pm_lag1 = pd.Series(
+        obs.get("Δ4ρm_1", np.zeros(len(obs_index))), index=obs_index, name="delta_4_pm"
+    )
 
     # GSCPI - may not be present
-    gscpi = obs.get("ξ_2", np.zeros_like(U))
+    gscpi = pd.Series(
+        obs.get("ξ_2", np.zeros(len(obs_index))), index=obs_index, name="gscpi"
+    )
 
-    # Compute components
-    # 1. Anchor contribution (quarterly)
-    anchor = pi_anchor / 4
+    # Compute components (all operations on Series)
+    # 1. Anchor contribution (quarterly, using compound conversion)
+    anchor = quarterly(pi_anchor)
+    anchor.name = "anchor"
 
     # 2. Demand contribution (unemployment gap)
     u_gap = (U - nairu) / U
     demand = gamma_pi * u_gap
+    demand.name = "demand"
 
     # 3. Supply - import prices (includes oil effect via import price channel)
     supply_import = rho_pi * delta_4_pm_lag1
+    supply_import.name = "supply_import"
 
     # 4. Supply - GSCPI (with quadratic/signed transformation)
-    supply_gscpi = xi_2sq_pi * (gscpi**2) * np.sign(gscpi)
+    supply_gscpi = xi_2sq_pi * (gscpi**2) * gscpi.apply(np.sign)
+    supply_gscpi.name = "supply_gscpi"
 
     # Fitted values (excluding residual)
     fitted = anchor + demand + supply_import + supply_gscpi
+    fitted.name = "fitted"
 
     # Residual
     residual = pi_observed - fitted
+    residual.name = "residual"
 
-    # Convert to Series with index
     return InflationDecomposition(
-        observed=pd.Series(pi_observed, index=obs_index, name="observed"),
-        anchor=pd.Series(anchor, index=obs_index, name="anchor"),
-        demand=pd.Series(demand, index=obs_index, name="demand"),
-        supply_import=pd.Series(supply_import, index=obs_index, name="supply_import"),
-        supply_gscpi=pd.Series(supply_gscpi, index=obs_index, name="supply_gscpi"),
-        residual=pd.Series(residual, index=obs_index, name="residual"),
-        fitted=pd.Series(fitted, index=obs_index, name="fitted"),
+        observed=pi_observed,
+        anchor=anchor,
+        demand=demand,
+        supply_import=supply_import,
+        supply_gscpi=supply_gscpi,
+        residual=residual,
+        fitted=fitted,
         index=obs_index,
     )
 
@@ -235,17 +289,15 @@ def plot_demand_contribution(
     if end:
         df = df[df.index <= pd.Period(end)]
 
-    scale = 4 if annual else 1
     unit = "% p.a." if annual else "% p.q."
 
-    demand = df["demand"] * scale
+    demand = annualize(df["demand"]) if annual else df["demand"]
     demand.name = "Demand Contribution"
 
-    ax = mg.line_plot(demand, color="darkred", width=1.5)
-    ax.axhline(0, color="black", linewidth=0.5)
-
-    mg.finalise_plot(
-        ax,
+    mg.line_plot_finalise(
+        demand,
+        color="darkred",
+        width=1.5,
         title=f"Inflation - Demand Contribution ({unit})",
         ylabel=unit,
         rfooter=rfooter,
@@ -280,27 +332,30 @@ def plot_supply_contribution(
     if end:
         df = df[df.index <= pd.Period(end)]
 
-    scale = 4 if annual else 1
     unit = "% p.a." if annual else "% p.q."
 
-    supply_import = df["supply_import"] * scale
+    if annual:
+        supply_import = annualize(df["supply_import"])
+        supply_gscpi = annualize(df["supply_gscpi"])
+        supply_total = annualize(df["supply_total"])
+    else:
+        supply_import = df["supply_import"]
+        supply_gscpi = df["supply_gscpi"]
+        supply_total = df["supply_total"]
     supply_import.name = "Import Prices"
-    supply_gscpi = df["supply_gscpi"] * scale
     supply_gscpi.name = "GSCPI"
-    supply_total = df["supply_total"] * scale
     supply_total.name = "Total Supply"
 
     ax = mg.line_plot(supply_import, color="blue", width=1.5)
     mg.line_plot(supply_gscpi, ax=ax, color="green", width=1.5)
     mg.line_plot(supply_total, ax=ax, color="black", width=2)
-    ax.axhline(0, color="grey", linewidth=0.5)
-    ax.legend(loc="upper left")
 
     mg.finalise_plot(
         ax,
         title=f"Inflation - Supply Contributions ({unit})",
         ylabel=unit,
         rfooter=rfooter,
+        legend={"loc": "best", "fontsize": "x-small"},
         y0=True,
         show=show,
     )
@@ -337,8 +392,8 @@ def plot_inflation_drivers(
     if end:
         df = df[df.index <= pd.Period(end)]
 
-    # Annualize (multiply by 4)
-    df = df * 4
+    # Annualize (compound conversion)
+    df = annualize(df)
 
     # Create DataFrame for stacked bar plot
     # Demand (red/warm) and Supply (blue/cool)
@@ -358,28 +413,21 @@ def plot_inflation_drivers(
     )
 
     # Add observed inflation line on top
-    # Use period ordinals to align with bar plot x-axis
-    x_ordinals = np.array([p.ordinal for p in df.index])
-    ax.plot(
-        x_ordinals,
-        df["observed"].values,
-        color="indigo",
-        linewidth=1.5,
-        label="Observed Inflation (quarterly annualised)",
-        zorder=10,
-    )
+    observed = df["observed"].copy()
+    observed.name = "Observed Inflation (quarterly annualised)"
+    mg.line_plot(observed, ax=ax, color="indigo", width=1.5, zorder=10)
 
-    # Target line
-    ax.axhline(2.5, color="darkred", linestyle="--", linewidth=1, label="2.5% Target")
+    # Add equation text box
+    add_equation_box(ax, EQ_DEMAND_SUPPLY)
 
     mg.finalise_plot(
         ax,
         title="Inflation Decomposition: Demand vs Supply",
         ylabel="% p.a.",
-        rfooter=rfooter,
-        lfooter="Red=Demand (U-gap), Blue=Supply (imports+GSCPI). "
-                "Gap to line = anchor (π expectations/target) + residual.",
+        rheader=rfooter,
+        lfooter="Australia. Decomposition based on augmented Phillips curve.",
         legend={"loc": "best", "fontsize": "x-small"},
+        axhline={"y": 2.5, "color": "darkred", "linestyle": "--", "linewidth": 1, "label": "2.5% Target"},
         y0=True,
         show=show,
     )
@@ -425,30 +473,30 @@ def plot_inflation_drivers_proportional(
     if end:
         df = df[df.index <= pd.Period(end)]
 
-    # Annualize (multiply by 4)
-    df = df * 4
+    # Annualize (compound conversion)
+    df = annualize(df)
 
     # Calculate scaled contributions that sum to (observed - anchor)
     # This shows deviation from baseline, removing anchor's distortion
-    demand = df["demand"].values
-    supply = df["supply_total"].values
-    observed = df["observed"].values
-    anchor = df["anchor"].values
+    demand = df["demand"]
+    supply = df["supply_total"]
+    observed = df["observed"]
+    anchor = df["anchor"]
 
     # Deviation from anchor = what demand + supply + residual explain
     deviation = observed - anchor
     total = demand + supply
 
     # Scale so demand_scaled + supply_scaled = deviation
-    with np.errstate(divide="ignore", invalid="ignore"):
-        scale = np.where(np.abs(total) > 0.01, deviation / total, 0)
+    # Use where to avoid division issues when total is near zero
+    scale = (deviation / total).where(total.abs() > 0.01, 0)
 
-    # Only invalid when scale is extreme (contributions nearly cancel)
+    # Only valid when scale is not extreme (contributions nearly cancel)
     max_scale = 5.0
-    valid = np.abs(scale) <= max_scale
+    valid = scale.abs() <= max_scale
 
-    demand_prop = np.where(valid, demand * scale, 0)
-    supply_prop = np.where(valid, supply * scale, 0)
+    demand_prop = (demand * scale).where(valid, 0)
+    supply_prop = (supply * scale).where(valid, 0)
 
     # Create DataFrame for stacked bar plot
     # Anchor as baseline, then demand and supply stack on top
@@ -469,27 +517,97 @@ def plot_inflation_drivers_proportional(
     )
 
     # Add observed inflation line on top
-    x_ordinals = np.array([p.ordinal for p in df.index])
-    ax.plot(
-        x_ordinals,
-        observed,
-        color="indigo",
-        linewidth=1.5,
-        label="Observed Inflation (quarterly annualised)",
-        zorder=10,
-    )
+    observed_line = observed.copy()
+    observed_line.name = "Observed Inflation (quarterly annualised)"
+    mg.line_plot(observed_line, ax=ax, color="indigo", width=1.5, zorder=10)
 
-    # Target line
-    ax.axhline(2.5, color="darkred", linestyle="--", linewidth=1, label="2.5% Target")
+    # Add equation text box
+    add_equation_box(ax, EQ_PROPORTIONAL)
 
     mg.finalise_plot(
         ax,
         title="Inflation: Proportional Demand vs Supply Attribution",
         ylabel="% p.a.",
-        rfooter=rfooter,
-        lfooter="Grey=Expectations/target baseline. Orange/Blue=Demand/Supply scaled so bars sum to observed. "
-                "Residual absorbed into scaling.",
+        rheader=rfooter,
+        lfooter="Australia. Decomposition based on augmented Phillips curve.",
         legend={"loc": "best", "fontsize": "x-small"},
+        axhline={"y": 2.5, "color": "darkred", "linestyle": "--", "linewidth": 1, "label": "2.5% Target"},
+        y0=True,
+        show=show,
+    )
+
+
+def plot_inflation_drivers_unscaled(
+    decomp: InflationDecomposition,
+    start: str | None = "1998Q1",
+    end: str | None = None,
+    rfooter: str = "NAIRU + Output Gap Model",
+    show: bool = False,
+) -> None:
+    """Plot inflation with unscaled components including residual noise.
+
+    Shows annualized quarterly inflation decomposed into its raw
+    model components (no scaling/proportionalizing):
+    - Grey bars: Anchor (inflation expectations/target)
+    - Orange bars: Demand (unemployment gap)
+    - Dark blue bars: Supply (import prices + GSCPI)
+    - Light blue bars: Residual/noise
+
+    Bars sum exactly to observed inflation.
+
+    Args:
+        decomp: InflationDecomposition from decompose_inflation()
+        start: Start period (e.g., "2015Q1")
+        end: End period
+        rfooter: Right footer text
+        show: If True, display interactively
+
+    """
+    df = decomp.to_dataframe()
+
+    if start:
+        df = df[df.index >= pd.Period(start)]
+    if end:
+        df = df[df.index <= pd.Period(end)]
+
+    # Annualize (compound conversion)
+    df = annualize(df)
+
+    # Create DataFrame for stacked bar plot
+    # Anchor + Demand + Supply + Residual = Observed
+    bar_data = pd.DataFrame(
+        {
+            "Inflation expectations / inflation target": df["anchor"],
+            "Demand": df["demand"],
+            "Supply": df["supply_total"],
+            "Noise": df["residual"],
+        },
+        index=df.index,
+    )
+
+    # Plot stacked bars
+    ax = mg.bar_plot(
+        bar_data,
+        stacked=True,
+        color=["#cccccc", "orange", "darkblue", "lightblue"],
+    )
+
+    # Add observed inflation line on top
+    observed = df["observed"].copy()
+    observed.name = "Observed Inflation (quarterly annualised)"
+    mg.line_plot(observed, ax=ax, color="indigo", width=1.5, zorder=10)
+
+    # Add equation text box
+    add_equation_box(ax, EQ_UNSCALED)
+
+    mg.finalise_plot(
+        ax,
+        title="Inflation Decomposition: Components (Unscaled)",
+        ylabel="% p.a.",
+        rheader=rfooter,
+        lfooter="Australia. Decomposition based on augmented Phillips curve.",
+        legend={"loc": "best", "fontsize": "x-small"},
+        axhline={"y": 2.5, "color": "darkred", "linestyle": "--", "linewidth": 1, "label": "2.5% Target"},
         y0=True,
         show=show,
     )
@@ -508,8 +626,8 @@ def plot_inflation_decomposition(
     Creates four chart files:
     1. Demand Contribution (unemployment gap effect)
     2. Supply Contributions (import prices + GSCPI)
-    3. Inflation drivers (stacked bars showing absolute contributions)
-    4. Proportional attribution (bars scaled to observed inflation)
+    3. Inflation drivers (stacked bars showing demand + supply)
+    4. Unscaled components with residual noise
 
     Args:
         decomp: InflationDecomposition from decompose_inflation()
@@ -523,7 +641,7 @@ def plot_inflation_decomposition(
     plot_demand_contribution(decomp, start, end, annual, rfooter, show)
     plot_supply_contribution(decomp, start, end, annual, rfooter, show)
     plot_inflation_drivers(decomp, start, end, rfooter, show)
-    plot_inflation_drivers_proportional(decomp, start, end, rfooter, show)
+    plot_inflation_drivers_unscaled(decomp, start, end, rfooter, show)
 
 
 def inflation_policy_summary(
@@ -546,14 +664,13 @@ def inflation_policy_summary(
 
     """
     df = decomp.to_dataframe().tail(periods)
-    scale = 4 if annual else 1
     unit = "% p.a." if annual else "% p.q."
 
     # Target (annual or quarterly)
-    target = 2.5 if annual else 2.5 / 4
+    target = 2.5 if annual else quarterly(2.5)
 
-    # Compute averages
-    avg = df.mean() * scale
+    # Compute averages (annualize if needed)
+    avg = annualize(df.mean()) if annual else df.mean()
 
     # Above target
     above_target = avg["observed"] - target
@@ -634,8 +751,8 @@ def get_policy_diagnosis(
     """
     df = decomp.to_dataframe().tail(periods)
 
-    # Annualize
-    avg = df.mean() * 4
+    # Annualize (compound conversion)
+    avg = annualize(df.mean())
     target = 2.5
 
     above_target = avg["observed"] - target

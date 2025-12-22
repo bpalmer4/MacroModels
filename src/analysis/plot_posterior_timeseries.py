@@ -76,13 +76,15 @@ def plot_posterior_timeseries(
             color=color,
             alpha=alpha,
             label=f"{legend_stem} {int((1 - 2 * cut) * 100)}% Credible Interval",
+            zorder=3,  # Above grid (zorder ~2.5)
         )
 
     median = samples.quantile(q=0.5, axis=1)
     median.name = f"{legend_stem} Median"
-    ax = mg.line_plot(median, ax=ax, color=color, width=1, annotate=True)
+    ax = mg.line_plot(median, ax=ax, color=color, width=1, annotate=True, zorder=4)
 
     if finalise and ax is not None:
+        finalise_kwargs.setdefault("axisbelow", True)
         mg.finalise_plot(ax, **finalise_kwargs)
         return None
 

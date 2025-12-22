@@ -29,6 +29,7 @@ import pandas as pd
 import readabs as ra
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
+from src.analysis.rate_conversion import annualize
 from src.data.abs_loader import get_abs_data
 from src.data.gdp import get_gdp
 from src.data.series_specs import (
@@ -489,7 +490,7 @@ class DecompositionResult:
     def summary(self) -> pd.DataFrame:
         """Average growth contributions over sample period."""
         cols = ["g_GDP", "contrib_Capital", "contrib_Hours", "g_MFP"]
-        annual = self.growth[cols].dropna() * 4  # Annualize
+        annual = annualize(self.growth[cols].dropna())
         return annual.describe().loc[["mean", "std"]]
 
 
@@ -642,7 +643,7 @@ def plot_mfp_trend(result: DecompositionResult, show: bool = True) -> None:
 
     # Panel 2: Annualized trend
     panel2_data = pd.DataFrame({
-        f"HP Filter (λ={HP_LAMBDA})": mfp["MFP Trend"] * 4,
+        f"HP Filter (λ={HP_LAMBDA})": annualize(mfp["MFP Trend"]),
     })
 
     mg.line_plot(
@@ -710,8 +711,8 @@ def plot_potential_gdp(result: DecompositionResult, show: bool = True) -> None:
 
     # Panel 2: GDP growth rates
     growth_rates = pd.DataFrame({
-        "Actual Growth": pot["g_actual"] * 4,
-        "Potential Growth": pot["g_potential"] * 4,
+        "Actual Growth": annualize(pot["g_actual"]),
+        "Potential Growth": annualize(pot["g_potential"]),
     })
     mg.line_plot(
         growth_rates,
@@ -839,7 +840,7 @@ def plot_sensitivity(result: DecompositionResult, show: bool = True) -> None:
             - (1 - alpha) * growth["g_Hours"]
         )
         mfp_trend, _ = apply_hp_filter(mfp.dropna())
-        trends[f"α = {alpha}"] = mfp_trend * 4  # Annualize
+        trends[f"α = {alpha}"] = annualize(mfp_trend)
 
     mg.line_plot_finalise(
         trends,
@@ -997,7 +998,7 @@ def print_summary(result: DecompositionResult, verbose: bool = False) -> None:
         # Latest values
         print("\nLatest Values:")
         print(f"  Output gap:        {result.potential['output_gap'].dropna().iloc[-1]:.2f}%")
-        print(f"  MFP trend growth:  {result.mfp['MFP Trend'].iloc[-1] * 4:.2f}% p.a.")
+        print(f"  MFP trend growth:  {annualize(result.mfp['MFP Trend'].iloc[-1]):.2f}% p.a.")
 
         # Sensitivity summary
         if result.sensitivity is not None:

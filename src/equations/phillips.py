@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 import pymc as pm
 
+from src.analysis.rate_conversion import quarterly
 from src.models.base import set_model_coefficients
 
 
@@ -16,7 +17,7 @@ def price_inflation_equation(
 ) -> None:
     """Anchor-augmented Phillips Curve for price inflation.
 
-    Model: π = π_anchor/4 + γ × u_gap + controls + ε
+    Model: π = quarterly(π_anchor) + γ × u_gap + controls + ε
 
     Uses inflation anchor (expectations pre-1993, phased to target 1993-1998,
     target thereafter). This means NAIRU is interpreted as the unemployment
@@ -61,10 +62,10 @@ def price_inflation_equation(
         # Unemployment gap (relative to NAIRU)
         u_gap = (inputs["U"] - nairu) / inputs["U"]
 
-        # Expected quarterly inflation from anchor
-        pi_anchor_quarterly = inputs["π_anchor"] / 4
+        # Expected quarterly inflation from anchor (compound conversion)
+        pi_anchor_quarterly = quarterly(inputs["π_anchor"])
 
-        # Phillips curve: π = π_anchor/4 + γ × u_gap + controls
+        # Phillips curve: π = quarterly(π_anchor) + γ × u_gap + controls
         mu = pi_anchor_quarterly + mc["gamma_pi"] * u_gap
 
         # Add optional controls if present

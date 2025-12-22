@@ -1,0 +1,161 @@
+"""Taylor rule and equilibrium rate plotting functions."""
+
+import mgplot as mg
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+from src.analysis.extraction import get_vector_var
+from src.analysis.plot_posterior_timeseries import plot_posterior_timeseries
+from src.data.rba_loader import PI_TARGET
+
+# Plotting constants
+START = pd.Period("1985Q1", freq="Q")
+RFOOTER = "Joint NAIRU + Output Gap Model"
+
+
+def plot_taylor_rule(
+    results,  # NAIRUResults - avoid circular import
+    inflation_annual: pd.Series,
+    cash_rate_monthly: pd.Series,
+    pi_target: float = PI_TARGET,
+    pi_coef_start: float = 1.6,
+    pi_coef_end: float = 1.25,
+    r_star_trend_weight: float = 0.75,
+    show: bool = False,
+) -> None:
+    """Plot Taylor Rule prescribed rate vs actual RBA cash rate.
+
+    Taylor Rule: i = r* + pi_coef * pi - 0.5 * pi_target + 0.5 * y_gap
+    where pi_target is the inflation target (2.5%)
+    """
+    potential = get_vector_var("potential_output", results.trace)
+    potential.index = results.obs_index
+
+    # r* = annual potential growth
+    r_star = potential.diff(4).dropna()
+
+    # Calculate raw median and trend for reporting
+    median = r_star.quantile(0.5, axis=1)
+    slope, intercept, *_ = stats.linregress(np.arange(len(median)), median.values)
+    trend = intercept + slope * np.arange(len(median))
+
+    # Current r* values for annotation
+    r_star_raw = median.iloc[-1]
+    r_star_trend = trend[-1]
+    w = r_star_trend_weight
+    r_star_hybrid = (1 - w) * r_star_raw + w * r_star_trend
+
+    # Smooth r* toward trend
+    if r_star_trend_weight > 0:
+        r_star = r_star.multiply(1 - w).add(trend * w, axis=0)
+
+    # Output gap: (Y - Y*)/Y* * 100
+    log_gdp = pd.Series(results.obs["log_gdp"], index=results.obs_index)
+    actual_gdp = log_gdp.reindex(results.obs_index).values
+    output_gap = (actual_gdp[:, np.newaxis] - potential.values) / potential.values * 100
+    output_gap = pd.DataFrame(output_gap, index=results.obs_index, columns=potential.columns)
+    output_gap = output_gap.reindex(r_star.index)
+
+    # Time-varying inflation coefficient
+    pi = inflation_annual.reindex(r_star.index)
+    pi_coef = pd.Series(
+        np.linspace(pi_coef_start, pi_coef_end, len(r_star)),
+        index=r_star.index,
+    )
+
+    # Taylor Rule for each sample
+    taylor = (
+        r_star.add(pi_coef * pi, axis=0)
+        .add(-0.5 * pi_target)
+        .add(output_gap.multiply(0.5))
+    ).dropna()
+
+    # Convert to monthly for cash rate alignment
+    monthly_idx = taylor.index.to_timestamp(how="end").to_period("M")
+    taylor_monthly = taylor.copy()
+    taylor_monthly.index = monthly_idx
+
+    # Plot
+    ax = plot_posterior_timeseries(
+        data=taylor_monthly,
+        legend_stem="Taylor Rule",
+        color="darkblue",
+        start=None,
+        finalise=False,
+    )
+
+    cash_rate_monthly.name = "RBA Cash Rate"
+    mg.line_plot(
+        cash_rate_monthly,
+        ax=ax,
+        color="#dd0000",
+        width=1,
+        drawstyle="steps-post",
+        annotate=True,
+    )
+
+    if ax is not None:
+        mg.finalise_plot(
+            ax,
+            title="Taylor Rule vs RBA Cash Rate",
+            ylabel="Per cent per annum",
+            legend={"loc": "upper right", "fontsize": "x-small"},
+            lfooter=f"Australia. Taylor Rule: i = r* + pi_coef*pi - 0.5*pi_t + 0.5*y_gap; "
+            f"pi_coef={pi_coef_start}->{pi_coef_end}; pi_t={pi_target}%",
+            rfooter=f"Final r*={r_star_hybrid:.1f}% ({int(w*100)}% trend {r_star_trend:.1f}%, "
+            f"{int((1-w)*100)}% raw {r_star_raw:.1f}%)",
+            rheader=RFOOTER,
+            axisbelow=True,
+            y0=True,
+            show=show,
+        )
+
+
+def plot_equilibrium_rates(
+    results,  # NAIRUResults - avoid circular import
+    cash_rate_monthly: pd.Series,
+    pi_target: float = PI_TARGET,
+    show: bool = False,
+) -> None:
+    """Plot neutral interest rate vs actual RBA cash rate."""
+    potential = get_vector_var("potential_output", results.trace)
+    potential.index = results.obs_index
+
+    # r* trend from potential growth
+    r_star = potential.diff(4).dropna().quantile(0.5, axis=1)
+    x = np.arange(len(r_star))
+    slope, intercept, *_ = stats.linregress(x, r_star.values)
+    trend = pd.Series(intercept + slope * x, index=r_star.index)
+
+    # Neutral = trend r* + pi_target
+    neutral = trend + pi_target
+    neutral.name = "Nominal Neutral Rate"
+
+    # Convert to monthly
+    neutral.index = neutral.index.to_timestamp(how="end").to_period("M")
+
+    # Plot
+    cash_rate_monthly.name = "RBA Cash Rate"
+    ax = mg.line_plot(neutral, color="darkorange", width=2, annotate=True)
+    ax = mg.line_plot(
+        cash_rate_monthly,
+        ax=ax,
+        color="darkblue",
+        width=1,
+        drawstyle="steps-post",
+        annotate=True,
+    )
+
+    mg.finalise_plot(
+        ax,
+        title="Neutral Interest Rate vs RBA Cash Rate",
+        ylabel="Per cent per annum",
+        legend={"loc": "upper right", "fontsize": "x-small"},
+        lfooter=f"Australia. Neutral rate = trend r* + pi_t (where pi_t = {pi_target}%).",
+        rfooter=f"Equilibrium rate when output gap = 0 and U = NAIRU: i = r* + pi_t",
+        rheader=RFOOTER,
+        axisbelow=True,
+        y0=True,
+        show=show,
+    )
