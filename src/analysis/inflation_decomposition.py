@@ -50,21 +50,21 @@ from src.analysis.extraction import get_scalar_var, get_vector_var
 from src.analysis.rate_conversion import annualize, quarterly
 
 # LaTeX equation strings for each chart type
-# Full Phillips curve: π_t = π^e_t + γ(U_t - U*_t) + λΔρ^m_t + ξ·GSCPI² + ε_t
+# Full Phillips curve: π_t = π^e_t + γ((U_t - U*_t)/U_t) + λΔρ^m_t + ξ·GSCPI² + ε_t
 EQ_DEMAND_SUPPLY = (
-    r"$\pi_t = \pi^e_t + \underbrace{\gamma(U_t - U^*_t)}_{\mathrm{orange}}"
+    r"$\pi_t = \pi^e_t + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
     r" + \underbrace{\lambda\Delta\rho^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}"
     r" + \varepsilon_t$"
 )
 EQ_PROPORTIONAL = (
     r"$\pi_t = \underbrace{\pi^e_t}_{\mathrm{grey}}"
-    r" + \underbrace{\gamma(U_t - U^*_t)}_{\mathrm{orange}}"
+    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
     r" + \underbrace{\lambda\Delta\rho^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}"
     r" + \varepsilon_t$"
 )
 EQ_UNSCALED = (
     r"$\pi_t = \underbrace{\pi^e_t}_{\mathrm{grey}}"
-    r" + \underbrace{\gamma(U_t - U^*_t)}_{\mathrm{orange}}"
+    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
     r" + \underbrace{\lambda\Delta\rho^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}"
     r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
 )
@@ -421,8 +421,8 @@ def plot_inflation_drivers(
     observed.name = "Observed Inflation (quarterly annualised)"
     mg.line_plot(observed, ax=ax, color="indigo", width=1.5, zorder=10)
 
-    # Add equation text box
-    add_equation_box(ax, EQ_DEMAND_SUPPLY)
+    # Add equation text box at top middle
+    add_equation_box(ax, EQ_DEMAND_SUPPLY, x=0.4, y=0.75)
 
     mg.finalise_plot(
         ax,
