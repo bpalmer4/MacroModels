@@ -3,6 +3,7 @@
 import math
 
 import arviz as az
+import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import mgplot as mg
 import pandas as pd
@@ -68,7 +69,7 @@ def plot_posteriors_bar(
     cmap = plt.get_cmap(palette)
     color_fracs = [0.4, 0.7]
 
-    figsize = (9.0, len(scalar_vars) * 0.3 + 1.0)
+    figsize = (9.0, len(scalar_vars) * 0.25 + 1.0)
     _, ax = plt.subplots(figsize=figsize)
 
     y_positions = range(len(scalar_vars))
@@ -108,12 +109,14 @@ def plot_posteriors_bar(
         )
         ax.text(
             median,
-            i + bar_height / 2 + 0.05,
+            i,
             f"{median:.3f}",
             ha="center",
-            va="bottom",
+            va="center",
             fontsize=8,
             color="black",
+            zorder=20,
+            path_effects=[pe.withStroke(linewidth=2, foreground="white")],
         )
 
     ax.axvline(x=0, color="darkred", linestyle="-", linewidth=1.5, zorder=15)
