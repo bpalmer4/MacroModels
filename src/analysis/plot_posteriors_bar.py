@@ -68,7 +68,8 @@ def plot_posteriors_bar(
     cmap = plt.get_cmap(palette)
     color_fracs = [0.4, 0.7]
 
-    _, ax = plt.subplots(figsize=(10, len(scalar_vars) * 0.6 + 1))
+    figsize = (9.0, len(scalar_vars) * 0.3 + 1.0)
+    _, ax = plt.subplots(figsize=figsize)
 
     y_positions = range(len(scalar_vars))
     bar_height = 0.7
@@ -137,4 +138,4 @@ def plot_posteriors_bar(
         if key in kwargs:
             defaults.pop(key)
 
-    mg.finalise_plot(ax, **defaults, **kwargs)
+    mg.finalise_plot(ax, figsize=figsize, **defaults, **kwargs)
