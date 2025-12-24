@@ -31,7 +31,6 @@ Fetches and prepares data from Australian statistical sources. All loaders retur
 - **`gdp.py`**: GDP (CVM, current prices), log GDP, GDP growth
 - **`labour_force.py`**: Unemployment rate, participation rate, hours worked, labour force
 - **`capital.py`**: Capital stock and capital growth
-- **`mfp.py`**: Multi-factor productivity (annual, from ABS 5204)
 - **`inflation.py`**: CPI trimmed mean (quarterly and annual)
 - **`cash_rate.py`**: Cash rate (monthly/quarterly, with historical splicing)
 - **`ulc.py`**: Unit labour cost growth
@@ -39,13 +38,16 @@ Fetches and prepares data from Australian statistical sources. All loaders retur
 - **`twi.py`**: Trade-Weighted Index (level, changes, real TWI)
 - **`energy.py`**: Oil and coal prices (USD and AUD)
 - **`gov_spending.py`**: Government consumption and fiscal impulse
-- **`household.py`**: Household saving ratio
 - **`gscpi.py`**: NY Fed Global Supply Chain Pressure Index
-- **`tot.py`**: Terms of trade changes
-- **`awe.py`**: Average Weekly Earnings (semi-annual ABS 6302, interpolated to quarterly)
-- **`wpi.py`**: Wage Price Index growth (ABS 6345)
 - **`dfd_deflator.py`**: Domestic Final Demand implicit price deflator
 - **`hourly_coe.py`**: Hourly Compensation of Employees (CoE / hours worked)
+
+**Currently unused loaders** (available for future experimentation):
+- **`mfp.py`**: Multi-factor productivity (ABS 5204) - MFP now derived from wages instead
+- **`tot.py`**: Terms of trade - tested in IS curve, not statistically significant
+- **`household.py`**: Household saving ratio - tested in IS curve, not statistically significant
+- **`wpi.py`**: Wage Price Index - model uses ULC/HCOE instead
+- **`awe.py`**: Average Weekly Earnings - model uses ULC/HCOE instead
 
 **Utilities:**
 - **`henderson.py`**: Henderson moving average for trend extraction (ABS method)
@@ -71,20 +73,24 @@ Reusable PyMC equation functions for Bayesian models. Each function adds distrib
 | Equation | Function | Description |
 |----------|----------|-------------|
 | NAIRU | `nairu_equation()` | Gaussian random walk for natural unemployment rate |
-| Potential Output | `potential_output_equation()` | Cobb-Douglas with AR(1) smoothing of potential growth |
-| Phillips Curve | `price_inflation_equation()` | Anchor-augmented Phillips curve with regime-switching slopes |
-| Wage Phillips | `wage_growth_equation()` | Wage growth response to unemployment gap |
-| Hourly COE | `hourly_coe_equation()` | Hourly compensation growth Phillips curve |
+| Potential Output | `potential_output_equation()` | Cobb-Douglas drift + innovation (supply-side driven) |
+| Phillips Curve | `price_inflation_equation()` | Anchor-augmented with regime-switching slopes |
+| Wage Phillips | `wage_growth_equation()` | ULC growth with regime-switching slopes |
+| Hourly COE | `hourly_coe_equation()` | Hourly compensation growth with regime-switching slopes |
 | Okun's Law | `okun_law_equation()` | Links output gap to unemployment changes |
 | IS Curve | `is_equation()` | Output gap persistence with real interest rate effects |
 | Participation | `participation_equation()` | Discouraged worker effect on labour force participation |
 | Exchange Rate | `exchange_rate_equation()` | UIP-style TWI equation with interest rate differential |
 | Import Prices | `import_price_equation()` | Exchange rate pass-through to import prices |
 
-**Regime-Switching Phillips Curve**: The price inflation equation supports three regimes with different slopes:
+**Regime-Switching**: The Phillips curve equations (price, wage-ULC, wage-HCOE) support three regimes with different slopes:
 - Pre-GFC (up to 2007Q4): Moderate slope
-- Post-GFC (2008Q1 - 2020Q4): Flat slope
+- Post-GFC (2008Q1 - 2020Q4): Flat slope (documented Phillips curve flattening)
 - Post-COVID (2021Q1+): Steeper slope
+
+**Model development notes:**
+- Okun's Law regime-switching was tested but posteriors showed no meaningful difference across regimes (all medians within other regimes' 90% HDI). A single time-invariant coefficient is used.
+- Wage equation persistence terms (ρ_wg, ρ_hcoe) were tested but posteriors were not different from zero; removed for parsimony.
 
 ```python
 from src.equations import nairu_equation, potential_output_equation, price_inflation_equation
@@ -189,10 +195,8 @@ uv sync
 | Catalogue | Description | Series Used |
 |-----------|-------------|-------------|
 | 5206.0 | National Accounts | GDP (CVM), Hours Worked Index, Compensation of Employees |
-| 5204.0 | Productivity | Multi-Factor Productivity (Hours Worked basis) |
+| 5204.0 | Productivity | Multi-Factor Productivity (currently unused - derived from wages instead) |
 | 6202.0 | Labour Force | Unemployment Rate, Participation Rate, Monthly Hours Worked |
-| 6302.0 | Average Weekly Earnings | Average Weekly Earnings (semi-annual, interpolated to quarterly) |
-| 6345.0 | Wage Price Index | Wage Price Index growth rates |
 | 6401.0 | Consumer Price Index | Trimmed Mean (quarterly & annual), All Groups |
 | 6457.0 | International Trade Prices | Import Price Index |
 | 1364.0.15.003 | Modellers Database | Capital Stock (CVM), Labour Force, Employed, Unemployed |
@@ -228,20 +232,25 @@ The joint model estimates NAIRU and potential output using 9 equations:
 1. **NAIRU**: Random walk without drift
    - `NAIRU_t = NAIRU_{t-1} + ε_t`
 
-2. **Potential Output**: Cobb-Douglas with AR(1) smoothing of potential growth
-   - `drift_t = α×g_K + (1-α)×g_L + g_MFP` (Cobb-Douglas target)
-   - `g_Y*_t = ρ×g_Y*_{t-1} + (1-ρ)×drift_t + ε_t` (AR(1) smoothing)
+2. **Potential Output**: Cobb-Douglas drift plus small innovation
+   - `g_Y*_t = drift_t + ε_t`
+   - `drift_t = α×g_K + (1-α)×g_L + g_MFP`
+   - Input MFP is derived from wage data (Δhcoe - Δulc - α×capital_deepening), HP-filtered (λ=1600), and floored at zero (negative MFP reflects capacity underutilization, not true productivity decline)
+   - Output MFP (in productivity charts) shows the unfloored derived series for diagnostic purposes
+   - With tight innovation variance, potential is driven almost entirely by supply-side fundamentals
 
 **Observation Equations:**
 3. **Phillips Curve**: Anchor-augmented with regime-switching slopes
-   - `π_t = quarterly(π_anchor) + γ_regime×u_gap + λ×Δρm + ξ×GSCPI² + ε`
+   - `π_t = quarterly(π_anchor) + γ_regime×u_gap + ρ×Δ4ρm + ξ×GSCPI² + ε`
    - Regimes: Pre-GFC (moderate γ), Post-GFC (flat γ), Post-COVID (steep γ)
+   - Convex specification: u_gap = (U - NAIRU) / U
 
-4. **Wage Phillips**: Unit labour cost growth
-   - `Δulc = α + γ×u_gap + λ×ΔU/U + ε`
+4. **Wage Phillips (ULC)**: Unit labour cost growth with regime-switching
+   - `Δulc = α + γ_regime×u_gap + λ×ΔU/U + φ×Δ4dfd + θ×π_anchor + ε`
 
-4b. **Hourly COE Phillips**: Hourly compensation growth
-   - `Δhcoe = quarterly(π_anchor) + γ×u_gap + λ×Δρm + ε`
+4b. **Wage Phillips (HCOE)**: Hourly compensation growth with regime-switching
+   - `Δhcoe = α + γ_regime×u_gap + λ×ΔU/U + φ×Δ4dfd + θ×π_anchor + ψ×mfp + ε`
+   - Unlike ULC, HCOE includes productivity (ψ×mfp) since hourly pay should reflect productivity gains
 
 5. **Okun's Law**: Output gap to unemployment change
    - `ΔU = β×output_gap + ε`
@@ -267,16 +276,19 @@ With HP-filtered trends and periodic re-anchoring at business cycle peaks.
 
 ## Key Parameters
 
-| Parameter | Description | Prior/Value |
-|-----------|-------------|-------------|
-| α (alpha) | Capital share of income | N(0.30, 0.05) |
-| γ_π_pre_gfc | Phillips curve slope (pre-GFC) | Regime-specific prior |
-| γ_π_gfc | Phillips curve slope (GFC era) | Regime-specific prior (flatter) |
-| γ_π_post_covid | Phillips curve slope (post-COVID) | Regime-specific prior (steeper) |
-| ρ_pot | AR(1) persistence for potential growth | Controls smoothing toward drift |
-| β_okun | Okun's law coefficient | N(-0.2, 0.15), expect negative |
-| ρ_is | IS curve persistence | N(0.85, 0.1), expect 0-1 |
+| Parameter | Description | Prior |
+|-----------|-------------|-------|
+| α (alpha_capital) | Capital share of income | N(0.30, 0.05) |
+| γ_π (gamma_pi_*) | Price Phillips curve slopes | Regime-specific, negative |
+| γ_wg (gamma_wg_*) | Wage-ULC Phillips curve slopes | Regime-specific, TN(upper=0) |
+| γ_hcoe (gamma_hcoe_*) | Wage-HCOE Phillips curve slopes | Regime-specific, TN(upper=0) |
+| β_okun | Okun's law coefficient | TN(-0.2, 0.1, upper=0) |
+| ρ_is | IS curve persistence | N(0.85, 0.1) |
 | β_is | Interest rate sensitivity | TN(0.2, 0.1, lower=0) |
 | β_pr | Discouraged worker effect | TN(-0.05, 0.03, upper=0) |
 | β_pt | Exchange rate pass-through | TN(-0.3, 0.15, upper=0) |
+| φ_wg, φ_hcoe | Demand deflator → wages | N(0.1, 0.1) |
+| θ_wg, θ_hcoe | Trend expectations → wages | TN(0.1, 0.1, lower=0) |
+| ψ_hcoe | Productivity → hourly wages | TN(1.0, 0.5, lower=0) |
 
+TN = Truncated Normal with specified bounds.

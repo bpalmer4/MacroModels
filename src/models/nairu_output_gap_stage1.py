@@ -15,7 +15,6 @@ import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
-from statsmodels.tsa.filters.hp_filter import hpfilter
 
 from src.data import (
     get_capital_growth_qrtly,
@@ -28,6 +27,7 @@ from src.data import (
     get_inflation_qrtly,
     get_labour_force_growth_qrtly,
     get_log_gdp,
+    get_mfp_trend_floored,
     get_oil_change_annual,
     get_participation_rate_change_qrtly,
     get_twi_change_annual,
@@ -67,53 +67,6 @@ DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent / "model_outputs"
 
 
 # --- Data Preparation ---
-
-
-def _derive_mfp_from_wages(
-    ulc_growth: pd.Series,
-    hcoe_growth: pd.Series,
-    capital_growth: pd.Series,
-    hours_growth: pd.Series,
-    alpha: float = ALPHA,
-) -> pd.Series:
-    """Derive MFP growth from wage data using Solow residual identity.
-
-    Labour productivity growth = Δhcoe - Δulc (from wage equation identity)
-    MFP growth = labour_productivity - α × capital_deepening
-
-    Where capital_deepening = g_K - g_L (capital growth minus hours growth)
-
-    This replaces external MFP data (ABS 5204) with an internally consistent
-    estimate derived from the model's wage equations.
-
-    Args:
-        ulc_growth: Unit labour cost growth (quarterly)
-        hcoe_growth: Hourly COE growth (quarterly)
-        capital_growth: Capital stock growth (quarterly, smoothed)
-        hours_growth: Hours worked growth (quarterly)
-        alpha: Capital share (default 0.3)
-
-    Returns:
-        Derived MFP growth (quarterly)
-
-    """
-    # Labour productivity growth from wage data
-    # ULC = COE/GDP, HCOE = COE/Hours
-    # So: Δulc - Δhcoe = Δhours - Δgdp = -labour_productivity_growth
-    # Therefore: labour_productivity_growth = Δhcoe - Δulc
-    labour_productivity = hcoe_growth - ulc_growth
-
-    # Capital deepening = capital growth - hours growth
-    capital_deepening = capital_growth - hours_growth
-
-    # MFP as Solow residual: g_MFP = g_LP - α × g_KL
-    mfp_growth = labour_productivity - alpha * capital_deepening
-
-    # HP filter to extract smooth trend (λ=1600 for quarterly data)
-    # Raw MFP is noisy - use trend for potential output calculation
-    mfp_clean = mfp_growth.dropna()
-    _, mfp_trend = hpfilter(mfp_clean, lamb=1600)
-    return pd.Series(mfp_trend, index=mfp_clean.index).reindex(mfp_growth.index)
 
 
 def _prepare_labour_force_growth() -> pd.Series:
@@ -250,13 +203,14 @@ def build_observations(
     Δhcoe_1 = Δhcoe.shift(1)
 
     # Derive MFP from wage data (replaces external ABS 5204 MFP)
-    # MFP = (Δhcoe - Δulc) - α × (g_K - g_L)
-    mfp_growth = _derive_mfp_from_wages(
+    # MFP = (Δhcoe - Δulc) - α × (g_K - g_L), HP-filtered and floored at zero
+    mfp_growth = get_mfp_trend_floored(
         ulc_growth=Δulc,
         hcoe_growth=Δhcoe,
         capital_growth=capital_growth,
         hours_growth=hours_growth,
-    )
+        alpha=ALPHA,
+    ).data
 
     # Domestic final demand deflator (demand channel for wages)
     Δ4dfd = get_dfd_deflator_growth_annual().data

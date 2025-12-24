@@ -168,16 +168,15 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
         ("gamma_wg_pre_gfc", "negative", "Wage Phillips (pre-GFC) < 0"),
         ("gamma_wg_gfc", "negative", "Wage Phillips (post-GFC) < 0"),
         ("gamma_wg_covid", "negative", "Wage Phillips (post-COVID) < 0"),
-        ("rho_wg", "between_0_1", "Wage persistence ∈ (0,1)"),
         ("phi_wg", "positive", "Demand deflator → wages > 0"),
         ("theta_wg", "positive", "Trend expectations → wages > 0"),
         # Hourly COE Phillips curve (regime-specific slopes, all negative)
         ("gamma_hcoe_pre_gfc", "negative", "Hourly COE Phillips (pre-GFC) < 0"),
         ("gamma_hcoe_gfc", "negative", "Hourly COE Phillips (post-GFC) < 0"),
         ("gamma_hcoe_covid", "negative", "Hourly COE Phillips (post-COVID) < 0"),
-        ("rho_hcoe", "between_0_1", "Hourly COE persistence ∈ (0,1)"),
         ("phi_hcoe", "positive", "Hourly COE demand deflator > 0"),
         ("theta_hcoe", "positive", "Hourly COE trend expectations > 0"),
+        ("psi_hcoe", "positive", "Productivity → hourly wages > 0"),
         ("beta_is", "positive", "IS interest rate effect > 0"),
         ("rho_is", "between_0_1", "IS persistence ∈ (0,1)"),
         # Participation rate equation
@@ -478,31 +477,19 @@ def run_stage2(
     plot_labour_productivity(
         ulc_growth=ulc_growth,
         hcoe_growth=hcoe_growth,
-        filter_type="henderson",
-        model_name=MODEL_NAME,
-        show=show_plots,
-    )
-    plot_labour_productivity(
-        ulc_growth=ulc_growth,
-        hcoe_growth=hcoe_growth,
         filter_type="hp",
         model_name=MODEL_NAME,
         show=show_plots,
     )
+    # Get alpha from trace for productivity plots
+    alpha_capital = float(get_scalar_var("alpha_capital", trace).median())
+
     plot_mfp(
         ulc_growth=ulc_growth,
         hcoe_growth=hcoe_growth,
         capital_growth=capital_growth,
         hours_growth=hours_growth,
-        filter_type="henderson",
-        model_name=MODEL_NAME,
-        show=show_plots,
-    )
-    plot_mfp(
-        ulc_growth=ulc_growth,
-        hcoe_growth=hcoe_growth,
-        capital_growth=capital_growth,
-        hours_growth=hours_growth,
+        alpha=alpha_capital,
         filter_type="hp",
         model_name=MODEL_NAME,
         show=show_plots,
@@ -512,15 +499,7 @@ def run_stage2(
         hcoe_growth=hcoe_growth,
         capital_growth=capital_growth,
         hours_growth=hours_growth,
-        filter_type="henderson",
-        model_name=MODEL_NAME,
-        show=show_plots,
-    )
-    plot_productivity_comparison(
-        ulc_growth=ulc_growth,
-        hcoe_growth=hcoe_growth,
-        capital_growth=capital_growth,
-        hours_growth=hours_growth,
+        alpha=alpha_capital,
         filter_type="hp",
         model_name=MODEL_NAME,
         show=show_plots,

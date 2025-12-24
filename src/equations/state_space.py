@@ -1,4 +1,4 @@
-"""State-space equations for latent variables."""
+"""NAIRU state equation (Gaussian random walk)."""
 
 from typing import Any
 

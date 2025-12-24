@@ -187,9 +187,11 @@ def hourly_coe_equation(
     - Change in unemployment (speed limit effect)
     - Demand deflator (price→wage channel)
     - Trend inflation expectations (anchoring)
+    - MFP growth (productivity → wage channel)
 
-    This provides a cleaner wage signal than ULC by removing productivity
-    volatility. Hourly COE = what firms pay per hour of labour.
+    Unlike ULC (which divides by output), HCOE divides by hours, so productivity
+    gains should flow through to higher hourly pay. The MFP term captures this:
+    higher productivity growth → higher hourly compensation (positive coefficient).
 
     Note: Persistence term (rho_hcoe) was tested but posterior not different from zero;
     removed for parsimony.
@@ -206,6 +208,7 @@ def hourly_coe_equation(
             - "ΔU_1_over_U": Lagged unemployment change over unemployment level
             - "Δ4dfd": DFD deflator growth (year-ended)
             - "π_anchor": Trend inflation expectations
+            - "mfp_growth": MFP trend growth (HP-filtered)
             - "regime_pre_gfc", "regime_gfc", "regime_covid": Regime indicators
         model: PyMC model context
         nairu: NAIRU latent variable
@@ -228,6 +231,7 @@ def hourly_coe_equation(
             "lambda_hcoe": {"mu": -4.0, "sigma": 2.0},   # UE rate change (speed limit)
             "phi_hcoe": {"mu": 0.1, "sigma": 0.1},       # demand deflator (price→wage)
             "theta_hcoe": {"mu": 0.1, "sigma": 0.1, "lower": 0},  # trend expectations (positive by theory)
+            "psi_hcoe": {"mu": 1.0, "sigma": 0.5, "lower": 0},    # MFP → wages (positive: productivity gains shared)
             "epsilon_hcoe": {"sigma": 0.75},            # error term (tighter than ULC)
         }
         mc = set_model_coefficients(model, settings, constant)
@@ -253,6 +257,7 @@ def hourly_coe_equation(
                 + mc["lambda_hcoe"] * inputs["ΔU_1_over_U"]    # speed limit
                 + mc["phi_hcoe"] * inputs["Δ4dfd"]             # demand deflator
                 + mc["theta_hcoe"] * pi_anchor_quarterly       # trend expectations
+                + mc["psi_hcoe"] * inputs["mfp_growth"]        # productivity → wages
             ),
             sigma=mc["epsilon_hcoe"],
             observed=inputs["Δhcoe"],

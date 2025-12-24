@@ -26,6 +26,10 @@ def okun_law_equation(
         - output_gap = (log_gdp - potential_output)
         - β is negative: when Y > Y* (positive gap), unemployment falls
 
+    Note: Regime-switching was tested (pre-GFC, post-GFC, post-COVID) but posteriors
+    showed no meaningful difference - all regime medians fell within the other regimes'
+    90% HDI. A single time-invariant coefficient is used for parsimony.
+
     Interpretation of β (beta_okun):
         - Expected to be negative
         - Typical values: β ≈ -0.1 to -0.3 for quarterly data
@@ -49,7 +53,7 @@ def okun_law_equation(
 
     with model:
         settings = {
-            "beta_okun": {"mu": -0.2, "sigma": 0.15},
+            "beta_okun": {"mu": -0.2, "sigma": 0.1, "upper": 0},
             "epsilon_okun": {"sigma": 0.5},
         }
         mc = set_model_coefficients(model, settings, constant)

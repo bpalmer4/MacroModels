@@ -842,12 +842,14 @@ EQ_HCOE_DEMAND_SUPPLY = (
     r"$\Delta hcoe_t = \alpha"
     r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
     r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
+    r" + \underbrace{\psi \cdot mfp_t}_{\mathrm{green}}"
     r" + \theta\pi^e_t + \varepsilon_t$"
 )
 EQ_HCOE_UNSCALED = (
     r"$\Delta hcoe_t = \underbrace{\alpha + \theta\pi^e_t}_{\mathrm{grey}}"
     r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
     r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
+    r" + \underbrace{\psi \cdot mfp_t}_{\mathrm{green}}"
     r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
 )
 
@@ -864,6 +866,7 @@ class HCOEInflationDecomposition:
     anchor: pd.Series          # α + θ×π_anchor
     demand: pd.Series          # γ×u_gap + λ×ΔU/U
     price_passthrough: pd.Series  # φ×Δ4dfd
+    productivity: pd.Series    # ψ×mfp_growth
     residual: pd.Series
     fitted: pd.Series
     index: pd.PeriodIndex
@@ -876,6 +879,7 @@ class HCOEInflationDecomposition:
                 "anchor": self.anchor,
                 "demand": self.demand,
                 "price_passthrough": self.price_passthrough,
+                "productivity": self.productivity,
                 "residual": self.residual,
                 "fitted": self.fitted,
             },
@@ -888,12 +892,13 @@ def decompose_hcoe_inflation(
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
 ) -> HCOEInflationDecomposition:
-    """Decompose hourly COE growth into demand and price components."""
+    """Decompose hourly COE growth into demand, price, and productivity components."""
     # Extract parameters (posterior median)
     alpha_hcoe = get_scalar_var("alpha_hcoe", trace).median()
     lambda_hcoe = get_scalar_var("lambda_hcoe", trace).median()
     phi_hcoe = get_scalar_var("phi_hcoe", trace).median()
     theta_hcoe = get_scalar_var("theta_hcoe", trace).median()
+    psi_hcoe = get_scalar_var("psi_hcoe", trace).median()
 
     # Regime-specific hourly COE Phillips curve slopes
     gamma_hcoe_pre_gfc = get_scalar_var("gamma_hcoe_pre_gfc", trace).median()
@@ -914,13 +919,15 @@ def decompose_hcoe_inflation(
     hcoe_observed = pd.Series(obs["Δhcoe"], index=obs_index)
     delta_u_over_u = pd.Series(obs["ΔU_1_over_U"], index=obs_index)
     dfd_growth = pd.Series(obs["Δ4dfd"], index=obs_index)
+    mfp_growth = pd.Series(obs["mfp_growth"], index=obs_index)
 
     # Compute components
     anchor = alpha_hcoe + theta_hcoe * quarterly(pi_anchor)
     u_gap = (U - nairu) / U
     demand = gamma_hcoe * u_gap + lambda_hcoe * delta_u_over_u
     price_passthrough = phi_hcoe * dfd_growth
-    fitted = anchor + demand + price_passthrough
+    productivity = psi_hcoe * mfp_growth
+    fitted = anchor + demand + price_passthrough + productivity
     residual = hcoe_observed - fitted
 
     return HCOEInflationDecomposition(
@@ -928,6 +935,7 @@ def decompose_hcoe_inflation(
         anchor=anchor,
         demand=demand,
         price_passthrough=price_passthrough,
+        productivity=productivity,
         residual=residual,
         fitted=fitted,
         index=obs_index,
@@ -950,15 +958,19 @@ def plot_hcoe_drivers(
     df = annualize(df)
 
     bar_data = pd.DataFrame(
-        {"Demand (labor market)": df["demand"], "Price pass-through": df["price_passthrough"]},
+        {
+            "Demand (labor market)": df["demand"],
+            "Price pass-through": df["price_passthrough"],
+            "Productivity": df["productivity"],
+        },
         index=df.index,
     )
 
     _plot_decomposition_bars(
         bar_data=bar_data,
         observed=df["observed"],
-        colors=["orange", "darkblue"],
-        title="Wage-HCOE Inflation Decomposition: Demand vs Price Pressure",
+        colors=["orange", "darkblue", "limegreen"],
+        title="Wage-HCOE Inflation Decomposition: Demand, Price & Productivity",
         equation=EQ_HCOE_DEMAND_SUPPLY,
         observed_color="darkorange",
         observed_label="Observed Hourly COE Growth (quarterly annualised)",
@@ -992,6 +1004,7 @@ def plot_hcoe_drivers_unscaled(
             "Anchor (intercept + expectations)": df["anchor"],
             "Demand (labor market)": df["demand"],
             "Price pass-through": df["price_passthrough"],
+            "Productivity": df["productivity"],
             "Noise": df["residual"],
         },
         index=df.index,
@@ -1000,7 +1013,7 @@ def plot_hcoe_drivers_unscaled(
     _plot_decomposition_bars(
         bar_data=bar_data,
         observed=df["observed"],
-        colors=["#cccccc", "orange", "darkblue", "lightblue"],
+        colors=["#cccccc", "orange", "darkblue", "limegreen", "lightblue"],
         title="Wage-HCOE Inflation Decomposition: Components (Unscaled)",
         equation=EQ_HCOE_UNSCALED,
         observed_color="darkorange",

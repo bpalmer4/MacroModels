@@ -27,6 +27,11 @@ from src.data.labour_force import (
     get_unemployment_rate_qrtly,
 )
 from src.data.mfp import get_mfp_annual
+from src.data.productivity import (
+    get_labour_productivity_growth,
+    get_mfp_growth,
+    get_mfp_trend_floored,
+)
 from src.data.energy import (
     get_coal_change_annual,
     get_coal_price_aud_qrtly,
@@ -89,8 +94,11 @@ __all__ = [
     # Capital
     "get_capital_growth_qrtly",
     "get_capital_stock_qrtly",
-    # MFP
+    # MFP and productivity (derived)
     "get_mfp_annual",
+    "get_labour_productivity_growth",
+    "get_mfp_growth",
+    "get_mfp_trend_floored",
     # Inflation
     "get_inflation_annual",
     "get_inflation_qrtly",

@@ -1,4 +1,7 @@
-"""Productivity time series plots for derived MFP and Labour Productivity."""
+"""Productivity time series plots for derived MFP and Labour Productivity.
+
+Uses productivity measures from the data layer (src/data/productivity.py).
+"""
 
 from typing import Any
 
@@ -9,24 +12,78 @@ import pandas as pd
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
 from src.analysis.rate_conversion import annualize
-from src.data import hma
+from src.data import get_labour_productivity_growth, get_mfp_growth, hma
 from src.equations import REGIME_COVID_START, REGIME_GFC_START
 
 HMA_TERM = 41  # Henderson MA smoothing term
 HP_LAMBDA = 1600  # Hodrick-Prescott smoothing parameter for quarterly data
 
 
+def _apply_smoothing(
+    series: pd.Series,
+    filter_type: str,
+) -> tuple[pd.Series, str]:
+    """Apply HP or Henderson smoothing to a series.
+
+    Args:
+        series: Annual growth rate series
+        filter_type: "henderson" or "hp"
+
+    Returns:
+        Tuple of (smoothed series, filter label for chart)
+    """
+    clean = series.dropna()
+    if filter_type == "hp":
+        _, trend = hpfilter(clean.values, lamb=HP_LAMBDA)
+        smoothed = pd.Series(trend, index=clean.index)
+        label = f"HP filter (λ={HP_LAMBDA})"
+    else:
+        smoothed = hma(clean, HMA_TERM).reindex(series.index)
+        label = f"Henderson {HMA_TERM}-term MA"
+    return smoothed, label
+
+
+def _add_period_averages(ax, series: pd.Series) -> None:
+    """Add period average annotation box to axes."""
+    pre_gfc = series.index < REGIME_GFC_START
+    post_gfc = (series.index >= REGIME_GFC_START) & (series.index < REGIME_COVID_START)
+    post_covid = series.index >= REGIME_COVID_START
+
+    avg_text = "Period averages:\n"
+    if pre_gfc.any() and not np.isnan(series[pre_gfc].mean()):
+        avg_text += f"  Pre-GFC: {series[pre_gfc].mean():.1f}%\n"
+    if post_gfc.any() and not np.isnan(series[post_gfc].mean()):
+        avg_text += f"  Post-GFC: {series[post_gfc].mean():.1f}%\n"
+    if post_covid.any() and not np.isnan(series[post_covid].mean()):
+        avg_text += f"  Post-COVID: {series[post_covid].mean():.1f}%"
+
+    ax.annotate(
+        avg_text,
+        xy=(0.02, 0.02), xycoords="axes fraction",
+        ha="left", va="bottom", fontsize=9,
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.8}
+    )
+
+
+def _add_regime_lines(ax) -> None:
+    """Add regime boundary vertical lines to axes."""
+    ax.axvline(x=REGIME_GFC_START.to_timestamp(), color="darkred", linestyle="--",
+               linewidth=1, alpha=0.5, label=f"Regime change: GFC ({REGIME_GFC_START})")
+    ax.axvline(x=REGIME_COVID_START.to_timestamp(), color="darkgreen", linestyle="-.",
+               linewidth=1, alpha=0.5, label=f"Regime change: COVID ({REGIME_COVID_START})")
+
+
 def plot_labour_productivity(
     ulc_growth: pd.Series,
     hcoe_growth: pd.Series,
-    filter_type: str = "henderson",
+    filter_type: str = "hp",
     model_name: str = "Model",
     show: bool = False,
-    **kwargs: Any,  # noqa: ANN401
+    **kwargs: Any,
 ) -> None:
     """Plot derived Labour Productivity time series.
 
-    Labour Productivity = Δhcoe - Δulc (from wage data identity)
+    Uses data layer: LP = Δhcoe - Δulc
 
     Args:
         ulc_growth: Quarterly ULC growth rate
@@ -36,21 +93,12 @@ def plot_labour_productivity(
         show: Whether to display the plot
         **kwargs: Additional arguments passed to finalise_plot
     """
-    # Derive labour productivity
-    labour_productivity = hcoe_growth - ulc_growth
-
-    # Annualize for plotting (convert quarterly to annual rates)
-    lp_annual = annualize(labour_productivity)
+    # Get LP from data layer
+    lp = get_labour_productivity_growth(ulc_growth, hcoe_growth).data
+    lp_annual = annualize(lp)
 
     # Apply smoothing
-    lp_clean = lp_annual.dropna()
-    if filter_type == "hp":
-        _, lp_trend = hpfilter(lp_clean.values, lamb=HP_LAMBDA)
-        lp_smoothed = pd.Series(lp_trend, index=lp_clean.index)
-        filter_label = f"HP filter (λ={HP_LAMBDA})"
-    else:
-        lp_smoothed = hma(lp_clean, HMA_TERM).reindex(lp_annual.index)
-        filter_label = f"Henderson {HMA_TERM}-term MA"
+    lp_smoothed, filter_label = _apply_smoothing(lp_annual, filter_type)
 
     # Create figure
     _, ax = plt.subplots(figsize=(10, 6))
@@ -62,31 +110,8 @@ def plot_labour_productivity(
             color="steelblue", linewidth=2, label=filter_label)
     ax.axhline(0, color="black", linewidth=0.5)
 
-    # Calculate period averages for annotation (from raw data)
-    pre_gfc = lp_annual.index < REGIME_GFC_START
-    post_gfc = (lp_annual.index >= REGIME_GFC_START) & (lp_annual.index < REGIME_COVID_START)
-    post_covid = lp_annual.index >= REGIME_COVID_START
-
-    avg_text = "Period averages:\n"
-    if pre_gfc.any() and not np.isnan(lp_annual[pre_gfc].mean()):
-        avg_text += f"  Pre-GFC: {lp_annual[pre_gfc].mean():.1f}%\n"
-    if post_gfc.any() and not np.isnan(lp_annual[post_gfc].mean()):
-        avg_text += f"  Post-GFC: {lp_annual[post_gfc].mean():.1f}%\n"
-    if post_covid.any() and not np.isnan(lp_annual[post_covid].mean()):
-        avg_text += f"  Post-COVID: {lp_annual[post_covid].mean():.1f}%"
-
-    ax.annotate(
-        avg_text,
-        xy=(0.02, 0.02), xycoords="axes fraction",
-        ha="left", va="bottom", fontsize=9,
-        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.8}
-    )
-
-    # Add regime boundary lines
-    ax.axvline(x=REGIME_GFC_START.to_timestamp(), color="darkred", linestyle="--", linewidth=1, alpha=0.5,
-               label=f"Regime change: GFC ({REGIME_GFC_START})")
-    ax.axvline(x=REGIME_COVID_START.to_timestamp(), color="darkgreen", linestyle="-.", linewidth=1, alpha=0.5,
-               label=f"Regime change: COVID ({REGIME_COVID_START})")
+    _add_period_averages(ax, lp_annual)
+    _add_regime_lines(ax)
 
     defaults = {
         "title": f"Labour Productivity Growth (Derived) - {filter_label}",
@@ -107,48 +132,33 @@ def plot_mfp(
     hcoe_growth: pd.Series,
     capital_growth: pd.Series,
     hours_growth: pd.Series,
-    alpha: float = 0.25,
-    filter_type: str = "henderson",
+    alpha: float,
+    filter_type: str = "hp",
     model_name: str = "Model",
     show: bool = False,
-    **kwargs: Any,  # noqa: ANN401
+    **kwargs: Any,
 ) -> None:
     """Plot derived MFP time series.
 
-    MFP = Labour Productivity - α × Capital Deepening
-    Capital Deepening = g_K - g_L
-
-    Note: ABS MFP estimates segment labour quality, so direct comparison
-    is limited. This derivation captures raw productivity growth.
+    Uses data layer: MFP = LP - α × (g_K - g_L)
 
     Args:
         ulc_growth: Quarterly ULC growth rate
         hcoe_growth: Quarterly hourly COE growth rate
         capital_growth: Quarterly capital stock growth rate
         hours_growth: Quarterly hours worked growth rate
-        alpha: Capital share of income (default 0.25)
+        alpha: Capital share of income (from model or fixed)
         filter_type: "henderson" or "hp" for Hodrick-Prescott
         model_name: Name for chart footer
         show: Whether to display the plot
         **kwargs: Additional arguments passed to finalise_plot
     """
-    # Derive productivity measures
-    labour_productivity = hcoe_growth - ulc_growth
-    capital_deepening = capital_growth - hours_growth
-    mfp = labour_productivity - alpha * capital_deepening
-
-    # Annualize for plotting
+    # Get MFP from data layer
+    mfp = get_mfp_growth(ulc_growth, hcoe_growth, capital_growth, hours_growth, alpha).data
     mfp_annual = annualize(mfp)
 
     # Apply smoothing
-    mfp_clean = mfp_annual.dropna()
-    if filter_type == "hp":
-        _, mfp_trend = hpfilter(mfp_clean.values, lamb=HP_LAMBDA)
-        mfp_smoothed = pd.Series(mfp_trend, index=mfp_clean.index)
-        filter_label = f"HP filter (λ={HP_LAMBDA})"
-    else:
-        mfp_smoothed = hma(mfp_clean, HMA_TERM).reindex(mfp_annual.index)
-        filter_label = f"Henderson {HMA_TERM}-term MA"
+    mfp_smoothed, filter_label = _apply_smoothing(mfp_annual, filter_type)
 
     # Create figure
     _, ax = plt.subplots(figsize=(10, 6))
@@ -160,37 +170,14 @@ def plot_mfp(
             color="darkorange", linewidth=2, label=filter_label)
     ax.axhline(0, color="black", linewidth=0.5)
 
-    # Calculate period averages for annotation (from raw data)
-    pre_gfc = mfp_annual.index < REGIME_GFC_START
-    post_gfc = (mfp_annual.index >= REGIME_GFC_START) & (mfp_annual.index < REGIME_COVID_START)
-    post_covid = mfp_annual.index >= REGIME_COVID_START
-
-    avg_text = "Period averages:\n"
-    if pre_gfc.any() and not np.isnan(mfp_annual[pre_gfc].mean()):
-        avg_text += f"  Pre-GFC: {mfp_annual[pre_gfc].mean():.1f}%\n"
-    if post_gfc.any() and not np.isnan(mfp_annual[post_gfc].mean()):
-        avg_text += f"  Post-GFC: {mfp_annual[post_gfc].mean():.1f}%\n"
-    if post_covid.any() and not np.isnan(mfp_annual[post_covid].mean()):
-        avg_text += f"  Post-COVID: {mfp_annual[post_covid].mean():.1f}%"
-
-    ax.annotate(
-        avg_text,
-        xy=(0.02, 0.02), xycoords="axes fraction",
-        ha="left", va="bottom", fontsize=9,
-        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.8}
-    )
-
-    # Add regime boundary lines
-    ax.axvline(x=REGIME_GFC_START.to_timestamp(), color="darkred", linestyle="--", linewidth=1, alpha=0.5,
-               label=f"Regime change: GFC ({REGIME_GFC_START})")
-    ax.axvline(x=REGIME_COVID_START.to_timestamp(), color="darkgreen", linestyle="-.", linewidth=1, alpha=0.5,
-               label=f"Regime change: COVID ({REGIME_COVID_START})")
+    _add_period_averages(ax, mfp_annual)
+    _add_regime_lines(ax)
 
     defaults = {
         "title": f"Multi-Factor Productivity Growth (Derived) - {filter_label}",
         "ylabel": "Annual growth (%)",
         "legend": {"loc": "upper right", "fontsize": "small"},
-        "lfooter": f"MFP = LP - α×(g_K - g_L). α = {alpha}. {filter_label}.",
+        "lfooter": f"MFP = LP - α×(g_K - g_L). α = {alpha:.2f}. {filter_label}.",
         "rfooter": model_name,
     }
     for key in list(defaults.keys()):
@@ -205,48 +192,38 @@ def plot_productivity_comparison(
     hcoe_growth: pd.Series,
     capital_growth: pd.Series,
     hours_growth: pd.Series,
-    alpha: float = 0.25,
-    filter_type: str = "henderson",
+    alpha: float,
+    filter_type: str = "hp",
     model_name: str = "Model",
     show: bool = False,
-    **kwargs: Any,  # noqa: ANN401
+    **kwargs: Any,
 ) -> None:
     """Plot Labour Productivity and MFP together for comparison.
+
+    Uses data layer for both LP and MFP derivation.
 
     Args:
         ulc_growth: Quarterly ULC growth rate
         hcoe_growth: Quarterly hourly COE growth rate
         capital_growth: Quarterly capital stock growth rate
         hours_growth: Quarterly hours worked growth rate
-        alpha: Capital share of income (default 0.25)
+        alpha: Capital share of income (from model or fixed)
         filter_type: "henderson" or "hp" for Hodrick-Prescott
         model_name: Name for chart footer
         show: Whether to display the plot
         **kwargs: Additional arguments passed to finalise_plot
     """
-    # Derive productivity measures
-    labour_productivity = hcoe_growth - ulc_growth
-    capital_deepening = capital_growth - hours_growth
-    mfp = labour_productivity - alpha * capital_deepening
+    # Get productivity from data layer
+    lp = get_labour_productivity_growth(ulc_growth, hcoe_growth).data
+    mfp = get_mfp_growth(ulc_growth, hcoe_growth, capital_growth, hours_growth, alpha).data
 
     # Annualize
-    lp_annual = annualize(labour_productivity)
+    lp_annual = annualize(lp)
     mfp_annual = annualize(mfp)
 
     # Apply smoothing
-    lp_clean = lp_annual.dropna()
-    mfp_clean = mfp_annual.dropna()
-
-    if filter_type == "hp":
-        _, lp_trend = hpfilter(lp_clean.values, lamb=HP_LAMBDA)
-        _, mfp_trend = hpfilter(mfp_clean.values, lamb=HP_LAMBDA)
-        lp_smoothed = pd.Series(lp_trend, index=lp_clean.index)
-        mfp_smoothed = pd.Series(mfp_trend, index=mfp_clean.index)
-        filter_label = f"HP filter (λ={HP_LAMBDA})"
-    else:
-        lp_smoothed = hma(lp_clean, HMA_TERM).reindex(lp_annual.index)
-        mfp_smoothed = hma(mfp_clean, HMA_TERM).reindex(mfp_annual.index)
-        filter_label = f"Henderson {HMA_TERM}-term MA"
+    lp_smoothed, filter_label = _apply_smoothing(lp_annual, filter_type)
+    mfp_smoothed, _ = _apply_smoothing(mfp_annual, filter_type)
 
     # Create figure
     _, ax = plt.subplots(figsize=(10, 6))
@@ -258,17 +235,13 @@ def plot_productivity_comparison(
             color="darkorange", linewidth=2, label="MFP (Solow Residual)")
     ax.axhline(0, color="black", linewidth=0.5)
 
-    # Add regime boundary lines
-    ax.axvline(x=REGIME_GFC_START.to_timestamp(), color="darkred", linestyle="--", linewidth=1, alpha=0.5,
-               label=f"Regime change: GFC ({REGIME_GFC_START})")
-    ax.axvline(x=REGIME_COVID_START.to_timestamp(), color="darkgreen", linestyle="-.", linewidth=1, alpha=0.5,
-               label=f"Regime change: COVID ({REGIME_COVID_START})")
+    _add_regime_lines(ax)
 
     defaults = {
         "title": f"Productivity Growth Comparison (Derived) - {filter_label}",
         "ylabel": "Annual growth (%)",
         "legend": {"loc": "upper right", "fontsize": "small"},
-        "lfooter": f"LP = Δhcoe - Δulc; MFP = LP - α×(g_K - g_L). α = {alpha}. {filter_label}.",
+        "lfooter": f"LP = Δhcoe - Δulc; MFP = LP - α×(g_K - g_L). α = {alpha:.2f}. {filter_label}.",
         "rfooter": model_name,
     }
     for key in list(defaults.keys()):
