@@ -1,5 +1,7 @@
 """Taylor rule and equilibrium rate plotting functions."""
 
+from typing import TypeVar
+
 import mgplot as mg
 import numpy as np
 import pandas as pd
@@ -12,6 +14,32 @@ from src.data.rba_loader import PI_TARGET
 # Plotting constants
 START = pd.Period("1985Q1", freq="Q")
 RFOOTER = "Joint NAIRU + Output Gap Model"
+
+# Type variable for Series or DataFrame
+PandasT = TypeVar("PandasT", pd.Series, pd.DataFrame)
+
+
+def _quarterly_to_monthly(data: PandasT) -> PandasT:
+    """Convert quarterly PeriodIndex data to monthly with interpolation.
+
+    Args:
+        data: Series or DataFrame with quarterly PeriodIndex
+
+    Returns:
+        Data with monthly PeriodIndex, linearly interpolated (limit=2)
+    """
+    # Convert Q periods to end-of-quarter months
+    monthly_idx = data.index.to_timestamp(how="end").to_period("M")
+
+    # Create full monthly range
+    full_monthly = pd.period_range(start=monthly_idx.min(), end=monthly_idx.max(), freq="M")
+
+    # Reindex and interpolate
+    result = data.copy()
+    result.index = monthly_idx
+    result = result.reindex(full_monthly).interpolate(limit=2)
+
+    return result
 
 
 def plot_taylor_rule(
@@ -72,9 +100,7 @@ def plot_taylor_rule(
     ).dropna()
 
     # Convert to monthly for cash rate alignment
-    monthly_idx = taylor.index.to_timestamp(how="end").to_period("M")
-    taylor_monthly = taylor.copy()
-    taylor_monthly.index = monthly_idx
+    taylor_monthly = _quarterly_to_monthly(taylor)
 
     # Plot
     ax = plot_posterior_timeseries(
@@ -133,7 +159,7 @@ def plot_equilibrium_rates(
     neutral.name = "Nominal Neutral Rate"
 
     # Convert to monthly
-    neutral.index = neutral.index.to_timestamp(how="end").to_period("M")
+    neutral = _quarterly_to_monthly(neutral)
 
     # Plot
     cash_rate_monthly.name = "RBA Cash Rate"

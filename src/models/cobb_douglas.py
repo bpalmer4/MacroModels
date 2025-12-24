@@ -26,17 +26,18 @@ import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
 import pandas as pd
-import readabs as ra
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
 from src.analysis.rate_conversion import annualize
-from src.data.abs_loader import get_abs_data
-from src.data.gdp import get_gdp
-from src.data.series_specs import (
-    CAPITAL_STOCK,
-    CPI_TRIMMED_MEAN,
-    HOURS_WORKED,
+from src.data import (
+    get_capital_stock_qrtly,
+    get_hourly_coe_growth_qrtly,
+    get_hours_worked_qrtly,
+    get_inflation_annual,
+    get_mfp_growth,
+    get_ulc_growth_qrtly,
 )
+from src.data.gdp import get_gdp
 
 # --- Constants ---
 
@@ -83,22 +84,16 @@ def load_data(
         CobbDouglasData with aligned series
 
     """
-    # Fetch data (raw frequencies from ABS)
-    gdp_result = get_gdp(gdp_type="CVM", seasonal="SA")
-    abs_data = get_abs_data({
-        "Capital": CAPITAL_STOCK,
-        "Hours": HOURS_WORKED,
-    })
+    # Fetch data using dedicated loaders (all quarterly)
+    gdp = get_gdp(gdp_type="CVM", seasonal="SA").data
+    capital = get_capital_stock_qrtly().data
+    hours = get_hours_worked_qrtly().data
 
-    # GDP and Capital are quarterly, Hours is monthly - convert to quarterly
-    hours_monthly = abs_data["Hours"].data
-    hours_quarterly = ra.monthly_to_qtly(hours_monthly, q_ending="DEC")
-
-    # Combine into DataFrame (all quarterly now)
+    # Combine into DataFrame
     df = pd.DataFrame({
-        "GDP": gdp_result.data,
-        "Capital": abs_data["Capital"].data,
-        "Hours": hours_quarterly,
+        "GDP": gdp,
+        "Capital": capital,
+        "Hours": hours,
     })
 
     # Apply sample period
@@ -125,11 +120,7 @@ def load_inflation_data() -> pd.Series:
         Annual trimmed mean inflation (year-over-year growth)
 
     """
-    inflation = get_abs_data({
-        "annual": CPI_TRIMMED_MEAN,  # seek_yr_growth=True gives annual growth
-    })
-
-    return inflation["annual"].data
+    return get_inflation_annual().data
 
 
 # --- Growth Accounting ---
@@ -461,14 +452,11 @@ class DecompositionResult:
             "MFP": self.mfp["MFP Trend"].reindex(self.growth.index),
         })
 
-        # Convert to calendar years
-        annual.index = annual.index.to_timestamp()
+        # Sum to calendar years
         annual_sum = annual.groupby(annual.index.year).sum()
 
         # Also get actual GDP growth
-        gdp = self.growth["g_GDP"].copy()
-        gdp.index = gdp.index.to_timestamp()
-        gdp_annual = gdp.groupby(gdp.index.year).sum()
+        gdp_annual = self.growth["g_GDP"].groupby(self.growth["g_GDP"].index.year).sum()
 
         results = []
         for decade_start in range(1990, 2030, 10):
@@ -785,16 +773,17 @@ def plot_growth_decomposition(result: DecompositionResult, show: bool = True) ->
     })
 
     # Group by year and sum
-    annual.index = annual.index.to_timestamp()
     annual_sum = annual.groupby(annual.index.year).sum()
     annual_sum = annual_sum.loc[annual_sum.index >= 1986]  # Full years only
     annual_sum = annual_sum.loc[annual_sum.index <= annual_sum.index[-1] - 1]  # Drop incomplete
 
+    # Convert to annual PeriodIndex for mgplot
+    annual_sum.index = pd.PeriodIndex([pd.Period(y, freq="Y") for y in annual_sum.index])
+
     # Get actual GDP growth for line
-    gdp_annual = result.growth["g_GDP"].copy()
-    gdp_annual.index = gdp_annual.index.to_timestamp()
-    gdp_annual = gdp_annual.groupby(gdp_annual.index.year).sum()
-    gdp_annual = gdp_annual.loc[annual_sum.index]
+    gdp_annual = result.growth["g_GDP"].groupby(result.growth["g_GDP"].index.year).sum()
+    gdp_annual = gdp_annual.loc[gdp_annual.index.isin(annual_sum.index.year)]
+    gdp_annual.index = annual_sum.index
 
     # Use mgplot for stacked bar
     ax = mg.bar_plot(
@@ -804,11 +793,7 @@ def plot_growth_decomposition(result: DecompositionResult, show: bool = True) ->
     )
 
     # Add GDP growth line on top
-    gdp_line = pd.Series(
-        gdp_annual.values,
-        index=pd.PeriodIndex([pd.Period(y, freq="Y") for y in annual_sum.index]),
-        name="Actual GDP Growth",
-    )
+    gdp_line = pd.Series(gdp_annual.values, index=annual_sum.index, name="Actual GDP Growth")
     mg.line_plot(gdp_line, ax=ax, color="black", width=1.5, marker="o", markersize=4)
 
     mg.finalise_plot(
@@ -954,6 +939,63 @@ def plot_phillips_crosscheck(result: DecompositionResult, show: bool = True) -> 
     )
 
 
+def plot_mfp_comparison(result: DecompositionResult, show: bool = True) -> None:
+    """Compare MFP from Cobb-Douglas (GDP-based) vs wage-derived approach.
+
+    Cobb-Douglas: MFP = g_Y - α×g_K - (1-α)×g_L (traditional Solow residual)
+    Wage-derived: MFP = (Δhcoe - Δulc) - α×(g_K - g_L) (from wage identities)
+
+    The wage-derived approach exploits the identity ULC = HCOE / LP,
+    so labour productivity LP = Δhcoe - Δulc.
+    """
+    # Get wage data
+    ulc_growth = get_ulc_growth_qrtly().data
+    hcoe_growth = get_hourly_coe_growth_qrtly().data
+
+    # Capital and hours growth from the Cobb-Douglas result
+    capital_growth = result.growth["g_Capital"]
+    hours_growth = result.growth["g_Hours"]
+
+    # Wage-derived MFP
+    wage_mfp = get_mfp_growth(
+        ulc_growth, hcoe_growth, capital_growth, hours_growth, alpha=result.alpha
+    ).data
+
+    # Align to common index
+    common_idx = result.mfp["MFP Raw"].dropna().index.intersection(wage_mfp.dropna().index)
+    cd_mfp = result.mfp["MFP Raw"].loc[common_idx]
+    wage_mfp = wage_mfp.loc[common_idx]
+
+    # HP filter both for trend comparison
+    cd_trend, _ = apply_hp_filter(cd_mfp)
+    wage_trend, _ = apply_hp_filter(wage_mfp)
+
+    # Annualize for plotting
+    cd_annual = annualize(cd_trend)
+    wage_annual = annualize(wage_trend)
+
+    # Stats for footer
+    corr = cd_annual.corr(wage_annual)
+
+    # Plot comparison
+    comparison_data = pd.DataFrame({
+        "Cobb-Douglas (GDP-based)": cd_annual,
+        "Wage-derived (HCOE-ULC)": wage_annual,
+    })
+    mg.line_plot_finalise(
+        comparison_data,
+        title=f"MFP Growth Comparison: Cobb-Douglas vs Wage-Derived (α={result.alpha})",
+        ylabel="Annual Growth (% p.a.)",
+        y0=True,
+        width=2,
+        color=["blue", "darkorange"],
+        legend={"loc": "upper right", "fontsize": "small"},
+        lfooter=f"CD: g_Y − α×g_K − (1−α)×g_L. Wage: (Δhcoe − Δulc) − α×(g_K − g_L). Correlation: {corr:.3f}",
+        rfooter="ABS 5206, 6202",
+        show=show,
+    )
+
+
 def plot_all(result: DecompositionResult, show: bool = True) -> None:
     """Generate all standard plots."""
     plot_raw_data(result, show=show)
@@ -962,6 +1004,7 @@ def plot_all(result: DecompositionResult, show: bool = True) -> None:
     plot_growth_decomposition(result, show=show)
     plot_sensitivity(result, show=show)
     plot_phillips_crosscheck(result, show=show)
+    plot_mfp_comparison(result, show=show)
 
 
 # --- Summary Output ---

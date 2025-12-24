@@ -5,7 +5,6 @@ Uses productivity measures from the data layer (src/data/productivity.py).
 
 from typing import Any
 
-import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
 import pandas as pd
@@ -67,9 +66,9 @@ def _add_period_averages(ax, series: pd.Series) -> None:
 
 def _add_regime_lines(ax) -> None:
     """Add regime boundary vertical lines to axes."""
-    ax.axvline(x=REGIME_GFC_START.to_timestamp(), color="darkred", linestyle="--",
+    ax.axvline(x=REGIME_GFC_START.ordinal, color="darkred", linestyle="--",
                linewidth=1, alpha=0.5, label=f"Regime change: GFC ({REGIME_GFC_START})")
-    ax.axvline(x=REGIME_COVID_START.to_timestamp(), color="darkgreen", linestyle="-.",
+    ax.axvline(x=REGIME_COVID_START.ordinal, color="darkgreen", linestyle="-.",
                linewidth=1, alpha=0.5, label=f"Regime change: COVID ({REGIME_COVID_START})")
 
 
@@ -100,14 +99,19 @@ def plot_labour_productivity(
     # Apply smoothing
     lp_smoothed, filter_label = _apply_smoothing(lp_annual, filter_type)
 
-    # Create figure
-    _, ax = plt.subplots(figsize=(10, 6))
+    # Create DataFrame for plotting
+    plot_data = pd.DataFrame({
+        "Original": lp_annual,
+        filter_label: lp_smoothed,
+    })
 
-    # Plot original (faded) and smoothed
-    ax.plot(lp_annual.index.to_timestamp(), lp_annual.values,
-            color="steelblue", linewidth=0.8, alpha=0.4, label="Original")
-    ax.plot(lp_smoothed.index.to_timestamp(), lp_smoothed.values,
-            color="steelblue", linewidth=2, label=filter_label)
+    # Plot with mgplot
+    ax = mg.line_plot(
+        plot_data,
+        color=["steelblue", "steelblue"],
+        width=[0.8, 2],
+        alpha=[0.4, 1.0],
+    )
     ax.axhline(0, color="black", linewidth=0.5)
 
     _add_period_averages(ax, lp_annual)
@@ -160,14 +164,19 @@ def plot_mfp(
     # Apply smoothing
     mfp_smoothed, filter_label = _apply_smoothing(mfp_annual, filter_type)
 
-    # Create figure
-    _, ax = plt.subplots(figsize=(10, 6))
+    # Create DataFrame for plotting
+    plot_data = pd.DataFrame({
+        "Original": mfp_annual,
+        filter_label: mfp_smoothed,
+    })
 
-    # Plot original (faded) and smoothed
-    ax.plot(mfp_annual.index.to_timestamp(), mfp_annual.values,
-            color="darkorange", linewidth=0.8, alpha=0.4, label="Original")
-    ax.plot(mfp_smoothed.index.to_timestamp(), mfp_smoothed.values,
-            color="darkorange", linewidth=2, label=filter_label)
+    # Plot with mgplot
+    ax = mg.line_plot(
+        plot_data,
+        color=["darkorange", "darkorange"],
+        width=[0.8, 2],
+        alpha=[0.4, 1.0],
+    )
     ax.axhline(0, color="black", linewidth=0.5)
 
     _add_period_averages(ax, mfp_annual)
@@ -225,14 +234,18 @@ def plot_productivity_comparison(
     lp_smoothed, filter_label = _apply_smoothing(lp_annual, filter_type)
     mfp_smoothed, _ = _apply_smoothing(mfp_annual, filter_type)
 
-    # Create figure
-    _, ax = plt.subplots(figsize=(10, 6))
+    # Create DataFrame for plotting
+    plot_data = pd.DataFrame({
+        "Labour Productivity": lp_smoothed,
+        "MFP (Solow Residual)": mfp_smoothed,
+    })
 
-    # Plot both smoothed series
-    ax.plot(lp_smoothed.index.to_timestamp(), lp_smoothed.values,
-            color="steelblue", linewidth=2, label="Labour Productivity")
-    ax.plot(mfp_smoothed.index.to_timestamp(), mfp_smoothed.values,
-            color="darkorange", linewidth=2, label="MFP (Solow Residual)")
+    # Plot with mgplot
+    ax = mg.line_plot(
+        plot_data,
+        color=["steelblue", "darkorange"],
+        width=2,
+    )
     ax.axhline(0, color="black", linewidth=0.5)
 
     _add_regime_lines(ax)
