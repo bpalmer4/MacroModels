@@ -187,6 +187,18 @@ COMPENSATION_OF_EMPLOYEES = ReqsTuple(
     zip_file="",
 )
 
+# Domestic Final Demand implicit price deflator (quarterly, seasonally adjusted)
+DFD_DEFLATOR = ReqsTuple(
+    cat="5206.0",
+    table="5206005_Expenditure_Implicit_Price_Deflators",
+    did="Domestic final demand ;",
+    stype="SA",
+    unit="Index Numbers",
+    seek_yr_growth=False,
+    calc_growth=False,
+    zip_file="",
+)
+
 # --- Modellers Database (1364.0.15.003) ---
 # Note: These series cover total population including defence/non-civilian employment
 # Unemployment rate must be calculated: (labour_force - employed) / labour_force * 100
@@ -257,6 +269,19 @@ MFP_HOURS_WORKED = ReqsTuple(
     stype="O",
     unit="",
     seek_yr_growth=False,  # Already percentage changes
+    calc_growth=False,
+    zip_file="",
+)
+
+# --- Average Weekly Earnings (6302.0) ---
+
+AWE_FULL_TIME_ADULTS = ReqsTuple(
+    cat="6302.0",
+    table="6302001",
+    did="Earnings; Persons; Full Time; Adult; Ordinary time earnings ;",
+    stype="Trend",
+    unit="$",
+    seek_yr_growth=False,
     calc_growth=False,
     zip_file="",
 )

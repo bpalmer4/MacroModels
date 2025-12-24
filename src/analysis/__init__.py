@@ -15,15 +15,25 @@ from src.analysis.extraction import (
     is_scalar_var,
 )
 from src.analysis.inflation_decomposition import (
+    HCOEInflationDecomposition,
     InflationDecomposition,
+    WageInflationDecomposition,
+    decompose_hcoe_inflation,
     decompose_inflation,
+    decompose_wage_inflation,
     get_policy_diagnosis,
     inflation_policy_summary,
     plot_demand_contribution,
+    plot_hcoe_decomposition,
+    plot_hcoe_drivers,
+    plot_hcoe_drivers_unscaled,
     plot_inflation_decomposition,
     plot_inflation_drivers,
     plot_inflation_drivers_proportional,
     plot_supply_contribution,
+    plot_wage_decomposition,
+    plot_wage_drivers,
+    plot_wage_drivers_unscaled,
 )
 from src.analysis.observations_plot import plot_obs_grid
 from src.analysis.plot_nairu_output import (
@@ -33,6 +43,10 @@ from src.analysis.plot_nairu_output import (
 )
 from src.analysis.plot_nairu_rates import plot_equilibrium_rates, plot_taylor_rule
 from src.analysis.plot_nairu_unemployment import plot_nairu, plot_unemployment_gap
+from src.analysis.plot_phillips_curves import (
+    plot_phillips_curve_slope,
+    plot_phillips_curves,
+)
 from src.analysis.plot_posterior_timeseries import plot_posterior_timeseries
 from src.analysis.plot_posteriors_bar import plot_posteriors_bar
 from src.analysis.plot_posteriors_kde import plot_posteriors_kde
@@ -42,29 +56,41 @@ from src.analysis.residual_autocorrelation import residual_autocorrelation_analy
 __all__ = [
     "check_for_zero_coeffs",
     "check_model_diagnostics",
+    "decompose_hcoe_inflation",
     "decompose_inflation",
+    "decompose_wage_inflation",
     "get_policy_diagnosis",
     "get_scalar_var",
     "get_scalar_var_names",
     "get_vector_var",
+    "HCOEInflationDecomposition",
     "InflationDecomposition",
     "inflation_policy_summary",
+    "WageInflationDecomposition",
     "is_scalar_var",
     "plot_demand_contribution",
     "plot_equilibrium_rates",
     "plot_gdp_vs_potential",
+    "plot_hcoe_decomposition",
+    "plot_hcoe_drivers",
+    "plot_hcoe_drivers_unscaled",
     "plot_inflation_decomposition",
     "plot_inflation_drivers",
     "plot_inflation_drivers_proportional",
     "plot_nairu",
     "plot_obs_grid",
     "plot_output_gap",
+    "plot_phillips_curve_slope",
+    "plot_phillips_curves",
     "plot_posterior_timeseries",
     "plot_posteriors_bar",
     "plot_posteriors_kde",
     "plot_potential_growth",
     "plot_supply_contribution",
     "plot_taylor_rule",
+    "plot_wage_decomposition",
+    "plot_wage_drivers",
+    "plot_wage_drivers_unscaled",
     "plot_unemployment_gap",
     "posterior_predictive_checks",
     "residual_autocorrelation_analysis",

@@ -42,6 +42,10 @@ Fetches and prepares data from Australian statistical sources. All loaders retur
 - **`household.py`**: Household saving ratio
 - **`gscpi.py`**: NY Fed Global Supply Chain Pressure Index
 - **`tot.py`**: Terms of trade changes
+- **`awe.py`**: Average Weekly Earnings (semi-annual ABS 6302, interpolated to quarterly)
+- **`wpi.py`**: Wage Price Index growth (ABS 6345)
+- **`dfd_deflator.py`**: Domestic Final Demand implicit price deflator
+- **`hourly_coe.py`**: Hourly Compensation of Employees (CoE / hours worked)
 
 **Utilities:**
 - **`henderson.py`**: Henderson moving average for trend extraction (ABS method)
@@ -67,14 +71,20 @@ Reusable PyMC equation functions for Bayesian models. Each function adds distrib
 | Equation | Function | Description |
 |----------|----------|-------------|
 | NAIRU | `nairu_equation()` | Gaussian random walk for natural unemployment rate |
-| Potential Output | `potential_output_equation()` | Cobb-Douglas production function with time-varying MFP |
-| Phillips Curve | `price_inflation_equation()` | Anchor-augmented Phillips curve (inflation target transition) |
+| Potential Output | `potential_output_equation()` | Cobb-Douglas with AR(1) smoothing of potential growth |
+| Phillips Curve | `price_inflation_equation()` | Anchor-augmented Phillips curve with regime-switching slopes |
 | Wage Phillips | `wage_growth_equation()` | Wage growth response to unemployment gap |
+| Hourly COE | `hourly_coe_equation()` | Hourly compensation growth Phillips curve |
 | Okun's Law | `okun_law_equation()` | Links output gap to unemployment changes |
 | IS Curve | `is_equation()` | Output gap persistence with real interest rate effects |
 | Participation | `participation_equation()` | Discouraged worker effect on labour force participation |
 | Exchange Rate | `exchange_rate_equation()` | UIP-style TWI equation with interest rate differential |
 | Import Prices | `import_price_equation()` | Exchange rate pass-through to import prices |
+
+**Regime-Switching Phillips Curve**: The price inflation equation supports three regimes with different slopes:
+- Pre-GFC (up to 2007Q4): Moderate slope
+- Post-GFC (2008Q1 - 2020Q4): Flat slope
+- Post-COVID (2021Q1+): Steeper slope
 
 ```python
 from src.equations import nairu_equation, potential_output_equation, price_inflation_equation
@@ -100,6 +110,8 @@ Post-sampling utilities for Bayesian models:
 - **`plot_nairu_unemployment.py`**: NAIRU and unemployment gap plots
 - **`plot_nairu_output.py`**: Output gap, GDP vs potential, potential growth
 - **`plot_nairu_rates.py`**: Taylor rule and equilibrium rates
+- **`plot_phillips_curves.py`**: Non-linear convex Phillips curves (RBA specification)
+- **`plot_productivity.py`**: Labour productivity and MFP comparisons
 - **`observations_plot.py`**: Grid plot of model observables
 
 **Model validation:**
@@ -107,7 +119,11 @@ Post-sampling utilities for Bayesian models:
 - **`residual_autocorrelation.py`**: Residual autocorrelation analysis
 
 **Inflation decomposition:**
-- **`inflation_decomposition.py`**: Decomposes inflation into demand (unemployment gap) and supply (import prices, GSCPI) components. Includes policy diagnosis.
+- **`inflation_decomposition.py`**: Decomposes inflation into demand and supply components
+  - `InflationDecomposition`: Price inflation (demand: unemployment gap; supply: import prices, GSCPI)
+  - `WageInflationDecomposition`: Wage growth decomposition
+  - `HCOEInflationDecomposition`: Hourly compensation growth decomposition
+  - `get_policy_diagnosis()`, `inflation_policy_summary()`: Policy diagnosis functions
 
 **Utilities:**
 - **`rate_conversion.py`**: Compound conversion between quarterly and annual rates
@@ -129,11 +145,9 @@ decomp = decompose_inflation(trace, obs, obs_index)
 
 Runnable model scripts that orchestrate data loading, model building, sampling/computation, and output:
 
-- **`nairu_output_gap.py`**: Full Bayesian estimation pipeline
-  - `build_observations()`: Load and align all data
-  - `build_model()`: Assemble PyMC model from equations
-  - `run_model()`: End-to-end estimation
-  - `NAIRUResults`: Container with posteriors and computed series
+- **`nairu_output_gap.py`**: Unified interface (backwards-compatible wrapper for two-stage pipeline)
+- **`nairu_output_gap_stage1.py`**: Stage 1 - Data loading → model building → MCMC sampling → save results
+- **`nairu_output_gap_stage2.py`**: Stage 2 - Load saved results → diagnostics → generate all plots
 
 - **`cobb_douglas.py`**: Deterministic growth accounting
   - `run_decomposition()`: Full decomposition pipeline
@@ -144,10 +158,20 @@ Runnable model scripts that orchestrate data loading, model building, sampling/c
   - `sample_model()`: Run PyMC sampling
   - `set_model_coefficients()`: Create priors from settings dict
 
+**Two-Stage Pipeline**: Separates expensive MCMC sampling (~30 mins) from fast analysis (~2 mins). Results are persisted as pickle (observations) + NetCDF (trace) in `model_outputs/`.
+
 ```bash
-# Run from command line
-python -m src.models.nairu_output_gap -v
-python -m src.models.cobb_douglas -v
+# Run sampling (Stage 1) - computationally intensive
+uv run python -m src.models.nairu_output_gap_stage1 -v
+
+# Run analysis (Stage 2) - fast, can re-run without re-sampling
+uv run python -m src.models.nairu_output_gap_stage2 -v
+
+# Or run both stages together
+uv run python -m src.models.nairu_output_gap -v
+
+# Deterministic growth accounting
+uv run python -m src.models.cobb_douglas -v
 ```
 
 Charts are saved to `charts/<model-name>/`.
@@ -167,6 +191,8 @@ uv sync
 | 5206.0 | National Accounts | GDP (CVM), Hours Worked Index, Compensation of Employees |
 | 5204.0 | Productivity | Multi-Factor Productivity (Hours Worked basis) |
 | 6202.0 | Labour Force | Unemployment Rate, Participation Rate, Monthly Hours Worked |
+| 6302.0 | Average Weekly Earnings | Average Weekly Earnings (semi-annual, interpolated to quarterly) |
+| 6345.0 | Wage Price Index | Wage Price Index growth rates |
 | 6401.0 | Consumer Price Index | Trimmed Mean (quarterly & annual), All Groups |
 | 6457.0 | International Trade Prices | Import Price Index |
 | 1364.0.15.003 | Modellers Database | Capital Stock (CVM), Labour Force, Employed, Unemployed |
@@ -202,15 +228,20 @@ The joint model estimates NAIRU and potential output using 9 equations:
 1. **NAIRU**: Random walk without drift
    - `NAIRU_t = NAIRU_{t-1} + ε_t`
 
-2. **Potential Output**: Cobb-Douglas with stochastic drift
-   - `g_Y* = α×g_K + (1-α)×g_L + g_MFP + ε_t`
+2. **Potential Output**: Cobb-Douglas with AR(1) smoothing of potential growth
+   - `drift_t = α×g_K + (1-α)×g_L + g_MFP` (Cobb-Douglas target)
+   - `g_Y*_t = ρ×g_Y*_{t-1} + (1-ρ)×drift_t + ε_t` (AR(1) smoothing)
 
 **Observation Equations:**
-3. **Phillips Curve**: Anchor-augmented (expectations → target transition 1993-1998)
-   - `π_t = quarterly(π_anchor) + γ×u_gap + λ×Δρm + ξ×GSCPI² + ε`
+3. **Phillips Curve**: Anchor-augmented with regime-switching slopes
+   - `π_t = quarterly(π_anchor) + γ_regime×u_gap + λ×Δρm + ξ×GSCPI² + ε`
+   - Regimes: Pre-GFC (moderate γ), Post-GFC (flat γ), Post-COVID (steep γ)
 
 4. **Wage Phillips**: Unit labour cost growth
    - `Δulc = α + γ×u_gap + λ×ΔU/U + ε`
+
+4b. **Hourly COE Phillips**: Hourly compensation growth
+   - `Δhcoe = quarterly(π_anchor) + γ×u_gap + λ×Δρm + ε`
 
 5. **Okun's Law**: Output gap to unemployment change
    - `ΔU = β×output_gap + ε`
@@ -239,7 +270,10 @@ With HP-filtered trends and periodic re-anchoring at business cycle peaks.
 | Parameter | Description | Prior/Value |
 |-----------|-------------|-------------|
 | α (alpha) | Capital share of income | N(0.30, 0.05) |
-| γ_π (gamma_pi) | Phillips curve slope | N(-0.5, 0.3), expect negative |
+| γ_π_pre_gfc | Phillips curve slope (pre-GFC) | Regime-specific prior |
+| γ_π_gfc | Phillips curve slope (GFC era) | Regime-specific prior (flatter) |
+| γ_π_post_covid | Phillips curve slope (post-COVID) | Regime-specific prior (steeper) |
+| ρ_pot | AR(1) persistence for potential growth | Controls smoothing toward drift |
 | β_okun | Okun's law coefficient | N(-0.2, 0.15), expect negative |
 | ρ_is | IS curve persistence | N(0.85, 0.1), expect 0-1 |
 | β_is | Interest rate sensitivity | TN(0.2, 0.1, lower=0) |

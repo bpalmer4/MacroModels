@@ -48,6 +48,7 @@ import pandas as pd
 
 from src.analysis.extraction import get_scalar_var, get_vector_var
 from src.analysis.rate_conversion import annualize, quarterly
+from src.equations import REGIME_COVID_START, REGIME_GFC_START
 
 # LaTeX equation strings for each chart type
 # Full Phillips curve: π_t = π^e_t + γ((U_t - U*_t)/U_t) + λΔρ^m_t + ξ·GSCPI² + ε_t
@@ -91,6 +92,67 @@ def add_equation_box(ax, equation: str, x: float = 0.5, y: float = 0.02) -> None
         usetex=True,
         bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.9, "edgecolor": "grey"},
     )
+
+
+def _plot_decomposition_bars(
+    bar_data: pd.DataFrame,
+    observed: pd.Series,
+    colors: list[str],
+    title: str,
+    equation: str,
+    observed_color: str = "indigo",
+    observed_label: str = "Observed (quarterly annualised)",
+    target_line: float | None = 2.5,
+    lheader: str = "",
+    lfooter: str = "Australia. Decomposition based on augmented Phillips curve.",
+    rfooter: str = "NAIRU + Output Gap Model",
+    eq_x: float = 0.4,
+    eq_y: float = 0.75,
+    show: bool = False,
+) -> None:
+    """Core plotting function for inflation decomposition charts.
+
+    Args:
+        bar_data: DataFrame with columns to stack as bars
+        observed: Series with observed values for line overlay
+        colors: List of colors for each bar column
+        title: Chart title
+        equation: LaTeX equation string for text box
+        observed_color: Color for observed line
+        observed_label: Label for observed line in legend
+        target_line: Y-value for horizontal target line (None to skip)
+        lheader: Left header text (e.g., acronym definitions)
+        lfooter: Left footer text
+        rfooter: Right footer text
+        eq_x: X position for equation box (0-1)
+        eq_y: Y position for equation box (0-1)
+        show: If True, display interactively
+    """
+    ax = mg.bar_plot(bar_data, stacked=True, color=colors)
+
+    observed_plot = observed.copy()
+    observed_plot.name = observed_label
+    mg.line_plot(observed_plot, ax=ax, color=observed_color, width=1.5, zorder=10)
+
+    add_equation_box(ax, equation, x=eq_x, y=eq_y)
+
+    finalise_kwargs = {
+        "title": title,
+        "ylabel": "% p.a.",
+        "lheader": lheader,
+        "rheader": rfooter,
+        "lfooter": lfooter,
+        "legend": {"loc": "best", "fontsize": "x-small"},
+        "y0": True,
+        "show": show,
+    }
+    if target_line is not None:
+        finalise_kwargs["axhline"] = {
+            "y": target_line, "color": "darkred", "linestyle": "--",
+            "linewidth": 1, "label": f"{target_line}% Target"
+        }
+
+    mg.finalise_plot(ax, **finalise_kwargs)
 
 
 @dataclass
@@ -204,9 +266,19 @@ def decompose_inflation(
 
     """
     # Extract parameters (posterior median)
-    gamma_pi = get_scalar_var("gamma_pi", trace).median()
+    # Regime-specific price Phillips curve slopes
+    gamma_pi_pre_gfc = get_scalar_var("gamma_pi_pre_gfc", trace).median()
+    gamma_pi_gfc = get_scalar_var("gamma_pi_gfc", trace).median()
+    gamma_pi_covid = get_scalar_var("gamma_pi_covid", trace).median()
+
     rho_pi = get_scalar_var("rho_pi", trace).median()
     xi_gscpi = get_scalar_var("xi_gscpi", trace).median()
+
+    # Build regime-specific gamma series
+    gamma_pi = pd.Series(index=obs_index, dtype=float)
+    gamma_pi.loc[obs_index < REGIME_GFC_START] = gamma_pi_pre_gfc
+    gamma_pi.loc[(obs_index >= REGIME_GFC_START) & (obs_index < REGIME_COVID_START)] = gamma_pi_gfc
+    gamma_pi.loc[obs_index >= REGIME_COVID_START] = gamma_pi_covid
 
     # Extract NAIRU (vector, use median across samples) as Series
     # Note: .values needed to extract numpy array from xarray DataArray
@@ -302,7 +374,7 @@ def plot_demand_contribution(
         demand,
         color="darkred",
         width=1.5,
-        title=f"Inflation - Demand Contribution ({unit})",
+        title=f"Price Inflation - Demand Contribution ({unit})",
         ylabel=unit,
         rfooter=rfooter,
         y0=True,
@@ -356,7 +428,7 @@ def plot_supply_contribution(
 
     mg.finalise_plot(
         ax,
-        title=f"Inflation - Supply Contributions ({unit})",
+        title=f"Price Inflation - Supply Contributions ({unit})",
         ylabel=unit,
         rfooter=rfooter,
         legend={"loc": "best", "fontsize": "x-small"},
@@ -372,67 +444,29 @@ def plot_inflation_drivers(
     rfooter: str = "NAIRU + Output Gap Model",
     show: bool = False,
 ) -> None:
-    """Plot inflation decomposition with stacked bars for demand vs supply.
-
-    Shows annualized quarterly inflation decomposed into:
-    - Red bars: Demand contribution (unemployment gap)
-    - Blue bars: Supply contribution (import prices + coal)
-
-    Positive bars push inflation up, negative bars push it down.
-    Bars stack from zero.
-
-    Args:
-        decomp: InflationDecomposition from decompose_inflation()
-        start: Start period (e.g., "2015Q1")
-        end: End period
-        rfooter: Right footer text
-        show: If True, display interactively
-
-    """
+    """Plot price inflation decomposition with stacked bars for demand vs supply."""
     df = decomp.to_dataframe()
-
     if start:
         df = df[df.index >= pd.Period(start)]
     if end:
         df = df[df.index <= pd.Period(end)]
-
-    # Annualize (compound conversion)
     df = annualize(df)
 
-    # Create DataFrame for stacked bar plot
-    # Demand (red/warm) and Supply (blue/cool)
     bar_data = pd.DataFrame(
-        {
-            "Demand": df["demand"],
-            "Supply": df["supply_total"],
-        },
+        {"Demand": df["demand"], "Supply": df["supply_total"]},
         index=df.index,
     )
 
-    # Plot stacked bars (mgplot requires string colors)
-    ax = mg.bar_plot(
-        bar_data,
-        stacked=True,
-        color=["orange", "darkblue"],  # orange for demand, darkblue for supply
-    )
-
-    # Add observed inflation line on top
-    observed = df["observed"].copy()
-    observed.name = "Observed Inflation (quarterly annualised)"
-    mg.line_plot(observed, ax=ax, color="indigo", width=1.5, zorder=10)
-
-    # Add equation text box at top middle
-    add_equation_box(ax, EQ_DEMAND_SUPPLY, x=0.4, y=0.75)
-
-    mg.finalise_plot(
-        ax,
-        title="Inflation Decomposition: Demand vs Supply",
-        ylabel="% p.a.",
-        rheader=rfooter,
-        lfooter="Australia. Decomposition based on augmented Phillips curve.",
-        legend={"loc": "best", "fontsize": "x-small"},
-        axhline={"y": 2.5, "color": "darkred", "linestyle": "--", "linewidth": 1, "label": "2.5% Target"},
-        y0=True,
+    _plot_decomposition_bars(
+        bar_data=bar_data,
+        observed=df["observed"],
+        colors=["orange", "darkblue"],
+        title="Price Inflation Decomposition: Demand vs Supply",
+        equation=EQ_DEMAND_SUPPLY,
+        observed_label="Observed Inflation (quarterly annualised)",
+        rfooter=rfooter,
+        eq_x=0.5,
+        eq_y=0.65,
         show=show,
     )
 
@@ -543,42 +577,19 @@ def plot_inflation_drivers_proportional(
 
 def plot_inflation_drivers_unscaled(
     decomp: InflationDecomposition,
-    start: str | None = "1998Q1",
+    start: str | None = None,
     end: str | None = None,
     rfooter: str = "NAIRU + Output Gap Model",
     show: bool = False,
 ) -> None:
-    """Plot inflation with unscaled components including residual noise.
-
-    Shows annualized quarterly inflation decomposed into its raw
-    model components (no scaling/proportionalizing):
-    - Grey bars: Anchor (inflation expectations/target)
-    - Orange bars: Demand (unemployment gap)
-    - Dark blue bars: Supply (import prices + coal)
-    - Light blue bars: Residual/noise
-
-    Bars sum exactly to observed inflation.
-
-    Args:
-        decomp: InflationDecomposition from decompose_inflation()
-        start: Start period (e.g., "2015Q1")
-        end: End period
-        rfooter: Right footer text
-        show: If True, display interactively
-
-    """
+    """Plot price inflation with unscaled components including residual noise."""
     df = decomp.to_dataframe()
-
     if start:
         df = df[df.index >= pd.Period(start)]
     if end:
         df = df[df.index <= pd.Period(end)]
-
-    # Annualize (compound conversion)
     df = annualize(df)
 
-    # Create DataFrame for stacked bar plot
-    # Anchor + Demand + Supply + Residual = Observed
     bar_data = pd.DataFrame(
         {
             "Inflation expectations / inflation target": df["anchor"],
@@ -589,30 +600,16 @@ def plot_inflation_drivers_unscaled(
         index=df.index,
     )
 
-    # Plot stacked bars
-    ax = mg.bar_plot(
-        bar_data,
-        stacked=True,
-        color=["#cccccc", "orange", "darkblue", "lightblue"],
-    )
-
-    # Add observed inflation line on top
-    observed = df["observed"].copy()
-    observed.name = "Observed Inflation (quarterly annualised)"
-    mg.line_plot(observed, ax=ax, color="indigo", width=1.5, zorder=10)
-
-    # Add equation text box
-    add_equation_box(ax, EQ_UNSCALED)
-
-    mg.finalise_plot(
-        ax,
-        title="Inflation Decomposition: Components (Unscaled)",
-        ylabel="% p.a.",
-        rheader=rfooter,
-        lfooter="Australia. Decomposition based on augmented Phillips curve.",
-        legend={"loc": "best", "fontsize": "x-small"},
-        axhline={"y": 2.5, "color": "darkred", "linestyle": "--", "linewidth": 1, "label": "2.5% Target"},
-        y0=True,
+    _plot_decomposition_bars(
+        bar_data=bar_data,
+        observed=df["observed"],
+        colors=["#cccccc", "orange", "darkblue", "lightblue"],
+        title="Price Inflation Decomposition: Components (Unscaled)",
+        equation=EQ_UNSCALED,
+        observed_label="Observed Inflation (quarterly annualised)",
+        eq_x=0.5,
+        eq_y=0.02,
+        rfooter=rfooter,
         show=show,
     )
 
@@ -646,6 +643,388 @@ def plot_inflation_decomposition(
     plot_supply_contribution(decomp, start, end, annual, rfooter, show)
     plot_inflation_drivers(decomp, start, end, rfooter, show)
     plot_inflation_drivers_unscaled(decomp, start, end, rfooter, show)
+
+
+# --- Wage Inflation Decomposition ---
+
+EQ_WAGE_DEMAND_SUPPLY = (
+    r"$\Delta ulc_t = \alpha"
+    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
+    r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
+    r" + \theta\pi^e_t + \varepsilon_t$"
+)
+EQ_WAGE_UNSCALED = (
+    r"$\Delta ulc_t = \underbrace{\alpha + \theta\pi^e_t}_{\mathrm{grey}}"
+    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
+    r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
+    r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
+)
+
+
+@dataclass
+class WageInflationDecomposition:
+    """Container for wage inflation (ULC growth) decomposition results.
+
+    Note: Persistence term (rho_wg) was tested but posterior not different from zero;
+    removed for parsimony.
+    """
+
+    observed: pd.Series
+    anchor: pd.Series          # α + θ×π_anchor
+    demand: pd.Series          # γ×u_gap + λ×ΔU/U
+    price_passthrough: pd.Series  # φ×Δ4dfd
+    residual: pd.Series
+    fitted: pd.Series
+    index: pd.PeriodIndex
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Convert to DataFrame with all components."""
+        return pd.DataFrame(
+            {
+                "observed": self.observed,
+                "anchor": self.anchor,
+                "demand": self.demand,
+                "price_passthrough": self.price_passthrough,
+                "residual": self.residual,
+                "fitted": self.fitted,
+            },
+            index=self.index,
+        )
+
+
+def decompose_wage_inflation(
+    trace: az.InferenceData,
+    obs: dict[str, np.ndarray],
+    obs_index: pd.PeriodIndex,
+) -> WageInflationDecomposition:
+    """Decompose wage inflation (ULC growth) into demand and price components."""
+    # Extract parameters (posterior median)
+    alpha_wg = get_scalar_var("alpha_wg", trace).median()
+    lambda_wg = get_scalar_var("lambda_wg", trace).median()
+    phi_wg = get_scalar_var("phi_wg", trace).median()
+    theta_wg = get_scalar_var("theta_wg", trace).median()
+
+    # Regime-specific wage Phillips curve slopes
+    gamma_wg_pre_gfc = get_scalar_var("gamma_wg_pre_gfc", trace).median()
+    gamma_wg_gfc = get_scalar_var("gamma_wg_gfc", trace).median()
+    gamma_wg_covid = get_scalar_var("gamma_wg_covid", trace).median()
+    gamma_wg = pd.Series(index=obs_index, dtype=float)
+    gamma_wg.loc[obs_index < REGIME_GFC_START] = gamma_wg_pre_gfc
+    gamma_wg.loc[(obs_index >= REGIME_GFC_START) & (obs_index < REGIME_COVID_START)] = gamma_wg_gfc
+    gamma_wg.loc[obs_index >= REGIME_COVID_START] = gamma_wg_covid
+
+    nairu = pd.Series(
+        get_vector_var("nairu", trace).median(axis=1).values, index=obs_index
+    )
+
+    # Convert observed data to Series
+    U = pd.Series(obs["U"], index=obs_index)
+    pi_anchor = pd.Series(obs["π_anchor"], index=obs_index)
+    ulc_observed = pd.Series(obs["Δulc"], index=obs_index)
+    delta_u_over_u = pd.Series(obs["ΔU_1_over_U"], index=obs_index)
+    dfd_growth = pd.Series(obs["Δ4dfd"], index=obs_index)
+
+    # Compute components
+    anchor = alpha_wg + theta_wg * quarterly(pi_anchor)
+    u_gap = (U - nairu) / U
+    demand = gamma_wg * u_gap + lambda_wg * delta_u_over_u
+    price_passthrough = phi_wg * dfd_growth
+    fitted = anchor + demand + price_passthrough
+    residual = ulc_observed - fitted
+
+    return WageInflationDecomposition(
+        observed=ulc_observed,
+        anchor=anchor,
+        demand=demand,
+        price_passthrough=price_passthrough,
+        residual=residual,
+        fitted=fitted,
+        index=obs_index,
+    )
+
+
+def plot_wage_drivers(
+    decomp: WageInflationDecomposition,
+    start: str | None = None,
+    end: str | None = None,
+    rfooter: str = "NAIRU + Output Gap Model",
+    show: bool = False,
+) -> None:
+    """Plot wage inflation decomposition with stacked bars for demand vs price pressure."""
+    df = decomp.to_dataframe()
+    if start:
+        df = df[df.index >= pd.Period(start)]
+    if end:
+        df = df[df.index <= pd.Period(end)]
+    df = annualize(df)
+
+    bar_data = pd.DataFrame(
+        {"Demand (labor market)": df["demand"], "Price pass-through": df["price_passthrough"]},
+        index=df.index,
+    )
+
+    _plot_decomposition_bars(
+        bar_data=bar_data,
+        observed=df["observed"],
+        colors=["orange", "darkblue"],
+        title="Wage-ULC Inflation Decomposition: Demand vs Price Pressure",
+        equation=EQ_WAGE_DEMAND_SUPPLY,
+        observed_color="darkorange",
+        observed_label="Observed ULC Growth (quarterly annualised)",
+        target_line=None,
+        lheader="ULC = Unit Labour Costs.",
+        lfooter="Australia. Decomposition based on augmented wage Phillips curve.",
+        rfooter=rfooter,
+        eq_x=0.5,
+        eq_y=0.75,
+        show=show,
+    )
+
+
+def plot_wage_drivers_unscaled(
+    decomp: WageInflationDecomposition,
+    start: str | None = None,
+    end: str | None = None,
+    rfooter: str = "NAIRU + Output Gap Model",
+    show: bool = False,
+) -> None:
+    """Plot wage inflation with unscaled components including residual."""
+    df = decomp.to_dataframe()
+    if start:
+        df = df[df.index >= pd.Period(start)]
+    if end:
+        df = df[df.index <= pd.Period(end)]
+    df = annualize(df)
+
+    bar_data = pd.DataFrame(
+        {
+            "Anchor (intercept + expectations)": df["anchor"],
+            "Demand (labor market)": df["demand"],
+            "Price pass-through": df["price_passthrough"],
+            "Noise": df["residual"],
+        },
+        index=df.index,
+    )
+
+    _plot_decomposition_bars(
+        bar_data=bar_data,
+        observed=df["observed"],
+        colors=["#cccccc", "orange", "darkblue", "lightblue"],
+        title="Wage-ULC Inflation Decomposition: Components (Unscaled)",
+        equation=EQ_WAGE_UNSCALED,
+        observed_color="darkorange",
+        observed_label="Observed ULC Growth (quarterly annualised)",
+        target_line=None,
+        lheader="ULC = Unit Labour Costs.",
+        lfooter="Australia. Decomposition based on augmented wage Phillips curve.",
+        rfooter=rfooter,
+        eq_x=0.5,
+        eq_y=0.02,
+        show=show,
+    )
+
+
+def plot_wage_decomposition(
+    decomp: WageInflationDecomposition,
+    start: str | None = None,
+    end: str | None = None,
+    rfooter: str = "NAIRU + Output Gap Model",
+    show: bool = False,
+) -> None:
+    """Generate wage-ULC inflation decomposition charts."""
+    plot_wage_drivers(decomp, start, end, rfooter, show)
+    plot_wage_drivers_unscaled(decomp, start, end, rfooter, show)
+
+
+# --- Hourly COE Wage Inflation Decomposition ---
+
+EQ_HCOE_DEMAND_SUPPLY = (
+    r"$\Delta hcoe_t = \alpha"
+    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
+    r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
+    r" + \theta\pi^e_t + \varepsilon_t$"
+)
+EQ_HCOE_UNSCALED = (
+    r"$\Delta hcoe_t = \underbrace{\alpha + \theta\pi^e_t}_{\mathrm{grey}}"
+    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
+    r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
+    r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
+)
+
+
+@dataclass
+class HCOEInflationDecomposition:
+    """Container for hourly COE growth decomposition results.
+
+    Note: Persistence term (rho_hcoe) was tested but posterior not different from zero;
+    removed for parsimony.
+    """
+
+    observed: pd.Series
+    anchor: pd.Series          # α + θ×π_anchor
+    demand: pd.Series          # γ×u_gap + λ×ΔU/U
+    price_passthrough: pd.Series  # φ×Δ4dfd
+    residual: pd.Series
+    fitted: pd.Series
+    index: pd.PeriodIndex
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Convert to DataFrame with all components."""
+        return pd.DataFrame(
+            {
+                "observed": self.observed,
+                "anchor": self.anchor,
+                "demand": self.demand,
+                "price_passthrough": self.price_passthrough,
+                "residual": self.residual,
+                "fitted": self.fitted,
+            },
+            index=self.index,
+        )
+
+
+def decompose_hcoe_inflation(
+    trace: az.InferenceData,
+    obs: dict[str, np.ndarray],
+    obs_index: pd.PeriodIndex,
+) -> HCOEInflationDecomposition:
+    """Decompose hourly COE growth into demand and price components."""
+    # Extract parameters (posterior median)
+    alpha_hcoe = get_scalar_var("alpha_hcoe", trace).median()
+    lambda_hcoe = get_scalar_var("lambda_hcoe", trace).median()
+    phi_hcoe = get_scalar_var("phi_hcoe", trace).median()
+    theta_hcoe = get_scalar_var("theta_hcoe", trace).median()
+
+    # Regime-specific hourly COE Phillips curve slopes
+    gamma_hcoe_pre_gfc = get_scalar_var("gamma_hcoe_pre_gfc", trace).median()
+    gamma_hcoe_gfc = get_scalar_var("gamma_hcoe_gfc", trace).median()
+    gamma_hcoe_covid = get_scalar_var("gamma_hcoe_covid", trace).median()
+    gamma_hcoe = pd.Series(index=obs_index, dtype=float)
+    gamma_hcoe.loc[obs_index < REGIME_GFC_START] = gamma_hcoe_pre_gfc
+    gamma_hcoe.loc[(obs_index >= REGIME_GFC_START) & (obs_index < REGIME_COVID_START)] = gamma_hcoe_gfc
+    gamma_hcoe.loc[obs_index >= REGIME_COVID_START] = gamma_hcoe_covid
+
+    nairu = pd.Series(
+        get_vector_var("nairu", trace).median(axis=1).values, index=obs_index
+    )
+
+    # Convert observed data to Series
+    U = pd.Series(obs["U"], index=obs_index)
+    pi_anchor = pd.Series(obs["π_anchor"], index=obs_index)
+    hcoe_observed = pd.Series(obs["Δhcoe"], index=obs_index)
+    delta_u_over_u = pd.Series(obs["ΔU_1_over_U"], index=obs_index)
+    dfd_growth = pd.Series(obs["Δ4dfd"], index=obs_index)
+
+    # Compute components
+    anchor = alpha_hcoe + theta_hcoe * quarterly(pi_anchor)
+    u_gap = (U - nairu) / U
+    demand = gamma_hcoe * u_gap + lambda_hcoe * delta_u_over_u
+    price_passthrough = phi_hcoe * dfd_growth
+    fitted = anchor + demand + price_passthrough
+    residual = hcoe_observed - fitted
+
+    return HCOEInflationDecomposition(
+        observed=hcoe_observed,
+        anchor=anchor,
+        demand=demand,
+        price_passthrough=price_passthrough,
+        residual=residual,
+        fitted=fitted,
+        index=obs_index,
+    )
+
+
+def plot_hcoe_drivers(
+    decomp: HCOEInflationDecomposition,
+    start: str | None = None,
+    end: str | None = None,
+    rfooter: str = "NAIRU + Output Gap Model",
+    show: bool = False,
+) -> None:
+    """Plot hourly COE decomposition with stacked bars for demand vs price pressure."""
+    df = decomp.to_dataframe()
+    if start:
+        df = df[df.index >= pd.Period(start)]
+    if end:
+        df = df[df.index <= pd.Period(end)]
+    df = annualize(df)
+
+    bar_data = pd.DataFrame(
+        {"Demand (labor market)": df["demand"], "Price pass-through": df["price_passthrough"]},
+        index=df.index,
+    )
+
+    _plot_decomposition_bars(
+        bar_data=bar_data,
+        observed=df["observed"],
+        colors=["orange", "darkblue"],
+        title="Wage-HCOE Inflation Decomposition: Demand vs Price Pressure",
+        equation=EQ_HCOE_DEMAND_SUPPLY,
+        observed_color="darkorange",
+        observed_label="Observed Hourly COE Growth (quarterly annualised)",
+        target_line=None,
+        lheader="HCOE = Hourly Compensation of Employees.",
+        lfooter="Australia. Decomposition based on hourly compensation Phillips curve.",
+        rfooter=rfooter,
+        eq_x=0.5,
+        eq_y=0.75,
+        show=show,
+    )
+
+
+def plot_hcoe_drivers_unscaled(
+    decomp: HCOEInflationDecomposition,
+    start: str | None = None,
+    end: str | None = None,
+    rfooter: str = "NAIRU + Output Gap Model",
+    show: bool = False,
+) -> None:
+    """Plot hourly COE with unscaled components including residual."""
+    df = decomp.to_dataframe()
+    if start:
+        df = df[df.index >= pd.Period(start)]
+    if end:
+        df = df[df.index <= pd.Period(end)]
+    df = annualize(df)
+
+    bar_data = pd.DataFrame(
+        {
+            "Anchor (intercept + expectations)": df["anchor"],
+            "Demand (labor market)": df["demand"],
+            "Price pass-through": df["price_passthrough"],
+            "Noise": df["residual"],
+        },
+        index=df.index,
+    )
+
+    _plot_decomposition_bars(
+        bar_data=bar_data,
+        observed=df["observed"],
+        colors=["#cccccc", "orange", "darkblue", "lightblue"],
+        title="Wage-HCOE Inflation Decomposition: Components (Unscaled)",
+        equation=EQ_HCOE_UNSCALED,
+        observed_color="darkorange",
+        observed_label="Observed Hourly COE Growth (quarterly annualised)",
+        target_line=None,
+        lheader="HCOE = Hourly Compensation of Employees.",
+        lfooter="Australia. Decomposition based on hourly compensation Phillips curve.",
+        rfooter=rfooter,
+        eq_x=0.5,
+        eq_y=0.02,
+        show=show,
+    )
+
+
+def plot_hcoe_decomposition(
+    decomp: HCOEInflationDecomposition,
+    start: str | None = None,
+    end: str | None = None,
+    rfooter: str = "NAIRU + Output Gap Model",
+    show: bool = False,
+) -> None:
+    """Generate hourly COE wage inflation decomposition charts."""
+    plot_hcoe_drivers(decomp, start, end, rfooter, show)
+    plot_hcoe_drivers_unscaled(decomp, start, end, rfooter, show)
 
 
 def inflation_policy_summary(

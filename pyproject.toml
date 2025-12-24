@@ -78,6 +78,13 @@ lint.ignore = [
     "T201",    # Remove `print` --> But I use print to alert the user
     "TRY003",  # Long exception messages.
     "PD008",   # mypy doesnt like .loc[] / ruff doesn't like .at[]
+    "RUF001",  # ambiguous Unicode in strings (Greek letters are standard in economics)
+    "RUF002",  # ambiguous Unicode in docstrings
+    "RUF003",  # ambiguous Unicode in comments
+    "FBT001",  # boolean positional argument (common: show=False in plotting)
+    "FBT002",  # boolean default positional argument
+    "N806",    # variable should be lowercase (U for unemployment, Y for output)
+    "PLC2401", # non-ASCII variable names (π, Δ are standard economics notation)
 
     # --- specifically for Jupyter notebooks.
     "B018",    # Found useless attribute access (often at cell end for output) 

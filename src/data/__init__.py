@@ -54,6 +54,13 @@ from src.data.twi import (
     get_twi_monthly,
     get_twi_qrtly,
 )
+from src.data.awe import get_awe_growth_annual, get_awe_growth_qrtly, get_awe_index
+from src.data.dfd_deflator import get_dfd_deflator_growth_annual
+from src.data.hourly_coe import (
+    get_hourly_coe,
+    get_hourly_coe_growth_annual,
+    get_hourly_coe_growth_qrtly,
+)
 from src.data.tot import get_tot_change_qrtly
 from src.data.ulc import get_ulc_growth_qrtly
 
@@ -90,8 +97,16 @@ __all__ = [
     # Interest rates
     "get_cash_rate_monthly",
     "get_cash_rate_qrtly",
-    # Costs
+    # Wages and labour costs
     "get_ulc_growth_qrtly",
+    "get_awe_index",
+    "get_awe_growth_qrtly",
+    "get_awe_growth_annual",
+    "get_hourly_coe",
+    "get_hourly_coe_growth_qrtly",
+    "get_hourly_coe_growth_annual",
+    # Demand deflator
+    "get_dfd_deflator_growth_annual",
     # Trade
     "get_import_price_growth_annual",
     "get_import_price_index_qrtly",

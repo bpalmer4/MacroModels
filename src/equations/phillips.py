@@ -15,32 +15,30 @@ def price_inflation_equation(
     nairu: pm.Distribution,
     constant: dict[str, Any] | None = None,
 ) -> None:
-    """Anchor-augmented Phillips Curve for price inflation.
+    """Anchor-augmented Phillips Curve for price inflation with regime-switching.
 
-    Model: π = quarterly(π_anchor) + γ × u_gap + controls + ε
+    Model: π = quarterly(π_anchor) + γ_regime × u_gap + controls + ε
+
+    Uses regime-specific Phillips curve slopes (3 regimes):
+    - gamma_pi_pre_gfc: Pre-GFC (up to 2007Q4) - moderate slope
+    - gamma_pi_gfc: Post-GFC (2008Q1 - 2020Q4) - flat
+    - gamma_pi_covid: Post-COVID (2021Q1+) - steep
 
     Uses inflation anchor (expectations pre-1993, phased to target 1993-1998,
     target thereafter). This means NAIRU is interpreted as the unemployment
     rate needed to achieve the inflation target (post-1998).
-
-    The inflation anchor (π_anchor) is annual and converted to quarterly.
 
     Args:
         inputs: Must contain:
             - "U": Unemployment rate
             - "π": Observed quarterly inflation
             - "π_anchor": Annual inflation anchor (expectations → target blend)
+            - "regime_pre_gfc", "regime_gfc", "regime_covid": Regime indicators
             - "Δ4ρm_1": Lagged import price growth (optional control)
             - "ξ_2": GSCPI (COVID supply chain pressure, optional control)
         model: PyMC model context
         nairu: NAIRU latent variable
         constant: Optional fixed values for coefficients
-
-    Note:
-        Oil and coal price effects were tested but found to be statistically
-        indistinguishable from zero. Their effects on Australian inflation are
-        already captured through the import price channel (Δ4ρm).
-        GSCPI captures COVID-era supply chain disruptions (applied non-linearly).
 
     Example:
         price_inflation_equation(inputs, model, nairu)
@@ -52,9 +50,12 @@ def price_inflation_equation(
     with model:
         settings = {
             "rho_pi": {"mu": 0.0, "sigma": 0.1},      # import prices pass-through
-            "gamma_pi": {"mu": -0.5, "sigma": 0.3},   # unemployment gap
-            "xi_gscpi": {"mu": 0.0, "sigma": 0.1},    # GSCPI supply chain effect
-            "epsilon_pi": {"sigma": 0.25},            # error term
+            # Regime-specific unemployment gap coefficients (3 regimes)
+            "gamma_pi_pre_gfc": {"mu": -1.5, "sigma": 1.0},  # pre-GFC (moderate)
+            "gamma_pi_gfc": {"mu": -0.5, "sigma": 0.5},      # post-GFC (flat)
+            "gamma_pi_covid": {"mu": -2.5, "sigma": 1.0},    # post-COVID (steep)
+            "xi_gscpi": {"mu": 0.0, "sigma": 0.1},           # GSCPI supply chain effect
+            "epsilon_pi": {"sigma": 0.25},                   # error term
         }
         mc = set_model_coefficients(model, settings, constant)
 
@@ -64,8 +65,15 @@ def price_inflation_equation(
         # Expected quarterly inflation from anchor (compound conversion)
         pi_anchor_quarterly = quarterly(inputs["π_anchor"])
 
-        # Phillips curve: π = quarterly(π_anchor) + γ × u_gap + controls
-        mu = pi_anchor_quarterly + mc["gamma_pi"] * u_gap
+        # Phillips curve with regime-specific slopes
+        # γ_effective = Σ γ_regime × regime_indicator
+        gamma_effective = (
+            mc["gamma_pi_pre_gfc"] * inputs["regime_pre_gfc"]
+            + mc["gamma_pi_gfc"] * inputs["regime_gfc"]
+            + mc["gamma_pi_covid"] * inputs["regime_covid"]
+        )
+
+        mu = pi_anchor_quarterly + gamma_effective * u_gap
 
         # Add optional controls if present
         if "Δ4ρm_1" in inputs:
@@ -89,20 +97,30 @@ def wage_growth_equation(
     nairu: pm.Distribution,
     constant: dict[str, Any] | None = None,
 ) -> None:
-    """Wage Phillips curve equation.
+    """Wage Phillips curve equation with regime-switching (RBA-style specification).
 
     Models wage growth as a function of:
-    - Unemployment gap (level effect)
+    - Unemployment gap (level effect) with regime-specific slopes
     - Change in unemployment (speed limit effect)
+    - Demand deflator (price→wage channel)
+    - Trend inflation expectations (anchoring)
 
-    The unemployment gap coefficient (gamma_wg) is constrained to be negative
-    using a truncated normal prior.
+    Note: Persistence term (rho_wg) was tested but posterior not different from zero;
+    removed for parsimony.
+
+    Uses regime-specific Phillips curve slopes (3 regimes, parallel to price equation):
+    - gamma_wg_pre_gfc: Pre-GFC (up to 2007Q4) - moderate slope
+    - gamma_wg_gfc: Post-GFC (2008Q1 - 2020Q4) - flat
+    - gamma_wg_covid: Post-COVID (2021Q1+) - steep
 
     Args:
         inputs: Must contain:
             - "U": Unemployment rate
             - "Δulc": Unit labor cost growth (observed wage variable)
             - "ΔU_1_over_U": Lagged unemployment change over unemployment level
+            - "Δ4dfd": DFD deflator growth (year-ended)
+            - "π_anchor": Trend inflation expectations
+            - "regime_pre_gfc", "regime_gfc", "regime_covid": Regime indicators
         model: PyMC model context
         nairu: NAIRU latent variable
         constant: Optional fixed values for coefficients
@@ -117,8 +135,13 @@ def wage_growth_equation(
     with model:
         settings = {
             "alpha_wg": {"mu": 0, "sigma": 1.0},       # intercept
-            "gamma_wg": {"mu": -1.5, "sigma": 1.0, "upper": 0},  # U-gap slope (negative)
+            # Regime-specific unemployment gap coefficients (3 regimes, all negative)
+            "gamma_wg_pre_gfc": {"mu": -1.0, "sigma": 0.75, "upper": 0},  # pre-GFC (moderate)
+            "gamma_wg_gfc": {"mu": -0.5, "sigma": 0.5, "upper": 0},       # post-GFC (flat)
+            "gamma_wg_covid": {"mu": -1.5, "sigma": 0.75, "upper": 0},    # post-COVID (steep)
             "lambda_wg": {"mu": -4.0, "sigma": 2.0},   # UE rate change (speed limit)
+            "phi_wg": {"mu": 0.1, "sigma": 0.1},       # demand deflator (price→wage)
+            "theta_wg": {"mu": 0.1, "sigma": 0.1, "lower": 0},  # trend expectations (positive by theory)
             "epsilon_wg": {"sigma": 1.0},             # error term
         }
         mc = set_model_coefficients(model, settings, constant)
@@ -126,13 +149,111 @@ def wage_growth_equation(
         # Unemployment gap
         u_gap = (inputs["U"] - nairu) / inputs["U"]
 
+        # Wage Phillips curve with regime-specific slopes
+        # γ_effective = Σ γ_regime × regime_indicator
+        gamma_effective = (
+            mc["gamma_wg_pre_gfc"] * inputs["regime_pre_gfc"]
+            + mc["gamma_wg_gfc"] * inputs["regime_gfc"]
+            + mc["gamma_wg_covid"] * inputs["regime_covid"]
+        )
+
+        # Convert annual π_anchor to quarterly for consistency with ULC growth
+        pi_anchor_quarterly = quarterly(inputs["π_anchor"])
+
         pm.Normal(
             "observed_wage_growth",
             mu=(
                 mc["alpha_wg"]
-                + mc["gamma_wg"] * u_gap
-                + mc["lambda_wg"] * inputs["ΔU_1_over_U"]
+                + gamma_effective * u_gap                   # unemployment gap
+                + mc["lambda_wg"] * inputs["ΔU_1_over_U"]   # speed limit
+                + mc["phi_wg"] * inputs["Δ4dfd"]            # demand deflator
+                + mc["theta_wg"] * pi_anchor_quarterly      # trend expectations
             ),
             sigma=mc["epsilon_wg"],
             observed=inputs["Δulc"],
+        )
+
+
+def hourly_coe_equation(
+    inputs: dict[str, np.ndarray],
+    model: pm.Model,
+    nairu: pm.Distribution,
+    constant: dict[str, Any] | None = None,
+) -> None:
+    """Hourly compensation Phillips curve equation with regime-switching.
+
+    Models hourly compensation growth (COE/hours) as a function of:
+    - Unemployment gap (level effect) with regime-specific slopes
+    - Change in unemployment (speed limit effect)
+    - Demand deflator (price→wage channel)
+    - Trend inflation expectations (anchoring)
+
+    This provides a cleaner wage signal than ULC by removing productivity
+    volatility. Hourly COE = what firms pay per hour of labour.
+
+    Note: Persistence term (rho_hcoe) was tested but posterior not different from zero;
+    removed for parsimony.
+
+    Uses regime-specific Phillips curve slopes (3 regimes, parallel to ULC equation):
+    - gamma_hcoe_pre_gfc: Pre-GFC (up to 2007Q4) - moderate slope
+    - gamma_hcoe_gfc: Post-GFC (2008Q1 - 2020Q4) - flat
+    - gamma_hcoe_covid: Post-COVID (2021Q1+) - steep
+
+    Args:
+        inputs: Must contain:
+            - "U": Unemployment rate
+            - "Δhcoe": Hourly COE growth (observed wage variable)
+            - "ΔU_1_over_U": Lagged unemployment change over unemployment level
+            - "Δ4dfd": DFD deflator growth (year-ended)
+            - "π_anchor": Trend inflation expectations
+            - "regime_pre_gfc", "regime_gfc", "regime_covid": Regime indicators
+        model: PyMC model context
+        nairu: NAIRU latent variable
+        constant: Optional fixed values for coefficients
+
+    Example:
+        hourly_coe_equation(inputs, model, nairu)
+
+    """
+    if constant is None:
+        constant = {}
+
+    with model:
+        settings = {
+            "alpha_hcoe": {"mu": 0, "sigma": 0.5},       # intercept
+            # Regime-specific unemployment gap coefficients (3 regimes, all negative)
+            "gamma_hcoe_pre_gfc": {"mu": -1.0, "sigma": 0.75, "upper": 0},  # pre-GFC
+            "gamma_hcoe_gfc": {"mu": -0.5, "sigma": 0.5, "upper": 0},       # post-GFC (flat)
+            "gamma_hcoe_covid": {"mu": -1.5, "sigma": 0.75, "upper": 0},    # post-COVID
+            "lambda_hcoe": {"mu": -4.0, "sigma": 2.0},   # UE rate change (speed limit)
+            "phi_hcoe": {"mu": 0.1, "sigma": 0.1},       # demand deflator (price→wage)
+            "theta_hcoe": {"mu": 0.1, "sigma": 0.1, "lower": 0},  # trend expectations (positive by theory)
+            "epsilon_hcoe": {"sigma": 0.75},            # error term (tighter than ULC)
+        }
+        mc = set_model_coefficients(model, settings, constant)
+
+        # Unemployment gap
+        u_gap = (inputs["U"] - nairu) / inputs["U"]
+
+        # Regime-specific slopes
+        gamma_effective = (
+            mc["gamma_hcoe_pre_gfc"] * inputs["regime_pre_gfc"]
+            + mc["gamma_hcoe_gfc"] * inputs["regime_gfc"]
+            + mc["gamma_hcoe_covid"] * inputs["regime_covid"]
+        )
+
+        # Convert annual π_anchor to quarterly for consistency
+        pi_anchor_quarterly = quarterly(inputs["π_anchor"])
+
+        pm.Normal(
+            "observed_hourly_coe",
+            mu=(
+                mc["alpha_hcoe"]
+                + gamma_effective * u_gap                      # unemployment gap
+                + mc["lambda_hcoe"] * inputs["ΔU_1_over_U"]    # speed limit
+                + mc["phi_hcoe"] * inputs["Δ4dfd"]             # demand deflator
+                + mc["theta_hcoe"] * pi_anchor_quarterly       # trend expectations
+            ),
+            sigma=mc["epsilon_hcoe"],
+            observed=inputs["Δhcoe"],
         )

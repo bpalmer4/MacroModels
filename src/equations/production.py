@@ -16,17 +16,14 @@ def potential_output_equation(
 ) -> pm.Distribution:
     """Potential output with Cobb-Douglas production function.
 
-    Potential growth is modelled as:
+    Potential growth equals Cobb-Douglas drift plus small innovation:
+        g_potential_t = drift_t + ε_t
+
+    Where drift is from Cobb-Douglas:
         drift_t = α × capital_growth_t + (1-α) × lf_growth_t + mfp_growth_t
 
-    Where:
-        - capital_growth_t is quarterly growth in net capital stock
-        - lf_growth_t is quarterly labor force growth
-        - mfp_growth_t is multi-factor productivity growth
-        - α is the capital share of income (~0.3)
-
-    Production function: Y = A × K^α × L^(1-α)
-    In growth rates: g_Y = g_MFP + α×g_K + (1-α)×g_L
+    With tight innovation variance, potential is driven almost entirely by
+    supply-side fundamentals (capital, labor, MFP).
 
     Args:
         inputs: Must contain:
@@ -44,10 +41,7 @@ def potential_output_equation(
         pm.Distribution: Potential output latent variable (log scale)
 
     Example:
-        potential = potential_output_equation(
-            inputs, model,
-            constant={"potential_innovation": 0.3}
-        )
+        potential = potential_output_equation(inputs, model)
 
     """
     if constant is None:
@@ -56,7 +50,9 @@ def potential_output_equation(
     with model:
         settings = {
             "alpha_capital": {"mu": 0.3, "sigma": 0.05},
-            "potential_innovation": {"mu": 0.1, "sigma": 0.05},
+            # Innovation allows potential to absorb some high-frequency noise
+            # while staying smooth through recessions
+            "potential_innovation": {"mu": 0.05, "sigma": 0.02},
             "initial_potential": {
                 "mu": inputs["log_gdp"][0],
                 "sigma": inputs["log_gdp"][0] * 0.1,
@@ -75,7 +71,7 @@ def potential_output_equation(
 
         init_value = mc["initial_potential"]
 
-        # Build potential output as cumulative sum with innovations
+        # Build potential output: growth = drift + innovation
         n_periods = len(inputs["log_gdp"])
         innovations = pm.Normal(
             "potential_innovations",
@@ -84,11 +80,20 @@ def potential_output_equation(
             shape=n_periods - 1,
         )
 
-        # Cumulative: Y*_t = Y*_0 + Σ(drift_i + ε_i)
-        cumulative_growth = pt.cumsum(drift[1:] + innovations)
+        # Growth rates: g_t = drift_t + ε_t
+        growth_rates = drift[1:] + innovations
+
+        # Cumulative: Y*_t = Y*_0 + Σ(g_i)
+        cumulative_growth = pt.cumsum(growth_rates)
         potential_output = pm.Deterministic(
             "potential_output",
             pt.concatenate([[init_value], init_value + cumulative_growth]),
+        )
+
+        # Expose growth rates for diagnostics
+        pm.Deterministic(
+            "potential_growth",
+            pt.concatenate([[drift[0]], growth_rates]),
         )
 
     return potential_output
