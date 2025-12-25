@@ -200,6 +200,7 @@ uv sync
 The joint model estimates NAIRU and potential output using 10 equations:
 
 **State Equations:**
+
 1. **NAIRU**: Random walk without drift
    - `NAIRU_t = NAIRU_{t-1} + ε_t`
 
@@ -207,6 +208,7 @@ The joint model estimates NAIRU and potential output using 10 equations:
    - `g_Y* = α×g_K + (1-α)×g_L + g_MFP + ε_t`
 
 **Observation Equations:**
+
 3. **Price Phillips**: Anchor-augmented with regime-switching (expectations → target transition 1993-1998)
    - `π_t = quarterly(π_anchor) + γ_regime×u_gap + λ×Δρm + ξ×GSCPI² + ε`
    - Three regimes: pre-GFC (moderate), post-GFC (flat), post-COVID (steep)
