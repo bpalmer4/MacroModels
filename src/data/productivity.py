@@ -129,3 +129,31 @@ def get_mfp_trend_floored(
         description=f"MFP trend growth (HP λ={hp_lambda}, floored at zero, α={alpha})",
         cat="Derived from ABS 5206.0",
     )
+
+
+def get_real_wage_gap(
+    ulc_growth: pd.Series,
+    mfp_growth: pd.Series,
+) -> DataSeries:
+    """Compute real wage gap: ULC growth minus MFP growth.
+
+    When wages grow faster than productivity, real labour costs rise,
+    leading firms to reduce hiring (used in employment equation).
+
+    Args:
+        ulc_growth: Unit labour cost growth (quarterly)
+        mfp_growth: MFP growth (quarterly, trend)
+
+    Returns:
+        DataSeries with real wage gap (% per quarter)
+
+    """
+    real_wage_gap = ulc_growth - mfp_growth
+
+    return DataSeries(
+        data=real_wage_gap,
+        source="Derived",
+        units="% per quarter",
+        description="Real wage gap (Δulc - MFP trend)",
+        cat="Derived from ABS 5206.0",
+    )

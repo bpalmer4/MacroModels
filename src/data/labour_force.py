@@ -89,6 +89,52 @@ def get_unemployment_change_qrtly() -> DataSeries:
     )
 
 
+def get_unemployment_rate_lagged_qrtly() -> DataSeries:
+    """Get lagged unemployment rate (U_{t-1}).
+
+    Returns:
+        DataSeries with lagged unemployment rate (%)
+
+    """
+    U = get_unemployment_rate_qrtly()
+    U_1 = U.data.shift(1)
+
+    return DataSeries(
+        data=U_1,
+        source=U.source,
+        units="%",
+        description="Unemployment rate lagged one quarter",
+        cat=U.cat,
+        table=U.table,
+    )
+
+
+def get_unemployment_speed_limit_qrtly() -> DataSeries:
+    """Get unemployment speed limit term for wage equations.
+
+    Speed limit = ΔU_{t-1} / U_t
+
+    This captures the rate of change in unemployment relative to its level,
+    used in wage Phillips curves to capture labour market momentum effects.
+
+    Returns:
+        DataSeries with speed limit term (ratio)
+
+    """
+    U = get_unemployment_rate_qrtly()
+    delta_U = U.data.diff(1)
+    speed_limit = delta_U.shift(1) / U.data
+
+    return DataSeries(
+        data=speed_limit,
+        source=U.source,
+        units="ratio",
+        description="Unemployment speed limit (ΔU_{t-1}/U_t)",
+        cat=U.cat,
+        table=U.table,
+    )
+
+
 def get_hours_worked_monthly() -> DataSeries:
     """Get hours worked from ABS Labour Force survey (monthly).
 
@@ -193,4 +239,94 @@ def get_participation_rate_change_qrtly() -> DataSeries:
         description="Change in participation rate (quarterly)",
         cat=pr.cat,
         table=pr.table,
+    )
+
+
+def get_employed_qrtly() -> DataSeries:
+    """Get total employed from Modellers Database (quarterly).
+
+    Calculated as Labour Force - Unemployed.
+
+    Returns:
+        DataSeries with quarterly employment count
+
+    """
+    lf = get_labour_force_qrtly()
+    unemp = get_unemployed_qrtly()
+
+    employed = lf.data - unemp.data
+
+    return DataSeries(
+        data=employed,
+        source="ABS",
+        units="000",
+        description="Total employed (quarterly, from Modellers Database)",
+        cat="1364.0.15.003",
+        table="1364015003",
+    )
+
+
+def get_employment_growth_qrtly() -> DataSeries:
+    """Get quarterly employment growth (log difference).
+
+    Returns:
+        DataSeries with employment growth (% per quarter)
+
+    """
+    emp = get_employed_qrtly()
+    log_emp = np.log(emp.data) * 100
+    emp_growth = log_emp.diff(1)
+
+    return DataSeries(
+        data=emp_growth,
+        source=emp.source,
+        units="% per quarter",
+        description="Employment growth (quarterly, log difference)",
+        cat=emp.cat,
+        table=emp.table,
+    )
+
+
+def get_employment_growth_lagged_qrtly() -> DataSeries:
+    """Get lagged quarterly employment growth.
+
+    Returns:
+        DataSeries with employment growth lagged one quarter (% per quarter)
+
+    """
+    emp_growth = get_employment_growth_qrtly()
+    emp_growth_1 = emp_growth.data.shift(1)
+
+    return DataSeries(
+        data=emp_growth_1,
+        source=emp_growth.source,
+        units="% per quarter",
+        description="Employment growth lagged one quarter",
+        cat=emp_growth.cat,
+        table=emp_growth.table,
+    )
+
+
+def get_hours_growth_qrtly() -> DataSeries:
+    """Get quarterly hours worked growth (log difference).
+
+    Uses hours worked index from Labour Force survey.
+
+    Returns:
+        DataSeries with hours growth (% per quarter)
+
+    """
+    from src.data.series_specs import HOURS_WORKED_INDEX
+
+    hours_index = load_series(HOURS_WORKED_INDEX)
+    log_hours = np.log(hours_index.data) * 100
+    hours_growth = log_hours.diff(1)
+
+    return DataSeries(
+        data=hours_growth,
+        source=hours_index.source,
+        units="% per quarter",
+        description="Hours worked growth (quarterly, log difference)",
+        cat=hours_index.cat,
+        table=hours_index.table,
     )

@@ -115,6 +115,46 @@ def get_twi_change_annual() -> DataSeries:
     )
 
 
+def get_twi_change_lagged_qrtly() -> DataSeries:
+    """Get lagged quarterly TWI change.
+
+    Returns:
+        DataSeries with quarterly TWI change lagged one quarter (%)
+
+    """
+    delta_twi = get_twi_change_qrtly()
+    delta_twi_1 = delta_twi.data.shift(1)
+
+    return DataSeries(
+        data=delta_twi_1,
+        source=delta_twi.source,
+        units="%",
+        description="TWI change (quarterly) lagged one quarter",
+        table=delta_twi.table,
+        series_id=delta_twi.series_id,
+    )
+
+
+def get_twi_change_lagged_annual() -> DataSeries:
+    """Get lagged annual TWI change.
+
+    Returns:
+        DataSeries with annual TWI change lagged one quarter (%)
+
+    """
+    delta_4_twi = get_twi_change_annual()
+    delta_4_twi_1 = delta_4_twi.data.shift(1)
+
+    return DataSeries(
+        data=delta_4_twi_1,
+        source=delta_4_twi.source,
+        units="% per year",
+        description="TWI change (annual) lagged one quarter",
+        table=delta_4_twi.table,
+        series_id=delta_4_twi.series_id,
+    )
+
+
 def get_real_twi_qrtly(cpi: pd.Series) -> DataSeries:
     """Get real TWI adjusted for domestic inflation.
 

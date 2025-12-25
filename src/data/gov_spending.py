@@ -90,3 +90,23 @@ def get_fiscal_impulse_qrtly() -> DataSeries:
         series_id=f"{gov_growth.series_id}_impulse",
         cat="5206.0",
     )
+
+
+def get_fiscal_impulse_lagged_qrtly() -> DataSeries:
+    """Get lagged fiscal impulse.
+
+    Returns:
+        DataSeries with fiscal impulse lagged one quarter
+
+    """
+    impulse = get_fiscal_impulse_qrtly()
+    impulse_1 = impulse.data.shift(1)
+
+    return DataSeries(
+        data=impulse_1,
+        source=impulse.source,
+        units="% per quarter",
+        description="Fiscal impulse lagged one quarter",
+        series_id=impulse.series_id,
+        cat=impulse.cat,
+    )

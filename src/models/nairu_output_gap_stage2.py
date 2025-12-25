@@ -188,6 +188,12 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
         ("beta_pt", "negative", "Pass-through < 0"),
         ("beta_oil", "positive", "Oil effect on import prices > 0"),
         ("rho_pt", "between_0_1", "Import price persistence ∈ (0,1)"),
+        # Employment equation
+        ("beta_emp_ygap", "positive", "Output gap → employment > 0"),
+        ("beta_emp_wage", "negative", "Real wage gap → employment < 0"),
+        # Net exports equation
+        ("beta_nx_ygap", "negative", "Output gap → net exports < 0"),
+        ("beta_nx_twi", "negative", "TWI appreciation → net exports < 0"),
     ]
 
     for param, expected, description in tests:
@@ -339,6 +345,8 @@ def run_stage2(
             "gamma_wg_pre_gfc", "gamma_wg_gfc", "gamma_wg_covid",
             "gamma_hcoe_pre_gfc", "gamma_hcoe_gfc", "gamma_hcoe_covid",
             "beta_okun",
+            "beta_emp_ygap", "beta_emp_wage",
+            "beta_nx_ygap", "beta_nx_twi",
         ]
     )
     if verbose:
@@ -362,16 +370,20 @@ def run_stage2(
         "observed_price_inflation": obs["π"],
         "observed_wage_growth": obs["Δulc"],
         "observed_hourly_coe": obs["Δhcoe"],
+        "observed_employment": obs["emp_growth"],
         "observed_twi_change": obs["Δtwi"],
         "observed_import_price": obs["Δ4ρm"],
+        "observed_net_exports": obs["Δnx_ratio"],
     }
     var_labels = {
         "okun_law": "Change in Unemployment (pp)",
         "observed_price_inflation": "Quarterly Inflation (%)",
         "observed_wage_growth": "Unit Labour Cost Growth (%)",
         "observed_hourly_coe": "Hourly COE Growth (%)",
+        "observed_employment": "Employment Growth (%)",
         "observed_twi_change": "TWI Change (%)",
         "observed_import_price": "Import Price Growth (%)",
+        "observed_net_exports": "Change in NX/GDP (pp)",
     }
 
     ppc_data = posterior_predictive_checks(

@@ -2,9 +2,38 @@
 
 Australian macroeconomic modelling. Includes both Bayesian state-space estimation (PyMC) and deterministic growth accounting methods.
 
+## Scope
+
+**What this model is for:**
+- Estimating latent NAIRU and output gap with uncertainty quantification
+- Decomposing inflation into demand (unemployment gap) and supply (import prices, supply chains) components
+- Understanding historical macro dynamics under the model's structural assumptions
+- Scenario analysis conditional on the estimated relationships
+
+**What this model is not for:**
+- Causal policy evaluation (no structural identification of policy shocks)
+- Exchange rate or inflation forecasting (UIP and Phillips curve are stylised, not predictive)
+- "True" productivity measurement (MFP is derived, not directly observed)
+- Detecting structural breaks beyond the pre-specified regimes
+
+**Units and timing:** All growth rates are quarterly percentage changes unless labelled `Δ4` (year-ended/annual). Interest rates and unemployment are levels in percent.
+
+## Quickstart
+
+```bash
+# Install dependencies
+uv sync
+
+# Run the NAIRU + Output Gap model
+uv run python -m src.models.nairu_output_gap -v
+
+# Charts saved to charts/nairu_output_gap/
+# Key outputs: nairu-estimate-for-australia.png, output-gap-estimate-for-australia.png
+```
+
 ## Models
 
-- **NAIRU + Output Gap** (`src/models/nairu_output_gap.py`): Bayesian state-space model jointly estimating NAIRU and potential output using PyMC. Includes 10 equations linking latent states to observables.
+- **NAIRU + Output Gap** (`src/models/nairu_output_gap.py`): Bayesian state-space model jointly estimating NAIRU and potential output using PyMC. Includes 12 equations linking latent states to observables.
 - **Cobb-Douglas MFP Decomposition** (`src/models/cobb_douglas.py`): Deterministic growth accounting using the Solow residual with HP-filtered trends and periodic re-anchoring.
 
 ## Architecture
@@ -29,19 +58,28 @@ Fetches and prepares data from Australian statistical sources. All loaders retur
 
 **Specialized loaders** (each returns prepared series):
 - **`gdp.py`**: GDP (CVM, current prices), log GDP, GDP growth
-- **`labour_force.py`**: Unemployment rate, participation rate, hours worked, labour force
+- **`labour_force.py`**: Unemployment rate (level, lagged, change, speed-limit), participation rate, hours worked/growth, employment growth (level, lagged), labour force
 - **`capital.py`**: Capital stock and capital growth
 - **`mfp.py`**: Multi-factor productivity (annual, from ABS 5204)
+- **`productivity.py`**: Derived productivity measures (labour productivity, MFP from wage data, real wage gap)
 - **`inflation.py`**: CPI trimmed mean (quarterly and annual)
-- **`cash_rate.py`**: Cash rate (monthly/quarterly, with historical splicing)
-- **`ulc.py`**: Unit labour cost growth
-- **`import_prices.py`**: Import price index and growth
-- **`twi.py`**: Trade-Weighted Index (level, changes, real TWI)
-- **`energy.py`**: Oil and coal prices (USD and AUD)
-- **`gov_spending.py`**: Government consumption and fiscal impulse
+- **`cash_rate.py`**: Cash rate (monthly/quarterly, with historical splicing), r* calculation, real rate gap
+- **`ulc.py`**: Unit labour cost growth (level, lagged)
+- **`hourly_coe.py`**: Hourly compensation of employees growth (level, lagged, annual)
+- **`awe.py`**: Average weekly earnings
+- **`dfd_deflator.py`**: Domestic final demand deflator growth
+- **`import_prices.py`**: Import price index and growth (level, lagged)
+- **`twi.py`**: Trade-Weighted Index (level, changes quarterly/annual, lagged quarterly/annual, real TWI)
+- **`energy.py`**: Oil and coal prices (USD and AUD, lagged annual changes)
+- **`gov_spending.py`**: Government consumption, fiscal impulse (level, lagged)
 - **`household.py`**: Household saving ratio
-- **`gscpi.py`**: NY Fed Global Supply Chain Pressure Index
+- **`gscpi.py`**: NY Fed Global Supply Chain Pressure Index (COVID-masked, lagged)
+- **`net_exports.py`**: Net exports ratio and changes
+- **`foreign_demand.py`**: Major trading partner GDP growth
 - **`tot.py`**: Terms of trade changes
+
+**Model data assembly:**
+- **`observations.py`**: Builds the observation matrix for model estimation, collating all series from specialized loaders
 
 **Utilities:**
 - **`henderson.py`**: Henderson moving average for trend extraction (ABS method)
@@ -74,8 +112,10 @@ Reusable PyMC equation functions for Bayesian models. Each function adds distrib
 | Okun's Law | `okun_law_equation()` | Links output gap to unemployment changes |
 | IS Curve | `is_equation()` | Output gap persistence with real interest rate effects |
 | Participation | `participation_equation()` | Discouraged worker effect on labour force participation |
+| Employment | `employment_equation()` | Labour demand: output gap and real wage gap effects |
 | Exchange Rate | `exchange_rate_equation()` | UIP-style TWI equation with interest rate differential |
 | Import Prices | `import_price_equation()` | Exchange rate pass-through to import prices |
+| Net Exports | `net_exports_equation()` | Output gap and TWI effects on trade balance |
 
 ```python
 from src.equations import nairu_equation, potential_output_equation, price_inflation_equation
@@ -197,7 +237,7 @@ uv sync
 
 ### NAIRU + Output Gap Model
 
-The joint model estimates NAIRU and potential output using 10 equations:
+The joint model estimates NAIRU and potential output using 12 equations:
 
 **State Equations:**
 
@@ -230,11 +270,31 @@ The joint model estimates NAIRU and potential output using 10 equations:
 8. **Participation**: Discouraged worker effect
    - `Δpr_t = β×(U_{t-1} - NAIRU_{t-1}) + ε`
 
-9. **Exchange Rate**: UIP-style TWI equation
-   - `Δe_t = ρ×Δe_{t-1} + β×r_gap_{t-1} + ε`
+9. **Employment**: Labour demand with wage channel
+   - `Δemp_t = α + β_ygap×output_gap + β_wage×real_wage_gap + ε`
+   - Real wage gap = ULC growth − MFP growth
 
-10. **Import Price Pass-Through**:
+10. **Exchange Rate**: UIP-style TWI equation
+    - `Δe_t = ρ×Δe_{t-1} + β×r_gap_{t-1} + ε`
+
+11. **Import Price Pass-Through**:
     - `Δ4ρm = β_pt×Δ4twi + β_oil×Δ4oil + ρ×Δ4ρm_{t-1} + ε`
+
+12. **Net Exports**: Trade balance response to demand and competitiveness
+    - `Δ(NX/Y) = α + β_ygap×output_gap + β_twi×Δtwi + ε`
+    - Output gap effect: imports rise when economy strong
+    - TWI effect: appreciation worsens trade balance
+
+**Symbol definitions:**
+- `log_gdp`, `potential_output` = log GDP × 100 (so output_gap ≈ % deviation)
+- `π_anchor` = inflation anchor (expectations → target transition 1993-98)
+- `u_gap` = (U − NAIRU) / U (proportional unemployment gap)
+- `Δx` = quarterly log difference × 100 (for indices: ulc, hcoe, twi, import prices)
+- `Δ4x` = 4-quarter log difference × 100 (year-ended growth)
+- `ΔU`, `Δpr`, `Δ(NX/Y)` = simple differences (for rates/ratios)
+- `ΔU/U` = speed limit: ΔU_{t-1} / U_t
+- `r_gap` = cash rate − π_anchor − r*
+- `GSCPI` = NY Fed Global Supply Chain Pressure Index (std devs)
 
 ### Cobb-Douglas Decomposition
 
@@ -256,5 +316,41 @@ With HP-filtered trends and periodic re-anchoring at business cycle peaks.
 | ρ_is | IS curve persistence | N(0.85, 0.1), expect 0-1 |
 | β_is | Interest rate sensitivity | TN(0.2, 0.1, lower=0) |
 | β_pr | Discouraged worker effect | TN(-0.05, 0.03, upper=0) |
+| β_emp_ygap | Output gap → employment | TN(0.3, 0.15, lower=0), positive by theory |
+| β_emp_wage | Real wage gap → employment | TN(-0.1, 0.1, upper=0), negative by theory |
 | β_pt | Exchange rate pass-through | TN(-0.3, 0.15, upper=0) |
+| β_nx_ygap | Output gap → net exports | TN(-0.05, 0.05, upper=0), negative (imports rise) |
+| β_nx_twi | TWI → net exports | TN(-0.02, 0.02, upper=0), negative (appreciation hurts) |
+
+## Modeling Decisions
+
+Key simplifications and design choices:
+
+### Persistence Terms
+
+- **Employment and net exports equations omit AR(1) persistence terms**. These equations condition on output gap, which is already highly persistent (ρ_is ≈ 0.74). Adding persistence terms led to near-zero or negative estimates, indicating redundancy. The persistence in employment and net exports comes through their dependence on the persistent output gap. *Implication*: employment and net exports respond contemporaneously to output gap movements; if slower adjustment is needed, add partial adjustment terms or lagged output gap.
+
+### Data Simplifications
+
+- **Net exports excludes foreign demand**: The RBA MARTIN model includes major trading partner growth, but reliable quarterly data isn't available in standard ABS/RBA tables. The output gap and TWI capture the main dynamics.
+
+- **MFP derived from wage data**: Rather than using ABS 5204 MFP directly (which has revisions and timing issues), MFP is computed from the identity: `MFP = (Δhcoe - Δulc) - α × (g_K - g_L)`. This ensures internal consistency between wage and production equations. *Caveat*: derived MFP inherits measurement error from HCOE, ULC, capital, and hours inputs. ABS 5204 MFP is not used as a cross-check but could serve as external validation.
+
+- **MFP floored at zero**: The HP-filtered MFP trend is floored at zero. This prevents cyclical capacity underutilization from being misread as technological regress. *Caveat*: flooring biases measured MFP upward in deep downturns—it's a pragmatic fix, not a structural claim.
+
+- **r\* is deterministic**: The neutral real rate is computed from smoothed potential growth rather than estimated as a latent state. This reduces model complexity and avoids identification issues between r* and output gap.
+
+### COVID Adjustments
+
+- **Labour force and hours growth smoothed during COVID (2020Q1-2023Q2)**: Raw data shows extreme volatility from JobKeeper and lockdowns. Henderson MA smoothing is applied during this period to extract underlying trends.
+
+- **GSCPI masked to COVID period only**: The Global Supply Chain Pressure Index is set to zero outside 2020Q1-2023Q2. Supply chain disruptions were transitory and the index has limited relevance outside this period. Lagged 2 quarters to capture delayed pass-through.
+
+### Inflation Anchor Transition
+
+- **Blended anchor (1993-1998)**: Before 1993, the anchor equals inflation expectations. After 1998, it equals the 2.5% target. The transition period uses a linear blend, reflecting the gradual credibility gain after inflation targeting was adopted in 1993.
+
+### Regime Switching
+
+- **Three Phillips curve regimes**: Pre-GFC (to 2008Q3), post-GFC (2008Q4-2020Q4), post-COVID (2021Q1+). This captures the well-documented flattening of the Phillips curve after the GFC and apparent re-steepening post-COVID. *Implementation*: breakpoints are fixed (not estimated); regime slopes have independent priors (not hierarchically pooled). This is simpler than Markov-switching but assumes the structural breaks are known.
 

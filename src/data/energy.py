@@ -225,6 +225,24 @@ def get_oil_change_annual() -> DataSeries:
     )
 
 
+def get_oil_change_lagged_annual() -> DataSeries:
+    """Get lagged annual percentage change in AUD oil price.
+
+    Returns:
+        DataSeries with annual oil price change lagged one quarter (%)
+
+    """
+    oil_change = get_oil_change_annual()
+    oil_change_1 = oil_change.data.shift(1)
+
+    return DataSeries(
+        data=oil_change_1,
+        source=oil_change.source,
+        units="% per year",
+        description="Oil price change in AUD (annual) lagged one quarter",
+    )
+
+
 # --- Coal ---
 
 

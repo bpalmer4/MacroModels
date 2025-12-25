@@ -50,3 +50,23 @@ def get_import_price_growth_annual() -> DataSeries:
         series_id=index.series_id,
         cat=index.cat,
     )
+
+
+def get_import_price_growth_lagged_annual() -> DataSeries:
+    """Get lagged annual import price growth.
+
+    Returns:
+        DataSeries with annual import price growth lagged one quarter (%)
+
+    """
+    growth = get_import_price_growth_annual()
+    growth_1 = growth.data.shift(1)
+
+    return DataSeries(
+        data=growth_1,
+        source=growth.source,
+        units="% per year",
+        description="Import price growth (annual) lagged one quarter",
+        series_id=growth.series_id,
+        cat=growth.cat,
+    )

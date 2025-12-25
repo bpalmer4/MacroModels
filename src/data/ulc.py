@@ -39,3 +39,22 @@ def get_ulc_growth_qrtly() -> DataSeries:
         description="Unit labour cost growth (quarterly, log difference)",
         cat="5206.0",
     )
+
+
+def get_ulc_growth_lagged_qrtly() -> DataSeries:
+    """Get lagged quarterly unit labour cost growth.
+
+    Returns:
+        DataSeries with ULC growth lagged one quarter (% per quarter)
+
+    """
+    ulc_growth = get_ulc_growth_qrtly()
+    ulc_growth_1 = ulc_growth.data.shift(1)
+
+    return DataSeries(
+        data=ulc_growth_1,
+        source=ulc_growth.source,
+        units="% per quarter",
+        description="Unit labour cost growth lagged one quarter",
+        cat=ulc_growth.cat,
+    )

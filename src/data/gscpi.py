@@ -60,3 +60,36 @@ def get_gscpi_qrtly() -> DataSeries:
         units="Index (std devs from mean)",
         description="Global Supply Chain Pressure Index (quarterly mean)",
     )
+
+
+def get_gscpi_covid_lagged_qrtly() -> DataSeries:
+    """Get GSCPI masked to COVID period only, lagged 2 quarters.
+
+    The GSCPI is only used during the COVID period (2020Q1-2023Q2) to capture
+    supply chain disruptions. Outside this period, it is set to zero.
+    Lagged by 2 quarters as supply chain effects take time to impact inflation.
+
+    Returns:
+        DataSeries with COVID-masked, lagged GSCPI
+
+    """
+    gscpi = get_gscpi_qrtly().data
+
+    # Mask to COVID period only (zero otherwise)
+    covid_period = pd.period_range("2020Q1", "2023Q2", freq="Q")
+    gscpi_masked = gscpi.where(gscpi.index.isin(covid_period), other=0.0)
+
+    # Reindex to full range (1960Q1 to current quarter) and fill missing with 0
+    current_q = pd.Period.now("Q")
+    full_range = pd.period_range("1960Q1", current_q, freq="Q")
+    gscpi_full = gscpi_masked.reindex(full_range, fill_value=0.0)
+
+    # Lag by 2 quarters (supply chain effects take time)
+    gscpi_lagged = gscpi_full.shift(2).fillna(0.0)
+
+    return DataSeries(
+        data=gscpi_lagged,
+        source="NY Fed",
+        units="Index (std devs from mean)",
+        description="GSCPI (COVID period only, lagged 2 quarters)",
+    )

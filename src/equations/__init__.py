@@ -14,9 +14,11 @@ import pandas as pd
 REGIME_GFC_START = pd.Period("2008Q4")  # Start of post-GFC (flat) regime - Lehman Sep 2008
 REGIME_COVID_START = pd.Period("2021Q1")  # Start of post-COVID (steep) regime
 
+from src.equations.employment import employment_equation
 from src.equations.exchange_rate import exchange_rate_equation
 from src.equations.import_price import import_price_equation
 from src.equations.is_curve import is_equation
+from src.equations.net_exports import net_exports_equation
 from src.equations.okun import okun_law_equation
 from src.equations.participation import participation_equation
 from src.equations.phillips import (
@@ -32,11 +34,13 @@ __all__ = [
     "REGIME_GFC_START",
     "REGIME_COVID_START",
     # Equations
+    "employment_equation",
     "exchange_rate_equation",
     "hourly_coe_equation",
     "import_price_equation",
     "is_equation",
     "nairu_equation",
+    "net_exports_equation",
     "okun_law_equation",
     "participation_equation",
     "potential_output_equation",

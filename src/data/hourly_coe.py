@@ -88,6 +88,25 @@ def get_hourly_coe_growth_annual() -> DataSeries:
     )
 
 
+def get_hourly_coe_growth_lagged_qrtly() -> DataSeries:
+    """Get lagged quarterly hourly COE growth.
+
+    Returns:
+        DataSeries with hourly COE growth lagged one quarter (% per quarter)
+
+    """
+    hcoe_growth = get_hourly_coe_growth_qrtly()
+    hcoe_growth_1 = hcoe_growth.data.shift(1)
+
+    return DataSeries(
+        data=hcoe_growth_1,
+        source=hcoe_growth.source,
+        units="% per quarter",
+        description="Hourly COE growth lagged one quarter",
+        cat=hcoe_growth.cat,
+    )
+
+
 if __name__ == "__main__":
     print("Testing Hourly COE data loading...\n")
 
