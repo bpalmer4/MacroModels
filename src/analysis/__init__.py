@@ -51,6 +51,7 @@ from src.analysis.plot_posterior_timeseries import plot_posterior_timeseries
 from src.analysis.plot_posteriors_bar import plot_posteriors_bar
 from src.analysis.plot_posteriors_kde import plot_posteriors_kde
 from src.analysis.posterior_predictive_checks import posterior_predictive_checks
+from src.analysis.plot_capital_deepening import plot_capital_deepening
 from src.analysis.residual_autocorrelation import residual_autocorrelation_analysis
 
 __all__ = [
@@ -78,6 +79,7 @@ __all__ = [
     "plot_inflation_drivers",
     "plot_inflation_drivers_proportional",
     "plot_nairu",
+    "plot_capital_deepening",
     "plot_obs_grid",
     "plot_output_gap",
     "plot_phillips_curve_slope",

@@ -42,6 +42,7 @@ from src.analysis import (
     posterior_predictive_checks,
     residual_autocorrelation_analysis,
 )
+from src.analysis.plot_capital_deepening import plot_capital_deepening
 from src.analysis.plot_productivity import (
     plot_labour_productivity,
     plot_mfp,
@@ -513,6 +514,12 @@ def run_stage2(
         hours_growth=hours_growth,
         alpha=alpha_capital,
         filter_type="hp",
+        model_name=MODEL_NAME,
+        show=show_plots,
+    )
+    plot_capital_deepening(
+        capital_growth=capital_growth,
+        hours_growth=hours_growth,
         model_name=MODEL_NAME,
         show=show_plots,
     )

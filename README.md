@@ -24,11 +24,49 @@ Australian macroeconomic modelling. Includes both Bayesian state-space estimatio
 # Install dependencies
 uv sync
 
-# Run the NAIRU + Output Gap model
-uv run python -m src.models.nairu_output_gap -v
+# Run the NAIRU + Output Gap model (~3 min)
+./run-nairu.sh -v
+```
 
-# Charts saved to charts/nairu_output_gap/
-# Key outputs: nairu-estimate-for-australia.png, output-gap-estimate-for-australia.png
+## Running the Models
+
+### NAIRU + Output Gap (Bayesian)
+
+```bash
+# Full estimation: data → sample → analyse → charts (~3 min)
+./run-nairu.sh -v
+
+# Re-run analysis only (uses saved trace, ~1 min)
+./run-nairu-stage2.sh -v
+
+# Or via Python directly
+uv run python -m src.models.nairu_output_gap -v
+uv run python -m src.models.nairu_output_gap_stage2 -v
+```
+
+### Cobb-Douglas Productivity Decomposition
+
+```bash
+# Deterministic growth accounting (~30 sec)
+./run-cd.sh -v
+
+# Or via Python
+uv run python -m src.models.cobb_douglas -v
+```
+
+### Outputs
+
+| Directory | Contents |
+|-----------|----------|
+| `model_outputs/` | Saved traces (`.nc`) and observations (`.pkl`) |
+| `charts/nairu_output_gap/` | NAIRU, output gap, Phillips curves, Taylor rule, decompositions |
+| `charts/cobb_douglas/` | MFP trends, productivity growth, potential output |
+
+### Maintenance
+
+```bash
+# Upgrade all dependencies
+./uv-upgrade.sh
 ```
 
 ## Models
