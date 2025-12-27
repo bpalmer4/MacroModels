@@ -8,7 +8,7 @@ import mgplot as mg
 import pandas as pd
 from matplotlib.axes import Axes
 
-from src.analysis.extraction import get_vector_var
+from src.models.nairu.analysis.extraction import get_vector_var
 
 
 def plot_posterior_timeseries(

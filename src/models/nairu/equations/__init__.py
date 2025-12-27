@@ -14,20 +14,20 @@ import pandas as pd
 REGIME_GFC_START = pd.Period("2008Q4")  # Start of post-GFC (flat) regime - Lehman Sep 2008
 REGIME_COVID_START = pd.Period("2021Q1")  # Start of post-COVID (steep) regime
 
-from src.equations.employment import employment_equation
-from src.equations.exchange_rate import exchange_rate_equation
-from src.equations.import_price import import_price_equation
-from src.equations.is_curve import is_equation
-from src.equations.net_exports import net_exports_equation
-from src.equations.okun import okun_law_equation
-from src.equations.participation import participation_equation
-from src.equations.phillips import (
+from src.models.nairu.equations.employment import employment_equation
+from src.models.nairu.equations.exchange_rate import exchange_rate_equation
+from src.models.nairu.equations.import_price import import_price_equation
+from src.models.nairu.equations.is_curve import is_equation
+from src.models.nairu.equations.net_exports import net_exports_equation
+from src.models.nairu.equations.okun import okun_law_equation
+from src.models.nairu.equations.participation import participation_equation
+from src.models.nairu.equations.phillips import (
     hourly_coe_equation,
     price_inflation_equation,
     wage_growth_equation,
 )
-from src.equations.production import potential_output_equation
-from src.equations.state_space import nairu_equation
+from src.models.nairu.equations.production import potential_output_equation
+from src.models.nairu.equations.state_space import nairu_equation
 
 __all__ = [
     # Regime constants

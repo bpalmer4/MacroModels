@@ -26,7 +26,7 @@ Where:
 
 Usage
 -----
-    from src.analysis import decompose_inflation, plot_inflation_decomposition
+    from src.models.nairu.analysis import decompose_inflation, plot_inflation_decomposition
 
     # Get decomposition
     decomp = decompose_inflation(trace, obs, obs_index)
@@ -46,9 +46,9 @@ import mgplot as mg
 import numpy as np
 import pandas as pd
 
-from src.analysis.extraction import get_scalar_var, get_vector_var
-from src.analysis.rate_conversion import annualize, quarterly
-from src.equations import REGIME_COVID_START, REGIME_GFC_START
+from src.models.nairu.analysis.extraction import get_scalar_var, get_vector_var
+from src.utilities.rate_conversion import annualize, quarterly
+from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
 
 # LaTeX equation strings for each chart type
 # Full Phillips curve: π_t = π^e_t + γ((U_t - U*_t)/U_t) + λΔρ^m_t + ξ·GSCPI² + ε_t

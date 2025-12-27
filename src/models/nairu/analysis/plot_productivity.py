@@ -10,9 +10,9 @@ import numpy as np
 import pandas as pd
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
-from src.analysis.rate_conversion import annualize
+from src.utilities.rate_conversion import annualize
 from src.data import get_labour_productivity_growth, get_mfp_growth, hma
-from src.equations import REGIME_COVID_START, REGIME_GFC_START
+from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
 
 HMA_TERM = 41  # Henderson MA smoothing term
 HP_LAMBDA = 1600  # Hodrick-Prescott smoothing parameter for quarterly data

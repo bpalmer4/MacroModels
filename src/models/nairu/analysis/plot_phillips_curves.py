@@ -19,9 +19,9 @@ import mgplot as mg
 import numpy as np
 import pandas as pd
 
-from src.analysis.extraction import get_scalar_var, get_vector_var
-from src.analysis.rate_conversion import annualize
-from src.equations import REGIME_COVID_START, REGIME_GFC_START
+from src.models.nairu.analysis.extraction import get_scalar_var, get_vector_var
+from src.utilities.rate_conversion import annualize
+from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
 
 
 def _compute_phillips_curve(

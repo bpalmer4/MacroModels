@@ -7,14 +7,14 @@ Includes:
 - Decomposition: Inflation demand/supply attribution
 """
 
-from src.analysis.diagnostics import check_for_zero_coeffs, check_model_diagnostics
-from src.analysis.extraction import (
+from src.models.nairu.analysis.diagnostics import check_for_zero_coeffs, check_model_diagnostics
+from src.models.nairu.analysis.extraction import (
     get_scalar_var,
     get_scalar_var_names,
     get_vector_var,
     is_scalar_var,
 )
-from src.analysis.inflation_decomposition import (
+from src.models.nairu.analysis.inflation_decomposition import (
     HCOEInflationDecomposition,
     InflationDecomposition,
     WageInflationDecomposition,
@@ -35,24 +35,24 @@ from src.analysis.inflation_decomposition import (
     plot_wage_drivers,
     plot_wage_drivers_unscaled,
 )
-from src.analysis.observations_plot import plot_obs_grid
-from src.analysis.plot_nairu_output import (
+from src.models.nairu.analysis.observations_plot import plot_obs_grid
+from src.models.nairu.analysis.plot_nairu_output import (
     plot_gdp_vs_potential,
     plot_output_gap,
     plot_potential_growth,
 )
-from src.analysis.plot_nairu_rates import plot_equilibrium_rates, plot_taylor_rule
-from src.analysis.plot_nairu_unemployment import plot_nairu, plot_unemployment_gap
-from src.analysis.plot_phillips_curves import (
+from src.models.nairu.analysis.plot_nairu_rates import plot_equilibrium_rates, plot_taylor_rule
+from src.models.nairu.analysis.plot_nairu_unemployment import plot_nairu, plot_unemployment_gap
+from src.models.nairu.analysis.plot_phillips_curves import (
     plot_phillips_curve_slope,
     plot_phillips_curves,
 )
-from src.analysis.plot_posterior_timeseries import plot_posterior_timeseries
-from src.analysis.plot_posteriors_bar import plot_posteriors_bar
-from src.analysis.plot_posteriors_kde import plot_posteriors_kde
-from src.analysis.posterior_predictive_checks import posterior_predictive_checks
-from src.analysis.plot_capital_deepening import plot_capital_deepening
-from src.analysis.residual_autocorrelation import residual_autocorrelation_analysis
+from src.models.nairu.analysis.plot_posterior_timeseries import plot_posterior_timeseries
+from src.models.nairu.analysis.plot_posteriors_bar import plot_posteriors_bar
+from src.models.nairu.analysis.plot_posteriors_kde import plot_posteriors_kde
+from src.models.nairu.analysis.posterior_predictive_checks import posterior_predictive_checks
+from src.models.nairu.analysis.plot_capital_deepening import plot_capital_deepening
+from src.models.nairu.analysis.residual_autocorrelation import residual_autocorrelation_analysis
 
 __all__ = [
     "check_for_zero_coeffs",

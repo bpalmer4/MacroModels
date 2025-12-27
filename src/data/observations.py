@@ -45,7 +45,7 @@ from src.data import (
     hma,
 )
 from src.data.rba_loader import get_inflation_anchor
-from src.equations import REGIME_COVID_START, REGIME_GFC_START
+from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
 
 # --- Constants ---
 

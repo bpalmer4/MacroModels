@@ -29,17 +29,17 @@ This module provides a unified interface to the two-stage estimation pipeline:
 import argparse
 from pathlib import Path
 
-from src.models.base import SamplerConfig
+from src.models.nairu.base import SamplerConfig
 
 # Re-export key components for backwards compatibility
 from src.data.observations import ALPHA, HMA_TERM, build_observations
 from src.data import compute_r_star
-from src.models.nairu_output_gap_stage1 import (
+from src.models.nairu.stage1 import (
     build_model,
     run_stage1,
     save_results,
 )
-from src.models.nairu_output_gap_stage2 import (
+from src.models.nairu.stage2 import (
     MODEL_NAME,
     NAIRUResults,
     RFOOTER_OUTPUT,
@@ -102,9 +102,9 @@ def run_model(
         config = SamplerConfig()
 
     # Run stage 1 (without saving)
-    from src.models.nairu_output_gap_stage1 import build_model as _build_model
-    from src.models.nairu_output_gap_stage1 import build_observations as _build_obs
-    from src.models.base import sample_model
+    from src.models.nairu.stage1 import build_model as _build_model
+    from src.data.observations import build_observations as _build_obs
+    from src.models.nairu.base import sample_model
 
     obs, obs_index = _build_obs(start=start, end=end, verbose=verbose)
     model = _build_model(obs)
@@ -131,7 +131,7 @@ def main(verbose: bool = False) -> None:
     2. Stage 2: Load results, run diagnostics, generate all plots
     """
     # Default output directory
-    output_dir = Path(__file__).parent.parent.parent / "model_outputs"
+    output_dir = Path(__file__).parent.parent.parent.parent / "model_outputs"
 
     # Stage 1: Sample and save
     print("=" * 60)

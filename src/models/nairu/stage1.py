@@ -18,7 +18,7 @@ import pandas as pd
 import pymc as pm
 
 from src.data.observations import build_observations
-from src.equations import (
+from src.models.nairu.equations import (
     employment_equation,
     exchange_rate_equation,
     hourly_coe_equation,
@@ -32,10 +32,10 @@ from src.equations import (
     price_inflation_equation,
     wage_growth_equation,
 )
-from src.models.base import SamplerConfig, sample_model
+from src.models.nairu.base import SamplerConfig, sample_model
 
 # Default output directory
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent / "model_outputs"
+DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
 
 
 # --- Model Assembly ---

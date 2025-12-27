@@ -4,7 +4,7 @@ import arviz as az
 import numpy as np
 import pandas as pd
 
-from src.analysis.extraction import get_scalar_var, get_scalar_var_names
+from src.models.nairu.analysis.extraction import get_scalar_var, get_scalar_var_names
 
 
 def check_model_diagnostics(trace: az.InferenceData) -> None:

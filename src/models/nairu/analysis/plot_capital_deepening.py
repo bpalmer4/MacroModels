@@ -6,8 +6,8 @@ import mgplot as mg
 import pandas as pd
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
-from src.analysis.rate_conversion import annualize
-from src.equations import REGIME_COVID_START, REGIME_GFC_START
+from src.utilities.rate_conversion import annualize
+from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
 
 HP_LAMBDA = 1600
 

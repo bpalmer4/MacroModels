@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
-from src.analysis import (
+from src.models.nairu.analysis import (
     check_for_zero_coeffs,
     check_model_diagnostics,
     decompose_hcoe_inflation,
@@ -42,14 +42,14 @@ from src.analysis import (
     posterior_predictive_checks,
     residual_autocorrelation_analysis,
 )
-from src.analysis.plot_capital_deepening import plot_capital_deepening
-from src.analysis.plot_productivity import (
+from src.models.nairu.analysis.plot_capital_deepening import plot_capital_deepening
+from src.models.nairu.analysis.plot_productivity import (
     plot_labour_productivity,
     plot_mfp,
     plot_productivity_comparison,
 )
 from src.data import get_cash_rate_monthly
-from src.models.nairu_output_gap_stage1 import build_model
+from src.models.nairu.stage1 import build_model
 
 # --- Constants ---
 
@@ -57,8 +57,8 @@ MODEL_NAME = "Joint NAIRU + Output Gap Model"
 RFOOTER_OUTPUT = "Joint NAIRU + Output Gap Model"
 
 # Default paths
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent / "model_outputs"
-DEFAULT_CHART_DIR = Path(__file__).parent.parent.parent / "charts" / "nairu_output_gap"
+DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
+DEFAULT_CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "nairu_output_gap"
 
 
 # --- Results Container ---

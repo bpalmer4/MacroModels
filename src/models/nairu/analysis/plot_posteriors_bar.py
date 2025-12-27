@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import mgplot as mg
 import pandas as pd
 
-from src.analysis.extraction import get_scalar_var, get_scalar_var_names
+from src.models.nairu.analysis.extraction import get_scalar_var, get_scalar_var_names
 
 
 def _place_model_name(model_name: str, kwargs: dict) -> dict:

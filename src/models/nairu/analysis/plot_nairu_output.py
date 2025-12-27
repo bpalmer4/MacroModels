@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from src.analysis.extraction import get_vector_var
-from src.analysis.plot_posterior_timeseries import plot_posterior_timeseries
+from src.models.nairu.analysis.extraction import get_vector_var
+from src.models.nairu.analysis.plot_posterior_timeseries import plot_posterior_timeseries
 
 # Plotting constants
 START = pd.Period("1985Q1", freq="Q")

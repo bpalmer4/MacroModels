@@ -40,8 +40,8 @@ uv sync
 ./run-nairu-stage2.sh -v
 
 # Or via Python directly
-uv run python -m src.models.nairu_output_gap -v
-uv run python -m src.models.nairu_output_gap_stage2 -v
+uv run python -m src.models.nairu.model -v
+uv run python -m src.models.nairu.stage2 -v
 ```
 
 ### Cobb-Douglas Productivity Decomposition
@@ -51,7 +51,7 @@ uv run python -m src.models.nairu_output_gap_stage2 -v
 ./run-cd.sh -v
 
 # Or via Python
-uv run python -m src.models.cobb_douglas -v
+uv run python -m src.models.cobb_douglas.model -v
 ```
 
 ### Outputs
@@ -71,17 +71,22 @@ uv run python -m src.models.cobb_douglas -v
 
 ## Models
 
-- **NAIRU + Output Gap** (`src/models/nairu_output_gap.py`): Bayesian state-space model jointly estimating NAIRU and potential output using PyMC. Includes 12 equations linking latent states to observables.
-- **Cobb-Douglas MFP Decomposition** (`src/models/cobb_douglas.py`): Deterministic growth accounting using the Solow residual with HP-filtered trends and periodic re-anchoring.
+- **NAIRU + Output Gap** (`src/models/nairu/`): Bayesian state-space model jointly estimating NAIRU and potential output using PyMC. Includes 12 equations linking latent states to observables.
+- **Cobb-Douglas MFP Decomposition** (`src/models/cobb_douglas/`): Deterministic growth accounting using the Solow residual with HP-filtered trends and periodic re-anchoring.
+- **DSGE** (`src/models/dsge/`): *In development.* Dynamic Stochastic General Equilibrium model for Australia.
 
 ## Architecture
 
 ```
 src/
-├── data/           # Data fetching and preparation
-├── equations/      # PyMC model building blocks (Bayesian models only)
-├── models/         # Runnable model scripts
-└── analysis/       # Post-sampling analysis and plotting
+├── data/               # Shared data fetching and preparation
+├── utilities/          # Shared utilities (rate conversion, etc.)
+└── models/
+    ├── nairu/          # NAIRU + Output Gap model
+    │   ├── equations/  # PyMC equation blocks
+    │   └── analysis/   # Post-sampling analysis and plotting
+    ├── cobb_douglas/   # Cobb-Douglas MFP decomposition
+    └── dsge/           # DSGE model (in development)
 ```
 
 ### Data Layer (`src/data/`)
@@ -136,9 +141,9 @@ print(ur.data.tail())
 print(f"Units: {ur.units}, Source: {ur.source}")
 ```
 
-### Equations Layer (`src/equations/`)
+### Equations Layer (`src/models/nairu/equations/`)
 
-Reusable PyMC equation functions for Bayesian models. Each function adds distributions to a PyMC model context and returns key latent variables.
+Reusable PyMC equation functions for the NAIRU model. Each function adds distributions to a PyMC model context and returns key latent variables.
 
 | Equation | Function | Description |
 |----------|----------|-------------|
@@ -156,7 +161,7 @@ Reusable PyMC equation functions for Bayesian models. Each function adds distrib
 | Net Exports | `net_exports_equation()` | Output gap and TWI effects on trade balance |
 
 ```python
-from src.equations import nairu_equation, potential_output_equation, price_inflation_equation
+from src.models.nairu.equations import nairu_equation, potential_output_equation, price_inflation_equation
 
 model = pm.Model()
 nairu = nairu_equation(obs, model, constant={"nairu_innovation": 0.25})
@@ -164,9 +169,9 @@ potential = potential_output_equation(obs, model)
 price_inflation_equation(obs, model, nairu)
 ```
 
-### Analysis Layer (`src/analysis/`)
+### Analysis Layer (`src/models/nairu/analysis/`)
 
-Post-sampling utilities for Bayesian models:
+Post-sampling utilities for the NAIRU model:
 
 **Diagnostics:**
 - **`diagnostics.py`**: MCMC convergence checks (R-hat, ESS, divergences, BFMI, tree depth)
@@ -188,11 +193,8 @@ Post-sampling utilities for Bayesian models:
 **Inflation decomposition:**
 - **`inflation_decomposition.py`**: Decomposes inflation into demand (unemployment gap) and supply (import prices, GSCPI) components. Includes policy diagnosis.
 
-**Utilities:**
-- **`rate_conversion.py`**: Compound conversion between quarterly and annual rates
-
 ```python
-from src.analysis import (
+from src.models.nairu.analysis import (
     check_model_diagnostics,
     decompose_inflation,
     plot_posteriors_bar,
@@ -204,29 +206,30 @@ plot_posteriors_bar(trace, model_name="My Model")
 decomp = decompose_inflation(trace, obs, obs_index)
 ```
 
+### Utilities (`src/utilities/`)
+
+Shared utilities used across models:
+- **`rate_conversion.py`**: Compound conversion between quarterly and annual rates
+
 ### Models Layer (`src/models/`)
 
-Runnable model scripts that orchestrate data loading, model building, sampling/computation, and output:
+Each model is self-contained with its own equations (if applicable), analysis, and utilities:
 
-- **`nairu_output_gap.py`**: Full Bayesian estimation pipeline
-  - `build_observations()`: Load and align all data
-  - `build_model()`: Assemble PyMC model from equations
-  - `run_model()`: End-to-end estimation
-  - `NAIRUResults`: Container with posteriors and computed series
+- **`nairu/`**: Full Bayesian estimation pipeline
+  - `model.py`: Main entry point with `run_model()` and `NAIRUResults`
+  - `stage1.py`: Data preparation, model building, sampling
+  - `stage2.py`: Loading results, diagnostics, plotting
+  - `base.py`: PyMC utilities (`SamplerConfig`, `sample_model()`)
+  - `equations/`: PyMC equation blocks
+  - `analysis/`: Post-sampling analysis and plotting
 
-- **`cobb_douglas.py`**: Deterministic growth accounting
-  - `run_decomposition()`: Full decomposition pipeline
-  - `DecompositionResult`: Container with MFP, potential GDP, output gap
-
-- **`base.py`**: Shared utilities
-  - `SamplerConfig`: NUTS sampler configuration
-  - `sample_model()`: Run PyMC sampling
-  - `set_model_coefficients()`: Create priors from settings dict
+- **`cobb_douglas/`**: Deterministic growth accounting
+  - `model.py`: `run_decomposition()` and `DecompositionResult`
 
 ```bash
 # Run from command line
-python -m src.models.nairu_output_gap -v
-python -m src.models.cobb_douglas -v
+python -m src.models.nairu.model -v
+python -m src.models.cobb_douglas.model -v
 ```
 
 Charts are saved to `charts/<model-name>/`.

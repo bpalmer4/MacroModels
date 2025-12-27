@@ -6,7 +6,7 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 
-from src.models.base import set_model_coefficients
+from src.models.nairu.base import set_model_coefficients
 
 
 def potential_output_equation(

@@ -3,8 +3,8 @@
 import mgplot as mg
 import pandas as pd
 
-from src.analysis.extraction import get_vector_var
-from src.analysis.plot_posterior_timeseries import plot_posterior_timeseries
+from src.models.nairu.analysis.extraction import get_vector_var
+from src.models.nairu.analysis.plot_posterior_timeseries import plot_posterior_timeseries
 from src.data.rba_loader import PI_TARGET_FULL, PI_TARGET_START
 
 # Plotting constants

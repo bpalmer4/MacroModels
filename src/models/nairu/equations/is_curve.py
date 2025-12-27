@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 import pymc as pm
 
-from src.models.base import set_model_coefficients
+from src.models.nairu.base import set_model_coefficients
 
 
 def is_equation(

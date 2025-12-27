@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
-from src.analysis.rate_conversion import annualize
+from src.utilities.rate_conversion import annualize
 from src.data import (
     get_capital_stock_qrtly,
     get_hourly_coe_growth_qrtly,
@@ -1072,7 +1072,7 @@ def print_summary(result: DecompositionResult, verbose: bool = False) -> None:
 
 def main(verbose: bool = False) -> None:
     """Run Cobb-Douglas MFP decomposition from command line."""
-    chart_dir = Path(__file__).parent.parent.parent / "charts" / "cobb_douglas"
+    chart_dir = Path(__file__).parent.parent.parent.parent / "charts" / "cobb_douglas"
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
 

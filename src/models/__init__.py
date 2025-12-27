@@ -5,7 +5,7 @@ Models:
 - nairu_output_gap: Bayesian state-space estimation
 """
 
-from src.models.base import SamplerConfig, sample_model, set_model_coefficients
+from src.models.nairu.base import SamplerConfig, sample_model, set_model_coefficients
 
 __all__ = [
     "SamplerConfig",
