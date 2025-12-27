@@ -319,9 +319,10 @@ The joint model estimates NAIRU and potential output using 12 equations:
     - `Δ4ρm = β_pt×Δ4twi + β_oil×Δ4oil + ρ×Δ4ρm_{t-1} + ε`
 
 12. **Net Exports**: Trade balance response to demand and competitiveness
-    - `Δ(NX/Y) = α + β_ygap×output_gap + β_twi×Δtwi + ε`
+    - `Δ(NX/Y) = β_ygap×output_gap + β_twi×Δtwi + ε`
     - Output gap effect: imports rise when economy strong
     - TWI effect: appreciation worsens trade balance
+    - No intercept: net exports changes have no drift beyond gap/TWI effects
 
 **Symbol definitions:**
 - `log_gdp`, `potential_output` = log GDP × 100 (so output_gap ≈ % deviation)

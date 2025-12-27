@@ -97,7 +97,7 @@ def plot_capital_deepening(
     )
 
     defaults = {
-        "title": "Capital Deepening: g_K − g_L",
+        "title": "Capital Deepening: (Δlog(K) − Δlog(L)) × 100",
         "ylabel": "Annual growth (%)",
         "legend": {"loc": "upper right", "fontsize": "small"},
         "lfooter": f"Capital deepening = capital growth − hours growth. Positive = deepening, Negative = shallowing. HP filter (λ={HP_LAMBDA}).",

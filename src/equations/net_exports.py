@@ -21,7 +21,7 @@ def net_exports_equation(
     - Exchange rate - appreciation worsens trade balance
 
     Equation:
-        Δ(NX/Y) = α + β₁×output_gap + β₂×Δtwi + ε
+        Δ(NX/Y) = β₁×output_gap + β₂×Δtwi + ε
 
     Where:
         - Δ(NX/Y) = change in net exports ratio to GDP (pp)
@@ -33,7 +33,12 @@ def net_exports_equation(
     This links the exchange rate equation to real trade outcomes.
 
     Note:
-        A persistence term (ρ×Δ(NX/Y)_{t-1}) was tested but found to be
+        An intercept term (α) was tested but found to be statistically
+        indistinguishable from zero. This is economically sensible: net exports
+        changes should not exhibit persistent drift unrelated to the output gap
+        and exchange rate. The zero-intercept specification is preferred.
+
+        A persistence term (ρ×Δ(NX/Y)_{t-1}) was also tested but found to be
         near-zero, indicating dynamics are already captured by the persistent
         output gap. The simplified specification without persistence is preferred.
 
@@ -55,8 +60,6 @@ def net_exports_equation(
 
     with model:
         settings = {
-            # Intercept (trend NX change - typically near zero)
-            "alpha_nx": {"mu": 0.0, "sigma": 0.1},
             # Domestic demand effect: positive gap → more imports → worse NX
             "beta_nx_ygap": {"mu": -0.05, "sigma": 0.05, "upper": 0},
             # Exchange rate effect: appreciation → worse NX
@@ -74,11 +77,7 @@ def net_exports_equation(
         dtwi = inputs["Δtwi"]
 
         # Net exports equation
-        predicted_dnx = (
-            mc["alpha_nx"]
-            + mc["beta_nx_ygap"] * output_gap
-            + mc["beta_nx_twi"] * dtwi
-        )
+        predicted_dnx = mc["beta_nx_ygap"] * output_gap + mc["beta_nx_twi"] * dtwi
 
         pm.Normal(
             "observed_net_exports",

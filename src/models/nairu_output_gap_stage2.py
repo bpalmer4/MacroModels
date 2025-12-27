@@ -406,6 +406,9 @@ def run_stage2(
         model_name=MODEL_NAME,
         rfooter=RFOOTER_OUTPUT,
         show=show_plots,
+        # Skip import price: uses Δ4 (year-ended) differences with overlapping observations,
+        # so autocorrelation is mechanical rather than a model deficiency
+        skip_autocorr_warning=["observed_import_price"],
     )
 
     # Theoretical expectations tests

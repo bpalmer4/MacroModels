@@ -22,9 +22,16 @@ def residual_autocorrelation_analysis(
     var_labels: dict[str, str] | None = None,
     max_lags: int = 20,
     model_name: str = "Model",
+    skip_autocorr_warning: list[str] | None = None,
     **kwargs,
 ) -> None:
-    """Analyze residual autocorrelation for model validation."""
+    """Analyze residual autocorrelation for model validation.
+
+    Args:
+        skip_autocorr_warning: Variable names to exclude from autocorrelation warnings.
+            Useful for variables using overlapping differences (e.g., Δ4 terms) where
+            autocorrelation is mechanical rather than a model deficiency.
+    """
     if var_labels is None:
         var_labels = {k: k for k in obs_vars}
 
@@ -100,8 +107,11 @@ def residual_autocorrelation_analysis(
 
         mg.finalise_plot(ax, **acf_defaults, **kwargs)
 
-    # Only print warnings for autocorrelated residuals
+    # Only print warnings for autocorrelated residuals (skip specified variables)
+    skip_set = set(skip_autocorr_warning or [])
     for var_name, observed_data in obs_vars.items():
+        if var_name in skip_set:
+            continue
         ppc_samples = ppc.posterior_predictive[var_name].values
         ppc_mean = ppc_samples.reshape(-1, ppc_samples.shape[-1]).mean(axis=0)
         residuals = observed_data - ppc_mean

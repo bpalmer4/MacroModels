@@ -107,13 +107,14 @@ def plot_taylor_rule(
         data=taylor_monthly,
         legend_stem="Taylor Rule",
         color="darkblue",
-        start=None,
+        start=pd.Period("1993-01", freq="M"),
         finalise=False,
     )
 
     cash_rate_monthly.name = "RBA Cash Rate"
+    cash_plot = cash_rate_monthly.loc[cash_rate_monthly.index >= pd.Period("1993-01", freq="M")]
     mg.line_plot(
-        cash_rate_monthly,
+        cash_plot,
         ax=ax,
         color="#dd0000",
         width=1,
@@ -126,9 +127,9 @@ def plot_taylor_rule(
             ax,
             title="Taylor Rule vs RBA Cash Rate",
             ylabel="Per cent per annum",
-            legend={"loc": "upper right", "fontsize": "x-small"},
-            lfooter=f"Australia. Taylor Rule: i = r* + pi_coef*pi - 0.5*pi_t + 0.5*y_gap; "
-            f"pi_coef={pi_coef_start}->{pi_coef_end}; pi_t={pi_target}%",
+            legend={"loc": "best", "fontsize": "x-small"},
+            lfooter=r"Australia. Taylor Rule: $i = r^* + \phi_\pi \pi - 0.5\bar{\pi} + 0.5\tilde{y}$; "
+            f"$\\phi_\\pi$={pi_coef_start}→{pi_coef_end}; $\\bar{{\\pi}}$={pi_target}%",
             rfooter=f"Final r*={r_star_hybrid:.1f}% ({int(w*100)}% trend {r_star_trend:.1f}%, "
             f"{int((1-w)*100)}% raw {r_star_raw:.1f}%)",
             rheader=RFOOTER,
