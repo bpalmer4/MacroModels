@@ -34,6 +34,7 @@ from src.data import (
     get_hourly_coe_growth_qrtly,
     get_hours_worked_qrtly,
     get_inflation_annual,
+    get_labour_force_growth_qrtly,
     get_mfp_growth,
     get_ulc_growth_qrtly,
 )
@@ -939,6 +940,169 @@ def plot_phillips_crosscheck(result: DecompositionResult, show: bool = True) -> 
     )
 
 
+def plot_capital_growth(result: DecompositionResult, show: bool = True) -> None:
+    """Plot capital stock growth (raw and HP-filtered trend)."""
+    g_capital = result.growth["g_Capital"].dropna()
+    g_capital_trend, _ = apply_hp_filter(g_capital)
+
+    # Annualize for interpretation
+    raw_annual = annualize(g_capital)
+    trend_annual = annualize(g_capital_trend)
+
+    plot_data = pd.DataFrame({
+        "Capital Growth (Raw)": raw_annual,
+        "Capital Growth (HP Trend)": trend_annual,
+    })
+
+    mg.line_plot_finalise(
+        plot_data,
+        title="Capital Stock Growth",
+        ylabel="Annual Growth (% p.a.)",
+        y0=True,
+        width=[0.8, 2],
+        alpha=[0.3, 1.0],
+        color=["gray", "green"],
+        legend={"loc": "best", "fontsize": "small"},
+        lfooter="Australia. Net capital stock (chain volume measures).",
+        rfooter="ABS 1364",
+        show=show,
+    )
+
+
+def plot_labour_growth(result: DecompositionResult, show: bool = True) -> None:
+    """Plot hours worked growth (raw and HP-filtered trend)."""
+    g_hours = result.growth["g_Hours"].dropna()
+    g_hours_trend, _ = apply_hp_filter(g_hours)
+
+    # Annualize for interpretation
+    raw_annual = annualize(g_hours)
+    trend_annual = annualize(g_hours_trend)
+
+    # COVID volatility for rheader
+    covid_data = raw_annual.loc["2020Q1":"2021Q4"]
+    covid_min = covid_data.min()
+    covid_max = covid_data.max()
+
+    plot_data = pd.DataFrame({
+        "Hours Growth (Raw)": raw_annual,
+        "Hours Growth (HP Trend)": trend_annual,
+    })
+
+    mg.line_plot_finalise(
+        plot_data,
+        title="Labour Input Growth (Hours Worked)",
+        ylabel="Annual Growth (% p.a.)",
+        ylim=(-5.0, 10.0),
+        width=[0.8, 2],
+        alpha=[0.3, 1.0],
+        color=["gray", "orange"],
+        legend={"loc": "best", "fontsize": "small"},
+        lfooter="Australia. Hours actually worked in all jobs.",
+        rfooter="ABS 5206, 6202",
+        rheader=f"Plot constrained to -5% to +10%; COVID volatility ranged from {covid_min:.0f}% to +{covid_max:.0f}%.",
+        show=show,
+    )
+
+
+def plot_labour_productivity(result: DecompositionResult, show: bool = True) -> None:
+    """Plot labour productivity growth (GDP per hour worked)."""
+    # Labour productivity = g_GDP - g_Hours
+    g_lp = (result.growth["g_GDP"] - result.growth["g_Hours"]).dropna()
+    g_lp_trend, _ = apply_hp_filter(g_lp)
+
+    # Annualize
+    raw_annual = annualize(g_lp)
+    trend_annual = annualize(g_lp_trend)
+
+    plot_data = pd.DataFrame({
+        "Labour Productivity (Raw)": raw_annual,
+        "Labour Productivity (HP Trend)": trend_annual,
+    })
+
+    mg.line_plot_finalise(
+        plot_data,
+        title="Labour Productivity Growth (GDP per Hour Worked)",
+        ylabel="Annual Growth (% p.a.)",
+        y0=True,
+        width=[0.8, 2],
+        alpha=[0.3, 1.0],
+        color=["gray", "purple"],
+        legend={"loc": "best", "fontsize": "small"},
+        lfooter="Australia. Labour productivity = GDP / Hours worked.",
+        rfooter="ABS 5206, 6202",
+        show=show,
+    )
+
+
+def plot_labour_productivity_decomposition(result: DecompositionResult, show: bool = True) -> None:
+    """Plot labour productivity decomposed into capital deepening and MFP."""
+    alpha = result.alpha
+
+    # Labour productivity = g_GDP - g_Hours
+    g_lp = (result.growth["g_GDP"] - result.growth["g_Hours"]).dropna()
+    g_lp_trend, _ = apply_hp_filter(g_lp)
+
+    # Capital deepening = α × (g_K - g_L)
+    capital_deepening = alpha * (result.growth["g_Capital"] - result.growth["g_Hours"]).dropna()
+    cd_trend, _ = apply_hp_filter(capital_deepening)
+
+    # MFP trend (already computed)
+    mfp_trend = result.mfp["MFP Trend"]
+
+    # Annualize and align
+    plot_data = pd.DataFrame({
+        "Labour Productivity": annualize(g_lp_trend),
+        "Capital Deepening": annualize(cd_trend),
+        "MFP": annualize(mfp_trend),
+    }).dropna()
+
+    mg.line_plot_finalise(
+        plot_data,
+        title=f"Productivity Decomposition (α={alpha})",
+        ylabel="Annual Growth (% p.a.)",
+        y0=True,
+        width=2,
+        color=["purple", "green", "blue"],
+        legend={"loc": "best", "fontsize": "small"},
+        lfooter="Australia. LP = Capital deepening + MFP = α×(g_K − g_L) + g_MFP. HP-filtered trends.",
+        rfooter="ABS 5206, 6202, 1364",
+        show=show,
+    )
+
+
+def plot_hours_vs_labour_force(result: DecompositionResult, show: bool = True) -> None:
+    """Compare trend hours worked growth with trend labour force growth."""
+    # Hours worked growth (already in result)
+    g_hours = result.growth["g_Hours"].dropna()
+    g_hours_trend, _ = apply_hp_filter(g_hours)
+
+    # Labour force growth
+    lf_growth = get_labour_force_growth_qrtly().data
+    lf_growth_trend, _ = apply_hp_filter(lf_growth.dropna())
+
+    # Annualize and align
+    hours_annual = annualize(g_hours_trend)
+    lf_annual = annualize(lf_growth_trend)
+
+    plot_data = pd.DataFrame({
+        "Hours Worked (Trend)": hours_annual,
+        "Labour Force (Trend)": lf_annual,
+    }).dropna()
+
+    mg.line_plot_finalise(
+        plot_data,
+        title="Labour Input Growth: Hours Worked vs Labour Force",
+        ylabel="Annual Growth (% p.a.)",
+        y0=True,
+        width=2,
+        color=["orange", "blue"],
+        legend={"loc": "best", "fontsize": "small"},
+        lfooter="Australia. HP-filtered trends. Gap reflects participation rate and average hours per worker.",
+        rfooter="ABS 5206, 6202, 1364",
+        show=show,
+    )
+
+
 def plot_mfp_comparison(result: DecompositionResult, show: bool = True) -> None:
     """Compare MFP from Cobb-Douglas (GDP-based) vs wage-derived approach.
 
@@ -999,6 +1163,11 @@ def plot_mfp_comparison(result: DecompositionResult, show: bool = True) -> None:
 def plot_all(result: DecompositionResult, show: bool = True) -> None:
     """Generate all standard plots."""
     plot_raw_data(result, show=show)
+    plot_capital_growth(result, show=show)
+    plot_labour_growth(result, show=show)
+    plot_hours_vs_labour_force(result, show=show)
+    plot_labour_productivity(result, show=show)
+    plot_labour_productivity_decomposition(result, show=show)
     plot_mfp_trend(result, show=show)
     plot_potential_gdp(result, show=show)
     plot_growth_decomposition(result, show=show)

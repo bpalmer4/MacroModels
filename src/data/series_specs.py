@@ -20,8 +20,8 @@ from src.data.abs_loader import ReqsTuple
 # --- Local data files ---
 # TODO: Remove once ABS publishes new quarterly CPI series (late Jan 2026)
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
-CPI_ZIP_FILE = str(_PROJECT_ROOT / "data" / "Qrtly-CPI-Time-series-spreadsheets-all.zip")
-HISTORICAL_RATE_FILE = str(_PROJECT_ROOT / "data" / "interbank_overnight_rate_historical.parquet")
+CPI_ZIP_FILE = str(_PROJECT_ROOT / "input_data" / "Qrtly-CPI-Time-series-spreadsheets-all.zip")
+HISTORICAL_RATE_FILE = str(_PROJECT_ROOT / "input_data" / "interbank_overnight_rate_historical.parquet")
 
 # --- Labour Force (6202.0) ---
 

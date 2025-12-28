@@ -81,8 +81,8 @@ def get_inflation_expectations() -> DataSeries:
         DataSeries with annual inflation expectations
 
     """
-    # Load RBA PIE_RBAQ series from CSV (in project data/ directory)
-    csv_path = Path(__file__).parent.parent.parent / "data" / "PIE_RBAQ.CSV"
+    # Load RBA PIE_RBAQ series from CSV (in project input_data/ directory)
+    csv_path = Path(__file__).parent.parent.parent / "input_data" / "PIE_RBAQ.CSV"
     rba_pie = pd.read_csv(csv_path, index_col=0, parse_dates=False)["PIE_RBAQ"]
     rba_pie.index = pd.PeriodIndex(rba_pie.index, freq="Q")
     rba_pie = rba_pie.dropna()

@@ -25,7 +25,7 @@ def get_gscpi_monthly() -> DataSeries:
         DataSeries with monthly GSCPI
 
     """
-    gscpi_path = Path(__file__).parent.parent.parent / "data" / "gscpi_data.xls"
+    gscpi_path = Path(__file__).parent.parent.parent / "input_data" / "gscpi_data.xls"
     gscpi = pd.read_excel(
         gscpi_path,
         sheet_name="GSCPI Monthly Data",

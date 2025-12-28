@@ -265,7 +265,7 @@ uv sync
 - **NY Fed GSCPI**: Global Supply Chain Pressure Index (COVID supply shock proxy)
 - **World Bank**: Oil prices (Brent crude, USD)
 
-### Local Data Files (`data/`)
+### Local Data Files (`input_data/`)
 
 | File | Description |
 |------|-------------|
