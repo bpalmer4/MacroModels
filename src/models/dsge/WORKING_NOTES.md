@@ -2,16 +2,14 @@
 
 Working notes on the fundamental mismatch between DSGE theory and post-GFC observations.
 
-**Executive thesis**: Post-GFC DSGE models fail not because estimation is difficult, but because the economy ceased to be constrained by reproducible capital. Growth increasingly occurs through non-rival, intangible, and rent-bearing inputs, while saving is absorbed by asset valuations rather than investment. Monetary policy can still move prices and financial conditions, but r* no longer anchors growth or investment decisions. Post-GFC policy proved effective at stabilising macroeconomic levels but largely ineffective at altering the economy's growth rate or restoring the capital–investment–r* linkage.
-
-By "reproducible capital" I mean finance-requiring capital formation that expands aggregate productive capacity (factories, equipment, infrastructure, R&D that scales with spending) - not rents embedded in scarce claims (market power, network effects, brand value, regulatory moats).
-
-This paper synthesises insights from secular stagnation, intangible capital, macro–finance, and balance-sheet monetary economics into a unified explanation for post-GFC DSGE failure.
+**Executive thesis**: Post-GFC DSGE models fail not because estimation is difficult, but because the economy ceased to be constrained by reproducible capital - finance-requiring capital formation that expands aggregate productive capacity (factories, equipment, infrastructure, R&D that scales with spending), as distinct from rents embedded in scarce claims (market power, network effects, brand value, regulatory moats). Growth increasingly occurs through non-rival, intangible, and rent-bearing inputs, while saving is absorbed by asset valuations rather than investment. Monetary policy can still move prices and financial conditions, but r* no longer anchors growth or investment decisions. Post-GFC policy proved effective at stabilising macroeconomic levels but largely ineffective at altering the economy's growth rate or restoring the capital–investment–r* linkage. This synthesis draws on secular stagnation, intangible capital, macro–finance, and balance-sheet monetary economics literatures.
 
 **The causal chain**: Production shifts toward non-rival, rent-bearing intangibles, making investment in reproducible, finance-requiring capital less elastic to interest rates and more constrained by rents and market structure - so the mapping from the policy rate to the marginal product of new capital weakens. Desired saving persists, so the goods-market clearing rate (r*) falls. The excess saving is absorbed through higher valuations and claims on rents rather than new capital formation. As wedges open between the policy rate and the rates relevant for private decisions, policy transmits mainly via spreads, wealth effects, and collateral values - not the representative-agent Euler-equation intertemporal margin. Structural estimation then pushes the NK IS and Taylor-rule parameters to their bounds. This is one mechanism, not many separate failures.
 
+**Terminology**: Throughout, r* refers to the goods-market clearing safe real rate (in the LW/HLW sense), not the expected return on risky assets or rents.
+
 **What this argument is not**:
-- Not "money is exogenous" or "base determines credit" - money is endogenous; the base-M3 divergence reveals dominant transmission channels
+- Not "money is exogenous" or "base determines credit" - money is endogenous; the base-M3 divergence is consistent with balance-sheet/asset-price transmission dominating the reserve channel
 - Not "two literal SDFs in frictionless GE" - segmentation and institutional constraints produce persistent wedges
 - Not "global QE shows up in Australian monetary aggregates pre-2020" - the pre-2020 transmission was via yields and asset prices, not quantities
 - Not "policy is ineffective" - policy stabilised levels; it could not restore the capital–investment–r* linkage
@@ -66,7 +64,7 @@ The flat Phillips curve (κ_p hitting its lower bound) deserves separate attenti
 | 2010-2019 | **Flat** | Post-GFC, QE era, low r* |
 | 2021-2025 | Steep | Post-COVID inflation shock |
 
-The Phillips curve failed **specifically in the 2010s** - exactly when r* collapsed, QE dominated, and the transmission mechanism shifted to asset prices. Before and after, the curve worked: a clear negative relationship between unemployment and inflation.
+The Phillips curve failed **specifically in the 2010s** - exactly when r* collapsed, QE dominated, and the transmission mechanism shifted to asset prices. In that decade, the dominant action was in asset prices and spreads, while wage/price setting faced weak demand pressure and anchored expectations - so slack stopped mapping cleanly into inflation. Before and after, the curve worked: a clear negative relationship between unemployment and inflation.
 
 The 2021-2025 inflation episode was supply-driven at origin (COVID, energy) but leaked into demand via fat balance sheets and tight labor markets. Disinflation came from supply normalisation and financial tightening, with inflation and unemployment moving in a way broadly consistent with a Phillips-type relationship. Inflation can re-emerge through supply shocks and distributional channels even when the intertemporal investment margin priced by r* remains weak.
 
@@ -89,7 +87,7 @@ But even LW/HLW doesn't explain the deeper disconnect that emerged.
 
 ## The Taylor Rule Problem
 
-Central observation: **"Since 2008, Taylor hasn't described central bank action at all."**
+Central observation: **Since 2008, a simple Taylor rule has been a poor description of central bank action.**
 
 The standard Taylor rule assumes:
 - Constant equilibrium real rate r*
@@ -106,7 +104,7 @@ This isn't claiming central banks were random - it's saying the mapping from ins
 
 ## The r* vs Market Returns Disconnect
 
-This is the deeper puzzle that no unified general-equilibrium framework currently explains.
+This is the deeper puzzle that no single tractable general-equilibrium framework explains cleanly.
 
 | Measure | Post-GFC Level |
 |---------|----------------|
@@ -137,7 +135,7 @@ Conceptually, the post-GFC economy is best understood as a two-market system: a 
 
 ### The Goods-Rate vs Asset-Rate Wedge
 
-The post-GFC period saw a persistent wedge between the discount rate relevant for goods-market intertemporal choice (r*) and the discount rate pricing risky rent claims. In asset-pricing terms, these are two distinct stochastic discount factors - not literally two SDFs in one frictionless GE, but segmentation and institutional constraints producing persistent divergence.
+The post-GFC period saw a persistent wedge between the discount rate relevant for goods-market intertemporal choice (r*) and the discount rate pricing risky rent claims. In practice, segmentation creates a persistent wedge between the discount rate that governs goods-market intertemporal tradeoffs and the discount rates used to price risky rent claims.
 
 The split:
 
@@ -193,9 +191,9 @@ This tells us:
 - Credit creation is collateral-constrained
 - Money is endogenous, not controlled by the base
 
-This is already inconsistent with the transmission mechanism embedded in NK-DSGE.
+This sits uneasily with the one-rate, one-margin transmission mechanism embedded in textbook NK-DSGE.
 
-**A note of caution**: Base and broad money can diverge even in standard endogenous-money frameworks; the divergence alone is not decisive. The load-bearing inference is the *combination*: credit constrained by collateral and risk-capital (not reserves), aligning with asset-price-led transmission and weak capex response. M3 growth also reflects portfolio shifts (deposit reclassification, precautionary saving) alongside credit creation. The claim is not that "base doesn't matter," but that the identifying pattern - QT shrinking reserves while credit expands and capex stays weak - reveals a transmission mechanism inconsistent with standard NK-DSGE.
+**A note of caution**: The divergence alone is not decisive - base and broad money can diverge in standard endogenous-money frameworks. The key pattern is: reserves can shrink sharply (QT) while broad credit keeps growing and capex stays weak. That points to collateral/risk-capital constraints, not reserve constraints, and a transmission mechanism inconsistent with textbook NK-DSGE.
 
 ### Why This Matters for r*
 
@@ -483,13 +481,98 @@ The honest position: we don't know yet. AI is either the hypothesis's strongest 
 
 **What would restore DSGE validity?** An economy where growth again required broad tangible capital accumulation - massive green-energy infrastructure, capital-intensive reshoring, sustained physical investment that absorbs saving and restores capital scarcity. The critique here is structural, not ideological: DSGE would work if the world returned to capital-constrained growth.
 
-**What would falsify this framework?**
+## The Counter-Argument: Price Signals, Not Structural Shift
 
-- Intangible-intensive sectors prove as interest-sensitive as tangible-intensive sectors
-- A sustained rise in real rates triggers a capex boom that absorbs saving and lifts r*
-- Markups and rents fall materially (through competition), collapsing the asset return–safe rate wedge
-- Credit and asset valuations fall but are replaced by broad-based tangible investment, not just deleveraging recession
-- Australian long yields and term premia do *not* co-move with global QE shocks pre-2020
+The intangible capital thesis assumes post-GFC observations reveal a genuine production structure change. A serious alternative deserves consideration: the observations reflect distorted price signals, and capital scarcity remains latent.
+
+### The ZLB-QE Regime as Confounding Factor
+
+From 2009-2022, interest rates never provided a clean signal of capital scarcity:
+
+| Period | Regime | Price Signal Problem |
+|--------|--------|---------------------|
+| 2009-2015 | ZLB | Rates couldn't fall to clear the market; shadow rate possibly negative |
+| 2010-2019 | Global QE | Term premia compressed administratively; long rates unreliable |
+| 2020-2022 | ZLB + domestic QE | Both short and long rates manipulated |
+| 2022-2024 | Hiking cycle | First potential clean signal in 15 years |
+
+On this view, firms didn't invest not because capital was abundant, but because they couldn't read the price. Why commit to a 20-year factory when rates have been administratively set for a decade and might return to zero at the next crisis? The rational response to regime uncertainty is to hoard optionality - cash, buybacks, short-duration commitments.
+
+If correct, the "weak capex despite cheap funding" observation doesn't reveal that capital scarcity is non-binding. It reveals that agents didn't trust the price signal. Capital scarcity might reassert once rates remain elevated long enough for agents to update their beliefs about the regime.
+
+### The AI Test Is Contaminated
+
+The AI investment boom accelerating despite 2022-2024 rate hikes appears to support the intangible capital thesis - evidence that intangible-intensive sectors are rate-insensitive. But this test is weaker than it appears.
+
+**Who is financing AI capex?**
+
+| Company | Cash + Equivalents (2024) | Source |
+|---------|---------------------------|--------|
+| Microsoft | ~$80B | Cloud/Office moats |
+| Alphabet | ~$110B | Search/advertising moat |
+| Amazon | ~$90B | AWS/retail moats |
+| Apple | ~$160B | Hardware/ecosystem moat |
+| Meta | ~$65B | Social/advertising moat |
+
+These firms aren't borrowing at market rates to fund AI investment. They're deploying accumulated rents from the moat-building era. The 500bp rate hike didn't bite because their marginal cost of capital is internal cash, not market debt.
+
+A cleaner test would require:
+- AI investment by capital-constrained firms (startups, non-mega-caps) showing rate insensitivity
+- Or: mega-cap AI investment continuing if their cash hoards depleted and they faced market financing
+- Or: rate-sensitive sectors (housing, autos, traditional manufacturing) showing the same pattern
+
+The current evidence is consistent with both hypotheses:
+1. Intangibles are structurally rate-insensitive (the intangible capital thesis)
+2. Monopolists with $500B+ combined cash reserves can ignore rate cycles (the counter-view)
+
+These are observationally equivalent for now.
+
+### Time Horizon and Regime Credibility
+
+The 2022-2024 hiking cycle is the first potential test in 15 years, but:
+
+- Investment decisions have multi-year lead times
+- Firms may not believe "higher for longer" after seeing it abandoned before
+- 2-3 years is insufficient to distinguish structural shift from lagged adjustment
+
+A fair test requires rates remaining elevated for long enough that:
+1. Firms exhaust cash buffers and face market financing
+2. Long-duration investment decisions are made under the new regime
+3. Mega-cap hoards are either depleted or explicitly earmarked, removing the self-financing channel
+
+This might require 5-10 years of sustained positive real rates - which may not happen if the next recession triggers another ZLB episode.
+
+### What Would Restore Capital Scarcity?
+
+Several developments could make tangible capital the binding constraint again:
+
+**Green transition**: Decarbonisation may require $100T+ in tangible infrastructure globally - grids, generation, storage, electrification, retrofits. If this materialises, saving would be absorbed by physical investment, r* would rise, and the DSGE framework would regain relevance.
+
+**Reshoring and supply chain restructuring**: Geopolitical fragmentation is driving redundant capacity investment. If firms must build parallel supply chains across blocs, tangible capital demand rises.
+
+**AI infrastructure at scale**: The "capital-free downstream" claim assumes AI is accessed via API. But widespread AI deployment may eventually require physical infrastructure - edge computing, power generation, cooling, robotics. If AI's physical footprint grows, the intangibles story weakens.
+
+**Depletion of mega-cap cash hoards**: If the dominant tech firms exhaust their reserves (through AI capex, antitrust breakups, or margin compression), future investment would face market rates. This would provide a cleaner test.
+
+### Falsification Criteria - Revised
+
+The intangible capital thesis would be weakened by:
+
+1. **Sustained high rates + capex boom**: Rates remain elevated for 5+ years and tangible investment surges, absorbing saving and lifting r*
+
+2. **Rate-sensitive AI investment**: When mega-cap cash hoards are depleted, AI investment slows materially in response to financing costs
+
+3. **Green capex absorbs saving**: Energy transition investment reaches sufficient scale that r* rises and the goods-rate/asset-rate wedge closes
+
+4. **Startups show rate sensitivity**: Early-stage intangible-intensive firms (which lack cash hoards) prove as rate-sensitive as traditional sectors
+
+5. **Moat erosion**: Competition or regulation compresses mega-cap margins, forcing them to external financing, where they prove rate-sensitive like other firms
+
+The honest position: the 2009-2024 period does not cleanly distinguish between "capital scarcity is gone" and "capital scarcity was masked by ZLB/QE and mega-cap self-financing." The intangible capital thesis is plausible but not proven. The next decade - with sustained positive real rates, mega-cap cash depletion, and green investment scaling - will provide better evidence.
+
+The empirical dispute, then, is whether we observed a structural fall in tangible investment demand, or a temporary period where administered rates and self-financing made the price signal uninformative.
+
+*The framework predicts its own obsolescence if tangible investment demand returns. That is a feature, not a bug.*
 
 ## Possible Extensions (Not Fully Theorised)
 
@@ -516,7 +599,7 @@ None of these fully resolves the disconnect. They're partial repairs to a framew
 
 The challenge isn't just estimation or computation. It's that:
 
-> **We lack a unified, closed-form general-equilibrium framework that explains what happened.**
+> **No single tractable general-equilibrium framework explains all of this cleanly at once.**
 
 DSGE models assume away the features that would explain the post-GFC world: heterogeneous agents, multiple pricing kernels, asset-market segmentation from goods markets. Until theory catches up, structural estimation will struggle with parameters hitting bounds, implausible values, and poor out-of-sample performance.
 
