@@ -49,6 +49,9 @@ class NKParameters:
     kappa_p: float = 0.1  # Price Phillips curve slope
     kappa_w: float = 0.1  # Wage Phillips curve slope
 
+    # Okun's law: u_gap = -omega * y_gap (unemployment gap vs output gap)
+    omega: float = 0.5  # Okun coefficient (typically 0.3-0.5)
+
     # Taylor rule
     phi_pi: float = 1.5  # Response to inflation (must be > 1)
     phi_y: float = 0.5  # Response to output gap
@@ -72,6 +75,7 @@ class NKParameters:
             "beta": self.beta,
             "kappa_p": self.kappa_p,
             "kappa_w": self.kappa_w,
+            "omega": self.omega,
             "phi_pi": self.phi_pi,
             "phi_y": self.phi_y,
             "rho_i": self.rho_i,
@@ -341,12 +345,12 @@ class NKModel:
         self,
         solution: NKSolution | None = None,
         n_observables: int = 2,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
         """Get state-space matrices for Kalman filter.
 
         State: s_t = [ε_d, ε_s, ε_w, i] (4 states)
         Transition: s_{t+1} = P @ s_t + Q @ η_{t+1}
-        Observation: y_t = Z @ s_t
+        Observation: y_t = Z @ s_t + measurement_error
 
         Args:
             solution: Pre-computed solution (optional)
@@ -354,9 +358,11 @@ class NKModel:
                 2: [ŷ, π]
                 3: [ŷ, π, i]
                 4: [ŷ, π, i, π_w]
+                5: [ŷ, π, i, π_w, u_gap] (adds unemployment gap via Okun's law)
 
         Returns:
-            (T, R, Z, Q) for Kalman filter
+            (T, R, Z, Q, H) for Kalman filter
+            H is measurement error covariance (None if no measurement error)
 
         """
         if solution is None:
@@ -365,6 +371,7 @@ class NKModel:
         T = solution.P  # 4×4 state transition
         R = solution.Q  # 4×4 shock impact on states
         Q_cov = np.eye(self.n_shocks)  # Standard normal innovations
+        H = None  # Measurement error covariance
 
         # Control variables from policy function
         # y_t = [ŷ, π, π_w] = R_policy @ s_t
@@ -384,10 +391,23 @@ class NKModel:
             i_row = np.zeros((1, self.n_states))
             i_row[0, 3] = 1.0
             Z = np.vstack([R_policy[:2, :], i_row, R_policy[2:3, :]])  # 4×4
-        else:
-            raise ValueError(f"n_observables must be 2, 3, or 4, got {n_observables}")
+        elif n_observables == 5:
+            # Observables: [ŷ, π, i, π_w, u_gap]
+            # u_gap = -omega * ŷ + measurement_error (Okun's law with error)
+            # ŷ is in R_policy[0, :], so u_gap row = -omega * R_policy[0, :]
+            i_row = np.zeros((1, self.n_states))
+            i_row[0, 3] = 1.0
+            u_gap_row = -self.params.omega * R_policy[0:1, :]  # 1×4
+            Z = np.vstack([R_policy[:2, :], i_row, R_policy[2:3, :], u_gap_row])  # 5×4
 
-        return T, R, Z, Q_cov
+            # Add measurement error on u_gap to avoid singular covariance
+            # (Okun's law is approximate, not exact)
+            H = np.zeros((5, 5))
+            H[4, 4] = 0.1**2  # Small measurement error on u_gap (0.1 pp std dev)
+        else:
+            raise ValueError(f"n_observables must be 2, 3, 4, or 5, got {n_observables}")
+
+        return T, R, Z, Q_cov, H
 
     def compute_impulse_responses(
         self,

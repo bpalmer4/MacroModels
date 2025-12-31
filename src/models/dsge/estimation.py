@@ -41,6 +41,7 @@ PARAM_BOUNDS = {
     "beta": (0.9, 0.9999),  # Discount factor
     "kappa_p": (0.01, 0.5),  # Price Phillips curve slope
     "kappa_w": (0.01, 0.5),  # Wage Phillips curve slope
+    "omega": (0.1, 1.0),  # Okun's law coefficient
     "phi_pi": (1.01, 3.0),  # Taylor rule inflation response (>1 for determinacy)
     "phi_y": (0.0, 2.0),  # Taylor rule output gap response
     "rho_i": (0.5, 0.95),  # Interest rate smoothing
@@ -108,7 +109,7 @@ def compute_log_likelihood(
     Args:
         y: Observations (T × n_obs)
         params: Model parameters
-        n_observables: Number of observables (2, 3, or 4)
+        n_observables: Number of observables (2, 3, 4, or 5)
 
     Returns:
         Log-likelihood (or -1e10 if model fails)
@@ -125,11 +126,11 @@ def compute_log_likelihood(
         # Solve model
         solution = model.solve()
 
-        # Get state-space matrices
-        T, R, Z, Q = model.state_space_matrices(solution, n_observables=n_observables)
+        # Get state-space matrices (now returns 5 values including H)
+        T, R, Z, Q, H = model.state_space_matrices(solution, n_observables=n_observables)
 
         # Run Kalman filter
-        kf = kalman_filter(y, T, R, Z, Q)
+        kf = kalman_filter(y, T, R, Z, Q, H=H)
 
         return kf.log_likelihood
 

@@ -18,8 +18,78 @@ import pandas as pd
 from scipy import signal
 
 from src.data.abs_loader import load_series
-from src.data.rba_loader import get_cash_rate
-from src.data.series_specs import GDP_CVM, CPI_TRIMMED_MEAN_QUARTERLY, COMPENSATION_OF_EMPLOYEES
+from src.data.cash_rate import get_cash_rate_qrtly
+from src.data.series_specs import (
+    GDP_CVM,
+    CPI_TRIMMED_MEAN_QUARTERLY,
+    COMPENSATION_OF_EMPLOYEES,
+    UNEMPLOYMENT_RATE,
+)
+
+# Inflation targeting parameters
+PI_TARGET = 2.5  # RBA target midpoint
+PI_TARGET_START = "1993Q1"  # Inflation targeting introduced
+PI_TARGET_FULL = "1998Q1"  # Full credibility assumed
+ALPHA_POST_TARGET = 0.2  # Residual backward-looking component after credibility
+
+
+def compute_inflation_anchor(
+    inflation: pd.Series,
+    target: float = PI_TARGET,
+    target_start: str = PI_TARGET_START,
+    target_full: str = PI_TARGET_FULL,
+    alpha_post: float = ALPHA_POST_TARGET,
+) -> pd.Series:
+    """Compute inflation anchor with regime-dependent expectations.
+
+    The anchor transitions from backward-looking to target-anchored:
+    - Pre-target_start: α = 1.0 (fully backward-looking)
+    - target_start to target_full: α fades linearly from 1.0 to alpha_post
+    - Post-target_full: α = alpha_post (mostly anchored to target)
+
+    Formula: π_anchor = α × π_{t-1} + (1 - α) × target
+
+    All values in annual percent terms.
+
+    Args:
+        inflation: Annualized inflation series with PeriodIndex
+        target: Inflation target (annual %, default 2.5)
+        target_start: When targeting began (default 1993Q1)
+        target_full: When full credibility achieved (default 1998Q1)
+        alpha_post: Backward-looking weight after credibility (default 0.2)
+
+    Returns:
+        Inflation anchor series
+
+    """
+    start_period = pd.Period(target_start, freq="Q")
+    full_period = pd.Period(target_full, freq="Q")
+
+    # Compute alpha for each period
+    alpha = pd.Series(index=inflation.index, dtype=float)
+
+    for period in inflation.index:
+        if period < start_period:
+            # Pre-targeting: fully backward-looking
+            alpha[period] = 1.0
+        elif period >= full_period:
+            # Post-credibility: mostly anchored
+            alpha[period] = alpha_post
+        else:
+            # Transition: linear fade from 1.0 to alpha_post
+            n_transition = (full_period - start_period).n
+            periods_in = (period - start_period).n
+            alpha[period] = 1.0 - (1.0 - alpha_post) * (periods_in / n_transition)
+
+    # Compute anchor: α × π_{t-1} + (1 - α) × target
+    pi_lag = inflation.shift(1)
+    anchor = alpha * pi_lag + (1 - alpha) * target
+
+    # Fill first value with target (no lag available)
+    anchor = anchor.fillna(target)
+
+    anchor.name = "pi_anchor"
+    return anchor
 
 
 def hp_filter(y: np.ndarray, lamb: float = 1600) -> tuple[np.ndarray, np.ndarray]:
@@ -53,6 +123,7 @@ def load_estimation_data(
     start: str = "1993Q1",
     end: str | None = None,
     n_observables: int = 2,
+    anchor_inflation: bool = False,
 ) -> pd.DataFrame:
     """Load data for DSGE estimation.
 
@@ -63,6 +134,10 @@ def load_estimation_data(
             2: [output_gap, inflation]
             3: [output_gap, inflation, interest_rate]
             4: [output_gap, inflation, interest_rate, wage_inflation]
+            5: [output_gap, inflation, interest_rate, wage_inflation, u_gap]
+        anchor_inflation: If True, use (π - π_anchor) instead of π
+            where π_anchor = α×π_{t-1} + (1-α)×2.5
+            with α transitioning from 1.0 (pre-1993) to 0.2 (post-1998)
 
     Returns:
         DataFrame indexed by quarter
@@ -76,10 +151,10 @@ def load_estimation_data(
     if not isinstance(gdp.index, pd.PeriodIndex):
         gdp.index = pd.PeriodIndex(gdp.index, freq="Q")
 
-    # Compute output gap via HP filter on log GDP
+    # Output gap via HP filter on log GDP - use lower λ for less smoothing
     log_gdp = np.log(gdp.values)
-    trend, cycle = hp_filter(log_gdp, lamb=1600)
-    output_gap = pd.Series(cycle * 100, index=gdp.index, name="output_gap")  # Percent
+    trend, cycle = hp_filter(log_gdp, lamb=400)  # λ=400 vs standard 1600
+    output_gap = pd.Series(cycle * 100, index=gdp.index, name="output_gap")
 
     # Load inflation (trimmed mean, quarterly rate)
     inf_series = load_series(CPI_TRIMMED_MEAN_QUARTERLY)
@@ -92,25 +167,24 @@ def load_estimation_data(
     inflation_annual = ((1 + inflation / 100) ** 4 - 1) * 100
     inflation_annual.name = "inflation"
 
+    # Compute anchor-adjusted inflation if requested
+    if anchor_inflation:
+        pi_anchor = compute_inflation_anchor(inflation_annual)
+        inflation_adjusted = inflation_annual - pi_anchor
+        inflation_adjusted.name = "inflation"  # π - π_anchor for Phillips curve
+    else:
+        inflation_adjusted = inflation_annual
+
     # Build DataFrame
     data_dict = {
         "output_gap": output_gap,
-        "inflation": inflation_annual,
+        "inflation": inflation_adjusted,
     }
 
-    # Add interest rate if requested
+    # Add interest rate if requested (spliced OCR + historical interbank rate)
     if n_observables >= 3:
-        cash_rate_series = get_cash_rate()
-        cash_rate = cash_rate_series.data
-
-        # Convert to datetime if needed, then resample to quarterly
-        if isinstance(cash_rate.index, pd.PeriodIndex):
-            cash_rate.index = cash_rate.index.to_timestamp()
-        else:
-            cash_rate.index = pd.to_datetime(cash_rate.index)
-
-        cash_rate_q = cash_rate.resample("QE").mean()
-        cash_rate_q.index = pd.PeriodIndex(cash_rate_q.index, freq="Q")
+        cash_rate_series = get_cash_rate_qrtly()
+        cash_rate_q = cash_rate_series.data
         cash_rate_q.name = "interest_rate"
 
         data_dict["interest_rate"] = cash_rate_q
@@ -127,6 +201,25 @@ def load_estimation_data(
         wage_inflation = coe.pct_change(4) * 100
         wage_inflation.name = "wage_inflation"
         data_dict["wage_inflation"] = wage_inflation
+
+    # Add unemployment gap if requested (HP-filtered unemployment rate)
+    if n_observables >= 5:
+        ur_series = load_series(UNEMPLOYMENT_RATE)
+        ur = ur_series.data
+
+        if not isinstance(ur.index, pd.PeriodIndex):
+            ur.index = pd.PeriodIndex(ur.index, freq="Q")
+
+        # Convert monthly to quarterly if needed
+        if ur.index.freqstr == "M":
+            ur = ur.resample("Q").mean()
+            ur.index = pd.PeriodIndex(ur.index, freq="Q")
+
+        # Unemployment gap via HP filter - lower λ for less smoothing
+        ur_trend, ur_cycle = hp_filter(ur.values, lamb=400)  # λ=400 vs standard 1600
+        u_gap = pd.Series(ur_cycle, index=ur.index, name="u_gap")
+
+        data_dict["u_gap"] = u_gap
 
     df = pd.DataFrame(data_dict)
 
@@ -152,19 +245,23 @@ def get_estimation_arrays(
     start: str = "1993Q1",
     end: str | None = None,
     n_observables: int = 2,
+    anchor_inflation: bool = False,
 ) -> tuple[np.ndarray, pd.PeriodIndex]:
     """Get numpy arrays for estimation.
 
     Args:
         start: Start period
         end: End period
-        n_observables: Number of observables (2, 3, or 4)
+        n_observables: Number of observables (2, 3, 4, or 5)
+        anchor_inflation: If True, use (π - π_anchor) instead of π
 
     Returns:
         (y, dates) where y is (T, n_obs) array
 
     """
-    df = load_estimation_data(start=start, end=end, n_observables=n_observables)
+    df = load_estimation_data(
+        start=start, end=end, n_observables=n_observables, anchor_inflation=anchor_inflation
+    )
     y = df.values
     dates = df.index
 

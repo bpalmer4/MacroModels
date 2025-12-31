@@ -574,6 +574,12 @@ The empirical dispute, then, is whether we observed a structural fall in tangibl
 
 *The framework predicts its own obsolescence if tangible investment demand returns. That is a feature, not a bug.*
 
+### Asset Price Measurement
+
+A simpler explanation: central banks targeted CPI, which excludes stocks, land, and existing housing. Post-GFC "low inflation" was goods disinflation plus asset inflation. Had asset prices been in the target, policy would have been tighter.
+
+This is insufficient. Asset prices were excluded pre-GFC too, yet transmission worked. The question isn't where inflation showed up, but why tangible investment demand was weak. Tighter policy might have lowered asset valuations without restoring capital-absorbing growth. The measurement gap is real but downstream of the production structure shift.
+
 ## Possible Extensions (Not Fully Theorised)
 
 1. **Financial accelerator** (Bernanke-Gertler-Gilchrist): Asset prices affect borrowing constraints

@@ -1,0 +1,271 @@
+"""HLW-style model with r* instead of Taylor rule.
+
+Replaces the Taylor rule with:
+- r* as a latent state (random walk)
+- IS curve responds to real rate gap (i - π - r*)
+- Interest rate is exogenous (observed data)
+
+Equations:
+1. IS Curve (backward-looking):
+   ŷ_t = ρ_y × ŷ_{t-1} - β × (r_{t-1} - r*_t) + ε_demand
+   where r = i - π (ex-post real rate)
+
+2. Phillips Curve (anchor-adjusted):
+   π_t = κ_p × ŷ_t + ε_supply
+   (using anchor-adjusted inflation, so no β×E[π'] term)
+
+3. Wage Phillips Curve:
+   π_w,t = κ_w × ŷ_t + ε_wage
+
+4. r* dynamics (random walk):
+   r*_t = r*_{t-1} + ε_rstar
+
+5. Okun's Law:
+   u_gap_t = -ω × ŷ_t + ε_okun
+
+States: [ŷ_{t-1}, r*, ε_supply, ε_wage]
+Observables: [ŷ, π, π_w, u_gap] + exogenous [r]
+"""
+
+from dataclasses import dataclass, field
+import numpy as np
+from scipy import linalg
+
+
+@dataclass
+class HLWParameters:
+    """Parameters for HLW-style model."""
+
+    # IS curve
+    rho_y: float = 0.8  # Output gap persistence
+    beta_r: float = 0.1  # Real rate gap effect on output
+
+    # Phillips curves
+    kappa_p: float = 0.1  # Price Phillips curve slope
+    kappa_w: float = 0.1  # Wage Phillips curve slope
+    rho_m: float = 0.05  # Import price pass-through to inflation
+
+    # Okun's law
+    omega: float = 0.4  # Okun coefficient
+
+    # Shock volatilities
+    sigma_demand: float = 0.5
+    sigma_supply: float = 0.3
+    sigma_wage: float = 0.3
+    sigma_rstar: float = 0.1
+    sigma_okun: float = 0.1  # Measurement error on Okun's law
+
+    def to_dict(self) -> dict:
+        return {
+            "rho_y": self.rho_y,
+            "beta_r": self.beta_r,
+            "kappa_p": self.kappa_p,
+            "kappa_w": self.kappa_w,
+            "rho_m": self.rho_m,
+            "omega": self.omega,
+            "sigma_demand": self.sigma_demand,
+            "sigma_supply": self.sigma_supply,
+            "sigma_wage": self.sigma_wage,
+            "sigma_rstar": self.sigma_rstar,
+            "sigma_okun": self.sigma_okun,
+        }
+
+
+@dataclass
+class HLWModel:
+    """HLW-style model with r* and exogenous interest rate.
+
+    State vector: s_t = [ŷ_{t-1}, r*_t, ε_s,t, ε_w,t]
+    Exogenous: r_t = i_t - π_t (real rate from data)
+
+    Transition:
+        ŷ_t = ρ_y × ŷ_{t-1} - β_r × (r_{t-1} - r*_t) + ε_d,t
+        r*_t = r*_{t-1} + ε_r*,t
+        ε_s,t = ε_s,t (iid)
+        ε_w,t = ε_w,t (iid)
+
+    Observation:
+        π_t = κ_p × ŷ_t + ε_s,t
+        π_w,t = κ_w × ŷ_t + ε_w,t
+        u_gap_t = -ω × ŷ_t + measurement error
+    """
+
+    params: HLWParameters = field(default_factory=HLWParameters)
+
+    n_states: int = 4  # [ŷ_{t-1}, r*, ε_s, ε_w]
+    n_shocks: int = 4  # [ε_d, ε_r*, ε_s, ε_w]
+
+    def state_space_matrices(
+        self,
+        r_lag: np.ndarray,  # Lagged real rate (exogenous), length T
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Build state-space matrices.
+
+        Note: This model has time-varying system due to exogenous r.
+        We handle this by including r_lag effect in the observation equation.
+
+        State: s_t = [ŷ_t, r*_t, ε_s,t, ε_w,t]
+
+        Transition: s_{t+1} = T @ s_t + R @ η_{t+1}
+        Observation: y_t = Z @ s_t + d_t + measurement_error
+            where d_t depends on r_lag
+
+        Returns:
+            T: State transition (4×4)
+            R: Shock impact (4×4)
+            Z: Observation matrix (3×4) for [π, π_w, u_gap]
+            Q: Shock covariance (4×4)
+            H: Measurement error covariance (3×3)
+        """
+        p = self.params
+
+        # State transition matrix T
+        # s = [ŷ, r*, ε_s, ε_w]
+        # ŷ_{t+1} = ρ_y × ŷ_t + β_r × r*_t + ε_d (note: r_lag handled separately)
+        # r*_{t+1} = r*_t + ε_r*
+        # ε_s, ε_w are iid (no persistence in this simplified version)
+        T = np.array([
+            [p.rho_y, p.beta_r, 0, 0],  # ŷ equation (r* enters positively: higher r* = higher neutral = less drag)
+            [0, 1, 0, 0],                # r* random walk
+            [0, 0, 0, 0],                # ε_s iid
+            [0, 0, 0, 0],                # ε_w iid
+        ])
+
+        # Shock impact matrix R
+        R = np.diag([p.sigma_demand, p.sigma_rstar, p.sigma_supply, p.sigma_wage])
+
+        # Observation matrix Z
+        # Observables: [π, π_w, u_gap]
+        # π = κ_p × ŷ + ε_s
+        # π_w = κ_w × ŷ + ε_w
+        # u_gap = -ω × ŷ
+        Z = np.array([
+            [p.kappa_p, 0, 1, 0],  # π = κ_p × ŷ + ε_s
+            [p.kappa_w, 0, 0, 1],  # π_w = κ_w × ŷ + ε_w
+            [-p.omega, 0, 0, 0],   # u_gap = -ω × ŷ
+        ])
+
+        # Shock covariance (standard normal, scaling in R)
+        Q = np.eye(4)
+
+        # Measurement error on u_gap (Okun's law not exact)
+        H = np.zeros((3, 3))
+        H[2, 2] = p.sigma_okun**2
+
+        return T, R, Z, Q, H
+
+    def kalman_filter_with_exog(
+        self,
+        y: np.ndarray,  # Observations (T × 3): [π, π_w, u_gap]
+        r_lag: np.ndarray,  # Lagged real rate (T,)
+        import_price_growth: np.ndarray | None = None,  # Import price growth (T,)
+    ) -> float:
+        """Run Kalman filter with exogenous real rate and import prices.
+
+        The IS curve is:
+            ŷ_t = ρ_y × ŷ_{t-1} - β_r × (r_{t-1} - r*_{t-1}) + ε_d
+
+        The Phillips curve includes import prices:
+            π_t = κ_p × ŷ_t + ρ_m × Δpm_t + ε_s
+
+        We handle exogenous variables by adding them to predictions.
+        """
+        p = self.params
+        T_mat, R_mat, Z, Q, H = self.state_space_matrices(r_lag)
+
+        n_periods = len(y)
+        n_states = self.n_states
+        n_obs = y.shape[1]
+
+        # Initial state
+        s = np.zeros(n_states)
+        # Initial covariance - diffuse for r*
+        P = np.eye(n_states)
+        P[1, 1] = 10.0  # Diffuse prior for r*
+
+        log_lik = 0.0
+
+        for t in range(n_periods):
+            # Prediction step
+            # ŷ_t = ρ_y × ŷ_{t-1} + β_r × r*_{t-1} - β_r × r_{t-1} + ε_d
+            # The -β_r × r_{t-1} term is the exogenous effect
+            s_pred = T_mat @ s
+            s_pred[0] -= p.beta_r * r_lag[t]  # Add exogenous real rate effect
+
+            P_pred = T_mat @ P @ T_mat.T + R_mat @ Q @ R_mat.T
+
+            # Innovation
+            y_pred = Z @ s_pred
+
+            # Add import price effect to inflation prediction
+            if import_price_growth is not None:
+                y_pred[0] += p.rho_m * import_price_growth[t]
+
+            v = y[t] - y_pred
+
+            # Innovation covariance
+            F = Z @ P_pred @ Z.T + H
+
+            # Check for numerical issues
+            try:
+                F_inv = linalg.inv(F)
+                log_det_F = np.log(linalg.det(F))
+            except linalg.LinAlgError:
+                return -1e10
+
+            if not np.isfinite(log_det_F):
+                return -1e10
+
+            # Log-likelihood contribution
+            log_lik += -0.5 * (n_obs * np.log(2 * np.pi) + log_det_F + v @ F_inv @ v)
+
+            # Update step
+            K = P_pred @ Z.T @ F_inv
+            s = s_pred + K @ v
+            P = (np.eye(n_states) - K @ Z) @ P_pred
+
+        return log_lik
+
+
+def compute_hlw_log_likelihood(
+    y_obs: np.ndarray,  # [π, π_w, u_gap] (T × 3)
+    r_lag: np.ndarray,  # Lagged real rate (T,)
+    params: HLWParameters,
+    import_price_growth: np.ndarray | None = None,  # Import price growth (T,)
+) -> float:
+    """Compute log-likelihood for HLW model."""
+    try:
+        model = HLWModel(params=params)
+        return model.kalman_filter_with_exog(y_obs, r_lag, import_price_growth)
+    except Exception:
+        return -1e10
+
+
+# Parameter bounds
+HLW_PARAM_BOUNDS = {
+    "rho_y": (0.3, 0.99),
+    "beta_r": (0.01, 0.5),
+    "kappa_p": (0.01, 0.5),
+    "kappa_w": (0.01, 0.5),
+    "rho_m": (0.0, 0.2),  # Import price pass-through
+    "omega": (0.1, 1.0),
+    "sigma_demand": (0.1, 2.0),
+    "sigma_supply": (0.01, 2.0),
+    "sigma_wage": (0.01, 2.0),
+    "sigma_rstar": (0.01, 0.5),
+    "sigma_okun": (0.01, 0.5),
+}
+
+
+if __name__ == "__main__":
+    # Quick test
+    params = HLWParameters()
+    model = HLWModel(params=params)
+
+    # Fake data
+    T = 100
+    y = np.random.randn(T, 3) * 0.5
+    r_lag = np.random.randn(T) * 2
+
+    ll = model.kalman_filter_with_exog(y, r_lag)
+    print(f"Test log-likelihood: {ll:.2f}")
