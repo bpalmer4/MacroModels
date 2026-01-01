@@ -1,226 +1,249 @@
 # DSGE Models Overview
 
-This directory contains several DSGE-style models for estimating Phillips curve parameters and NAIRU for Australia. The models evolved through experimentation to address identification challenges.
+This directory contains state-space models for estimating latent macroeconomic variables (NAIRU, r*, output gap) for Australia. **Only the NK model is a true DSGE** (forward-looking, solved via Blanchard-Kahn). The others are backward-looking unobserved components models.
 
 ## Summary Table
 
-| Model | Key Feature | Phillips Curve | NAIRU | Recommended Use |
-|-------|-------------|----------------|-------|-----------------|
-| NK DSGE | Taylor rule | κ_p × y_gap | No | Not recommended (Taylor rule fights Phillips) |
-| HLW | r* replaces Taylor | κ_p × y_gap | No | Phillips curve estimation by regime |
-| HLW-NAIRU | r* + NAIRU latent | γ × (U-NAIRU)/U | Yes (latent) | Not recommended (over-parameterized) |
-| NAIRU-Phillips | Pure Phillips | γ × (U-NAIRU)/U | Yes (latent) | Simple NAIRU, but estimates too high |
-| HLW-NAIRU-Phillips | r* + NAIRU, U exogenous | γ × (U-NAIRU)/U | Yes (latent) | Results not plausible |
+| Model | Type | Phillips Curve | Outputs | Status |
+|-------|------|----------------|---------|--------|
+| NK | True DSGE (Blanchard-Kahn) | κ_p × y_gap | Output gap | Many params at bounds |
+| HLW | State-space | κ_p × y_gap | Output gap, r* | Reasonable estimates |
+| HLW-NAIRU | State-space | γ × (U-NAIRU)/U | Output gap, r*, NAIRU | Over-parameterized |
+| NAIRU-Phillips | State-space | γ × (U-NAIRU)/U | NAIRU | NAIRU too high |
+| HLW-NAIRU-Phillips | State-space | γ × (U-NAIRU)/U | r*, NAIRU | Not plausible |
+
+**None of these models work particularly well.** This is common for state-space macro models due to identification issues, short samples, and structural breaks.
 
 ---
 
 ## File Structure
 
-### Core Files
+### Core Infrastructure
 ```
-shared.py                    # Shared utilities (regimes, MLE wrapper, printing)
-kalman.py                    # Standard Kalman filter/smoother
-solver.py                    # Blanchard-Kahn RE solver
-data_loader.py               # Common data loading, inflation anchor
-```
-
-### NK DSGE Model
-```
-nk_model.py                  # 3-equation NK model
-estimation.py                # MLE estimation
-regime_switching.py          # Regime-switching estimation
+estimation.py          # Generic MLE with ModelSpec, two-stage estimation
+kalman.py              # Kalman filter/smoother (time-invariant and time-varying)
+solver.py              # Blanchard-Kahn rational expectations solver
+data_loader.py         # Common data loading, inflation anchor
+shared.py              # Utilities (date filtering, bound checking)
 ```
 
-### HLW Model (Holston-Laubach-Williams style)
+### Generic Plotting
 ```
-hlw_model.py                 # HLW with latent r*
-hlw_estimation.py            # MLE estimation
-```
-
-### HLW-NAIRU Model
-```
-hlw_nairu_model.py           # HLW extended with NAIRU
-hlw_nairu_estimation.py      # MLE estimation
+plot_output_gap.py     # Output gap visualization
+plot_rstar.py          # r* visualization
+plot_nairu.py          # NAIRU visualization
 ```
 
-### NAIRU-Phillips Model
+### Models (each contains SPEC for generic estimation)
 ```
-nairu_phillips_model.py      # Pure Phillips curves with NAIRU
-nairu_phillips_estimation.py # MLE estimation, regime-switching
-plot_nairu_phillips.py       # Visualization
-```
-
-### HLW-NAIRU-Phillips Model (Model 5)
-```
-hlw_nairu_phillips_model.py       # Combined HLW + NAIRU-Phillips
-hlw_nairu_phillips_estimation.py  # MLE estimation, regime-switching
-plot_hlw_nairu_phillips.py        # Visualization
+nk_model.py                   # New Keynesian (true DSGE)
+hlw_model.py                  # Holston-Laubach-Williams style
+hlw_nairu_model.py            # HLW extended with NAIRU
+nairu_phillips_model.py       # Pure Phillips curves with NAIRU
+hlw_nairu_phillips_model.py   # Combined HLW + NAIRU-Phillips
 ```
 
 ---
 
-## 1. NK DSGE Model
+## Architecture
+
+### Component Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Individual Models                         │
+│  (nk_model.py, hlw_model.py, nairu_phillips_model.py, etc.)     │
+│                                                                  │
+│  Each model provides:                                            │
+│    - load_*_data()      → Model-specific data preparation        │
+│    - *_log_likelihood() → Likelihood function for MLE            │
+│    - *_extract_states() → Kalman smoother for state extraction   │
+│    - *_SPEC (ModelSpec) → Configuration for generic estimation   │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Generic Infrastructure                        │
+│                                                                  │
+│  estimation.py:                                                  │
+│    - ModelSpec dataclass (bounds, params, likelihood, extractor)│
+│    - estimate_two_stage() orchestrates full pipeline             │
+│    - estimate_mle() runs scipy.optimize.minimize                 │
+│                                                                  │
+│  kalman.py:                                                      │
+│    - kalman_filter() for likelihood computation                  │
+│    - kalman_smoother() for time-invariant observation eq         │
+│    - kalman_smoother_tv() for time-varying observation eq        │
+│                                                                  │
+│  solver.py:                                                      │
+│    - blanchard_kahn() for forward-looking DSGE (NK only)         │
+│                                                                  │
+│  data_loader.py:                                                 │
+│    - load_common_data() fetches ABS series                       │
+│    - compute_inflation_anchor() handles regime transition        │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Generic Plotting                            │
+│                                                                  │
+│  plot_output_gap.py  → plot_output_gap(series, model_name)      │
+│  plot_rstar.py       → plot_rstar(series, model_name)           │
+│  plot_nairu.py       → plot_nairu(series, unemployment, name)   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+1. **Data Loading**: Each model has `load_*_data()` that calls `data_loader.load_common_data()` then adds model-specific transformations (e.g., constructing observation matrices)
+
+2. **Estimation**: `estimate_two_stage()` orchestrates:
+   - Filters data to exclude crisis period (2008Q4-2020Q4)
+   - Calls `estimate_mle()` with the model's likelihood function
+   - Returns estimated parameters
+
+3. **State Extraction**: Model's `*_extract_states()` function:
+   - Takes estimated parameters + full data
+   - Runs Kalman smoother (from `kalman.py`)
+   - Returns DataFrame with latent states (output_gap, r*, NAIRU, etc.)
+
+4. **Plotting**: Generic plotting functions take extracted state series and produce standardized charts
+
+### Adding a New Model
+
+To add a new model, create a file with:
+
+```python
+# 1. Data loading
+def load_mymodel_data(start, end, ...) -> dict:
+    data = load_common_data(start, end)
+    # Add model-specific preparation
+    return {"y": observations, "dates": dates, ...}
+
+# 2. Likelihood function
+def compute_mymodel_log_likelihood(y, params, ...) -> float:
+    # Build state-space matrices from params
+    # Run kalman_filter() and return log_likelihood
+    ...
+
+# 3. State extractor
+def mymodel_extract_states(params, data) -> dict:
+    # Run kalman_smoother() with estimated params
+    # Return dict of state series
+    ...
+
+# 4. ModelSpec configuration
+MYMODEL_SPEC = ModelSpec(
+    name="MyModel",
+    description="...",
+    param_class=MyModelParams,
+    param_bounds={...},
+    estimate_params=[...],
+    fixed_params={...},
+    likelihood_fn=_mymodel_likelihood,
+    state_extractor_fn=mymodel_extract_states,
+)
+
+# 5. Main block for standalone execution
+if __name__ == "__main__":
+    result = estimate_two_stage(MYMODEL_SPEC, load_mymodel_data)
+    plot_output_gap(result.states["output_gap"], "MyModel")
+```
+
+---
+
+## Estimation Approach
+
+### Two-Stage Estimation
+
+All models use two-stage estimation to handle structural breaks:
+
+1. **Stage 1**: Estimate parameters excluding crisis period (2008Q4-2020Q4)
+2. **Stage 2**: Run Kalman smoother on full sample with fixed parameters
+
+This avoids distortions from GFC and COVID while still extracting states for the full period.
+
+```python
+from estimation import estimate_two_stage
+result = estimate_two_stage(MODEL_SPEC, load_data_fn)
+```
+
+### ModelSpec Pattern
+
+Each model defines a `ModelSpec` with:
+- Parameter bounds and which to estimate vs fix
+- Likelihood function
+- State extractor function for Kalman smoothing
+
+---
+
+## 1. NK Model (True DSGE)
+
+**The only forward-looking model, solved via Blanchard-Kahn.**
 
 **Structure:**
-- Standard 3-equation New Keynesian model
 - IS curve: ŷ = E[ŷ'] - σ(i - E[π'] - r*) + ε_demand
 - Phillips curve: π = β×E[π'] + κ_p×ŷ + ε_supply
 - Taylor rule: i = ρ_i×i_{-1} + (1-ρ_i)[φ_π×π + φ_y×ŷ] + ε_monetary
-- Solved via Blanchard-Kahn (1980)
 
-**Identification Issue:**
-When the interest rate is observed, the Taylor rule "fights" the Phillips curve for identification. κ_p tends to hit its lower bound while φ_π estimates become implausibly high.
+**Issues:**
+- 5 of 10 estimated parameters hit bounds
+- Taylor rule fights Phillips curve for identification
 
 ---
 
 ## 2. HLW Model
 
+**Backward-looking state-space model.**
+
 **Structure:**
-- Replaces Taylor rule with latent r* (natural rate)
 - IS curve: ŷ = ρ_y×ŷ_{-1} - β_r×(r_{-1} - r*) + ε_demand
 - Phillips curve: π = κ_p×ŷ + ρ_m×Δpm + ε_supply
-- Wage Phillips: π_w = κ_w×ŷ + ε_wage
-- Interest rate is exogenous (not modeled)
+- r* and g (trend growth) as latent random walks
 
-**Why It Works:**
-Treating monetary policy as exogenous avoids Taylor rule identification issues. κ_p is well-identified and shows meaningful variation across regimes.
-
-**Latest Results (Regime-Switching):**
-```
-              Pre-GFC    GFC-COVID   Post-COVID
-κ_p            0.043       0.031       0.238
-κ_w            0.500       0.127       0.500
-ρ_m            0.006       0.000       0.167
-```
+**Why it works better:**
+Interest rate exogenous avoids Taylor rule identification issues.
 
 ---
 
 ## 3. HLW-NAIRU Model
 
-**Structure:**
-- Extends HLW with NAIRU as additional latent state
-- States: [ŷ, r*, NAIRU, ε_s, ε_w]
-- Phillips: π = γ_p×(U - NAIRU)/U + ε_s (normalised u_gap)
+**HLW extended with NAIRU as additional latent state.**
 
-**Identification Issue:**
-Too many latent states (ŷ, r*, NAIRU) for available data. Parameters hit bounds due to competing dynamics between IS curve and Okun's law.
+**Structure:**
+- Same as HLW plus NAIRU random walk
+- Phillips: π = γ_p×(U - NAIRU)/U + ε_s
+
+**Issues:**
+Too many latent states for available data.
 
 ---
 
 ## 4. NAIRU-Phillips Model
 
+**Simplest model: just Phillips curves with NAIRU.**
+
 **Structure:**
-- Simplest model: just Phillips curves with NAIRU
-- No IS curve, no r*, no output gap dynamics
-- States: [NAIRU, ε_p, ε_w]
 - NAIRU: random walk
 - Price Phillips: π = γ_p×(U - NAIRU)/U + ρ_m×Δpm + ξ_oil×Δoil + ξ_coal×Δcoal + ε_p
 - Wage Phillips: Δulc = γ_w×(U - NAIRU)/U + λ_w×(ΔU/U) + ε_w
 
-**Key Features:**
-- Normalised u_gap = (U - NAIRU)/U (RBA style)
-- ULC growth for wages (better signal than raw compensation)
-- Speed limit term (λ_w): ΔU/U captures rapid unemployment changes
-- Energy prices: Oil and coal pass-through to prices
-- RTS Kalman smoother for improved early-sample estimates
-
-**Observables:**
-- [π (anchor-adjusted), Δulc]
-- U is exogenous (enters Phillips directly)
-
-**Latest Results (Regime-Switching):**
-```
-              Pre-GFC    GFC-COVID   Post-COVID
-γ_p           -0.303      -1.923      -1.354
-γ_w           -2.153      -0.010      -2.150
-ρ_m            0.000       0.005       0.165
-λ_w           -7.737      -6.136      -2.201
-ξ_oil          0.003       0.000       0.014
-ξ_coal         0.008       0.000       0.000
-```
-
-**Current NAIRU Estimate:** ~6.2% (higher than RBA's ~4-4.5%)
-
-**Known Issues:**
-1. NAIRU prior set to mean(U) per regime pulls estimates too high
-2. Weak Phillips curve (γ_p ~ -0.3 pre-GFC) provides little NAIRU identification
-3. Early sample estimates unreliable even with smoother
+**Issues:**
+NAIRU estimates too high (~6%) vs RBA's ~4-4.5%.
 
 ---
 
 ## 5. HLW-NAIRU-Phillips Model
 
+**Combines HLW r* with NAIRU-Phillips.**
+
 **Structure:**
-- Combines best features of HLW and NAIRU-Phillips
-- States: [r*, NAIRU, ε_p, ε_w]
-- r* dynamics: r*_t = r*_{t-1} + ε_rstar (random walk)
-- NAIRU dynamics: NAIRU_t = NAIRU_{t-1} + ε_nairu (random walk)
-- Price Phillips: π = γ_p×(U - NAIRU)/U + ρ_m×Δpm + ξ_oil×Δoil + ε_p
-- Wage Phillips: Δulc = γ_w×(U - NAIRU)/U + λ_w×(ΔU/U) + ε_w
+- r* and NAIRU as random walks
+- Phillips curves as in NAIRU-Phillips
+- U exogenous (not observed)
 
-**Key Design:**
-U is exogenous (not observed), which forces the model to use Phillips curves for
-NAIRU identification. This avoids the trap where NAIRU just tracks U directly.
-r* is initialized to regime mean real rate and evolves as random walk.
-
-**Observables:**
-- [π (anchor-adjusted), Δulc] — only 2 observables
-
-**Exogenous inputs:**
-- U: Unemployment rate (enters Phillips curves directly)
-- r: Real interest rate (used to initialize r* prior)
-
-**Latest Results (Regime-Switching):**
-```
-              Pre-GFC    GFC-COVID   Post-COVID
-γ_p           -0.303      -1.923      -1.353
-γ_w           -2.153      -0.010      -2.149
-ρ_m            0.000       0.005       0.165
-λ_w           -7.737      -6.136      -2.199
-ξ_oil          0.003       0.000       0.014
-ξ_coal         0.008       0.000       0.000
-```
-
-**Current Estimates:**
-- r* = -1.4%
-- NAIRU = 6.2%
-- r - r* = +2.5pp (restrictive policy)
-- U - NAIRU = -1.8pp (tight labor market)
-
-**Why This Design:**
-1. U exogenous → NAIRU identified from Phillips curves, not from tracking U
-2. Same identification as NAIRU-Phillips (model 4) but with r* added
-3. Produces meaningful u-gap variation over time
-4. γ_p matches model 4 results (e.g., -0.303 in Pre-GFC)
-
-**Known Issues - Results Not Plausible:**
-- Regime-switching causes artificial discontinuities in NAIRU and r* at regime breaks
-- NAIRU too flat within regimes, jumps between regimes when prior resets
-- r* essentially constant within regimes
-- Latent state paths are not economically sensible
-- For NAIRU estimation, the Bayesian state-space model in `src/models/nairu/` produces more plausible results
-
----
-
-## Shared Utilities (`shared.py`)
-
-Common functionality extracted for DRY code:
-
-```python
-# Regime definitions
-REGIMES = [
-    ("Pre-GFC", "1984Q1", "2008Q3"),
-    ("GFC-COVID", "2008Q4", "2020Q4"),
-    ("Post-COVID", "2021Q1", None),
-]
-
-# Helper functions
-ensure_period_index(series)      # Ensure PeriodIndex
-filter_date_range(df, start, end)  # Date filtering
-print_regime_results(...)        # Standardized result printing
-estimate_mle(...)                # Generic MLE wrapper
-check_bounds(...)                # Parameter bound checking
-```
+**Issues:**
+Results not economically plausible.
 
 ---
 
@@ -228,10 +251,9 @@ check_bounds(...)                # Parameter bound checking
 
 All models use anchor-adjusted inflation: π - π_anchor
 
-The anchor transitions from backward-looking to target-anchored:
-- Pre-1993: α = 1.0 (fully backward-looking)
-- 1993-1998: α fades linearly from 1.0 to 0.2
-- Post-1998: α = 0.2 (mostly anchored to 2.5% target)
+- Pre-1993: α = 1.0 (backward-looking)
+- 1993-1998: α fades from 1.0 to 0.2
+- Post-1998: α = 0.2 (anchored to 2.5% target)
 
 Formula: π_anchor = α × π_{t-1} + (1 - α) × 2.5
 
@@ -239,23 +261,10 @@ Formula: π_anchor = α × π_{t-1} + (1 - α) × 2.5
 
 ## Recommendations
 
-### For Phillips Curve Estimation
-Use **HLW model** with regime-switching:
-- κ_p well-identified across regimes
-- Shows flattening (GFC-COVID) and steepening (Post-COVID)
-- Doesn't require NAIRU estimation
-
-### For NAIRU Estimation
-The **Bayesian state-space model** in `src/models/nairu/` is more reliable:
-- Joint estimation with output gap
-- Proper uncertainty quantification
-- Better identified through multiple equations
-
-### NAIRU-Phillips Model Improvements Attempted
-1. ✓ Speed limit (ΔU/U) - helps capture rapid U changes
-2. ✓ Energy prices (oil, coal) - minimal effect
-3. ✓ RTS Kalman smoother - helps but doesn't fix core issue
-4. Pending: Lower NAIRU prior, tighter initial covariance
+For reliable NAIRU/output gap estimation, consider the **Bayesian state-space model** in `src/models/nairu/` which provides:
+- Joint estimation with proper uncertainty
+- Better identification through multiple equations
+- More plausible estimates
 
 ---
 
@@ -263,4 +272,3 @@ The **Bayesian state-space model** in `src/models/nairu/` is more reliable:
 
 - Holston, Laubach, Williams (2017): "Measuring the Natural Rate of Interest"
 - Blanchard & Kahn (1980): "The Solution of Linear Difference Models under Rational Expectations"
-- RBA (various): Phillips curve and NAIRU research

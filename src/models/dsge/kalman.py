@@ -260,6 +260,113 @@ def kalman_smoother(
     )
 
 
+def kalman_smoother_tv(
+    y: np.ndarray,
+    T: np.ndarray,
+    R: np.ndarray,
+    Q: np.ndarray,
+    build_obs_eq: callable,
+    H: np.ndarray | None = None,
+    s0: np.ndarray | None = None,
+    P0: np.ndarray | None = None,
+) -> KalmanOutput:
+    """Kalman smoother with time-varying observation equation.
+
+    For models where Z and d vary over time (e.g., normalised u-gap).
+
+    Args:
+        y: Observations, shape (T, n_obs)
+        T: State transition matrix, shape (n_states, n_states)
+        R: Shock impact matrix, shape (n_states, n_shocks)
+        Q: Shock covariance, shape (n_shocks, n_shocks)
+        build_obs_eq: Function(t, s_pred) -> (Z_t, d_t) returning:
+            Z_t: Observation matrix at time t, shape (n_obs, n_states)
+            d_t: Observation offset at time t, shape (n_obs,)
+        H: Measurement error covariance, shape (n_obs, n_obs). Default: zeros.
+        s0: Initial state mean, shape (n_states,). Default: zeros.
+        P0: Initial state covariance, shape (n_states, n_states). Default: identity.
+
+    Returns:
+        KalmanOutput with log-likelihood, filtered and smoothed states
+    """
+    n_periods, n_obs = y.shape
+    n_states = T.shape[0]
+
+    if H is None:
+        H = np.zeros((n_obs, n_obs))
+    if s0 is None:
+        s0 = np.zeros(n_states)
+    if P0 is None:
+        P0 = np.eye(n_states)
+
+    # Storage
+    s_pred_all = np.zeros((n_periods, n_states))
+    s_filt_all = np.zeros((n_periods, n_states))
+    P_pred_all = np.zeros((n_periods, n_states, n_states))
+    P_filt_all = np.zeros((n_periods, n_states, n_states))
+
+    log_likelihood = 0.0
+    s = s0.copy()
+    P = P0.copy()
+
+    # Forward pass (filter)
+    for t in range(n_periods):
+        # Prediction
+        s_pred = T @ s
+        P_pred = T @ P @ T.T + R @ Q @ R.T
+
+        s_pred_all[t] = s_pred
+        P_pred_all[t] = P_pred
+
+        # Time-varying observation equation
+        Z_t, d_t = build_obs_eq(t, s_pred)
+
+        # Innovation
+        y_pred = Z_t @ s_pred + d_t
+        v = y[t] - y_pred
+        F = Z_t @ P_pred @ Z_t.T + H
+
+        try:
+            F_inv = linalg.inv(F)
+            sign, logdet = np.linalg.slogdet(F)
+            if sign > 0:
+                log_likelihood += -0.5 * (n_obs * np.log(2 * np.pi) + logdet + v @ F_inv @ v)
+        except linalg.LinAlgError:
+            pass
+
+        # Update
+        K = P_pred @ Z_t.T @ F_inv
+        s = s_pred + K @ v
+        P = (np.eye(n_states) - K @ Z_t) @ P_pred
+
+        s_filt_all[t] = s
+        P_filt_all[t] = P
+
+    # Backward pass (smoother)
+    s_smooth = np.zeros((n_periods, n_states))
+    P_smooth = np.zeros((n_periods, n_states, n_states))
+
+    s_smooth[-1] = s_filt_all[-1]
+    P_smooth[-1] = P_filt_all[-1]
+
+    for t in range(n_periods - 2, -1, -1):
+        try:
+            J = P_filt_all[t] @ T.T @ linalg.inv(P_pred_all[t + 1])
+        except linalg.LinAlgError:
+            J = P_filt_all[t] @ T.T @ linalg.pinv(P_pred_all[t + 1])
+
+        s_smooth[t] = s_filt_all[t] + J @ (s_smooth[t + 1] - s_pred_all[t + 1])
+        P_smooth[t] = P_filt_all[t] + J @ (P_smooth[t + 1] - P_pred_all[t + 1]) @ J.T
+
+    return KalmanOutput(
+        log_likelihood=log_likelihood,
+        filtered_states=s_filt_all,
+        filtered_covs=P_filt_all,
+        smoothed_states=s_smooth,
+        smoothed_covs=P_smooth,
+    )
+
+
 def simulate_states(
     T: np.ndarray,
     R: np.ndarray,

@@ -17,10 +17,17 @@ Equations:
 
 3. Wage Phillips Curve:
    π_w,t = γ_w × (U_t - NAIRU_t)/U_t + ε_w
+
+Usage:
+    from nairu_phillips_model import NAIRU_PHILLIPS_SPEC, load_nairu_phillips_data
+    from estimation import estimate_two_stage
+
+    result = estimate_two_stage(NAIRU_PHILLIPS_SPEC, load_nairu_phillips_data)
 """
 
 from dataclasses import dataclass, field
 import numpy as np
+import pandas as pd
 from scipy import linalg
 
 
@@ -201,107 +208,55 @@ def extract_nairu_estimates(
     nairu_prior: float = 5.0,
     smooth: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Extract NAIRU estimates using Kalman filter and optional RTS smoother.
-
-    The smoother uses future observations to revise early estimates,
-    producing more accurate NAIRU paths especially at the start of the sample.
+    """Extract NAIRU estimates using generic Kalman smoother.
 
     Returns:
         nairu: Smoothed (or filtered) NAIRU estimates (T,)
         nairu_std: Standard deviation of NAIRU estimates (T,)
     """
-    p = params
-    n_periods = len(y_obs)
-    n_states = 3
+    from src.models.dsge.kalman import kalman_smoother_tv, kalman_filter
 
-    # State transition
+    p = params
+
+    # State transition (time-invariant)
     T_mat = np.array([
-        [1, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
+        [1, 0, 0],  # NAIRU: random walk
+        [0, 0, 0],  # ε_p: iid
+        [0, 0, 0],  # ε_w: iid
     ])
     R_mat = np.diag([p.sigma_nairu, p.sigma_p, p.sigma_w])
     Q = np.eye(3)
     H = np.zeros((2, 2))
 
     # Initial state
-    s = np.array([nairu_prior, 0.0, 0.0])
-    P = np.eye(3)
-    P[0, 0] = 4.0
+    s0 = np.array([nairu_prior, 0.0, 0.0])
+    P0 = np.eye(3)
+    P0[0, 0] = 4.0  # Diffuse prior for NAIRU
 
-    # Storage for forward pass (needed for smoother)
-    s_filtered = np.zeros((n_periods, n_states))
-    P_filtered = np.zeros((n_periods, n_states, n_states))
-    s_predicted = np.zeros((n_periods, n_states))
-    P_predicted = np.zeros((n_periods, n_states, n_states))
-
-    # === Forward pass (Kalman filter) ===
-    for t in range(n_periods):
+    # Build time-varying observation equation
+    def build_obs_eq(t, s_pred):
         U_t = U_obs[t]
-
-        # Time-varying Z
-        Z = np.array([
+        Z_t = np.array([
             [-p.gamma_p / U_t, 1, 0],
             [-p.gamma_w / U_t, 0, 1],
         ])
-        d = np.array([p.gamma_p, p.gamma_w])
+        d_t = np.array([p.gamma_p, p.gamma_w])
         if import_price_growth is not None:
-            d[0] += p.rho_m * import_price_growth[t]
+            d_t[0] += p.rho_m * import_price_growth[t]
         if delta_U_over_U is not None:
-            d[1] += p.lambda_w * delta_U_over_U[t]
+            d_t[1] += p.lambda_w * delta_U_over_U[t]
         if oil_change is not None:
-            d[0] += p.xi_oil * oil_change[t]
+            d_t[0] += p.xi_oil * oil_change[t]
         if coal_change is not None:
-            d[0] += p.xi_coal * coal_change[t]
+            d_t[0] += p.xi_coal * coal_change[t]
+        return Z_t, d_t
 
-        # Prediction
-        s_pred = T_mat @ s
-        P_pred = T_mat @ P @ T_mat.T + R_mat @ Q @ R_mat.T
+    result = kalman_smoother_tv(y_obs, T_mat, R_mat, Q, build_obs_eq, H, s0, P0)
 
-        # Store predictions (needed for smoother)
-        s_predicted[t] = s_pred
-        P_predicted[t] = P_pred
-
-        # Observation prediction
-        y_pred = Z @ s_pred + d
-        v = y_obs[t] - y_pred
-
-        # Innovation covariance
-        F = Z @ P_pred @ Z.T + H
-        F_inv = linalg.inv(F)
-
-        # Update
-        K = P_pred @ Z.T @ F_inv
-        s = s_pred + K @ v
-        P = (np.eye(n_states) - K @ Z) @ P_pred
-
-        # Store filtered estimates
-        s_filtered[t] = s
-        P_filtered[t] = P
-
-    if not smooth:
-        # Return filtered estimates only
-        return s_filtered[:, 0], np.sqrt(P_filtered[:, 0, 0])
-
-    # === Backward pass (RTS smoother) ===
-    s_smoothed = np.zeros((n_periods, n_states))
-    P_smoothed = np.zeros((n_periods, n_states, n_states))
-
-    # Initialize with final filtered values
-    s_smoothed[-1] = s_filtered[-1]
-    P_smoothed[-1] = P_filtered[-1]
-
-    # Backward recursion
-    for t in range(n_periods - 2, -1, -1):
-        # Smoother gain
-        P_pred_inv = linalg.inv(P_predicted[t + 1])
-        J = P_filtered[t] @ T_mat.T @ P_pred_inv
-
-        # Smoothed state and covariance
-        s_smoothed[t] = s_filtered[t] + J @ (s_smoothed[t + 1] - s_predicted[t + 1])
-        P_smoothed[t] = P_filtered[t] + J @ (P_smoothed[t + 1] - P_predicted[t + 1]) @ J.T
-
-    return s_smoothed[:, 0], np.sqrt(P_smoothed[:, 0, 0])
+    if smooth:
+        return result.smoothed_states[:, 0], np.sqrt(result.smoothed_covs[:, 0, 0])
+    else:
+        return result.filtered_states[:, 0], np.sqrt(result.filtered_covs[:, 0, 0])
 
 
 # Parameter bounds matching state-space model
@@ -318,14 +273,207 @@ NAIRU_PHILLIPS_PARAM_BOUNDS = {
 }
 
 
+# =============================================================================
+# Data Loading
+# =============================================================================
+
+
+def load_nairu_phillips_data(
+    start: str = "1984Q1",
+    end: str | None = None,
+    anchor_inflation: bool = True,
+) -> dict:
+    """Load data for NAIRU-Phillips estimation.
+
+    Returns dict with:
+        y: Observations (T × 2): [π, π_w]
+        U_obs: Unemployment rate (T,)
+        import_price_growth: Year-on-year import price growth (T,)
+        delta_U_over_U: Speed limit term (U_{t-1} - U_{t-2})/U_{t-1} (T,)
+        oil_change: Oil price change (annual %, lagged 1Q) (T,)
+        coal_change: Coal price change (annual %) (T,)
+        nairu_prior: Prior mean for NAIRU (regime average U)
+        dates: Period index
+    """
+    from src.data.abs_loader import load_series
+    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY, UNEMPLOYMENT_RATE
+    from src.data.import_prices import get_import_price_growth_annual
+    from src.data.ulc import get_ulc_growth_qrtly
+    from src.data.energy import get_oil_change_lagged_annual, get_coal_change_annual
+    from src.models.dsge.data_loader import compute_inflation_anchor
+    from src.models.dsge.shared import ensure_period_index, filter_date_range
+
+    # Load and process inflation
+    inflation_raw = ensure_period_index(load_series(CPI_TRIMMED_MEAN_QUARTERLY).data)
+    inflation_annual = ((1 + inflation_raw / 100) ** 4 - 1) * 100
+
+    if anchor_inflation:
+        pi_anchor = compute_inflation_anchor(inflation_annual)
+        inflation = inflation_annual - pi_anchor
+    else:
+        inflation = inflation_annual
+
+    # Load ULC growth
+    ulc_growth = ensure_period_index(get_ulc_growth_qrtly().data)
+
+    # Load unemployment rate
+    ur = ensure_period_index(load_series(UNEMPLOYMENT_RATE).data)
+    if hasattr(ur.index, "freqstr") and ur.index.freqstr == "M":
+        ur = ur.resample("Q").mean()
+        ur.index = pd.PeriodIndex(ur.index, freq="Q")
+
+    # Load import price growth
+    import_price_growth = ensure_period_index(get_import_price_growth_annual().data)
+
+    # Load energy prices
+    oil_change = ensure_period_index(get_oil_change_lagged_annual().data)
+    coal_change = ensure_period_index(get_coal_change_annual().data).shift(1)
+
+    # Build DataFrame for alignment
+    df = pd.DataFrame({
+        "inflation": inflation,
+        "ulc_growth": ulc_growth,
+        "U": ur,
+        "import_price_growth": import_price_growth,
+        "oil_change": oil_change,
+        "coal_change": coal_change,
+    })
+
+    # Compute speed limit: (U_{t-1} - U_{t-2})/U_{t-1}
+    U_lag1 = df["U"].shift(1)
+    U_lag2 = df["U"].shift(2)
+    df["delta_U_over_U"] = (U_lag1 - U_lag2) / U_lag1
+
+    # Drop NaNs and filter to date range
+    df = filter_date_range(df.dropna(), start, end)
+
+    return {
+        "y": df[["inflation", "ulc_growth"]].values,
+        "U_obs": df["U"].values,
+        "import_price_growth": df["import_price_growth"].values,
+        "delta_U_over_U": df["delta_U_over_U"].values,
+        "oil_change": df["oil_change"].values,
+        "coal_change": df["coal_change"].values,
+        "nairu_prior": float(np.mean(df["U"].values)),
+        "dates": df.index,
+    }
+
+
+# =============================================================================
+# Likelihood Wrapper (for generic estimator)
+# =============================================================================
+
+
+def _nairu_phillips_likelihood(params: NairuPhillipsParameters, data: dict) -> float:
+    """Compute log-likelihood for NAIRU-Phillips model.
+
+    Args:
+        params: Model parameters
+        data: Dict from load_nairu_phillips_data
+
+    Returns:
+        Log-likelihood value
+    """
+    return compute_nairu_phillips_log_likelihood(
+        y_obs=data["y"],
+        U_obs=data["U_obs"],
+        params=params,
+        import_price_growth=data.get("import_price_growth"),
+        delta_U_over_U=data.get("delta_U_over_U"),
+        oil_change=data.get("oil_change"),
+        coal_change=data.get("coal_change"),
+        nairu_prior=data.get("nairu_prior", 5.0),
+    )
+
+
+# =============================================================================
+# State Extractor (for two-stage estimation)
+# =============================================================================
+
+
+def nairu_phillips_extract_states(params: NairuPhillipsParameters, data: dict) -> dict:
+    """Extract smoothed NAIRU using Kalman smoother.
+
+    Args:
+        params: Model parameters
+        data: Data dict with y, U_obs, etc.
+
+    Returns:
+        Dict with states DataFrame and log_likelihood
+    """
+    nairu, nairu_std = extract_nairu_estimates(
+        y_obs=data["y"],
+        U_obs=data["U_obs"],
+        params=params,
+        import_price_growth=data.get("import_price_growth"),
+        delta_U_over_U=data.get("delta_U_over_U"),
+        oil_change=data.get("oil_change"),
+        coal_change=data.get("coal_change"),
+        nairu_prior=data.get("nairu_prior", 5.0),
+        smooth=True,
+    )
+
+    states_df = pd.DataFrame({
+        "nairu": nairu,
+        "nairu_std": nairu_std,
+        "unemployment": data["U_obs"],
+    }, index=data["dates"])
+
+    return {
+        "states": states_df,
+        "log_likelihood": _nairu_phillips_likelihood(params, data),
+    }
+
+
+# =============================================================================
+# Model Specification
+# =============================================================================
+
+# Import here to avoid circular imports
+from src.models.dsge.estimation import ModelSpec
+
+NAIRU_PHILLIPS_SPEC = ModelSpec(
+    name="NAIRU-Phillips",
+    description="Pure Phillips curve, normalised u_gap, ULC for wages",
+    param_class=NairuPhillipsParameters,
+    param_bounds=NAIRU_PHILLIPS_PARAM_BOUNDS,
+    estimate_params=[
+        "gamma_p", "gamma_w", "rho_m", "lambda_w", "xi_oil", "xi_coal",
+        "sigma_p", "sigma_w",
+    ],
+    fixed_params={"sigma_nairu": 0.15},
+    likelihood_fn=_nairu_phillips_likelihood,
+    state_extractor_fn=nairu_phillips_extract_states,
+)
+
+
+# =============================================================================
+# Main
+# =============================================================================
+
+
 if __name__ == "__main__":
-    # Quick test
-    params = NairuPhillipsParameters()
-    model = NairuPhillipsModel(params=params)
+    from pathlib import Path
+    import mgplot as mg
+    from src.models.dsge.estimation import estimate_two_stage, print_single_result
+    from src.models.dsge.plot_nairu import plot_nairu
 
-    T = 100
-    y = np.random.randn(T, 2) * 0.5
-    U = 5 + np.random.randn(T) * 0.5
+    # Chart setup
+    CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "dsge-nairu-phillips"
+    mg.set_chart_dir(str(CHART_DIR))
+    mg.clear_chart_dir()
 
-    ll = model.kalman_filter(y, U)
-    print(f"Test log-likelihood: {ll:.2f}")
+    print("NAIRU-Phillips Model - Two-Stage Estimation")
+    print("=" * 60)
+
+    result = estimate_two_stage(NAIRU_PHILLIPS_SPEC, load_nairu_phillips_data)
+    print_single_result(result.estimation_result, NAIRU_PHILLIPS_SPEC)
+
+    # Plot NAIRU with unemployment overlay
+    plot_nairu(
+        result.states["nairu"],
+        unemployment=result.states["unemployment"],
+        model_name="NAIRU-Phillips",
+    )
+
+    print(f"\nCharts saved to: {CHART_DIR}")

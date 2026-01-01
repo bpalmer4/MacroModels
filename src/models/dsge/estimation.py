@@ -1,309 +1,363 @@
-"""Maximum likelihood estimation for the NK DSGE model with wages.
+"""Generic maximum likelihood estimation for DSGE models.
 
-Uses the Kalman filter to compute the log-likelihood, then optimizes
-over the parameter space to find the MLE.
+Provides ModelSpec dataclass and estimate_model() function that work with
+any model that defines its specification. Each model file defines its own
+SPEC constant and the generic estimator handles the rest.
+
+Usage:
+    from estimation import estimate_model
+    from nairu_phillips_model import NAIRU_PHILLIPS_SPEC, load_nairu_phillips_data
+
+    data = load_nairu_phillips_data(start="1984Q1")
+    result = estimate_model(NAIRU_PHILLIPS_SPEC, data)
 """
 
 from dataclasses import dataclass, field
+from typing import Any, Callable
 
 import numpy as np
+import pandas as pd
 from scipy import optimize
 
-from src.models.dsge.nk_model import NKModel, NKParameters, NKSolution
-from src.models.dsge.kalman import kalman_filter
+# =============================================================================
+# Model Specification
+# =============================================================================
+
+
+@dataclass
+class ModelSpec:
+    """Specification for a DSGE model.
+
+    Encapsulates everything needed to estimate a model:
+    - Parameter class and bounds
+    - Which parameters to estimate vs fix
+    - Likelihood function
+    - State extractor for two-stage estimation
+
+    Attributes:
+        name: Model name for display
+        param_class: Dataclass type for parameters (must have to_dict method)
+        param_bounds: Dict mapping parameter names to (lower, upper) bounds
+        estimate_params: List of parameter names to estimate
+        likelihood_fn: Function(params, data) -> log_likelihood
+        fixed_params: Dict of parameter name -> fixed value (not estimated)
+        description: Optional description for output
+        state_extractor_fn: Function(params, data) -> dict with 'states' DataFrame
+    """
+
+    name: str
+    param_class: type
+    param_bounds: dict[str, tuple[float, float]]
+    estimate_params: list[str]
+    likelihood_fn: Callable[[Any, dict], float]
+    fixed_params: dict[str, float] = field(default_factory=dict)
+    description: str = ""
+    state_extractor_fn: Callable[[Any, dict], dict] | None = None
+
+
+# =============================================================================
+# Estimation Result
+# =============================================================================
 
 
 @dataclass
 class EstimationResult:
-    """Results from DSGE estimation.
+    """Results from model estimation.
 
     Attributes:
-        params: Estimated parameters
+        params: Estimated parameter object
         log_likelihood: Log-likelihood at optimum
-        solution: Model solution at estimated parameters
-        std_errors: Standard errors (from Hessian inverse)
-        convergence: Optimizer convergence info
-        n_obs: Number of observations used
-
+        convergence: Dict with success, nit, nfev, message
+        n_obs: Number of observations
+        params_at_bounds: List of parameter names at bounds (if any)
     """
 
-    params: NKParameters
+    params: Any
     log_likelihood: float
-    solution: NKSolution
-    std_errors: dict[str, float] | None
     convergence: dict
     n_obs: int
+    params_at_bounds: list[str] = field(default_factory=list)
 
 
-# Parameter bounds (prevents numerical issues)
-PARAM_BOUNDS = {
-    "sigma": (0.1, 5.0),  # IES
-    "beta": (0.9, 0.9999),  # Discount factor
-    "kappa_p": (0.01, 0.5),  # Price Phillips curve slope
-    "kappa_w": (0.01, 0.5),  # Wage Phillips curve slope
-    "omega": (0.1, 1.0),  # Okun's law coefficient
-    "phi_pi": (1.01, 3.0),  # Taylor rule inflation response (>1 for determinacy)
-    "phi_y": (0.0, 2.0),  # Taylor rule output gap response
-    "rho_i": (0.5, 0.95),  # Interest rate smoothing
-    "rho_demand": (0.01, 0.99),  # Shock persistence
-    "rho_supply": (0.01, 0.99),
-    "rho_wage": (0.01, 0.99),
-    "rho_monetary": (0.01, 0.99),
-    "sigma_demand": (0.01, 2.0),  # Shock volatility
-    "sigma_supply": (0.01, 2.0),
-    "sigma_wage": (0.01, 2.0),
-    "sigma_monetary": (0.01, 2.0),
-}
-
-# Parameters to estimate (can fix some at prior values)
-# Note: rho_monetary removed since monetary shock is iid (persistence via rho_i)
-DEFAULT_ESTIMATE_PARAMS = [
-    "kappa_p",
-    "kappa_w",
-    "phi_pi",
-    "phi_y",
-    "rho_i",
-    "rho_demand",
-    "rho_supply",
-    "rho_wage",
-    "sigma_demand",
-    "sigma_supply",
-    "sigma_wage",
-    "sigma_monetary",
-]
+# =============================================================================
+# Generic Estimator
+# =============================================================================
 
 
-def params_to_vector(
-    params: NKParameters,
-    estimate_params: list[str],
-) -> np.ndarray:
-    """Convert NKParameters to optimization vector."""
-    param_dict = params.to_dict()
-    return np.array([param_dict[name] for name in estimate_params])
-
-
-def vector_to_params(
-    x: np.ndarray,
-    estimate_params: list[str],
-    fixed_params: NKParameters,
-) -> NKParameters:
-    """Convert optimization vector to NKParameters."""
-    param_dict = fixed_params.to_dict()
-    for i, name in enumerate(estimate_params):
-        param_dict[name] = x[i]
-    return NKParameters(**param_dict)
-
-
-def get_bounds(estimate_params: list[str]) -> list[tuple[float, float]]:
-    """Get optimization bounds for specified parameters."""
-    return [PARAM_BOUNDS[name] for name in estimate_params]
-
-
-def compute_log_likelihood(
-    y: np.ndarray,
-    params: NKParameters,
-    n_observables: int = 2,
-) -> float:
-    """Compute log-likelihood for given parameters.
-
-    Args:
-        y: Observations (T × n_obs)
-        params: Model parameters
-        n_observables: Number of observables (2, 3, 4, or 5)
-
-    Returns:
-        Log-likelihood (or -1e10 if model fails)
-
-    """
-    try:
-        model = NKModel(params=params)
-
-        # Check determinacy
-        is_det, _ = model.check_determinacy()
-        if not is_det:
-            return -1e10
-
-        # Solve model
-        solution = model.solve()
-
-        # Get state-space matrices (now returns 5 values including H)
-        T, R, Z, Q, H = model.state_space_matrices(solution, n_observables=n_observables)
-
-        # Run Kalman filter
-        kf = kalman_filter(y, T, R, Z, Q, H=H)
-
-        return kf.log_likelihood
-
-    except Exception:
-        return -1e10
-
-
-def negative_log_likelihood(
-    x: np.ndarray,
-    y: np.ndarray,
-    estimate_params: list[str],
-    fixed_params: NKParameters,
-    n_observables: int = 2,
-) -> float:
-    """Negative log-likelihood for optimization (minimization)."""
-    params = vector_to_params(x, estimate_params, fixed_params)
-    ll = compute_log_likelihood(y, params, n_observables=n_observables)
-    return -ll
-
-
-def estimate_dsge(
-    y: np.ndarray,
-    initial_params: NKParameters | None = None,
-    estimate_params: list[str] | None = None,
-    method: str = "L-BFGS-B",
-    options: dict | None = None,
-    n_observables: int = 2,
+def estimate_model(
+    spec: ModelSpec,
+    data: dict,
+    initial_params: Any | None = None,
+    maxiter: int = 500,
+    verbose: bool = False,
 ) -> EstimationResult:
-    """Estimate DSGE model by maximum likelihood.
+    """Estimate a model via maximum likelihood.
 
     Args:
-        y: Observations (T × n_obs)
-        initial_params: Starting values for optimization
-        estimate_params: Which parameters to estimate (others fixed)
-        method: Optimization method (default L-BFGS-B)
-        options: Options for scipy.optimize.minimize
-        n_observables: Number of observables (2, 3, or 4)
+        spec: ModelSpec defining the model
+        data: Dict of data arrays (passed to likelihood_fn)
+        initial_params: Initial parameter values (or None for defaults)
+        maxiter: Maximum optimizer iterations
+        verbose: Print progress
 
     Returns:
         EstimationResult with estimated parameters and diagnostics
-
     """
     if initial_params is None:
-        initial_params = NKParameters()
+        initial_params = spec.param_class()
 
-    if estimate_params is None:
-        estimate_params = DEFAULT_ESTIMATE_PARAMS
+    # Build parameter dict from initial values
+    param_dict = initial_params.to_dict()
 
-    if options is None:
-        options = {"maxiter": 1000}
+    # Apply fixed parameters
+    for name, value in spec.fixed_params.items():
+        param_dict[name] = value
 
-    # Initial vector and bounds
-    x0 = params_to_vector(initial_params, estimate_params)
-    bounds = get_bounds(estimate_params)
+    # Initial values and bounds for estimated parameters
+    x0 = np.array([param_dict[name] for name in spec.estimate_params])
+    bounds = [spec.param_bounds[name] for name in spec.estimate_params]
 
-    # Optimize
+    # Get n_obs from data
+    n_obs = _get_n_obs(data)
+
+    def neg_ll(x: np.ndarray) -> float:
+        for i, name in enumerate(spec.estimate_params):
+            param_dict[name] = x[i]
+        params = spec.param_class(**param_dict)
+        ll = spec.likelihood_fn(params, data)
+        if verbose and np.isfinite(ll):
+            print(f"  LL: {ll:.2f}")
+        return -ll if np.isfinite(ll) else 1e10
+
     result = optimize.minimize(
-        negative_log_likelihood,
+        neg_ll,
         x0,
-        args=(y, estimate_params, initial_params, n_observables),
-        method=method,
+        method="L-BFGS-B",
         bounds=bounds,
-        options=options,
+        options={"maxiter": maxiter},
     )
 
-    # Extract estimated parameters
-    estimated_params = vector_to_params(result.x, estimate_params, initial_params)
+    # Extract final parameters
+    for i, name in enumerate(spec.estimate_params):
+        param_dict[name] = result.x[i]
+    final_params = spec.param_class(**param_dict)
 
-    # Solve model at optimum
-    model = NKModel(params=estimated_params)
-    solution = model.solve()
-
-    # Compute standard errors from Hessian (if available)
-    std_errors = None
-    if hasattr(result, "hess_inv"):
-        try:
-            if isinstance(result.hess_inv, np.ndarray):
-                hess_inv = result.hess_inv
-            else:
-                hess_inv = result.hess_inv.todense()
-            variances = np.diag(hess_inv)
-            if np.all(variances > 0):
-                std_errors = {
-                    name: np.sqrt(variances[i])
-                    for i, name in enumerate(estimate_params)
-                }
-        except Exception:
-            pass
+    # Check for parameters at bounds
+    at_bounds = _check_bounds(result.x, spec.estimate_params, bounds)
 
     return EstimationResult(
-        params=estimated_params,
+        params=final_params,
         log_likelihood=-result.fun,
-        solution=solution,
-        std_errors=std_errors,
         convergence={
             "success": result.success,
-            "message": result.message,
             "nit": result.nit,
             "nfev": result.nfev,
+            "message": getattr(result, "message", ""),
         },
-        n_obs=len(y),
+        n_obs=n_obs,
+        params_at_bounds=at_bounds,
     )
 
 
-def print_estimation_results(result: EstimationResult) -> None:
-    """Print formatted estimation results."""
-    print("=" * 60)
-    print("DSGE MODEL ESTIMATION RESULTS")
-    print("=" * 60)
+def _get_n_obs(data: dict) -> int:
+    """Extract number of observations from data dict."""
+    # Look for common keys
+    for key in ["y", "y_obs", "dates"]:
+        if key in data:
+            return len(data[key])
+    # Try first array value
+    for v in data.values():
+        if isinstance(v, np.ndarray):
+            return len(v)
+    return 0
+
+
+def _check_bounds(
+    x: np.ndarray,
+    param_names: list[str],
+    bounds: list[tuple[float, float]],
+    tol: float = 0.01,
+) -> list[str]:
+    """Check which parameters are at or near their bounds."""
+    at_bounds = []
+    for i, (name, (lo, hi)) in enumerate(zip(param_names, bounds)):
+        range_size = hi - lo
+        if x[i] <= lo + tol * range_size:
+            at_bounds.append(f"{name} (lower)")
+        elif x[i] >= hi - tol * range_size:
+            at_bounds.append(f"{name} (upper)")
+    return at_bounds
+
+
+# =============================================================================
+# Two-Stage Estimation (exclude crisis, extract full states)
+# =============================================================================
+
+
+@dataclass
+class TwoStageResult:
+    """Results from two-stage estimation.
+
+    Attributes:
+        params: Estimated parameters (from filtered data)
+        estimation_result: Full EstimationResult from stage 1
+        states: DataFrame of smoothed states (from full data)
+        estimation_dates: Dates used for parameter estimation
+        full_dates: All dates (for state extraction)
+    """
+
+    params: Any
+    estimation_result: EstimationResult
+    states: pd.DataFrame
+    estimation_dates: pd.PeriodIndex
+    full_dates: pd.PeriodIndex
+
+
+def exclude_period(data: dict, exclude_start: str, exclude_end: str) -> dict:
+    """Exclude a date range from data dict.
+
+    Args:
+        data: Dict with 'dates' (PeriodIndex) and numpy arrays
+        exclude_start: Start of exclusion period (e.g., "2008Q4")
+        exclude_end: End of exclusion period (e.g., "2020Q4")
+
+    Returns:
+        New data dict with excluded period removed
+    """
+    dates = data.get("dates")
+    if dates is None:
+        raise ValueError("Data dict must have 'dates' key")
+
+    exclude_start_period = pd.Period(exclude_start, freq="Q")
+    exclude_end_period = pd.Period(exclude_end, freq="Q")
+
+    # Mask for dates to KEEP
+    mask = (dates < exclude_start_period) | (dates > exclude_end_period)
+
+    filtered = {}
+    for key, value in data.items():
+        if key == "dates":
+            filtered[key] = dates[mask]
+        elif isinstance(value, np.ndarray):
+            filtered[key] = value[mask]
+        else:
+            filtered[key] = value
+
+    return filtered
+
+
+def estimate_two_stage(
+    spec: ModelSpec,
+    load_data_fn: Callable[..., dict],
+    exclude_start: str = "2008Q4",
+    exclude_end: str = "2020Q4",
+    start: str = "1984Q1",
+    end: str | None = None,
+    verbose: bool = True,
+    **load_kwargs,
+) -> TwoStageResult:
+    """Two-stage estimation: parameters on clean data, states on full data.
+
+    Stage 1: Estimate structural parameters excluding crisis years
+    Stage 2: Extract smoothed states for ALL periods using those parameters
+
+    Args:
+        spec: ModelSpec (must have state_extractor_fn defined)
+        load_data_fn: Function(start, end, **kwargs) -> data dict
+        exclude_start: Start of exclusion period (default: "2008Q4")
+        exclude_end: End of exclusion period (default: "2020Q4")
+        start: Data start date
+        end: Data end date (None = latest)
+        verbose: Print progress
+        **load_kwargs: Additional kwargs passed to load_data_fn
+
+    Returns:
+        TwoStageResult with estimated params and full states
+    """
+    if spec.state_extractor_fn is None:
+        raise ValueError(f"Model {spec.name} has no state_extractor_fn defined")
+
+    # Load full data
+    full_data = load_data_fn(start=start, end=end, **load_kwargs)
+    full_dates = full_data["dates"]
+
+    # Filter out crisis years for estimation
+    filtered_data = exclude_period(full_data, exclude_start, exclude_end)
+    estimation_dates = filtered_data["dates"]
+
+    if verbose:
+        print(f"\n{spec.name} - Two-Stage Estimation")
+        if spec.description:
+            print(f"  ({spec.description})")
+        print(f"  Stage 1: Estimate parameters excluding {exclude_start} to {exclude_end}")
+        print(f"    Using: {estimation_dates[0]} to {estimation_dates[-1]} (n={len(estimation_dates)})")
+
+    # Stage 1: Estimate on filtered data
+    est_result = estimate_model(spec, filtered_data)
+
+    if verbose:
+        print(f"    Log-likelihood: {est_result.log_likelihood:.2f}")
+        if est_result.params_at_bounds:
+            print(f"    Warning: at bounds: {', '.join(est_result.params_at_bounds)}")
+
+    # Stage 2: Extract states on full data
+    if verbose:
+        print(f"  Stage 2: Extract states for full period")
+        print(f"    Using: {full_dates[0]} to {full_dates[-1]} (n={len(full_dates)})")
+
+    state_result = spec.state_extractor_fn(est_result.params, full_data)
+    states_df = state_result["states"]
+
+    if verbose:
+        print(f"    States extracted: {list(states_df.columns)}")
+
+    return TwoStageResult(
+        params=est_result.params,
+        estimation_result=est_result,
+        states=states_df,
+        estimation_dates=estimation_dates,
+        full_dates=full_dates,
+    )
+
+
+# =============================================================================
+# Result Printing
+# =============================================================================
+
+
+def print_single_result(
+    result: EstimationResult,
+    spec: ModelSpec,
+    params_to_show: list[str] | None = None,
+) -> None:
+    """Print a single estimation result.
+
+    Args:
+        result: EstimationResult to print
+        spec: ModelSpec for the model
+        params_to_show: List of parameter names to display
+    """
+    if params_to_show is None:
+        params_to_show = spec.estimate_params
+
+    print("=" * 50)
+    print(f"{spec.name} ESTIMATION RESULT")
+    print("=" * 50)
 
     print(f"\nObservations: {result.n_obs}")
     print(f"Log-likelihood: {result.log_likelihood:.2f}")
-    print(f"Convergence: {'Yes' if result.convergence['success'] else 'No'}")
-    print(f"  Iterations: {result.convergence['nit']}")
-    print(f"  Function evals: {result.convergence['nfev']}")
+    print(f"Converged: {'Yes' if result.convergence.get('success') else 'No'}")
+    print(f"Iterations: {result.convergence.get('nit', 'N/A')}")
 
-    print("\n" + "-" * 60)
-    print("ESTIMATED PARAMETERS")
-    print("-" * 60)
+    print("\nParameters:")
+    for param in params_to_show:
+        if hasattr(result.params, param):
+            val = getattr(result.params, param)
+            at_bound = param in " ".join(result.params_at_bounds)
+            marker = " *" if at_bound else ""
+            print(f"  {param:<20} = {val:>10.4f}{marker}")
 
-    p = result.params
-    se = result.std_errors or {}
+    if result.params_at_bounds:
+        print(f"\n* At bounds: {', '.join(result.params_at_bounds)}")
 
-    def fmt_param(name: str, value: float, se_val: float | None) -> str:
-        if se_val is not None:
-            return f"  {name:20s} = {value:8.4f}  (SE: {se_val:.4f})"
-        return f"  {name:20s} = {value:8.4f}"
-
-    print("\nStructural parameters:")
-    print(fmt_param("sigma (IES)", p.sigma, se.get("sigma")))
-    print(fmt_param("beta", p.beta, se.get("beta")))
-    print(fmt_param("kappa_p (price PC)", p.kappa_p, se.get("kappa_p")))
-    print(fmt_param("kappa_w (wage PC)", p.kappa_w, se.get("kappa_w")))
-
-    print("\nTaylor rule:")
-    print(fmt_param("phi_pi", p.phi_pi, se.get("phi_pi")))
-    print(fmt_param("phi_y", p.phi_y, se.get("phi_y")))
-    print(fmt_param("rho_i (smoothing)", p.rho_i, se.get("rho_i")))
-
-    print("\nShock persistence:")
-    print(fmt_param("rho_demand", p.rho_demand, se.get("rho_demand")))
-    print(fmt_param("rho_supply", p.rho_supply, se.get("rho_supply")))
-    print(fmt_param("rho_wage", p.rho_wage, se.get("rho_wage")))
-
-    print("\nShock volatilities:")
-    print(fmt_param("sigma_demand", p.sigma_demand, se.get("sigma_demand")))
-    print(fmt_param("sigma_supply", p.sigma_supply, se.get("sigma_supply")))
-    print(fmt_param("sigma_wage", p.sigma_wage, se.get("sigma_wage")))
-    print(fmt_param("sigma_monetary", p.sigma_monetary, se.get("sigma_monetary")))
-
-    print("\n" + "-" * 60)
-    print("POLICY FUNCTION")
-    print("-" * 60)
-    R = result.solution.R
-    print("\n[ŷ, π, π_w]' = R @ [ε_d, ε_s, ε_w, i]'")
-    print(f"\n             ε_demand   ε_supply   ε_wage        i")
-    print(f"  ŷ:       {R[0, 0]:9.4f}  {R[0, 1]:9.4f}  {R[0, 2]:9.4f}  {R[0, 3]:9.4f}")
-    print(f"  π:       {R[1, 0]:9.4f}  {R[1, 1]:9.4f}  {R[1, 2]:9.4f}  {R[1, 3]:9.4f}")
-    print(f"  π_w:     {R[2, 0]:9.4f}  {R[2, 1]:9.4f}  {R[2, 2]:9.4f}  {R[2, 3]:9.4f}")
-
-    print("\n" + "=" * 60)
-
-
-if __name__ == "__main__":
-    from src.models.dsge.data_loader import get_estimation_arrays
-
-    # Test with 4 observables
-    print("Loading data with 4 observables...")
-    y, dates = get_estimation_arrays(start="1993Q1", n_observables=4)
-    print(f"Data: {len(y)} observations from {dates[0]} to {dates[-1]}")
-    print(f"Observables: output_gap, inflation, interest_rate, wage_inflation")
-
-    print("\nEstimating DSGE model with 4 observables...")
-    result = estimate_dsge(y, n_observables=4)
-
-    print_estimation_results(result)
+    print("=" * 50)

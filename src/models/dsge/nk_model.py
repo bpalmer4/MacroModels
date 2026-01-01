@@ -505,46 +505,212 @@ def simulate_model(
     }
 
 
-def test_model():
-    """Test that the model solves correctly."""
-    params = NKParameters()
-    model = NKModel(params=params)
+# =============================================================================
+# Likelihood via Kalman Filter
+# =============================================================================
 
-    print("=" * 60)
-    print("NK MODEL WITH INTEREST RATE SMOOTHING")
-    print("=" * 60)
-    print(f"\nParameters:")
-    print(f"  Interest rate smoothing (ρ_i): {params.rho_i}")
-    print(f"  Taylor rule: φ_π = {params.phi_pi}, φ_y = {params.phi_y}")
 
-    # Check determinacy
-    is_det, eigenvalues = model.check_determinacy()
-    print(f"\nDeterminacy: {'PASS' if is_det else 'FAIL'}")
-    print(f"  Eigenvalues (magnitude): {np.round(np.abs(eigenvalues), 4)}")
-    n_unstable = np.sum(np.abs(eigenvalues) > 1.0 + 1e-10)
-    print(f"  Unstable: {n_unstable}, Forward-looking: {model.n_forward}")
+def compute_nk_log_likelihood(
+    y_obs: np.ndarray,
+    params: NKParameters,
+    n_observables: int = 5,
+) -> float:
+    """Compute log-likelihood for NK model using Kalman filter.
 
-    if is_det:
+    Args:
+        y_obs: Observations (T × n_observables)
+        params: Model parameters
+        n_observables: Number of observables (2, 3, 4, or 5)
+
+    Returns:
+        Log-likelihood
+    """
+    from src.models.dsge.kalman import kalman_filter
+
+    try:
+        model = NKModel(params=params)
         solution = model.solve()
-        print(f"\nState transition matrix P (4×4):")
-        print(f"  Eigenvalues: {np.round(np.abs(linalg.eigvals(solution.P)), 4)}")
+        T, R, Z, Q, H = model.state_space_matrices(solution, n_observables)
 
-        print(f"\nPolicy function R (maps states to [ŷ, π, π_w]):")
-        print(f"             ε_demand   ε_supply   ε_wage        i")
-        print(f"  ŷ:       {solution.R[0, 0]:9.4f}  {solution.R[0, 1]:9.4f}  {solution.R[0, 2]:9.4f}  {solution.R[0, 3]:9.4f}")
-        print(f"  π:       {solution.R[1, 0]:9.4f}  {solution.R[1, 1]:9.4f}  {solution.R[1, 2]:9.4f}  {solution.R[1, 3]:9.4f}")
-        print(f"  π_w:     {solution.R[2, 0]:9.4f}  {solution.R[2, 1]:9.4f}  {solution.R[2, 2]:9.4f}  {solution.R[2, 3]:9.4f}")
+        if H is None:
+            H = np.zeros((n_observables, n_observables))
 
-        # Test IRFs
-        for shock in ["demand", "monetary"]:
-            print(f"\n--- IRF to {shock} shock ---")
-            irfs = model.compute_impulse_responses(shock, periods=10)
-            print("Quarter |  Output |  Price π |  Wage π  |   i")
-            for t in range(6):
-                print(f"   {t:2d}    | {irfs['y'][t]:7.3f} | {irfs['pi'][t]:8.3f} | {irfs['pi_w'][t]:8.3f} | {irfs['i'][t]:7.3f}")
+        result = kalman_filter(y_obs, T, R, Z, Q, H)
+        return result.log_likelihood
+    except (IndeterminacyError, NoSolutionError):
+        return -1e10
+    except Exception:
+        return -1e10
 
-    return is_det
+
+# =============================================================================
+# Data Loading
+# =============================================================================
+
+import pandas as pd
+
+
+def load_nk_data(
+    start: str = "1984Q1",
+    end: str | None = None,
+    anchor_inflation: bool = True,
+) -> dict:
+    """Load data for NK model estimation.
+
+    Observables: [ŷ, π, i, π_w, u_gap]
+
+    Returns dict with:
+        y: Observations (T × 5)
+        dates: Period index
+    """
+    from src.data.abs_loader import load_series
+    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY, UNEMPLOYMENT_RATE
+    from src.data.cash_rate import get_cash_rate_qrtly
+    from src.data.ulc import get_ulc_growth_qrtly
+    from src.models.dsge.data_loader import load_estimation_data
+    from src.models.dsge.shared import ensure_period_index
+
+    # Load base data with 5 observables
+    df = load_estimation_data(
+        start=start, end=end, n_observables=5, anchor_inflation=anchor_inflation
+    )
+
+    # Build observation matrix: [output_gap, inflation, interest_rate, wage_inflation, u_gap]
+    y = df[["output_gap", "inflation", "interest_rate", "wage_inflation", "u_gap"]].values
+
+    return {
+        "y": y,
+        "dates": df.index,
+        "n_observables": 5,
+    }
+
+
+# =============================================================================
+# Likelihood Wrapper
+# =============================================================================
+
+
+def _nk_likelihood(params: NKParameters, data: dict) -> float:
+    """Compute log-likelihood for NK model."""
+    return compute_nk_log_likelihood(
+        y_obs=data["y"],
+        params=params,
+        n_observables=data.get("n_observables", 5),
+    )
+
+
+# =============================================================================
+# State Extraction
+# =============================================================================
+
+
+def nk_extract_states(params: NKParameters, data: dict) -> dict:
+    """Extract smoothed states using Kalman smoother.
+
+    Returns dict with states DataFrame.
+    """
+    from src.models.dsge.kalman import kalman_smoother
+
+    try:
+        model = NKModel(params=params)
+        solution = model.solve()
+        n_obs = data.get("n_observables", 5)
+        T, R, Z, Q, H = model.state_space_matrices(solution, n_obs)
+
+        if H is None:
+            H = np.zeros((n_obs, n_obs))
+
+        result = kalman_smoother(data["y"], T, R, Z, Q, H)
+
+        # Compute control variables from states
+        controls = result.smoothed_states @ solution.R.T
+
+        states_df = pd.DataFrame({
+            "eps_demand": result.smoothed_states[:, 0],
+            "eps_supply": result.smoothed_states[:, 1],
+            "eps_wage": result.smoothed_states[:, 2],
+            "interest_rate": result.smoothed_states[:, 3],
+            "output_gap": controls[:, 0],
+            "inflation": controls[:, 1],
+            "wage_inflation": controls[:, 2],
+        }, index=data["dates"])
+
+        return {
+            "states": states_df,
+            "log_likelihood": result.log_likelihood,
+        }
+    except (IndeterminacyError, NoSolutionError):
+        return {
+            "states": pd.DataFrame(index=data["dates"]),
+            "log_likelihood": -1e10,
+        }
+
+
+# =============================================================================
+# Parameter Bounds
+# =============================================================================
+
+NK_PARAM_BOUNDS = {
+    "sigma": (0.5, 3.0),
+    "kappa_p": (0.01, 0.5),
+    "kappa_w": (0.01, 0.5),
+    "omega": (0.2, 0.8),
+    "phi_pi": (1.01, 3.0),  # Must be > 1 for determinacy
+    "phi_y": (0.1, 1.0),
+    "rho_i": (0.5, 0.95),
+    "rho_demand": (0.5, 0.95),
+    "rho_supply": (0.3, 0.9),
+    "rho_wage": (0.3, 0.9),
+    "sigma_demand": (0.1, 2.0),
+    "sigma_supply": (0.05, 1.0),
+    "sigma_wage": (0.05, 1.0),
+    "sigma_monetary": (0.05, 1.0),
+}
+
+
+# =============================================================================
+# Model Specification
+# =============================================================================
+
+from src.models.dsge.estimation import ModelSpec
+
+NK_SPEC = ModelSpec(
+    name="NK",
+    description="New Keynesian with Taylor rule and interest rate smoothing",
+    param_class=NKParameters,
+    param_bounds=NK_PARAM_BOUNDS,
+    estimate_params=[
+        "kappa_p", "kappa_w", "omega", "phi_pi", "phi_y", "rho_i",
+        "sigma_demand", "sigma_supply", "sigma_wage", "sigma_monetary",
+    ],
+    fixed_params={"sigma": 1.0, "beta": 0.99, "rho_demand": 0.8, "rho_supply": 0.5, "rho_wage": 0.5},
+    likelihood_fn=_nk_likelihood,
+    state_extractor_fn=nk_extract_states,
+)
+
+
+# =============================================================================
+# Main
+# =============================================================================
 
 
 if __name__ == "__main__":
-    test_model()
+    from pathlib import Path
+    import mgplot as mg
+    from src.models.dsge.estimation import estimate_two_stage, print_single_result
+    from src.models.dsge.plot_output_gap import plot_output_gap
+
+    # Chart setup
+    CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "dsge-nk"
+    mg.set_chart_dir(str(CHART_DIR))
+    mg.clear_chart_dir()
+
+    print("NK Model - Two-Stage Estimation")
+    print("=" * 60)
+
+    result = estimate_two_stage(NK_SPEC, load_nk_data)
+    print_single_result(result.estimation_result, NK_SPEC)
+
+    plot_output_gap(result.states["output_gap"], model_name="NK")
+
+    print(f"\nCharts saved to: {CHART_DIR}")
