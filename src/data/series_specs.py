@@ -187,6 +187,19 @@ COMPENSATION_OF_EMPLOYEES = ReqsTuple(
     zip_file="",
 )
 
+# Gross Operating Surplus (for capital share calculation)
+# From Income from GDP table - total corporations
+GROSS_OPERATING_SURPLUS = ReqsTuple(
+    cat="5206.0",
+    table="5206007_Income_From_GDP",
+    did="Total corporations ;  Gross operating surplus ;",
+    stype="SA",
+    unit="",
+    seek_yr_growth=False,
+    calc_growth=False,
+    zip_file="",
+)
+
 # Domestic Final Demand implicit price deflator (quarterly, seasonally adjusted)
 DFD_DEFLATOR = ReqsTuple(
     cat="5206.0",

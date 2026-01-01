@@ -74,6 +74,8 @@ def set_model_coefficients(
     - If the coefficient name is in `constant`, use that fixed value
     - Otherwise, create a Normal prior with the specified mu and sigma
 
+    Fixed constants are accumulated on model._fixed_constants for later retrieval.
+
     Args:
         model: PyMC model context
         settings: Dict of {coef_name: {"mu": float, "sigma": float}}
@@ -92,10 +94,15 @@ def set_model_coefficients(
         mc = set_model_coefficients(model, settings, constant)
         # mc["beta"] = 0.5 (fixed)
         # mc["gamma"] = pm.Normal("gamma", mu=-0.3, sigma=0.2)
+        # model._fixed_constants = {"beta": 0.5}
 
     """
     if constant is None:
         constant = {}
+
+    # Initialize fixed constants storage on model if needed
+    if not hasattr(model, "_fixed_constants"):
+        model._fixed_constants = {}
 
     coefficients = {}
 
@@ -103,6 +110,7 @@ def set_model_coefficients(
         for name, params in settings.items():
             if name in constant:
                 coefficients[name] = constant[name]
+                model._fixed_constants[name] = constant[name]
             elif "sigma" in params and "mu" not in params:
                 # HalfNormal for scale parameters (sigma only, no mu)
                 coefficients[name] = pm.HalfNormal(name, sigma=params["sigma"])
@@ -123,6 +131,19 @@ def set_model_coefficients(
                 )
 
     return coefficients
+
+
+def get_fixed_constants(model: pm.Model) -> dict[str, Any]:
+    """Get all fixed constants from a model.
+
+    Args:
+        model: PyMC model with fixed constants
+
+    Returns:
+        Dict of {param_name: fixed_value}
+
+    """
+    return getattr(model, "_fixed_constants", {})
 
 
 def save_trace(trace: az.InferenceData, path: str | Path) -> None:

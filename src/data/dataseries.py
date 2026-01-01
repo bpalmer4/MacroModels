@@ -51,7 +51,10 @@ class DataSeries:
         desc = self.description or self.series_id or "unnamed"
         if len(desc) > 50:
             desc = desc[:47] + "..."
-        return f"DataSeries({desc!r}, source={self.source!r}, n={len(self.data)})"
+        if len(self.data) > 0:
+            start, end = self.data.index.min(), self.data.index.max()
+            return f"DataSeries({desc!r}, source={self.source!r}, {start}–{end})"
+        return f"DataSeries({desc!r}, source={self.source!r}, empty)"
 
     @property
     def name(self) -> str:

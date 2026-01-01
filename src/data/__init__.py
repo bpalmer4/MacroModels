@@ -7,6 +7,7 @@ from src.data.abs_loader import (
     load_series,
 )
 from src.data.capital import get_capital_growth_qrtly, get_capital_stock_qrtly
+from src.data.capital_share import get_capital_share
 from src.data.cash_rate import (
     compute_r_star,
     get_cash_rate_monthly,
@@ -134,6 +135,7 @@ __all__ = [
     # Capital
     "get_capital_growth_qrtly",
     "get_capital_stock_qrtly",
+    "get_capital_share",
     # MFP and productivity (derived)
     "get_mfp_annual",
     "get_labour_productivity_growth",

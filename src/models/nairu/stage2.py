@@ -9,6 +9,7 @@ This module handles:
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import arviz as az
 import mgplot as mg
@@ -110,7 +111,7 @@ class NAIRUResults:
 def load_results(
     output_dir: Path | str | None = None,
     prefix: str = "nairu_output_gap",
-) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex]:
+) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex, dict[str, Any]]:
     """Load model results from disk.
 
     Args:
@@ -118,7 +119,7 @@ def load_results(
         prefix: Filename prefix used when saving
 
     Returns:
-        Tuple of (trace, obs, obs_index)
+        Tuple of (trace, obs, obs_index, constants)
 
     """
     if output_dir is None:
@@ -130,16 +131,19 @@ def load_results(
     trace = az.from_netcdf(str(trace_path))
     print(f"Loaded trace from: {trace_path}")
 
-    # Load observations
+    # Load observations and constants
     obs_path = output_dir / f"{prefix}_obs.pkl"
     with open(obs_path, "rb") as f:
         data = pickle.load(f)
     obs = data["obs"]
     obs_index = data["obs_index"]
+    constants = data.get("constants", {})  # backwards compatible
     print(f"Loaded observations from: {obs_path}")
     print(f"  Period: {obs_index.min()} to {obs_index.max()} ({len(obs_index)} periods)")
+    if constants:
+        print(f"  Fixed constants: {constants}")
 
-    return trace, obs, obs_index
+    return trace, obs, obs_index, constants
 
 
 # --- Analysis Functions ---
@@ -158,9 +162,8 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
     results = []
 
     # Define tests: (parameter, expected_value or 'negative'/'positive'/(low,high), description)
+    # Note: alpha_capital is now from data (not estimated), so not tested here
     tests = [
-        ("alpha_capital", (0.20, 0.35), "Capital share ∈ (0.20, 0.35)"),
-        ("rho_potential", "between_0_1", "Potential growth persistence ∈ (0,1)"),
         ("beta_okun", "negative", "Okun coefficient < 0"),
         # Regime-specific Phillips curve slopes (all should be negative)
         ("gamma_pi_pre_gfc", "negative", "Price Phillips (pre-GFC) < 0"),
@@ -319,7 +322,7 @@ def run_stage2(
     print("Running NAIRU + Output Gap analysis (Stage 2)...\n")
 
     # Load results
-    trace, obs, obs_index = load_results(output_dir=output_dir, prefix=prefix)
+    trace, obs, obs_index, constants = load_results(output_dir=output_dir, prefix=prefix)
 
     # Rebuild model (needed for posterior predictive checks)
     model = build_model(obs)
@@ -497,8 +500,8 @@ def run_stage2(
         model_name=MODEL_NAME,
         show=show_plots,
     )
-    # Get alpha from trace for productivity plots
-    alpha_capital = float(get_scalar_var("alpha_capital", trace).median())
+    # Get alpha from observations (time-varying, use mean for plotting)
+    alpha_capital = float(results.obs["alpha_capital"].mean())
 
     plot_mfp(
         ulc_growth=ulc_growth,

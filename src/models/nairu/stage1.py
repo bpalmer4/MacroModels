@@ -32,13 +32,18 @@ from src.models.nairu.equations import (
     price_inflation_equation,
     wage_growth_equation,
 )
-from src.models.nairu.base import SamplerConfig, sample_model
+from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
 
 # Default output directory
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
 
 
 # --- Model Assembly ---
+
+
+# Default fixed constants for model building
+DEFAULT_NAIRU_CONST: dict[str, Any] = {"nairu_innovation": 0.25}
+DEFAULT_POTENTIAL_CONST: dict[str, Any] = {"potential_innovation": 0.3}
 
 
 def build_model(
@@ -78,13 +83,13 @@ def build_model(
         include_net_exports: Whether to include net exports equation (default True)
 
     Returns:
-        PyMC Model ready for sampling
+        PyMC Model ready for sampling (fixed constants stored on model._fixed_constants)
 
     """
     if nairu_const is None:
-        nairu_const = {"nairu_innovation": 0.25}
+        nairu_const = DEFAULT_NAIRU_CONST.copy()
     if potential_const is None:
-        potential_const = {"potential_innovation": 0.3}
+        potential_const = DEFAULT_POTENTIAL_CONST.copy()
 
     model = pm.Model()
 
@@ -128,6 +133,7 @@ def save_results(
     trace: az.InferenceData,
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
+    constants: dict[str, Any] | None = None,
     output_dir: Path | str | None = None,
     prefix: str = "nairu_output_gap",
 ) -> Path:
@@ -137,6 +143,7 @@ def save_results(
         trace: ArviZ InferenceData from sampling
         obs: Observation dictionary
         obs_index: Period index for observations
+        constants: Fixed parameter values used in model building
         output_dir: Directory to save to (default: model_outputs/)
         prefix: Filename prefix
 
@@ -146,6 +153,8 @@ def save_results(
     """
     if output_dir is None:
         output_dir = DEFAULT_OUTPUT_DIR
+    if constants is None:
+        constants = {}
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -154,10 +163,10 @@ def save_results(
     trace.to_netcdf(str(trace_path))
     print(f"Saved trace to: {trace_path}")
 
-    # Save observations and index as pickle
+    # Save observations, index, and constants as pickle
     obs_path = output_dir / f"{prefix}_obs.pkl"
     with open(obs_path, "wb") as f:
-        pickle.dump({"obs": obs, "obs_index": obs_index}, f)
+        pickle.dump({"obs": obs, "obs_index": obs_index, "constants": constants}, f)
     print(f"Saved observations to: {obs_path}")
 
     return output_dir
@@ -210,8 +219,9 @@ def run_stage1(
     trace = sample_model(model, config)
     print("\n")
 
-    # Save results
-    save_results(trace, obs, obs_index, output_dir=output_dir, prefix=prefix)
+    # Save results (including fixed constants from model)
+    constants = get_fixed_constants(model)
+    save_results(trace, obs, obs_index, constants=constants, output_dir=output_dir, prefix=prefix)
 
     return trace, obs, obs_index
 

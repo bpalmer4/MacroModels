@@ -20,10 +20,18 @@ def potential_output_equation(
         g_potential_t = drift_t + ε_t
 
     Where drift is from Cobb-Douglas:
-        drift_t = α × capital_growth_t + (1-α) × lf_growth_t + mfp_growth_t
+        drift_t = α_t × capital_growth_t + (1-α_t) × lf_growth_t + mfp_growth_t
+
+    Capital share (α) is time-varying, loaded from ABS national accounts:
+        α = GOS / (GOS + COE)
 
     With tight innovation variance, potential is driven almost entirely by
     supply-side fundamentals (capital, labor, MFP).
+
+    The innovation uses a SkewNormal distribution with positive skew (alpha=2),
+    making potential output "sticky downwards" - it's easier to move up than down.
+    This reflects that potential output typically grows (capital accumulation,
+    labor force growth, productivity) and shouldn't easily decline permanently.
 
     Args:
         inputs: Must contain:
@@ -31,9 +39,9 @@ def potential_output_equation(
             - "capital_growth": Quarterly capital stock growth
             - "lf_growth": Quarterly labor force growth
             - "mfp_growth": Multi-factor productivity growth
+            - "alpha_capital": Time-varying capital share from national accounts
         model: PyMC model context
         constant: Optional fixed values. Keys:
-            - "alpha_capital": Fix capital share
             - "potential_innovation": Fix innovation std dev
             - "initial_potential": Fix initial potential output
 
@@ -49,7 +57,6 @@ def potential_output_equation(
 
     with model:
         settings = {
-            "alpha_capital": {"mu": 0.3, "sigma": 0.05},
             # Innovation allows potential to absorb some high-frequency noise
             # while staying smooth through recessions
             "potential_innovation": {"mu": 0.05, "sigma": 0.02},
@@ -60,9 +67,10 @@ def potential_output_equation(
         }
         mc = set_model_coefficients(model, settings, constant)
 
-        alpha = mc["alpha_capital"]
+        # Time-varying capital share from national accounts
+        alpha = inputs["alpha_capital"]
 
-        # Cobb-Douglas drift: α×g_K + (1-α)×g_L + g_MFP
+        # Cobb-Douglas drift: α_t×g_K + (1-α_t)×g_L + g_MFP
         drift = (
             alpha * inputs["capital_growth"]
             + (1 - alpha) * inputs["lf_growth"]
@@ -72,11 +80,14 @@ def potential_output_equation(
         init_value = mc["initial_potential"]
 
         # Build potential output: growth = drift + innovation
+        # SkewNormal with alpha=2: positive skew makes downward moves harder
+        # This makes potential "sticky downwards" - more resistant to decline
         n_periods = len(inputs["log_gdp"])
-        innovations = pm.Normal(
+        innovations = pm.SkewNormal(
             "potential_innovations",
             mu=0,
             sigma=mc["potential_innovation"],
+            alpha=-1,  # milder negative skew: ~60% positive draws, more flexibility
             shape=n_periods - 1,
         )
 

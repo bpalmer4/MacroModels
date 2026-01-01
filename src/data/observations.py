@@ -12,6 +12,7 @@ import pandas as pd
 from src.data import (
     compute_r_star,
     get_capital_growth_qrtly,
+    get_capital_share,
     get_cash_rate_qrtly,
     get_dfd_deflator_growth_annual,
     get_employment_growth_lagged_qrtly,
@@ -49,7 +50,6 @@ from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
 
 # --- Constants ---
 
-ALPHA = 0.3  # Capital share for Cobb-Douglas
 HMA_TERM = 13  # Henderson MA smoothing term
 
 
@@ -97,7 +97,6 @@ def _prepare_hours_growth() -> pd.Series:
 def build_observations(
     start: str | None = None,
     end: str | None = None,
-    alpha: float = ALPHA,
     hma_term: int = HMA_TERM,
     verbose: bool = False,
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex]:
@@ -106,10 +105,12 @@ def build_observations(
     Loads all data from library, applies model-specific transformations,
     aligns to common sample, and returns as numpy arrays.
 
+    Capital share (alpha) is loaded from ABS national accounts data:
+    α = GOS / (GOS + COE), time-varying.
+
     Args:
         start: Start period (e.g., "1980Q1")
         end: End period
-        alpha: Capital share for Cobb-Douglas (default 0.3)
         hma_term: Henderson MA smoothing term (default 13)
         verbose: Print sample info
 
@@ -135,6 +136,9 @@ def build_observations(
     capital_growth = _prepare_capital_growth()
     lf_growth = _prepare_labour_force_growth()
     hours_growth = _prepare_hours_growth()
+
+    # Capital share from national accounts (time-varying)
+    alpha = get_capital_share().data
 
     # Inflation
     π = get_inflation_qrtly().data
@@ -221,6 +225,7 @@ def build_observations(
         "lf_growth": lf_growth,
         "hours_growth": hours_growth,
         "mfp_growth": mfp_growth,
+        "alpha_capital": alpha,
         # Rates
         "cash_rate": cash_rate,
         "det_r_star": r_star,

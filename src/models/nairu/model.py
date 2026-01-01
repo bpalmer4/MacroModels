@@ -32,7 +32,7 @@ from pathlib import Path
 from src.models.nairu.base import SamplerConfig
 
 # Re-export key components for backwards compatibility
-from src.data.observations import ALPHA, HMA_TERM, build_observations
+from src.data.observations import HMA_TERM, build_observations
 from src.data import compute_r_star
 from src.models.nairu.stage1 import (
     build_model,
@@ -51,7 +51,6 @@ from src.models.nairu.stage2 import (
 
 __all__ = [
     # Constants
-    "ALPHA",
     "HMA_TERM",
     "MODEL_NAME",
     "RFOOTER_OUTPUT",
