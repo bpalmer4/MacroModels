@@ -161,7 +161,7 @@ Where:
 - `α_t` = time-varying capital share from ABS national accounts
 - `g_K` = capital stock growth
 - `g_L` = labor force growth
-- `g_MFP` = multi-factor productivity growth
+- `g_MFP` = multi-factor productivity growth (HP-filtered trend, floored at zero — see [Why Floor MFP at Zero?](#why-floor-mfp-at-zero))
 
 **Capital share**: Rather than fixing α or estimating it, the model uses observed factor income shares from ABS 5206.0:
 ```
@@ -290,15 +290,17 @@ Pass-through from exchange rate to import prices:
 
 ## Inflation Anchor
 
-The model uses an inflation anchor that transitions from backward-looking expectations to the RBA's 2.5% target:
+The model uses an inflation anchor that transitions from RBA-constructed expectations to the 2.5% target:
 
 | Period | Anchor |
 |--------|--------|
-| Pre-1993 | Backward-looking (lagged inflation) |
-| 1993-1998 | Gradual transition (linear blend) |
-| Post-1998 | 2.5% target |
+| Pre-1993Q1 | RBA expectations (signal extraction from surveys + bond yields) |
+| 1993Q1–1998Q1 | Linear blend to target |
+| Post-1998Q1 | 2.5% target |
 
-This means **NAIRU is interpreted as the unemployment rate consistent with achieving the inflation target** (in the post-1998 period).
+**Data source**: The pre-1998 expectations series (PIE_RBAQ) is constructed by the RBA using the Cusbert (2017) methodology — signal extraction from multiple measures (surveys, bond yields) after controlling for co-movement with recent inflation, bias-adjusted to post-1996 mean. Sourced via [MacroDave/MARTIN](https://github.com/MacroDave/MARTIN).
+
+This means **NAIRU is interpreted as the unemployment rate consistent with achieving the inflation target** (in the post-1998 period). See [Why Phase In the Inflation Target?](#why-phase-in-the-inflation-target) for rationale.
 
 ---
 
@@ -465,3 +467,74 @@ Some parameters (like `nairu_innovation`) are poorly identified and can cause sa
 - Improves sampling efficiency
 - Prevents unreasonable posterior draws
 - Reflects prior knowledge about smoothness
+
+### Why Floor MFP at Zero?
+
+MFP (Multi-Factor Productivity) trend growth is floored at zero before entering the potential output equation (`src/data/productivity.py`):
+
+- **Negative MFP reflects underutilization, not technological regress**: During recessions, measured MFP falls as firms hoard labor and underuse capital. This is cyclical, not structural.
+- **True technological progress doesn't reverse**: Knowledge and process improvements persist. A recession doesn't make workers forget how to use computers.
+- **Potential output should reflect supply capacity**: The production function estimates what the economy *could* produce at full utilization. Cyclical MFP declines contaminate this with demand-side effects.
+- **Implementation**: Raw MFP is HP-filtered (λ=1600) to extract the trend, then floored with `np.maximum(mfp_trend, 0)`.
+
+### Why Smooth Labour Inputs During COVID?
+
+Labour force growth and hours worked are replaced with Henderson-smoothed values during 2020Q1–2023Q2 (`src/data/observations.py`):
+
+- **COVID caused measurement artifacts, not structural breaks**: Lockdowns produced extreme swings in measured labour force participation and hours that don't reflect genuine changes in labour supply capacity.
+- **Potential output should be smooth through temporary shocks**: The economy's productive capacity didn't actually collapse and recover in a few quarters — workers were temporarily unable to work, not permanently removed from the labour force.
+- **Prevents contaminating NAIRU estimates**: Without smoothing, the model would interpret COVID unemployment spikes as movements in NAIRU rather than cyclical deviations from it.
+- **Implementation**: Raw series used normally; Henderson MA (term=13) applied only during 2020Q1–2023Q2.
+
+### Why Use Deterministic r*?
+
+The neutral real interest rate (r*) is computed from Cobb-Douglas potential growth rather than estimated as a latent variable (`src/data/cash_rate.py`):
+
+```
+r* ≈ α×g_K + (1-α)×g_L + g_MFP (annualized and Henderson-smoothed)
+```
+
+- **Grounded in growth theory**: In the Ramsey model, the equilibrium real rate equals the rate of time preference plus the growth rate of consumption. Using potential growth provides a theory-consistent anchor.
+- **Avoids identification problems**: Estimating r* jointly with NAIRU and potential output creates identification challenges — the data can't separately identify all three unobserved states.
+- **Reduces model complexity**: One fewer latent variable means faster sampling and fewer divergences.
+- **Still time-varying**: r* moves with structural changes in productivity and labour force growth, just not with cyclical noise.
+
+### Why Splice the Cash Rate?
+
+The cash rate series combines modern OCR with historical interbank rates (`src/data/cash_rate.py`):
+
+- **Extends sample back to 1970s**: The RBA's Official Cash Rate only begins in 1990. Splicing with the interbank overnight rate allows estimation over longer samples that include the high-inflation 1970s–80s.
+- **Consistent policy rate concept**: Both series represent the overnight interbank rate that the RBA targets/targeted.
+- **Favours modern data**: Where both series overlap, the OCR is used.
+
+### Why Smooth Capital Growth?
+
+Capital stock growth is always Henderson-smoothed, not just during COVID (`src/data/observations.py`):
+
+- **Capital stock is inherently slow-moving**: Quarterly capital growth from national accounts contains measurement noise that overstates true variation in the capital stock.
+- **Investment is lumpy, capital isn't**: Investment spending is volatile, but the productive capital stock evolves smoothly as new investment is a small fraction of the existing stock.
+- **Prevents spurious potential output volatility**: Unsmoothed capital growth would create artificial quarter-to-quarter swings in estimated potential.
+
+### Why Use Percentage Unemployment Gap?
+
+The Phillips curves use `(U - NAIRU) / U` rather than the simple difference `(U - NAIRU)` (`src/models/nairu/equations/phillips.py`):
+
+- **Scale-invariant**: A 1pp gap matters more when unemployment is 4% than when it's 10%. Dividing by U captures this — the same absolute gap represents a larger percentage deviation when unemployment is low.
+- **Consistent with wage bargaining theory**: Workers' bargaining power depends on the relative tightness of the labour market, not absolute unemployment levels.
+- **Empirically superior**: Models using percentage gaps typically fit Australian wage and price data better than those using level gaps.
+
+### Why Phase In the Inflation Target?
+
+The inflation anchor transitions gradually from expectations to the 2.5% target (`src/data/rba_loader.py`):
+
+| Period | Anchor |
+|--------|--------|
+| Pre-1993Q1 | RBA-constructed expectations (PIE_RBAQ) |
+| 1993Q1–1998Q1 | Linear blend from expectations to target |
+| Post-1998Q1 | Fixed at 2.5% |
+
+- **Inflation targeting was announced in 1993**: The RBA adopted the 2–3% target band, but credibility wasn't instant.
+- **Credibility takes time to build**: Wage and price setters didn't immediately anchor expectations to the target — surveys show gradual convergence through the mid-1990s.
+- **1998 marks full credibility**: By this point, inflation expectations had converged to target and remained anchored through subsequent shocks.
+- **Affects NAIRU interpretation**: Post-1998, NAIRU is the unemployment rate consistent with achieving the inflation target. Pre-1993, it's the rate consistent with stable (but potentially high) inflation.
+- **Data provenance**: The PIE_RBAQ series is RBA-constructed using Cusbert (2017) signal extraction methodology — combines surveys and bond yields, bias-adjusted to post-1996 inflation mean. Sourced via [MacroDave/MARTIN](https://github.com/MacroDave/MARTIN) GitHub repository.
