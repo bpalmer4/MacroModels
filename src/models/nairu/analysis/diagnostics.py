@@ -1,5 +1,7 @@
 """MCMC diagnostics for PyMC models."""
 
+import warnings
+
 import arviz as az
 import numpy as np
 import pandas as pd

@@ -28,10 +28,10 @@ def potential_output_equation(
     With tight innovation variance, potential is driven almost entirely by
     supply-side fundamentals (capital, labor, MFP).
 
-    The innovation uses a SkewNormal distribution with positive skew (alpha=2),
-    making potential output "sticky downwards" - it's easier to move up than down.
-    This reflects that potential output typically grows (capital accumulation,
-    labor force growth, productivity) and shouldn't easily decline permanently.
+    The innovation uses a zero-mean SkewNormal distribution with positive skew (α=1).
+    The location is shifted negative to ensure E[ε]=0 while ~75% of draws are positive.
+    This makes potential "sticky downwards" — growth is more likely than decline,
+    reflecting that capital accumulation and productivity gains are hard to reverse.
 
     Args:
         inputs: Must contain:
@@ -80,31 +80,37 @@ def potential_output_equation(
         init_value = mc["initial_potential"]
 
         # Build potential output: growth = drift + innovation
-        # SkewNormal with alpha=2: positive skew makes downward moves harder
-        # This makes potential "sticky downwards" - more resistant to decline
+        # SkewNormal with alpha=+1: ~75% of draws are positive (growth more common)
+        # Zero-mean adjustment: shift location so E[ε] = 0 despite positive skew
+        # E[SkewNormal(μ, σ, α)] = μ + σ × δ × sqrt(2/π) where δ = α/sqrt(1+α²)
+        # For α=1: mean_shift = σ × 0.5642, so set μ = -σ × 0.5642
         n_periods = len(inputs["log_gdp"])
+        skew_alpha = 1.0
+        mean_offset = np.sqrt(2 / np.pi) * skew_alpha / np.sqrt(1 + skew_alpha**2)  # ≈ 0.5642
         innovations = pm.SkewNormal(
             "potential_innovations",
-            mu=0,
+            mu=-mc["potential_innovation"] * mean_offset,  # shift to zero mean
             sigma=mc["potential_innovation"],
-            alpha=-1,  # milder negative skew: ~60% positive draws, more flexibility
-            shape=n_periods - 1,
+            alpha=skew_alpha,  # positive skew: ~75% positive draws
+            shape=n_periods,
         )
 
-        # Growth rates: g_t = drift_t + ε_t
-        growth_rates = drift[1:] + innovations
+        # Growth rates: g_t = drift_t + ε_t (all periods have innovation)
+        growth_rates = drift + innovations
 
-        # Cumulative: Y*_t = Y*_0 + Σ(g_i)
-        cumulative_growth = pt.cumsum(growth_rates)
+        # Cumulative: Y*_t = Y*_0 + Σ(g_i) for i=1..t
+        # Note: growth_rates[0] is for t=0 (not used in potential_output, but exposed)
+        # growth_rates[1:] drives potential from t=1 onwards
+        cumulative_growth = pt.cumsum(growth_rates[1:])
         potential_output = pm.Deterministic(
             "potential_output",
             pt.concatenate([[init_value], init_value + cumulative_growth]),
         )
 
-        # Expose growth rates for diagnostics
+        # Expose growth rates for diagnostics (all periods now have variance)
         pm.Deterministic(
             "potential_growth",
-            pt.concatenate([[drift[0]], growth_rates]),
+            growth_rates,
         )
 
     return potential_output

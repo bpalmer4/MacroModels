@@ -15,6 +15,7 @@ from src.data import (
     get_capital_share,
     get_cash_rate_qrtly,
     get_dfd_deflator_growth_annual,
+    get_dsr_change_lagged_qrtly,
     get_employment_growth_lagged_qrtly,
     get_employment_growth_qrtly,
     get_fiscal_impulse_lagged_qrtly,
@@ -22,6 +23,7 @@ from src.data import (
     get_hourly_coe_growth_lagged_qrtly,
     get_hourly_coe_growth_qrtly,
     get_hours_growth_qrtly,
+    get_housing_wealth_growth_lagged_qrtly,
     get_import_price_growth_annual,
     get_import_price_growth_lagged_annual,
     get_inflation_annual,
@@ -186,6 +188,12 @@ def build_observations(
     # Fiscal impulse (lagged)
     fiscal_impulse_1 = get_fiscal_impulse_lagged_qrtly().data
 
+    # Debt servicing ratio change (lagged, for IS curve credit channel)
+    Δdsr_1 = get_dsr_change_lagged_qrtly().data
+
+    # Housing wealth growth (lagged, for IS curve wealth channel)
+    Δhw_1 = get_housing_wealth_growth_lagged_qrtly().data
+
     # Employment growth (for employment equation)
     emp_growth = get_employment_growth_qrtly().data
     emp_growth_1 = get_employment_growth_lagged_qrtly().data
@@ -250,6 +258,10 @@ def build_observations(
         "Δ4oil_1": Δ4oil_1,
         # Fiscal impulse
         "fiscal_impulse_1": fiscal_impulse_1,
+        # Debt servicing (for IS curve credit channel)
+        "Δdsr_1": Δdsr_1,
+        # Housing wealth (for IS curve wealth channel)
+        "Δhw_1": Δhw_1,
         # Employment (for employment equation)
         "emp_growth": emp_growth,
         "emp_growth_1": emp_growth_1,

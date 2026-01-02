@@ -163,41 +163,50 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
 
     # Define tests: (parameter, expected_value or 'negative'/'positive'/(low,high), description)
     # Note: alpha_capital is now from data (not estimated), so not tested here
+    # Note: Parameters with truncated priors use "nonzero" test (HDI excludes 0)
+    # since sign is guaranteed by prior. Untruncated params test for sign.
     tests = [
-        ("beta_okun", "negative", "Okun coefficient < 0"),
-        # Regime-specific Phillips curve slopes (all should be negative)
+        # Okun's Law (truncated upper=0)
+        ("beta_okun", "nonzero", "Okun coefficient ≠ 0"),
+        # Price Phillips curve slopes (NOT truncated - test sign)
         ("gamma_pi_pre_gfc", "negative", "Price Phillips (pre-GFC) < 0"),
         ("gamma_pi_gfc", "negative", "Price Phillips (post-GFC) < 0"),
         ("gamma_pi_covid", "negative", "Price Phillips (post-COVID) < 0"),
-        ("gamma_wg_pre_gfc", "negative", "Wage Phillips (pre-GFC) < 0"),
-        ("gamma_wg_gfc", "negative", "Wage Phillips (post-GFC) < 0"),
-        ("gamma_wg_covid", "negative", "Wage Phillips (post-COVID) < 0"),
+        # Wage Phillips curve (truncated upper=0)
+        ("gamma_wg_pre_gfc", "nonzero", "Wage Phillips (pre-GFC) ≠ 0"),
+        ("gamma_wg_gfc", "nonzero", "Wage Phillips (post-GFC) ≠ 0"),
+        ("gamma_wg_covid", "nonzero", "Wage Phillips (post-COVID) ≠ 0"),
         ("phi_wg", "positive", "Demand deflator → wages > 0"),
-        ("theta_wg", "positive", "Trend expectations → wages > 0"),
-        # Hourly COE Phillips curve (regime-specific slopes, all negative)
-        ("gamma_hcoe_pre_gfc", "negative", "Hourly COE Phillips (pre-GFC) < 0"),
-        ("gamma_hcoe_gfc", "negative", "Hourly COE Phillips (post-GFC) < 0"),
-        ("gamma_hcoe_covid", "negative", "Hourly COE Phillips (post-COVID) < 0"),
+        ("theta_wg", "nonzero", "Trend expectations → wages ≠ 0"),
+        # Hourly COE Phillips curve (truncated)
+        ("gamma_hcoe_pre_gfc", "nonzero", "Hourly COE Phillips (pre-GFC) ≠ 0"),
+        ("gamma_hcoe_gfc", "nonzero", "Hourly COE Phillips (post-GFC) ≠ 0"),
+        ("gamma_hcoe_covid", "nonzero", "Hourly COE Phillips (post-COVID) ≠ 0"),
         ("phi_hcoe", "positive", "Hourly COE demand deflator > 0"),
-        ("theta_hcoe", "positive", "Hourly COE trend expectations > 0"),
-        ("psi_hcoe", "positive", "Productivity → hourly wages > 0"),
-        ("beta_is", "positive", "IS interest rate effect > 0"),
+        ("theta_hcoe", "nonzero", "Hourly COE trend expectations ≠ 0"),
+        ("psi_hcoe", "nonzero", "Productivity → hourly wages ≠ 0"),
+        # IS curve (truncated lower=0)
+        ("beta_is", "nonzero", "IS interest rate effect ≠ 0"),
+        ("delta_dsr", "nonzero", "Debt servicing effect ≠ 0"),
+        ("eta_hw", "nonzero", "Housing wealth effect ≠ 0"),
         ("rho_is", "between_0_1", "IS persistence ∈ (0,1)"),
-        # Participation rate equation
-        ("beta_pr", "negative", "Discouraged worker effect < 0"),
-        # Exchange rate equation
-        ("beta_er_r", "positive", "ER interest rate effect > 0 (UIP)"),
+        # Participation rate equation (truncated upper=0)
+        ("beta_pr", "nonzero", "Discouraged worker effect ≠ 0"),
+        # Exchange rate equation (truncated lower=0)
+        ("beta_er_r", "nonzero", "ER interest rate effect ≠ 0"),
         ("rho_er", "between_0_1", "ER persistence ∈ (0,1)"),
-        # Import price pass-through
-        ("beta_pt", "negative", "Pass-through < 0"),
-        ("beta_oil", "positive", "Oil effect on import prices > 0"),
+        # Import price pass-through (truncated)
+        ("beta_pt", "nonzero", "Pass-through ≠ 0"),
+        ("beta_oil", "nonzero", "Oil effect on import prices ≠ 0"),
         ("rho_pt", "between_0_1", "Import price persistence ∈ (0,1)"),
-        # Employment equation
-        ("beta_emp_ygap", "positive", "Output gap → employment > 0"),
-        ("beta_emp_wage", "negative", "Real wage gap → employment < 0"),
-        # Net exports equation
-        ("beta_nx_ygap", "negative", "Output gap → net exports < 0"),
-        ("beta_nx_twi", "negative", "TWI appreciation → net exports < 0"),
+        # Import price → inflation (not truncated, test for positive)
+        ("rho_pi", "positive", "Import prices → inflation > 0"),
+        # Employment equation (truncated)
+        ("beta_emp_ygap", "nonzero", "Output gap → employment ≠ 0"),
+        ("beta_emp_wage", "nonzero", "Real wage gap → employment ≠ 0"),
+        # Net exports equation (truncated upper=0)
+        ("beta_nx_ygap", "nonzero", "Output gap → net exports ≠ 0"),
+        ("beta_nx_twi", "nonzero", "TWI appreciation → net exports ≠ 0"),
     ]
 
     for param, expected, description in tests:
@@ -222,7 +231,7 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
                 "90% HDI": f"[{hdi_90[0]:.3f}, {hdi_90[1]:.3f}]",
                 "Expected in HDI": "-",
                 f"P({low} ≤ θ ≤ {high})": f"{prob_in_range:.1%}",
-                "Result": "PASS" if prob_in_range > 0.90 else ("WEAK" if prob_in_range > 0.50 else "FAIL")
+                "Result": "PASS" if prob_in_range > 0.90 else ("*WEAK*" if prob_in_range > 0.50 else "*FAIL*")
             })
         elif isinstance(expected, (int, float)):
             # Test for equality to expected value
@@ -236,7 +245,7 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
                 "90% HDI": f"[{hdi_90[0]:.3f}, {hdi_90[1]:.3f}]",
                 "Expected in HDI": "✓" if in_hdi else "✗",
                 "P(θ > expected)": f"{prob_above:.1%}",
-                "Result": "PASS" if in_hdi else "FAIL"
+                "Result": "PASS" if in_hdi else "*FAIL*"
             })
         elif expected == "between_0_1":
             # Test for value between 0 and 1 (stable persistence)
@@ -249,7 +258,32 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
                 "90% HDI": f"[{hdi_90[0]:.3f}, {hdi_90[1]:.3f}]",
                 "Expected in HDI": "-",
                 "P(0 < θ < 1)": f"{prob_valid:.1%}",
-                "Result": "PASS" if prob_valid > 0.99 else ("WEAK" if prob_valid > 0.90 else "FAIL")
+                "Result": "PASS" if prob_valid > 0.99 else ("*WEAK*" if prob_valid > 0.90 else "*FAIL*")
+            })
+        elif expected == "nonzero":
+            # Test if parameter is well-identified away from truncation boundary
+            # Two checks:
+            # 1. HDI excludes zero
+            # 2. Not bunched at boundary (>20% mass within 0.01 of zero)
+            hdi_excludes_zero = (hdi_90[0] > 0) or (hdi_90[1] < 0)
+            p_near_zero = np.mean(np.abs(samples) < 0.01)
+            is_bunched = p_near_zero > 0.20
+
+            if is_bunched:
+                result = "*BUNCHED*"
+            elif not hdi_excludes_zero:
+                result = "*WEAK*"
+            else:
+                result = "PASS"
+
+            results.append({
+                "Parameter": param,
+                "Hypothesis": description,
+                "Median": f"{median:.3f}",
+                "90% HDI": f"[{hdi_90[0]:.3f}, {hdi_90[1]:.3f}]",
+                "Expected in HDI": "-",
+                "P(|θ|<.01)": f"{p_near_zero:.0%}",
+                "Result": result
             })
         else:
             # Test for sign
@@ -265,7 +299,7 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
                 "90% HDI": f"[{hdi_90[0]:.3f}, {hdi_90[1]:.3f}]",
                 "Expected in HDI": "-",
                 "P(correct sign)": f"{prob_correct:.1%}",
-                "Result": "PASS" if prob_correct > 0.99 else ("WEAK" if prob_correct > 0.90 else "FAIL")
+                "Result": "PASS" if prob_correct > 0.99 else ("*WEAK*" if prob_correct > 0.90 else "*FAIL*")
             })
 
     df = pd.DataFrame(results)

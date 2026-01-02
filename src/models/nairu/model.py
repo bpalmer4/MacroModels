@@ -21,9 +21,10 @@ Data sources:
        participation rate
 - RBA: Cash rate, inflation expectations, Trade-Weighted Index (TWI)
 
-This module provides a unified interface to the two-stage estimation pipeline:
+This module provides a unified interface to the three-stage pipeline:
 - Stage 1: Data preparation, model building, sampling, and saving
 - Stage 2: Loading results and performing analysis/plotting
+- Stage 3: Model-consistent forecasting with policy scenarios
 """
 
 import argparse
@@ -48,12 +49,22 @@ from src.models.nairu.stage2 import (
     run_stage2,
     test_theoretical_expectations,
 )
+from src.models.nairu.stage3 import (
+    DEFAULT_POLICY_SCENARIOS,
+    FORECAST_HORIZON,
+    ForecastResults,
+    forecast,
+    run_scenarios,
+    run_stage3,
+)
 
 __all__ = [
     # Constants
     "HMA_TERM",
     "MODEL_NAME",
     "RFOOTER_OUTPUT",
+    "FORECAST_HORIZON",
+    "DEFAULT_POLICY_SCENARIOS",
     # Stage 1
     "build_observations",
     "build_model",
@@ -66,6 +77,11 @@ __all__ = [
     "test_theoretical_expectations",
     "plot_all",
     "run_stage2",
+    # Stage 3
+    "ForecastResults",
+    "forecast",
+    "run_scenarios",
+    "run_stage3",
     # Unified
     "run_model",
     "main",
@@ -122,12 +138,13 @@ def run_model(
 # --- CLI Entry Point ---
 
 
-def main(verbose: bool = False) -> None:
+def main(verbose: bool = False, skip_forecast: bool = False) -> None:
     """Run the full NAIRU + Output Gap estimation pipeline.
 
-    This runs both stages:
+    This runs all three stages:
     1. Stage 1: Build observations, sample model, save results
     2. Stage 2: Load results, run diagnostics, generate all plots
+    3. Stage 3: Model-consistent forecasting with policy scenarios
     """
     # Default output directory
     output_dir = Path(__file__).parent.parent.parent.parent / "model_outputs"
@@ -146,9 +163,23 @@ def main(verbose: bool = False) -> None:
     # Stage 2: Load and analyze
     run_stage2(output_dir=output_dir, verbose=verbose)
 
+    if not skip_forecast:
+        print("\n")
+        print("=" * 60)
+        print("STAGE 3: Forecasting")
+        print("=" * 60)
+
+        # Stage 3: Model-consistent forecasting with policy scenarios
+        run_stage3(output_dir=output_dir, verbose=verbose)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run NAIRU + Output Gap model")
     parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed output")
+    parser.add_argument(
+        "--skip-forecast",
+        action="store_true",
+        help="Skip Stage 3 (forecasting)",
+    )
     args = parser.parse_args()
-    main(verbose=args.verbose)
+    main(verbose=args.verbose, skip_forecast=args.skip_forecast)

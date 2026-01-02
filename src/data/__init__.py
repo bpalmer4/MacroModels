@@ -70,6 +70,18 @@ from src.data.household import (
     get_saving_ratio_change_qrtly,
     get_saving_ratio_qrtly,
 )
+from src.data.debt_servicing import (
+    get_dsr_qrtly,
+    get_dsr_change_qrtly,
+    get_dsr_change_lagged_qrtly,
+    get_mortgage_buffers_qrtly,
+)
+from src.data.house_prices import (
+    get_housing_wealth_qrtly,
+    get_housing_wealth_growth_qrtly,
+    get_housing_wealth_growth_annual,
+    get_housing_wealth_growth_lagged_qrtly,
+)
 from src.data.transforms import splice_series
 from src.data.twi import (
     get_log_twi_qrtly,
@@ -195,6 +207,16 @@ __all__ = [
     # Household
     "get_saving_ratio_change_qrtly",
     "get_saving_ratio_qrtly",
+    # Debt servicing
+    "get_dsr_qrtly",
+    "get_dsr_change_qrtly",
+    "get_dsr_change_lagged_qrtly",
+    "get_mortgage_buffers_qrtly",
+    # Housing wealth
+    "get_housing_wealth_qrtly",
+    "get_housing_wealth_growth_qrtly",
+    "get_housing_wealth_growth_annual",
+    "get_housing_wealth_growth_lagged_qrtly",
     # Exchange rates
     "get_log_twi_qrtly",
     "get_real_twi_qrtly",

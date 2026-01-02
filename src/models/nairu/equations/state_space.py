@@ -49,7 +49,7 @@ def nairu_equation(
                 "nairu",
                 mu=0,  # no drift
                 sigma=mc["nairu_innovation"],
-                init_dist=pm.Normal.dist(mu=15.0, sigma=8.0),
+                init_dist=pm.Normal.dist(mu=6.0, sigma=2.0),  # Australian NAIRU ~5-7%
                 steps=len(inputs["U"]) - 1,
             )
             if "nairu" not in constant
