@@ -45,9 +45,9 @@ from src.data.labour_force import (
 )
 from src.data.mfp import get_mfp_annual
 from src.data.productivity import (
+    compute_mfp_trend_floored,
     get_labour_productivity_growth,
     get_mfp_growth,
-    get_mfp_trend_floored,
     get_real_wage_gap,
 )
 from src.data.energy import (
@@ -152,7 +152,7 @@ __all__ = [
     "get_mfp_annual",
     "get_labour_productivity_growth",
     "get_mfp_growth",
-    "get_mfp_trend_floored",
+    "compute_mfp_trend_floored",
     "get_real_wage_gap",
     # Inflation
     "get_inflation_annual",

@@ -536,8 +536,8 @@ def run_stage2(
         model_name=MODEL_NAME,
         show=show_plots,
     )
-    # Get alpha from observations (time-varying, use mean for plotting)
-    alpha_capital = float(results.obs["alpha_capital"].mean())
+    # Get alpha from observations (time-varying Series)
+    alpha_capital = pd.Series(results.obs["alpha_capital"], index=results.obs_index)
 
     plot_mfp(
         ulc_growth=ulc_growth,

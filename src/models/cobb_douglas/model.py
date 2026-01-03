@@ -943,19 +943,16 @@ def plot_phillips_crosscheck(result: DecompositionResult, show: bool = True) -> 
 
 
 def plot_capital_growth(result: DecompositionResult, show: bool = True) -> None:
-    """Plot capital stock growth (raw, HP-filtered, and HMA-smoothed)."""
+    """Plot capital stock growth (raw and HP-filtered)."""
     g_capital = result.growth["g_Capital"].dropna()
     g_capital_hp, _ = apply_hp_filter(g_capital)
-    g_capital_hma = hma(g_capital, 13)
 
     # Annualize for interpretation
     raw_annual = annualize(g_capital)
     hp_annual = annualize(g_capital_hp)
-    hma_annual = annualize(g_capital_hma)
 
     plot_data = pd.DataFrame({
-        "Capital Growth (Raw)": raw_annual,
-        "HMA(13)": hma_annual,
+        "Capital Growth": raw_annual,
         "HP(1600)": hp_annual,
     })
 
@@ -964,11 +961,11 @@ def plot_capital_growth(result: DecompositionResult, show: bool = True) -> None:
         title="Capital Stock Growth",
         ylabel="Annual Growth (% p.a.)",
         y0=True,
-        width=[0.8, 2, 2],
-        alpha=[0.3, 1.0, 1.0],
-        color=["gray", "red", "blue"],
+        width=[1.5, 2],
+        alpha=[0.6, 1.0],
+        color=["gray", "blue"],
         legend={"loc": "best", "fontsize": "small"},
-        lfooter="Australia. Net capital stock (chain volume measures). NAIRU model uses HMA(13).",
+        lfooter="Australia. Net capital stock (chain volume measures). NAIRU model uses raw growth.",
         rfooter="ABS 1364",
         show=show,
     )

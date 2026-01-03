@@ -49,7 +49,7 @@ def get_mfp_growth(
     hcoe_growth: pd.Series,
     capital_growth: pd.Series,
     hours_growth: pd.Series,
-    alpha: float = 0.3,
+    alpha: float | pd.Series = 0.3,
 ) -> DataSeries:
     """Derive MFP growth from wage data using Solow residual identity.
 
@@ -63,7 +63,7 @@ def get_mfp_growth(
         hcoe_growth: Hourly COE growth (quarterly)
         capital_growth: Capital stock growth (quarterly, smoothed)
         hours_growth: Hours worked growth (quarterly)
-        alpha: Capital share (default 0.3)
+        alpha: Capital share (default 0.3), can be time-varying Series
 
     Returns:
         DataSeries with derived MFP growth (unfloored)
@@ -73,21 +73,22 @@ def get_mfp_growth(
     capital_deepening = capital_growth - hours_growth
     mfp_growth = labour_productivity - alpha * capital_deepening
 
+    alpha_desc = "time-varying" if isinstance(alpha, pd.Series) else f"{alpha}"
     return DataSeries(
         data=mfp_growth,
         source="Derived",
         units="% per quarter",
-        description=f"MFP growth (Solow residual, α={alpha})",
+        description=f"MFP growth (Solow residual, α={alpha_desc})",
         cat="Derived from ABS 5206.0",
     )
 
 
-def get_mfp_trend_floored(
+def compute_mfp_trend_floored(
     ulc_growth: pd.Series,
     hcoe_growth: pd.Series,
     capital_growth: pd.Series,
     hours_growth: pd.Series,
-    alpha: float = 0.3,
+    alpha: float | pd.Series = 0.3,
     hp_lambda: int = HP_LAMBDA,
 ) -> DataSeries:
     """Derive MFP trend growth, HP-filtered and floored at zero.
@@ -101,7 +102,7 @@ def get_mfp_trend_floored(
         hcoe_growth: Hourly COE growth (quarterly)
         capital_growth: Capital stock growth (quarterly, smoothed)
         hours_growth: Hours worked growth (quarterly)
-        alpha: Capital share (default 0.3)
+        alpha: Capital share (default 0.3), can be time-varying Series
         hp_lambda: HP filter smoothing parameter (default 1600)
 
     Returns:
@@ -122,11 +123,12 @@ def get_mfp_trend_floored(
 
     mfp_floored = pd.Series(mfp_trend, index=mfp_clean.index).reindex(mfp_raw.index)
 
+    alpha_desc = "time-varying" if isinstance(alpha, pd.Series) else f"{alpha}"
     return DataSeries(
         data=mfp_floored,
         source="Derived",
         units="% per quarter",
-        description=f"MFP trend growth (HP λ={hp_lambda}, floored at zero, α={alpha})",
+        description=f"MFP trend growth (HP λ={hp_lambda}, floored at zero, α={alpha_desc})",
         cat="Derived from ABS 5206.0",
     )
 

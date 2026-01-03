@@ -71,7 +71,7 @@ def compute_r_star(
     capital_growth: pd.Series,
     lf_growth: pd.Series,
     mfp_growth: pd.Series,
-    alpha: float = 0.3,
+    alpha: float | pd.Series = 0.3,
     hma_term: int = 13,
 ) -> DataSeries:
     """Compute deterministic r* as smoothed potential growth.
@@ -82,7 +82,7 @@ def compute_r_star(
         capital_growth: Capital stock growth (quarterly, smoothed)
         lf_growth: Labour force growth (quarterly, smoothed)
         mfp_growth: MFP growth (quarterly, trend)
-        alpha: Capital share (default 0.3)
+        alpha: Capital share (default 0.3), can be time-varying Series
         hma_term: Henderson MA smoothing term (default 13)
 
     Returns:

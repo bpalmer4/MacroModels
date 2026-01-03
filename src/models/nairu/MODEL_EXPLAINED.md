@@ -49,6 +49,8 @@ extraction.py          # Extract posterior summaries from trace
 posterior_predictive_checks.py  # PPC plots
 residual_autocorrelation.py     # Residual analysis
 plot_*.py              # Various plotting modules
+plot_productivity.py   # LP and MFP derived from wage data
+plot_capital_deepening.py  # Capital deepening (g_K - g_L)
 inflation_decomposition.py      # Demand vs supply decomposition
 ```
 
@@ -182,7 +184,15 @@ Where:
 - `α_t` = time-varying capital share from ABS national accounts
 - `g_K` = capital stock growth
 - `g_L` = labor force growth
-- `g_MFP` = multi-factor productivity growth (HP-filtered trend, floored at zero — see [Why Floor MFP at Zero?](#why-floor-mfp-at-zero))
+- `g_MFP` = multi-factor productivity growth (derived from wage data, HP-filtered, floored at zero — see [Why Floor MFP at Zero?](#why-floor-mfp-at-zero))
+
+**MFP derivation**: Rather than sourcing MFP directly from ABS 5204.0, the model derives it from wage data using the Solow residual identity (`src/data/productivity.py`):
+```
+Labour Productivity (LP) = Δhcoe - Δulc    (from ULC = HCOE / LP)
+MFP = LP - α × capital_deepening
+    = LP - α × (g_K - g_L)
+```
+This provides a wage-consistent productivity measure that aligns with the model's Phillips curve equations.
 
 **Capital share**: Rather than fixing α or estimating it, the model uses observed factor income shares from ABS 5206.0:
 ```
@@ -791,7 +801,7 @@ MFP (Multi-Factor Productivity) trend growth is floored at zero before entering 
 - **Negative MFP reflects underutilization, not technological regress**: During recessions, measured MFP falls as firms hoard labor and underuse capital. This is cyclical, not structural.
 - **True technological progress doesn't reverse**: Knowledge and process improvements persist. A recession doesn't make workers forget how to use computers.
 - **Potential output should reflect supply capacity**: The production function estimates what the economy *could* produce at full utilization. Cyclical MFP declines contaminate this with demand-side effects.
-- **Implementation**: Raw MFP is HP-filtered (λ=1600) to extract the trend, then floored with `np.maximum(mfp_trend, 0)`.
+- **Implementation**: MFP is derived from wage data using the Solow residual identity (LP = Δhcoe - Δulc; MFP = LP - α×(g_K - g_L)), then HP-filtered (λ=1600) to extract the trend, and floored with `np.maximum(mfp_trend, 0)`. This replaces direct sourcing from ABS 5204.0 MFP data.
 
 **Comparison with external forecasters**: Most economists assume the post-GFC and post-COVID productivity slowdown is more cyclical than structural, and therefore factor in some MFP growth on a return-to-trend basis. Indicative comparison (approximate, varies by vintage):
 

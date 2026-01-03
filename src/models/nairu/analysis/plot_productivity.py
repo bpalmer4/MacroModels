@@ -136,7 +136,7 @@ def plot_mfp(
     hcoe_growth: pd.Series,
     capital_growth: pd.Series,
     hours_growth: pd.Series,
-    alpha: float,
+    alpha: float | pd.Series,
     filter_type: str = "hp",
     model_name: str = "Model",
     show: bool = False,
@@ -151,7 +151,7 @@ def plot_mfp(
         hcoe_growth: Quarterly hourly COE growth rate
         capital_growth: Quarterly capital stock growth rate
         hours_growth: Quarterly hours worked growth rate
-        alpha: Capital share of income (from model or fixed)
+        alpha: Capital share of income (fixed float or time-varying Series)
         filter_type: "henderson" or "hp" for Hodrick-Prescott
         model_name: Name for chart footer
         show: Whether to display the plot
@@ -182,11 +182,12 @@ def plot_mfp(
     _add_period_averages(ax, mfp_annual)
     _add_regime_lines(ax)
 
+    alpha_desc = "time-varying α" if isinstance(alpha, pd.Series) else f"α = {alpha:.2f}"
     defaults = {
         "title": f"Multi-Factor Productivity Growth (Derived) - {filter_label}",
         "ylabel": "Annual growth (%)",
         "legend": {"loc": "upper right", "fontsize": "small"},
-        "lfooter": f"MFP = LP - α×(g_K - g_L). α = {alpha:.2f}. {filter_label}.",
+        "lfooter": f"MFP = LP - α×(g_K - g_L). {alpha_desc}. {filter_label}.",
         "rfooter": model_name,
     }
     for key in list(defaults.keys()):
@@ -201,7 +202,7 @@ def plot_productivity_comparison(
     hcoe_growth: pd.Series,
     capital_growth: pd.Series,
     hours_growth: pd.Series,
-    alpha: float,
+    alpha: float | pd.Series,
     filter_type: str = "hp",
     model_name: str = "Model",
     show: bool = False,
@@ -216,7 +217,7 @@ def plot_productivity_comparison(
         hcoe_growth: Quarterly hourly COE growth rate
         capital_growth: Quarterly capital stock growth rate
         hours_growth: Quarterly hours worked growth rate
-        alpha: Capital share of income (from model or fixed)
+        alpha: Capital share of income (fixed float or time-varying Series)
         filter_type: "henderson" or "hp" for Hodrick-Prescott
         model_name: Name for chart footer
         show: Whether to display the plot
@@ -250,11 +251,12 @@ def plot_productivity_comparison(
 
     _add_regime_lines(ax)
 
+    alpha_desc = "time-varying α" if isinstance(alpha, pd.Series) else f"α = {alpha:.2f}"
     defaults = {
         "title": f"Productivity Growth Comparison (Derived) - {filter_label}",
         "ylabel": "Annual growth (%)",
         "legend": {"loc": "upper right", "fontsize": "small"},
-        "lfooter": f"LP = Δhcoe - Δulc; MFP = LP - α×(g_K - g_L). α = {alpha:.2f}. {filter_label}.",
+        "lfooter": f"LP = Δhcoe - Δulc; MFP = LP - α×(g_K - g_L). {alpha_desc}. {filter_label}.",
         "rfooter": model_name,
     }
     for key in list(defaults.keys()):

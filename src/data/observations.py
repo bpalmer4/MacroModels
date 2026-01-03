@@ -30,7 +30,7 @@ from src.data import (
     get_inflation_qrtly,
     get_labour_force_growth_qrtly,
     get_log_gdp,
-    get_mfp_trend_floored,
+    compute_mfp_trend_floored,
     get_net_exports_ratio_change_qrtly,
     get_oil_change_lagged_annual,
     get_participation_rate_change_qrtly,
@@ -73,10 +73,8 @@ def _prepare_labour_force_growth() -> pd.Series:
 
 
 def _prepare_capital_growth() -> pd.Series:
-    """Prepare capital growth with Henderson smoothing."""
-    capital_growth_raw = get_capital_growth_qrtly().data
-    capital_growth = hma(capital_growth_raw.dropna(), HMA_TERM)
-    return capital_growth.reindex(capital_growth_raw.index)
+    """Prepare capital growth (raw, no smoothing needed for stock variable)."""
+    return get_capital_growth_qrtly().data
 
 
 def _prepare_hours_growth() -> pd.Series:
@@ -159,7 +157,7 @@ def build_observations(
     Δhcoe_1 = get_hourly_coe_growth_lagged_qrtly().data
 
     # Derive MFP from wage data (replaces external ABS 5204 MFP)
-    mfp_growth = get_mfp_trend_floored(
+    mfp_growth = compute_mfp_trend_floored(
         ulc_growth=Δulc,
         hcoe_growth=Δhcoe,
         capital_growth=capital_growth,
