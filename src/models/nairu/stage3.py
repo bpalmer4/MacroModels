@@ -1,6 +1,6 @@
 """NAIRU + Output Gap Stage 3: Model-Consistent Forecasting.
 
-This module generates 2-quarter ahead forecasts using estimated model coefficients:
+This module generates 4-quarter ahead forecasts using estimated model coefficients:
 - IS curve: projects output gap using historical rate gaps
 - Okun's Law: derives unemployment changes from output gap
 - NAIRU: random walk (stays at current level)
@@ -160,6 +160,37 @@ class ForecastResults:
         annual = annualize(self.inflation_forecast)
         return self._quantiles(annual, prob)
 
+    def gdp_growth_forecast(self) -> pd.DataFrame:
+        """Quarterly GDP growth forecast (%).
+
+        GDP growth = potential_growth + Δ(output_gap)
+
+        Returns:
+            DataFrame with quarterly GDP growth (rows=periods, cols=samples)
+
+        """
+        # Change in output gap from previous period
+        # First period: change from final historical output gap
+        # Subsequent periods: change from previous forecast period
+        output_gap_change = self.output_gap_forecast.diff()
+        output_gap_change.iloc[0] = (
+            self.output_gap_forecast.iloc[0] - self.output_gap_final
+        )
+
+        # GDP growth = potential growth (constant) + output gap change
+        gdp_growth = self.potential_growth + output_gap_change
+
+        return gdp_growth
+
+    def gdp_growth_hdi(self, prob: float = 0.90) -> pd.DataFrame:
+        """Quarterly GDP growth forecast with uncertainty."""
+        return self._quantiles(self.gdp_growth_forecast(), prob)
+
+    def gdp_growth_annual_hdi(self, prob: float = 0.90) -> pd.DataFrame:
+        """Annualised GDP growth forecast (compound conversion)."""
+        annual = annualize(self.gdp_growth_forecast())
+        return self._quantiles(annual, prob)
+
     def summary(self) -> pd.DataFrame:
         """Point forecast summary (posterior medians)."""
         return pd.DataFrame(
@@ -232,7 +263,7 @@ def forecast(
     cash_rate_override: float | None = None,
     scenario_name: str = "baseline",
 ) -> ForecastResults:
-    """Generate model-consistent 2-quarter forecast.
+    """Generate model-consistent 4-quarter forecast.
 
     Uses estimated coefficients to project forward:
     1. IS curve: y_gap_t = rho * y_gap_{t-1} - beta * rate_gap_{t-2}
@@ -594,6 +625,91 @@ def plot_scenario_inflation(
         )
 
 
+def plot_scenario_gdp_growth(
+    scenario_results: dict[str, ForecastResults],
+    chart_dir: Path | str | None = None,
+    show: bool = True,
+) -> None:
+    """Plot GDP growth forecasts across policy scenarios.
+
+    Args:
+        scenario_results: Dict of {scenario_name: ForecastResults} from run_scenarios
+        chart_dir: Directory to save charts. If None, uses DEFAULT_CHART_DIR.
+        show: Display plots interactively.
+
+    """
+    if chart_dir is None:
+        chart_dir = DEFAULT_CHART_DIR
+    chart_dir = Path(chart_dir)
+    mg.set_chart_dir(str(chart_dir))
+
+    # Get scenario names and colors
+    scenario_order = ["+200bp", "+100bp", "+50bp", "+25bp", "hold", "-25bp", "-50bp", "-100bp", "-200bp"]
+    colors = {
+        "+200bp": "darkred",
+        "+100bp": "red",
+        "+50bp": "orangered",
+        "+25bp": "orange",
+        "hold": "black",
+        "-25bp": "deepskyblue",
+        "-50bp": "steelblue",
+        "-100bp": "blue",
+        "-200bp": "darkblue",
+    }
+
+    # Build DataFrame of annualized GDP growth medians
+    gdp_data = {}
+    for name in scenario_order:
+        if name in scenario_results:
+            result = scenario_results[name]
+            gdp_growth_qtr = result.gdp_growth_forecast().median(axis=1)
+            gdp_growth_annual = annualize(gdp_growth_qtr)
+            gdp_data[name] = gdp_growth_annual
+
+    df = pd.DataFrame(gdp_data)
+
+    # Plot each scenario
+    ax = None
+    for name in scenario_order:
+        if name in df.columns:
+            series = df[name]
+            series.name = name
+            if ax is None:
+                ax = mg.line_plot(series, color=colors[name], width=2 if name == "hold" else 1.5)
+            else:
+                mg.line_plot(series, ax=ax, color=colors[name], width=2 if name == "hold" else 1.5)
+
+    if ax is not None:
+        # Get current cash rate and potential growth for context
+        hold_result = scenario_results.get("hold")
+        current_rate = hold_result.cash_rate if hold_result else None
+        potential_growth = hold_result.potential_growth if hold_result else None
+        rate_str = f" (from {current_rate:.2f}%)" if current_rate is not None else ""
+
+        # Add reference line at potential growth
+        if potential_growth is not None:
+            potential_annual = annualize(potential_growth)
+            ax.axhline(
+                y=potential_annual,
+                color="grey",
+                linestyle="--",
+                linewidth=1,
+                alpha=0.7,
+                label=f"Potential growth ({potential_annual:.1f}%)",
+            )
+
+        mg.finalise_plot(
+            ax,
+            title=f"GDP Growth Forecast by Policy Scenario{rate_str}",
+            ylabel="Per cent per annum",
+            legend={"loc": "best", "fontsize": "x-small"},
+            lheader="Annualised quarterly growth",
+            lfooter="Australia. Ceteris paribus: model-consistent forecasts, no new shocks.",
+            rfooter="4-quarter horizon. Demand channel via IS curve.",
+            show=show,
+        )
+
+
 def run_stage3(
     output_dir: Path | str | None = None,
     prefix: str = "nairu_output_gap",
@@ -643,9 +759,10 @@ def run_stage3(
         # Print scenario comparison
         print_scenario_comparison(scenario_results, current_rate)
 
-        # Plot scenario inflation comparison
+        # Plot scenario comparisons
         if plot_scenarios:
             plot_scenario_inflation(scenario_results, chart_dir=chart_dir, show=False)
+            plot_scenario_gdp_growth(scenario_results, chart_dir=chart_dir, show=False)
 
         return scenario_results
     else:

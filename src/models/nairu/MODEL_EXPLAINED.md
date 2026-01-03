@@ -1,13 +1,13 @@
 # NAIRU + Output Gap Model Overview
 
-This directory contains a Bayesian state-space model for jointly estimating NAIRU (Non-Accelerating Inflation Rate of Unemployment), potential output, and output gaps for Australia using PyMC.
+This directory contains a Bayesian state-space model for jointly estimating NAIRU (Non-Accelerating Inflation Rate of Unemployment), potential output, and output gaps for Australia using PyMC (NumPyro NUTS backend).
 
 ## Summary
 
 | Component | Method | Key Feature |
 |-----------|--------|-------------|
 | NAIRU | Gaussian random walk | No drift, σ ≈ 0.25 |
-| Potential Output | Cobb-Douglas + innovations | SkewNormal innovations (sticky downwards) |
+| Potential Output | Cobb-Douglas + asymmetric innovations | Mean-zero SkewNormal (downward revisions rarer) |
 | Phillips Curves | Regime-switching (3 regimes) | Pre-GFC, GFC-COVID, post-COVID |
 | Identification | 10 observation equations | Joint estimation with proper uncertainty |
 | Forecasting | Model-consistent projection | 4-quarter horizon with policy scenarios |
@@ -139,6 +139,19 @@ inflation_decomposition.py      # Demand vs supply decomposition
    - Runs policy scenarios (+50bp to -50bp)
    - Returns `ForecastResults` with uncertainty
 
+### Data Release Timing
+
+The model stages have different data dependencies:
+
+| Stage | Data Required | Earliest Run |
+|-------|--------------|--------------|
+| Stage 1 & 2 | Modellers database | ~1 day after quarterly National Accounts (GDP) |
+| Stage 3 | Financial Accounts (5232.0) | ~1 month after quarterly National Accounts |
+
+**Stage 1 & 2 (Estimation)**: Can run once the modellers database is available, typically the day after the ABS releases the quarterly National Accounts (5206.0). Most observation series are derived from National Accounts data.
+
+**Stage 3 (Forecasting)**: Requires the latest ABS 5232.0 Financial Accounts for housing wealth data (Δhw). This is released approximately one month after the National Accounts. Running Stage 3 before this release means the housing wealth channel will use data from the previous quarter.
+
 ---
 
 ## State Equations
@@ -177,7 +190,7 @@ Where:
 ```
 Where GOS = Gross Operating Surplus and COE = Compensation of Employees. This captures the secular rise in capital's share from ~0.25 in the 1970s to ~0.35 today.
 
-**Key feature**: Zero-mean SkewNormal innovations with positive skew (α=1). The location is shifted negative so E[ε]=0 while ~75% of draws remain positive. This makes potential "sticky downwards" — growth is more likely than decline, reflecting that capital accumulation and productivity gains are hard to reverse.
+**Key feature**: Zero-mean SkewNormal innovations with positive skew (α=1). The location is shifted negative so E[ε]=0 while ~75% of draws remain positive. This makes downward revisions to potential rarer than upward ones, reflecting that capital accumulation and productivity gains are hard to reverse.
 
 ---
 
@@ -189,9 +202,11 @@ All three Phillips curves use **regime-switching slopes** with three regimes:
 
 | Regime | Period | Characteristic |
 |--------|--------|----------------|
-| Pre-GFC | Up to 2007Q4 | Moderate slope |
-| GFC | 2008Q1 - 2020Q4 | Flat (anchored expectations) |
+| Pre-GFC | Up to 2008Q3 | Moderate slope |
+| GFC | 2008Q4 - 2020Q4 | Flat (anchored expectations) |
 | Post-COVID | 2021Q1+ | Steep (reawakened sensitivity) |
+
+Regime boundaries are fixed breakpoints chosen to align with well-known macroeconomic shifts (Lehman collapse, COVID reopening) rather than estimated, to avoid overfitting. See `equations/__init__.py` for definitions.
 
 **Price Phillips Curve:**
 ```
@@ -247,6 +262,8 @@ Where:
 - `δ` = debt servicing sensitivity (positive, ~0.09)
 - `Δhw` = housing wealth growth (quarterly log change × 100)
 - `η` = housing wealth sensitivity (positive, ~0.02)
+
+**Units convention**: Output gap is percent (100 × log deviation from potential). Unemployment and NAIRU are percentage points. Interest rates are percent. DSR is percentage points of disposable income. Growth rates are quarterly percent (q/q) unless stated as annualised.
 
 **Debt servicing channel**: The DSR term captures how rate changes feed through to household cash flows:
 - Rates ↑ → mortgage payments ↑ → disposable income ↓ → spending ↓
@@ -450,16 +467,29 @@ Economic theory imposes sign constraints via truncated priors:
 
 ## Sampler Configuration
 
-Default settings (`SamplerConfig`):
+`SamplerConfig` dataclass defaults (in `base.py`):
 
 ```python
 SamplerConfig(
-    draws=10_000,      # Posterior samples per chain
-    tune=3_500,        # Warmup/tuning samples
-    chains=5,          # Independent chains
-    cores=5,           # Parallel cores
+    draws=100_000,     # Posterior samples per chain
+    tune=5_000,        # Warmup/tuning samples
+    chains=6,          # Independent chains
+    cores=6,           # Parallel cores
     sampler="numpyro", # JAX-based NUTS
-    target_accept=0.90 # Acceptance probability
+    target_accept=0.95,# Acceptance probability
+    random_seed=42     # For reproducibility
+)
+```
+
+`stage1.run_stage1()` uses a lighter configuration for faster iteration:
+
+```python
+SamplerConfig(
+    draws=10_000,
+    tune=3_500,
+    chains=5,
+    cores=5,
+    target_accept=0.90,
 )
 ```
 
@@ -727,10 +757,10 @@ Post-GFC flattening of the Phillips curve is well-documented. A single time-inva
 
 ### Why SkewNormal for Potential?
 
-Potential output should be "sticky downwards":
+Potential output innovations should be asymmetric (downward revisions rarer):
 - Capital doesn't disappear in recessions
 - Productivity gains are hard to reverse
-- Labor force grows over time
+- Labour force grows over time
 
 **Implementation**: Zero-mean SkewNormal with positive skew (α=1).
 
@@ -762,6 +792,16 @@ MFP (Multi-Factor Productivity) trend growth is floored at zero before entering 
 - **True technological progress doesn't reverse**: Knowledge and process improvements persist. A recession doesn't make workers forget how to use computers.
 - **Potential output should reflect supply capacity**: The production function estimates what the economy *could* produce at full utilization. Cyclical MFP declines contaminate this with demand-side effects.
 - **Implementation**: Raw MFP is HP-filtered (λ=1600) to extract the trend, then floored with `np.maximum(mfp_trend, 0)`.
+
+**Comparison with external forecasters**: Most economists assume the post-GFC and post-COVID productivity slowdown is more cyclical than structural, and therefore factor in some MFP growth on a return-to-trend basis. Indicative comparison (approximate, varies by vintage):
+
+| Source | MFP Assumption | Potential Growth |
+|--------|---------------|------------------|
+| This model | 0.0% | ~1.8% |
+| RBA | ~0.2% | ~2.0% |
+| Treasury / Private banks | ~0.4-0.5% | ~2.25% |
+
+The model takes the HP-filtered trend at face value. If productivity recovers, this assumption will prove too pessimistic; if the productivity drought continues, the model will have been more realistic than consensus.
 
 ### Why Smooth Labour Inputs During COVID?
 

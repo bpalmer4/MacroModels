@@ -1103,6 +1103,48 @@ def plot_hours_vs_labour_force(result: DecompositionResult, show: bool = True) -
     )
 
 
+def plot_mfp_lambda_comparison(result: DecompositionResult, show: bool = True) -> None:
+    """Compare MFP trends with different HP filter smoothing parameters.
+
+    Smaller lambda = more responsive to recent data (but noisier).
+    Larger lambda = smoother trend (but slower to detect turning points).
+    """
+    mfp_raw = result.mfp["MFP Raw"].dropna()
+    lambdas = [1600, 800, 400, 200]
+
+    trends = pd.DataFrame({"Original": mfp_raw})
+    for lam in lambdas:
+        _, trend = hpfilter(mfp_raw, lamb=lam)
+        trend = pd.Series(trend, index=mfp_raw.index)
+        trends[f"λ={lam}"] = annualize(trend)
+
+    # Drop the raw column for plotting
+    plot_data = trends.drop(columns=["Original"])
+
+    ax = mg.line_plot(
+        plot_data,
+        width=[2.5, 2, 1.5, 1],
+        color=["#1f77b4", "#2ca02c", "#ff7f0e", "#d62728"],
+    )
+    ax.axhline(y=0, color="black", linewidth=0.8)
+
+    # Add regime lines
+    ax.axvline(x=pd.Period("2008Q4").ordinal, color="darkred", linewidth=1, linestyle="--", alpha=0.5)
+    ax.axvline(x=pd.Period("2021Q1").ordinal, color="darkgreen", linewidth=1, linestyle="--", alpha=0.5)
+
+    mg.finalise_plot(
+        ax,
+        title=f"MFP Trend Sensitivity to HP Filter Smoothing (α={result.alpha})",
+        ylabel="Annual Growth (% p.a.)",
+        y0=True,
+        legend={"loc": "best", "fontsize": "small"},
+        lheader="Smaller λ = more responsive, larger λ = smoother",
+        lfooter="Australia. Vertical lines: GFC (2008Q4), COVID (2021Q1).",
+        rfooter="ABS 5206, 1364, 6202",
+        show=show,
+    )
+
+
 def plot_mfp_comparison(result: DecompositionResult, show: bool = True) -> None:
     """Compare MFP from Cobb-Douglas (GDP-based) vs wage-derived approach.
 
@@ -1169,6 +1211,7 @@ def plot_all(result: DecompositionResult, show: bool = True) -> None:
     plot_labour_productivity(result, show=show)
     plot_labour_productivity_decomposition(result, show=show)
     plot_mfp_trend(result, show=show)
+    plot_mfp_lambda_comparison(result, show=show)
     plot_potential_gdp(result, show=show)
     plot_growth_decomposition(result, show=show)
     plot_sensitivity(result, show=show)
