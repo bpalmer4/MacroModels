@@ -168,3 +168,46 @@ def plot_potential_growth(
             y0=True,
             show=show,
         )
+
+
+def plot_r_star_input_vs_output(
+    results,  # NAIRUResults - avoid circular import
+    show: bool = False,
+) -> None:
+    """Compare deterministic r* (input) vs modeled potential growth (output)."""
+    # Modeled potential growth (output)
+    potential = get_vector_var("potential_output", results.trace)
+    potential.index = results.obs_index
+    modeled_growth = potential.diff(4).dropna()
+    modeled_median = modeled_growth.quantile(0.5, axis=1)
+
+    # Deterministic r* (input from Cobb-Douglas)
+    det_r_star = pd.Series(results.obs["det_r_star"], index=results.obs_index)
+
+    # Align to common index
+    common_idx = modeled_median.index.intersection(det_r_star.index)
+    common_idx = common_idx[common_idx >= START]
+
+    plot_data = pd.DataFrame({
+        "Deterministic r* (input)": det_r_star.loc[common_idx],
+        "Modeled Potential Growth (output)": modeled_median.loc[common_idx],
+    })
+
+    ax = mg.line_plot(
+        plot_data,
+        width=[2, 2],
+        color=["darkgreen", "purple"],
+        style=["--", "-"],
+        annotate=True,
+    )
+
+    mg.finalise_plot(
+        ax,
+        title="r* Input vs Modeled Output",
+        ylabel="Per cent per annum",
+        legend={"loc": "upper right", "fontsize": "small"},
+        lfooter="Australia. Deterministic r* from Cobb-Douglas vs posterior median potential growth.",
+        rfooter=RFOOTER,
+        y0=True,
+        show=show,
+    )

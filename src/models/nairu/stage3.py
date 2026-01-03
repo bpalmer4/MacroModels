@@ -113,6 +113,7 @@ class ForecastResults:
     nairu_final: float
     potential_final: float
     output_gap_final: float
+    output_gap_final_posterior: pd.Series  # Full posterior for sample-by-sample GDP growth
     unemployment_final: float
 
     # Policy scenario info
@@ -170,11 +171,11 @@ class ForecastResults:
 
         """
         # Change in output gap from previous period
-        # First period: change from final historical output gap
+        # First period: change from final historical output gap (sample-by-sample)
         # Subsequent periods: change from previous forecast period
         output_gap_change = self.output_gap_forecast.diff()
         output_gap_change.iloc[0] = (
-            self.output_gap_forecast.iloc[0] - self.output_gap_final
+            self.output_gap_forecast.iloc[0] - self.output_gap_final_posterior
         )
 
         # GDP growth = potential growth (constant) + output gap change
@@ -474,6 +475,7 @@ def forecast(
         nairu_final=float(np.median(nairu_T)),
         potential_final=float(np.median(potential_T)),
         output_gap_final=float(np.median(output_gap_T)),
+        output_gap_final_posterior=pd.Series(output_gap_T, index=cols),
         unemployment_final=U_T,
         scenario_name=scenario_name,
         cash_rate=cash_rate_T,
@@ -552,6 +554,7 @@ def print_scenario_comparison(
 
 def plot_scenario_inflation(
     scenario_results: dict[str, ForecastResults],
+    n_history: int = 4,
     chart_dir: Path | str | None = None,
     show: bool = True,
 ) -> None:
@@ -559,6 +562,7 @@ def plot_scenario_inflation(
 
     Args:
         scenario_results: Dict of {scenario_name: ForecastResults} from run_scenarios
+        n_history: Number of historical periods to show before forecast
         chart_dir: Directory to save charts. If None, uses DEFAULT_CHART_DIR.
         show: Display plots interactively.
 
@@ -593,8 +597,15 @@ def plot_scenario_inflation(
 
     df = pd.DataFrame(inflation_data)
 
+    # Plot historical actuals (fetch fresh CPI - may have more recent than model)
+    from src.data.inflation import get_inflation_qrtly
+    cpi = annualize(get_inflation_qrtly().data)
+    model_end = scenario_results["hold"].obs_index[-1]
+    hist_actual = cpi.loc[cpi.index >= model_end - n_history + 1]
+    hist_actual.name = "Actual"
+    ax = mg.line_plot(hist_actual, color="black", width=2)
+
     # Plot each scenario
-    ax = None
     for name in scenario_order:
         if name in df.columns:
             series = df[name]
@@ -608,8 +619,33 @@ def plot_scenario_inflation(
     if ax is not None:
         ax.axhline(y=2.5, color="grey", linestyle="--", linewidth=1, alpha=0.7, label="Target (2.5%)")
 
-        # Get current cash rate for title
+        # Add error bars at first point to show starting point uncertainty
+        # All scenarios have the same first point (before policy propagates)
         hold_result = scenario_results.get("hold")
+        if hold_result is not None:
+            first_period = hold_result.forecast_index[0]
+            # Get 90% HDI for first period inflation
+            first_inflation = hold_result.inflation_forecast.iloc[0]
+            first_annual = annualize(first_inflation)
+            median_val = first_annual.median()
+            lower_val = first_annual.quantile(0.05)
+            upper_val = first_annual.quantile(0.95)
+
+            # Draw error bar at first point
+            ax.errorbar(
+                first_period.ordinal,
+                median_val,
+                yerr=[[median_val - lower_val], [upper_val - median_val]],
+                fmt="none",
+                ecolor="black",
+                elinewidth=2,
+                capsize=6,
+                capthick=2,
+                zorder=10,
+                label=f"90% HDI for {first_period} (ex. shocks)",
+            )
+
+        # Get current cash rate for title
         current_rate = hold_result.cash_rate if hold_result else None
         rate_str = f" (from {current_rate:.2f}%)" if current_rate is not None else ""
 
@@ -617,7 +653,7 @@ def plot_scenario_inflation(
             ax,
             title=f"Inflation Forecast by Policy Scenario{rate_str}",
             ylabel="Per cent per annum",
-            legend={"loc": "best", "fontsize": "x-small"},
+            legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Trimmed mean, annualised",
             lfooter="Australia. Ceteris paribus: model-consistent forecasts, no new shocks.",
             rfooter="4-quarter horizon. Demand, FX, DSR, housing wealth channels.",
@@ -627,6 +663,9 @@ def plot_scenario_inflation(
 
 def plot_scenario_gdp_growth(
     scenario_results: dict[str, ForecastResults],
+    obs: dict | None = None,
+    obs_index: pd.PeriodIndex | None = None,
+    n_history: int = 4,
     chart_dir: Path | str | None = None,
     show: bool = True,
 ) -> None:
@@ -634,6 +673,9 @@ def plot_scenario_gdp_growth(
 
     Args:
         scenario_results: Dict of {scenario_name: ForecastResults} from run_scenarios
+        obs: Observations dict containing historical data
+        obs_index: PeriodIndex for observations
+        n_history: Number of historical periods to show before forecast
         chart_dir: Directory to save charts. If None, uses DEFAULT_CHART_DIR.
         show: Display plots interactively.
 
@@ -668,8 +710,17 @@ def plot_scenario_gdp_growth(
 
     df = pd.DataFrame(gdp_data)
 
-    # Plot each scenario
+    # Plot historical actuals first (if provided)
     ax = None
+    if obs is not None and obs_index is not None:
+        log_gdp = pd.Series(obs["log_gdp"], index=obs_index)
+        gdp_growth_qtr = log_gdp.diff()  # already in % (log_gdp is 100*log)
+        gdp_growth_annual = annualize(gdp_growth_qtr)
+        hist_recent = gdp_growth_annual.iloc[-n_history:]
+        hist_recent.name = "Actual"
+        ax = mg.line_plot(hist_recent, color="black", width=2)
+
+    # Plot each scenario
     for name in scenario_order:
         if name in df.columns:
             series = df[name]
@@ -698,11 +749,36 @@ def plot_scenario_gdp_growth(
                 label=f"Potential growth ({potential_annual:.1f}%)",
             )
 
+        # Add error bars at first point to show starting point uncertainty
+        # All scenarios have the same first point (before policy propagates)
+        if hold_result is not None:
+            first_period = hold_result.forecast_index[0]
+            # Get 90% HDI for first period GDP growth
+            first_gdp_growth = hold_result.gdp_growth_forecast().iloc[0]
+            first_annual = annualize(first_gdp_growth)
+            median_val = first_annual.median()
+            lower_val = first_annual.quantile(0.05)
+            upper_val = first_annual.quantile(0.95)
+
+            # Draw error bar at first point
+            ax.errorbar(
+                first_period.ordinal,
+                median_val,
+                yerr=[[median_val - lower_val], [upper_val - median_val]],
+                fmt="none",
+                ecolor="black",
+                elinewidth=2,
+                capsize=6,
+                capthick=2,
+                zorder=10,
+                label=f"90% HDI for {first_period} (ex. shocks)",
+            )
+
         mg.finalise_plot(
             ax,
             title=f"GDP Growth Forecast by Policy Scenario{rate_str}",
             ylabel="Per cent per annum",
-            legend={"loc": "best", "fontsize": "x-small"},
+            legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Annualised quarterly growth",
             lfooter="Australia. Ceteris paribus: model-consistent forecasts, no new shocks.",
             rfooter="4-quarter horizon. Demand channel via IS curve.",
@@ -762,7 +838,7 @@ def run_stage3(
         # Plot scenario comparisons
         if plot_scenarios:
             plot_scenario_inflation(scenario_results, chart_dir=chart_dir, show=False)
-            plot_scenario_gdp_growth(scenario_results, chart_dir=chart_dir, show=False)
+            plot_scenario_gdp_growth(scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False)
 
         return scenario_results
     else:

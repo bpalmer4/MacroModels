@@ -40,6 +40,7 @@ from src.models.nairu.analysis.plot_nairu_output import (
     plot_gdp_vs_potential,
     plot_output_gap,
     plot_potential_growth,
+    plot_r_star_input_vs_output,
 )
 from src.models.nairu.analysis.plot_nairu_rates import plot_equilibrium_rates, plot_taylor_rule
 from src.models.nairu.analysis.plot_nairu_unemployment import plot_nairu, plot_unemployment_gap
@@ -88,6 +89,7 @@ __all__ = [
     "plot_posteriors_bar",
     "plot_posteriors_kde",
     "plot_potential_growth",
+    "plot_r_star_input_vs_output",
     "plot_supply_contribution",
     "plot_taylor_rule",
     "plot_wage_decomposition",

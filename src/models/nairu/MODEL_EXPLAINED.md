@@ -812,6 +812,23 @@ Labour force growth and hours worked are replaced with Henderson-smoothed values
 - **Prevents contaminating NAIRU estimates**: Without smoothing, the model would interpret COVID unemployment spikes as movements in NAIRU rather than cyclical deviations from it.
 - **Implementation**: Raw series used normally; Henderson MA (term=13) applied only during 2020Q1–2023Q2.
 
+### Why HMA(13) Smooth Labour Force Growth for Potential?
+
+Labour force growth is Henderson-smoothed (term=13) before entering the potential output calculation (`src/models/nairu/stage1.py`):
+
+- **Distinguishes structural from cyclical**: Raw quarterly labour force growth is noisy. HMA(13) extracts the underlying trend while remaining responsive to genuine structural shifts — unlike HP filter which anchors too heavily to historical averages.
+- **Captures the post-2023 immigration slowdown**: Labour force growth collapsed from ~3.0% (2023, post-COVID surge) to ~1.6% (2025) as net overseas migration normalized and policy shifted. This is structural, not cyclical — it reflects deliberate policy choices, not temporary economic weakness.
+- **Affects r\* and potential output directly**: Since r\* ≈ α×g_K + (1-α)×g_L + g_MFP, the labour force slowdown materially reduces potential growth. Using raw data would be too noisy; using HP trend would miss the structural break.
+- **Implementation**: Data layer provides raw series; model applies `hma(lf_growth, 13)` after loading observations. This keeps data preparation pure and makes the modeling choice explicit.
+
+| Approach | LF Growth (2025) | r\* Implied | Issue |
+|----------|-----------------|-------------|-------|
+| Raw quarterly | 1.6% (volatile) | ~1.8% | Too noisy for potential |
+| HP trend | 2.4% | ~2.2% | Anchored to 2023 surge |
+| HMA(13) | ~2.0% | ~2.0% | Captures structural shift |
+
+**Key insight**: The current slowdown in labour force growth is critical to understanding why potential output growth is lower than many forecasters assume. Immigration-driven workforce expansion was exceptional in 2022–23; the new normal is materially slower.
+
 ### Why Use Deterministic r*?
 
 The neutral real interest rate (r*) is computed from Cobb-Douglas potential growth rather than estimated as a latent variable (`src/data/cash_rate.py`):

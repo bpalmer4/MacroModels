@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
+from src.data.henderson import hma
 from src.data.observations import build_observations
 from src.models.nairu.equations import (
     employment_equation,
@@ -209,6 +210,10 @@ def run_stage1(
     # Build observations
     print("Building observations...")
     obs, obs_index = build_observations(start=start, end=end, verbose=verbose)
+
+    # Apply HMA(13) smoothing to labour force growth for potential calculation
+    lf_raw = pd.Series(obs["lf_growth"], index=obs_index)
+    obs["lf_growth"] = hma(lf_raw, 13).values
 
     # Build model
     print("Building model...")

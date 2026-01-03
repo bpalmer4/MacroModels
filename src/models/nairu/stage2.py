@@ -37,6 +37,7 @@ from src.models.nairu.analysis import (
     plot_posteriors_bar,
     plot_posteriors_kde,
     plot_potential_growth,
+    plot_r_star_input_vs_output,
     plot_taylor_rule,
     plot_unemployment_gap,
     plot_wage_decomposition,
@@ -318,6 +319,7 @@ def plot_all(
     plot_output_gap(results, show=show)
     plot_gdp_vs_potential(results, show=show)
     plot_potential_growth(results, show=show)
+    plot_r_star_input_vs_output(results, show=show)
     if cash_rate_monthly is not None and inflation_annual is not None:
         plot_taylor_rule(results, inflation_annual, cash_rate_monthly, show=show)
         plot_equilibrium_rates(results, cash_rate_monthly, show=show)

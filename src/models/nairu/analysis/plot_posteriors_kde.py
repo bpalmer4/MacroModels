@@ -54,7 +54,7 @@ def plot_posteriors_kde(
         )
 
         defaults = {
-            "title": f"{var_name} Posterior",
+            "title": f"Posterior: {var_name}",
             "xlabel": "Coefficient value",
             "lfooter": "Red dashed line marks zero. Black dashed line marks median.",
             **_place_model_name(model_name, kwargs),

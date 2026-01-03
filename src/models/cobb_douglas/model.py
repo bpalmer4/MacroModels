@@ -30,6 +30,7 @@ from statsmodels.tsa.filters.hp_filter import hpfilter
 
 from src.utilities.rate_conversion import annualize
 from src.data import (
+    get_capital_share,
     get_capital_stock_qrtly,
     get_hourly_coe_growth_qrtly,
     get_hours_worked_qrtly,
@@ -37,6 +38,7 @@ from src.data import (
     get_labour_force_growth_qrtly,
     get_mfp_growth,
     get_ulc_growth_qrtly,
+    hma,
 )
 from src.data.gdp import get_gdp
 
@@ -941,17 +943,20 @@ def plot_phillips_crosscheck(result: DecompositionResult, show: bool = True) -> 
 
 
 def plot_capital_growth(result: DecompositionResult, show: bool = True) -> None:
-    """Plot capital stock growth (raw and HP-filtered trend)."""
+    """Plot capital stock growth (raw, HP-filtered, and HMA-smoothed)."""
     g_capital = result.growth["g_Capital"].dropna()
-    g_capital_trend, _ = apply_hp_filter(g_capital)
+    g_capital_hp, _ = apply_hp_filter(g_capital)
+    g_capital_hma = hma(g_capital, 13)
 
     # Annualize for interpretation
     raw_annual = annualize(g_capital)
-    trend_annual = annualize(g_capital_trend)
+    hp_annual = annualize(g_capital_hp)
+    hma_annual = annualize(g_capital_hma)
 
     plot_data = pd.DataFrame({
         "Capital Growth (Raw)": raw_annual,
-        "Capital Growth (HP Trend)": trend_annual,
+        "HMA(13)": hma_annual,
+        "HP(1600)": hp_annual,
     })
 
     mg.line_plot_finalise(
@@ -959,11 +964,11 @@ def plot_capital_growth(result: DecompositionResult, show: bool = True) -> None:
         title="Capital Stock Growth",
         ylabel="Annual Growth (% p.a.)",
         y0=True,
-        width=[0.8, 2],
-        alpha=[0.3, 1.0],
-        color=["gray", "green"],
+        width=[0.8, 2, 2],
+        alpha=[0.3, 1.0, 1.0],
+        color=["gray", "red", "blue"],
         legend={"loc": "best", "fontsize": "small"},
-        lfooter="Australia. Net capital stock (chain volume measures).",
+        lfooter="Australia. Net capital stock (chain volume measures). NAIRU model uses HMA(13).",
         rfooter="ABS 1364",
         show=show,
     )
@@ -1000,6 +1005,81 @@ def plot_labour_growth(result: DecompositionResult, show: bool = True) -> None:
         lfooter="Australia. Hours actually worked in all jobs.",
         rfooter="ABS 5206, 6202",
         rheader=f"Plot constrained to -5% to +10%; COVID volatility ranged from {covid_min:.0f}% to +{covid_max:.0f}%.",
+        show=show,
+    )
+
+
+def plot_labour_force_growth(show: bool = True) -> None:
+    """Plot labour force growth (through-the-year with HP and HMA trends)."""
+    from src.data import get_labour_force_qrtly
+    from src.data.henderson import hma
+
+    # Get labour force levels and compute through-the-year growth
+    lf = get_labour_force_qrtly().data.dropna()
+    lf_tty = (np.log(lf) - np.log(lf.shift(4))) * 100  # 4-quarter log change
+
+    # HP filter on TTY growth
+    lf_tty_clean = lf_tty.dropna()
+    _, lf_hp = hpfilter(lf_tty_clean, lamb=HP_LAMBDA)
+    lf_hp = pd.Series(lf_hp, index=lf_tty_clean.index)
+
+    # HMA(13) on TTY growth
+    lf_hma = hma(lf_tty_clean, 13)
+
+    plot_data = pd.DataFrame({
+        "Labour Force Growth": lf_tty,
+        "HP Trend": lf_hp,
+        "HMA(13)": lf_hma,
+    })
+
+    mg.line_plot_finalise(
+        plot_data,
+        title="Labour Force Growth (Through-the-Year)",
+        ylabel="% change from year ago",
+        y0=True,
+        width=[0.8, 2, 2],
+        alpha=[0.3, 1.0, 1.0],
+        color=["gray", "blue", "red"],
+        legend={"loc": "best", "fontsize": "small"},
+        lfooter="Australia. Total labour force (employed + unemployed).",
+        rfooter="ABS 1364",
+        annotate=True,
+        show=show,
+    )
+
+
+def plot_labour_force_growth_quarterly(show: bool = True) -> None:
+    """Plot labour force Q/Q growth as used in NAIRU model."""
+    from src.data.henderson import hma
+
+    # Q/Q growth (what the NAIRU model uses)
+    lf_qq = get_labour_force_growth_qrtly().data.dropna()
+
+    # HMA(13) - what the NAIRU model applies
+    lf_hma = hma(lf_qq, 13)
+
+    # HP(1600) for comparison
+    _, lf_hp = hpfilter(lf_qq, lamb=HP_LAMBDA)
+    lf_hp = pd.Series(lf_hp, index=lf_qq.index)
+
+    plot_data = pd.DataFrame({
+        "LF Q/Q": lf_qq,
+        "HMA(13)": lf_hma,
+        "HP(1600)": lf_hp,
+    })
+
+    mg.line_plot_finalise(
+        plot_data,
+        title="Labour Force Growth (Q/Q, as used in NAIRU model)",
+        ylabel="% per quarter",
+        ylim=(-1.0, 2.0),
+        width=[0.8, 2, 2],
+        alpha=[0.3, 1.0, 1.0],
+        color=["gray", "red", "blue"],
+        legend={"loc": "best", "fontsize": "small"},
+        lfooter="Australia. Quarterly log difference. NAIRU model uses HMA(13). Outliers excluded.",
+        rfooter="ABS 1364",
+        annotate=True,
         show=show,
     )
 
@@ -1071,33 +1151,55 @@ def plot_labour_productivity_decomposition(result: DecompositionResult, show: bo
 
 
 def plot_hours_vs_labour_force(result: DecompositionResult, show: bool = True) -> None:
-    """Compare trend hours worked growth with trend labour force growth."""
+    """Compare trend hours worked growth with employment × avg hours decomposition."""
     # Hours worked growth (already in result)
     g_hours = result.growth["g_Hours"].dropna()
     g_hours_trend, _ = apply_hp_filter(g_hours)
 
-    # Labour force growth
+    # Employment growth (employed persons, not labour force)
+    from src.data import get_employment_growth_qrtly
+    emp_growth = get_employment_growth_qrtly().data
+    emp_growth_trend, _ = apply_hp_filter(emp_growth.dropna())
+
+    # Labour force growth (for comparison - includes unemployed)
     lf_growth = get_labour_force_growth_qrtly().data
     lf_growth_trend, _ = apply_hp_filter(lf_growth.dropna())
 
+    # Avg hours per employed person: g_avg_hours = g_hours - g_employment
+    common_idx = g_hours_trend.index.intersection(emp_growth_trend.index).intersection(lf_growth_trend.index)
+    g_avg_hours_trend = g_hours_trend.loc[common_idx] - emp_growth_trend.loc[common_idx]
+
     # Annualize and align
-    hours_annual = annualize(g_hours_trend)
-    lf_annual = annualize(lf_growth_trend)
+    hours_annual = annualize(g_hours_trend.loc[common_idx])
+    emp_annual = annualize(emp_growth_trend.loc[common_idx])
+    lf_annual = annualize(lf_growth_trend.loc[common_idx])
+    avg_hours_annual = annualize(g_avg_hours_trend)
+
+    # Potential labour input: Labour Force × Avg Hours per Worker
+    potential_labour_annual = lf_annual + avg_hours_annual
 
     plot_data = pd.DataFrame({
-        "Hours Worked (Trend)": hours_annual,
-        "Labour Force (Trend)": lf_annual,
+        "Hours Worked (actual)": hours_annual,
+        "Labour Force": lf_annual,
+        "Avg Hours per Worker": avg_hours_annual,
+        "Labour Force × Avg Hours (potential)": potential_labour_annual,
     }).dropna()
 
-    mg.line_plot_finalise(
+    ax = mg.line_plot(
         plot_data,
-        title="Labour Input Growth: Hours Worked vs Labour Force",
+        width=[2.5, 2, 2, 2],
+        color=["orange", "blue", "red", "green"],
+        style=["solid", "solid", "solid", "dashed"],
+        annotate=True,
+    )
+    ax.axhline(y=0, color="gray", linewidth=0.5)
+
+    mg.finalise_plot(
+        ax,
+        title="Labour Input Growth: Labour Force × Avg Hours (Potential)",
         ylabel="Annual Growth (% p.a.)",
-        y0=True,
-        width=2,
-        color=["orange", "blue"],
-        legend={"loc": "best", "fontsize": "small"},
-        lfooter="Australia. HP-filtered trends. Gap reflects participation rate and average hours per worker.",
+        legend={"loc": "best", "fontsize": "x-small"},
+        lfooter="Australia. HP-filtered trends. Potential = Labour Force × Avg Hours (if full employment).",
         rfooter="ABS 5206, 6202, 1364",
         show=show,
     )
@@ -1202,11 +1304,52 @@ def plot_mfp_comparison(result: DecompositionResult, show: bool = True) -> None:
     )
 
 
+def plot_capital_share(show: bool = True) -> None:
+    """Plot time-varying capital share from national accounts.
+
+    α = GOS / (GOS + COE) where:
+    - GOS = Gross Operating Surplus
+    - COE = Compensation of Employees
+    """
+    alpha = get_capital_share().data
+    alpha_trend, _ = apply_hp_filter(alpha.dropna())
+
+    plot_data = pd.DataFrame({
+        "Capital Share (Raw)": alpha * 100,
+        "Capital Share (HP Trend)": alpha_trend * 100,
+    })
+
+    ax = mg.line_plot(
+        plot_data,
+        width=[0.8, 2],
+        alpha=[0.3, 1.0],
+        color=["gray", "darkblue"],
+    )
+
+    # Add reference lines for common assumptions
+    ax.axhline(y=30, color="red", linewidth=1, linestyle="--", alpha=0.7, label="α = 0.30 (typical assumption)")
+    ax.axhline(y=25, color="orange", linewidth=1, linestyle="--", alpha=0.5, label="α = 0.25")
+    ax.axhline(y=35, color="orange", linewidth=1, linestyle="--", alpha=0.5, label="α = 0.35")
+
+    mg.finalise_plot(
+        ax,
+        title="Capital Share of Income (α)",
+        ylabel="Per cent",
+        legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
+        lfooter="Australia. α = GOS / (GOS + COE). Factor income from National Accounts.",
+        rfooter="ABS 5206",
+        show=show,
+    )
+
+
 def plot_all(result: DecompositionResult, show: bool = True) -> None:
     """Generate all standard plots."""
     plot_raw_data(result, show=show)
+    plot_capital_share(show=show)
     plot_capital_growth(result, show=show)
     plot_labour_growth(result, show=show)
+    plot_labour_force_growth(show=show)
+    plot_labour_force_growth_quarterly(show=show)
     plot_hours_vs_labour_force(result, show=show)
     plot_labour_productivity(result, show=show)
     plot_labour_productivity_decomposition(result, show=show)
