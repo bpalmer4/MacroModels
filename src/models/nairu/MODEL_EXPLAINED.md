@@ -10,7 +10,7 @@ This directory contains a Bayesian state-space model for jointly estimating NAIR
 | Potential Output | Cobb-Douglas + asymmetric innovations | Mean-zero SkewNormal (downward revisions rarer) |
 | Phillips Curves | Regime-switching (3 regimes) | Pre-GFC, GFC-COVID, post-COVID |
 | Identification | 10 observation equations | Joint estimation with proper uncertainty |
-| Forecasting | Model-consistent projection | 4-quarter horizon with policy scenarios |
+| Scenario Analysis | Model-consistent projection | 4-quarter horizon with policy scenarios |
 
 The Bayesian approach with multiple observation equations provides good identification. MCMC diagnostics show convergence (R-hat < 1.01, ESS > 400), theoretical sign constraints are satisfied (Phillips slopes negative, Okun coefficient negative), and estimates align with RBA research on transmission magnitudes.
 
@@ -20,11 +20,12 @@ The Bayesian approach with multiple observation equations provides good identifi
 
 ### Core Pipeline
 ```
-model.py               # Unified entry point (run_model, main)
-stage1.py              # Build model, sample posterior, save results
-stage2.py              # Load results, diagnostics, plotting
-stage3.py              # Model-consistent forecasting with policy scenarios
-base.py                # Sampler config, coefficient utilities
+model.py                    # Unified entry point (run_model, main)
+stage1.py                   # Build model, sample posterior, save results
+stage2.py                   # Load results, diagnostics, plotting
+stage3.py                   # Deterministic scenario analysis (clean lines)
+stage3_forward_sampling.py  # Monte Carlo scenario analysis (full uncertainty)
+base.py                     # Sampler config, coefficient utilities
 ```
 
 ### Equations (src/models/nairu/equations/)
@@ -32,7 +33,7 @@ base.py                # Sampler config, coefficient utilities
 __init__.py            # Exports + regime boundary constants
 state_space.py         # NAIRU random walk (state equation)
 production.py          # Potential output via Cobb-Douglas (state equation)
-okun.py                # Okun's Law: ΔU ↔ output gap
+okun.py                # Okun's Law: error correction form
 phillips.py            # Price, wage (ULC), and hourly COE Phillips curves
 is_curve.py            # IS curve: output gap ↔ real rate gap
 participation.py       # Discouraged worker effect
@@ -70,13 +71,13 @@ inflation_decomposition.py      # Demand vs supply decomposition
                                │
          ┌─────────────────────┼─────────────────────┐
          ▼                     ▼                     ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│    stage1.py    │  │    stage2.py    │  │    stage3.py    │
-│                 │  │                 │  │                 │
-│ build_model()   │  │ load_results()  │  │ forecast()      │
-│ sample_model()  │  │ NAIRUResults    │  │ run_scenarios() │
-│ save_results()  │  │ plot_all()      │  │ ForecastResults │
-└─────────────────┘  └─────────────────┘  └─────────────────┘
+┌─────────────────┐  ┌─────────────────┐  ┌───────────────────────────────────┐
+│    stage1.py    │  │    stage2.py    │  │           Stage 3                 │
+│                 │  │                 │  │                                   │
+│ build_model()   │  │ load_results()  │  │ stage3.py (3a: deterministic)    │
+│ sample_model()  │  │ NAIRUResults    │  │ stage3_forward_sampling.py       │
+│ save_results()  │  │ plot_all()      │  │   (3b: Monte Carlo)              │
+└─────────────────┘  └─────────────────┘  └───────────────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -87,7 +88,7 @@ inflation_decomposition.py      # Demand vs supply decomposition
 │    potential_output_equation() → Cobb-Douglas potential         │
 │                                                                  │
 │  Observation Equations:                                          │
-│    okun_law_equation()        → Links output gap to ΔU          │
+│    okun_equation()            → Error correction Okun's Law     │
 │    price_inflation_equation() → Price Phillips curve            │
 │    wage_growth_equation()     → Wage Phillips (ULC)             │
 │    hourly_coe_equation()      → Wage Phillips (HCOE)            │
@@ -134,12 +135,13 @@ inflation_decomposition.py      # Demand vs supply decomposition
    - Generates all plots
    - Tests theoretical expectations
 
-5. **Forecasting** (`stage3.run_stage3()`):
+5. **Scenario Analysis** (Stage 3a & 3b):
    - Loads saved trace and observations
    - Extracts posterior samples and coefficients
    - Projects IS curve, Okun's Law, Phillips curve forward
-   - Runs policy scenarios (+50bp to -50bp)
-   - Returns `ForecastResults` with uncertainty
+   - Runs policy scenarios (+200bp to -200bp)
+   - Stage 3a (`stage3.py`): Deterministic using posterior medians
+   - Stage 3b (`stage3_forward_sampling.py`): Monte Carlo with sampled shocks
 
 ### Data Release Timing
 
@@ -152,7 +154,7 @@ The model stages have different data dependencies:
 
 **Stage 1 & 2 (Estimation)**: Can run once the modellers database is available, typically the day after the ABS releases the quarterly National Accounts (5206.0). Most observation series are derived from National Accounts data.
 
-**Stage 3 (Forecasting)**: Requires the latest ABS 5232.0 Financial Accounts for housing wealth data (Δhw). This is released approximately one month after the National Accounts. Running Stage 3 before this release means the housing wealth channel will use data from the previous quarter.
+**Stage 3 (Scenario Analysis)**: Requires the latest ABS 5232.0 Financial Accounts for housing wealth data (Δhw). This is released approximately one month after the National Accounts. Running Stage 3 before this release means the housing wealth channel will use data from the previous quarter.
 
 ---
 
@@ -245,15 +247,27 @@ The ψ coefficient captures how productivity gains flow to wages.
 
 ### Okun's Law (okun.py)
 
-Change form linking output gap to unemployment changes:
+Error correction form combining dynamics and equilibrium anchoring:
 
 ```
-ΔU = β × output_gap + ε
+ΔU_t = β × OG_t + α × (U_{t-1} - NAIRU_{t-1} - γ × OG_{t-1}) + ε
 ```
 
-- **β (beta_okun)**: Negative, typically -0.1 to -0.3
-- **Interpretation**: 1% positive output gap → ~0.2pp fall in unemployment
-- **Note**: Regime-switching was tested but posteriors showed no meaningful difference across regimes
+Where:
+- **β (beta_okun)**: Direct output gap effect (negative, ~-0.18)
+- **α (alpha_okun)**: Speed of adjustment toward equilibrium (negative, ~-0.12)
+- **γ (gamma_okun)**: Equilibrium relationship coefficient (negative, ~-0.16)
+
+**How it works:**
+- The term `(U - NAIRU - γ×OG)` measures disequilibrium
+- When U > equilibrium: error > 0, α×error < 0, so ΔU < 0 (unemployment falls)
+- When U < equilibrium: error < 0, α×error > 0, so ΔU > 0 (unemployment rises)
+
+**Why error correction?**
+- Separate level and change equations over-constrain NAIRU (level equation dominates identification)
+- Error correction constrains only the *change toward equilibrium*, not the level at every point
+- Gives Phillips curves room to identify NAIRU while providing equilibrium anchor for scenarios
+- α tells Stage 3 how fast unemployment corrects toward equilibrium (e.g., α=-0.12 → 12% per quarter, half-life ~5-6 quarters)
 
 ### IS Curve (is_curve.py)
 
@@ -467,6 +481,8 @@ Economic theory imposes sign constraints via truncated priors:
 | Parameter | Expected Sign | Constraint |
 |-----------|--------------|------------|
 | beta_okun | Negative | `upper=0` |
+| alpha_okun (adjustment speed) | Negative | `upper=0` |
+| gamma_okun (equilibrium coef) | Negative | `upper=0` |
 | gamma_* (Phillips slopes) | Negative | `upper=0` |
 | beta_pr (discouraged worker) | Negative | `upper=0` |
 | beta_emp_wage | Negative | `upper=0` |
@@ -551,24 +567,72 @@ Flags parameters whose 90% HDI includes zero — may indicate weak identificatio
 
 ---
 
-## Stage 3: Forecasting
+## Stage 3: Scenario Analysis
 
-Stage 3 generates model-consistent forecasts using the estimated coefficients from the posterior. The interpretation is "no new shocks, economy trends toward equilibrium."
+Stage 3 generates **scenario analysis** (not forecasts) using the estimated coefficients from the Bayesian model. Two approaches are available:
 
-### Forecast Horizon
+| Approach | File | Use Case |
+|----------|------|----------|
+| **Stage 3a: Deterministic** | `stage3.py` | Clean scenario lines, policy communication |
+| **Stage 3b: Monte Carlo** | `stage3_forward_sampling.py` | Full uncertainty, academic honesty |
 
-The model produces 4-quarter ahead forecasts. The IS curve uses rate gaps lagged 2 periods:
+**Why "scenario analysis" not "forecasting"?** The model shows what different policy choices would imply, all else equal. It cannot predict:
+- Future supply shocks (oil, weather, supply chains)
+- Global conditions (Fed policy, China)
+- Fiscal policy changes
+- Housing/credit surprises
 
-| Forecast Period | Rate Gap Used | Source |
+### Stage 3a: Deterministic
+
+Uses posterior **medians** for all coefficients and projects forward with **no sampled shocks**. The interpretation is "if nothing unexpected happens and we use our best-guess parameters."
+
+- Clean scenario lines for policy communication
+- 90% HDI captures parameter uncertainty only
+- NAIRU assumed fixed over scenario horizon
+
+### Stage 3b: Monte Carlo Forward Sampling
+
+**Important**: This is **not** a Bayesian model — it is **Monte Carlo simulation** using the posterior samples from the Stage 1 Bayesian estimation. No new inference is performed; instead, we mechanically propagate the estimated relationships forward with sampled shocks.
+
+**What it does:**
+1. Takes 5,000 random draws from the Stage 1 posterior
+2. For each draw, extracts coefficient values and final state estimates
+3. Samples future shocks from the estimated residual distributions
+4. Propagates IS curve, Okun's Law, and Phillips curve equations forward mechanically
+5. Aggregates results to produce distributions over scenarios
+
+**What it is NOT:**
+- Not a PyMC model with priors and likelihoods
+- Not re-running MCMC or doing Bayesian inference
+- Not proper posterior predictive sampling within PyMC
+
+**Potential output assumption**: Potential growth uses "as-is" values — last quarter's capital growth, labour force growth, and MFP growth held constant over the scenario horizon. This reflects the assumption that supply-side dynamics don't respond to policy within 4 quarters.
+
+**Key differences from deterministic:**
+- Shock uncertainty included (Phillips curve, Okun's Law, IS curve residuals)
+- Parameter uncertainty from posterior distribution
+- Wider confidence bands reflecting honest uncertainty about future shocks
+
+**Additional charts produced:**
+- Output gap scenarios (all 9 policy scenarios)
+- GDP vs Potential (shows actual vs potential output divergence)
+
+**Result**: Medians align with deterministic version, but 90% HDI is much wider (e.g., inflation ±3-4pp vs ±1pp). This reflects the reality that even with known policy, future outcomes are highly uncertain.
+
+### Scenario Horizon
+
+The model produces 4-quarter ahead scenarios. The IS curve uses rate gaps lagged 2 periods:
+
+| Scenario Period | Rate Gap Used | Source |
 |-----------------|---------------|--------|
 | T+1 | T-1 | Historical |
 | T+2 | T | Policy decision |
 | T+3 | T+1 | Hold assumption |
 | T+4 | T+2 | Hold assumption |
 
-### Forecast Equations
+### Scenario Equations
 
-The forecast projects forward using estimated coefficients and RBA-calibrated pass-throughs:
+The scenario projection uses estimated coefficients and RBA-calibrated pass-throughs:
 
 1. **IS Curve** (output gap dynamics with DSR transmission):
    ```
@@ -576,12 +640,14 @@ The forecast projects forward using estimated coefficients and RBA-calibrated pa
    ```
    Where Δdsr is projected using the rate→DSR pass-through (~1.0pp per 100bp).
 
-2. **Okun's Law** (unemployment from output gap):
+2. **Okun's Law** (error correction form):
    ```
-   ΔU_t = β_okun × y_gap_t × 1.6
+   equilibrium_error = U_{t-1} - NAIRU_{t-1} - γ_okun × y_gap_{t-1}
+   ΔU_t = β_okun × y_gap_t × 1.6 + α_okun × equilibrium_error
    ```
-   A demand transmission multiplier of 1.6 is applied to match RBA's demand channel estimate.
-   See [Calibration Corrections](#calibration-corrections) below.
+   - α_okun (~-0.12) provides mean-reversion toward Okun-implied equilibrium
+   - A demand transmission multiplier of 1.6 is applied to β_okun to match RBA's demand channel estimate
+   - See [Calibration Corrections](#calibration-corrections) below
 
 3. **Phillips Curve** (inflation from unemployment gap + FX channel):
    ```
@@ -627,7 +693,7 @@ Stage 3 runs nine policy scenarios by default, testing rate changes from the cur
 | -100bp | -1.00% |
 | -200bp | -2.00% |
 
-The "move and hold" assumption means the rate stays at the new level for the entire forecast horizon.
+The "move and hold" assumption means the rate stays at the new level for the entire scenario horizon.
 
 ### Calibration Corrections
 
@@ -666,9 +732,9 @@ Stage 3 models **four explicit transmission channels**:
    - Replaces model's weak UIP-based estimate
    - See [FX Channel Assumptions](#fx-channel-assumptions) for counterfactual discussion
 
-These corrections are applied only in Stage 3 forecasting, not in Stage 1 estimation. The estimated model remains unchanged and can be used for historical decomposition without calibration adjustments.
+These corrections are applied only in Stage 3 scenario analysis, not in Stage 1 estimation. The estimated model remains unchanged and can be used for historical decomposition without calibration adjustments.
 
-### ForecastResults Container
+### ScenarioResults Container
 
 ```python
 from src.models.nairu.model import run_stage3, ForecastResults
@@ -679,7 +745,7 @@ scenario_results = run_stage3()  # dict[str, ForecastResults]
 # Access specific scenario
 hold = scenario_results["hold"]
 
-# Point forecasts (posterior median)
+# Point estimates (posterior median)
 hold.summary()
 
 # Uncertainty (90% HDI)
@@ -728,9 +794,14 @@ python -m src.models.nairu.stage1 --start 1980Q1 -v
 python -m src.models.nairu.stage2 --show -v
 ```
 
-### Stage 3 Only (Forecasting)
+### Stage 3a Only (Deterministic)
 ```bash
 python -m src.models.nairu.stage3
+```
+
+### Stage 3b Only (Monte Carlo Forward Sampling)
+```bash
+python -m src.models.nairu.stage3_forward_sampling
 ```
 
 ### From Python

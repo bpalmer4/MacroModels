@@ -27,7 +27,7 @@ from src.models.nairu.equations import (
     is_equation,
     nairu_equation,
     net_exports_equation,
-    okun_law_equation,
+    okun_equation,
     participation_equation,
     potential_output_equation,
     price_inflation_equation,
@@ -99,7 +99,7 @@ def build_model(
     potential = potential_output_equation(obs, model, constant=potential_const)
 
     # Observation equations
-    okun_law_equation(obs, model, nairu, potential)
+    okun_equation(obs, model, nairu, potential)  # Error correction: ΔU = β×OG + α×(U-NAIRU-γ×OG)
     price_inflation_equation(obs, model, nairu)
     wage_growth_equation(obs, model, nairu)
     is_equation(obs, model, potential)

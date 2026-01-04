@@ -2,9 +2,11 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
-# Run NAIRU + Output Gap analysis (Stage 2 only - loads saved results)
+# Run NAIRU + Output Gap analysis (Stages 2 & 3 - loads saved results)
 cd "$ROOT"
-uv run python -m src.models.nairu.stage2 \
-    --output-dir model_outputs \
-    --chart-dir charts/nairu_output_gap \
-    "$@"
+
+echo "=== Stage 2: Analysis ==="
+uv run python -m src.models.nairu.stage2 "$@"
+
+echo ""
+"$ROOT/run-nairu-stage3.sh"

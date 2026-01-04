@@ -19,7 +19,7 @@ from src.models.nairu.equations.exchange_rate import exchange_rate_equation
 from src.models.nairu.equations.import_price import import_price_equation
 from src.models.nairu.equations.is_curve import is_equation
 from src.models.nairu.equations.net_exports import net_exports_equation
-from src.models.nairu.equations.okun import okun_law_equation
+from src.models.nairu.equations.okun import okun_equation
 from src.models.nairu.equations.participation import participation_equation
 from src.models.nairu.equations.phillips import (
     hourly_coe_equation,
@@ -41,7 +41,7 @@ __all__ = [
     "is_equation",
     "nairu_equation",
     "net_exports_equation",
-    "okun_law_equation",
+    "okun_equation",
     "participation_equation",
     "potential_output_equation",
     "price_inflation_equation",

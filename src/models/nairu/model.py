@@ -57,6 +57,10 @@ from src.models.nairu.stage3 import (
     run_scenarios,
     run_stage3,
 )
+from src.models.nairu.stage3_forward_sampling import (
+    BayesianScenarioResults,
+    run_stage3_bayesian,
+)
 
 __all__ = [
     # Constants
@@ -77,11 +81,14 @@ __all__ = [
     "test_theoretical_expectations",
     "plot_all",
     "run_stage2",
-    # Stage 3
+    # Stage 3 (deterministic)
     "ForecastResults",
     "forecast",
     "run_scenarios",
     "run_stage3",
+    # Stage 3 (Bayesian)
+    "BayesianScenarioResults",
+    "run_stage3_bayesian",
     # Unified
     "run_model",
     "main",
@@ -166,11 +173,19 @@ def main(verbose: bool = False, skip_forecast: bool = False) -> None:
     if not skip_forecast:
         print("\n")
         print("=" * 60)
-        print("STAGE 3: Forecasting")
+        print("STAGE 3a: Scenario Analysis (Deterministic)")
         print("=" * 60)
 
-        # Stage 3: Model-consistent forecasting with policy scenarios
+        # Stage 3a: Deterministic scenario analysis
         run_stage3(output_dir=output_dir, verbose=verbose)
+
+        print("\n")
+        print("=" * 60)
+        print("STAGE 3b: Scenario Analysis (Bayesian)")
+        print("=" * 60)
+
+        # Stage 3b: Bayesian forward sampling
+        run_stage3_bayesian(output_dir=output_dir, verbose=verbose)
 
 
 if __name__ == "__main__":
@@ -179,7 +194,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skip-forecast",
         action="store_true",
-        help="Skip Stage 3 (forecasting)",
+        help="Skip Stage 3 (scenario analysis)",
     )
     args = parser.parse_args()
     main(verbose=args.verbose, skip_forecast=args.skip_forecast)

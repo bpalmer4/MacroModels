@@ -406,7 +406,7 @@ def run_stage2(
 
     # Posterior predictive checks and residual analysis
     obs_vars = {
-        "okun_law": obs["ΔU"],
+        "okun_ec": obs["ΔU"],
         "observed_price_inflation": obs["π"],
         "observed_wage_growth": obs["Δulc"],
         "observed_hourly_coe": obs["Δhcoe"],
@@ -416,7 +416,7 @@ def run_stage2(
         "observed_net_exports": obs["Δnx_ratio"],
     }
     var_labels = {
-        "okun_law": "Change in Unemployment (pp)",
+        "okun_ec": "Change in Unemployment (pp)",
         "observed_price_inflation": "Quarterly Inflation (%)",
         "observed_wage_growth": "Unit Labour Cost Growth (%)",
         "observed_hourly_coe": "Hourly COE Growth (%)",

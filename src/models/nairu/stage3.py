@@ -899,7 +899,7 @@ def plot_scenario_unemployment(
             title=f"Unemployment Scenarios by Policy Rate{rate_str}",
             ylabel="Per cent",
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
-            lheader="Unemployment rate",
+            lheader="Unemployment rate. Responds to policy more slowly and over a longer time horizon than inflation.",
             lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
             rfooter="Ceteris paribus, no new shocks. RBA-calibrated transmission.",
             show=show,
