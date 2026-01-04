@@ -5,8 +5,8 @@ from typing import Any
 import numpy as np
 import pymc as pm
 
-from src.utilities.rate_conversion import quarterly
 from src.models.nairu.base import set_model_coefficients
+from src.utilities.rate_conversion import quarterly
 
 
 def price_inflation_equation(

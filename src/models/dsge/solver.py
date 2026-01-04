@@ -25,13 +25,11 @@ from scipy import linalg
 class IndeterminacyError(Exception):
     """Model has multiple solutions (too few explosive eigenvalues)."""
 
-    pass
 
 
 class NoSolutionError(Exception):
     """Model has no stable solution (too many explosive eigenvalues)."""
 
-    pass
 
 
 @dataclass

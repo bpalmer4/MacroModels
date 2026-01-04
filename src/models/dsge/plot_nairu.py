@@ -19,6 +19,7 @@ def plot_nairu(
         unemployment: Optional unemployment rate to overlay
         model_name: Model name for title/footer
         show: Whether to display plot
+
     """
     series = nairu.copy()
     series.name = "NAIRU"

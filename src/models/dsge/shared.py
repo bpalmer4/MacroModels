@@ -7,9 +7,7 @@ This module provides common functionality used across different DSGE models:
 For estimation, see estimation.py which provides ModelSpec and estimate_model().
 """
 
-import numpy as np
 import pandas as pd
-
 
 # =============================================================================
 # Regime Definitions
@@ -35,6 +33,7 @@ def get_regime_dates(
 
     Returns:
         (start, end) tuple of period strings
+
     """
     for name, reg_start, reg_end in REGIMES:
         if name == regime_name:
@@ -59,6 +58,7 @@ def ensure_period_index(series: pd.Series, freq: str = "Q") -> pd.Series:
 
     Returns:
         Series with PeriodIndex
+
     """
     if not isinstance(series.index, pd.PeriodIndex):
         series = series.copy()
@@ -80,6 +80,7 @@ def filter_date_range(
 
     Returns:
         Filtered DataFrame
+
     """
     start_period = pd.Period(start, freq="Q")
     if end is not None:

@@ -31,12 +31,13 @@ def residual_autocorrelation_analysis(
         skip_autocorr_warning: Variable names to exclude from autocorrelation warnings.
             Useful for variables using overlapping differences (e.g., Δ4 terms) where
             autocorrelation is mechanical rather than a model deficiency.
+
     """
     if var_labels is None:
         var_labels = {k: k for k in obs_vars}
 
     for var_name, observed_data in obs_vars.items():
-        ppc_samples = ppc.posterior_predictive[var_name].values
+        ppc_samples = ppc.posterior_predictive[var_name].to_numpy()
         ppc_flat = ppc_samples.reshape(-1, ppc_samples.shape[-1])
         ppc_mean = ppc_flat.mean(axis=0)
 
@@ -54,7 +55,7 @@ def residual_autocorrelation_analysis(
         mg.line_plot(residuals_series, ax=ax, color="steelblue", width=0.8)
 
         lb_test = acorr_ljungbox(residuals, lags=[10], return_df=True)
-        p_value = lb_test["lb_pvalue"].values[0]
+        p_value = lb_test["lb_pvalue"].to_numpy()[0]
         status = "OK" if p_value > 0.05 else "AUTOCORRELATED"
 
         label = var_labels.get(var_name, var_name)
@@ -112,11 +113,11 @@ def residual_autocorrelation_analysis(
     for var_name, observed_data in obs_vars.items():
         if var_name in skip_set:
             continue
-        ppc_samples = ppc.posterior_predictive[var_name].values
+        ppc_samples = ppc.posterior_predictive[var_name].to_numpy()
         ppc_mean = ppc_samples.reshape(-1, ppc_samples.shape[-1]).mean(axis=0)
         residuals = observed_data - ppc_mean
         lb_test = acorr_ljungbox(residuals, lags=[10], return_df=True)
-        p_value = lb_test["lb_pvalue"].values[0]
+        p_value = lb_test["lb_pvalue"].to_numpy()[0]
         if p_value <= 0.05:
             label = var_labels.get(var_name, var_name)
             print(f"*** WARNING: {label} residuals are autocorrelated (Ljung-Box p={p_value:.4f}) ***")

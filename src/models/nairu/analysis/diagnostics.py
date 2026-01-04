@@ -1,6 +1,5 @@
 """MCMC diagnostics for PyMC models."""
 
-import warnings
 
 import arviz as az
 import numpy as np
@@ -70,16 +69,16 @@ def check_model_diagnostics(trace: az.InferenceData) -> None:
     max_tree_depth_rate = 0.05
     try:
         if hasattr(trace.sample_stats, "reached_max_treedepth"):
-            at_max = trace.sample_stats.reached_max_treedepth.values
+            at_max = trace.sample_stats.reached_max_treedepth.to_numpy()
             at_max_rate = float(at_max.mean())
-            max_observed = int(trace.sample_stats.tree_depth.values.max())
+            max_observed = int(trace.sample_stats.tree_depth.to_numpy().max())
             print(
                 f"{warn(at_max_rate >= max_tree_depth_rate)}Tree depth at configured max: "
                 f"{at_max_rate:.2%} (max observed: {max_observed})"
             )
         else:
             ignore = 10
-            tree_depth = trace.sample_stats.tree_depth.values
+            tree_depth = trace.sample_stats.tree_depth.to_numpy()
             max_depth = int(tree_depth.max())
             if max_depth < ignore:
                 print("Tree depth check skipped (max depth too low).")

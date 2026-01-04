@@ -6,8 +6,8 @@ import mgplot as mg
 import pandas as pd
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
-from src.utilities.rate_conversion import annualize
 from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
+from src.utilities.rate_conversion import annualize
 
 HP_LAMBDA = 1600
 
@@ -100,7 +100,7 @@ def plot_capital_deepening(
         "title": "Capital Deepening: (Δlog(K) − Δlog(L)) × 100",
         "ylabel": "Annual growth (%)",
         "legend": {"loc": "upper right", "fontsize": "small"},
-        "lfooter": f"Capital deepening = capital growth − hours growth. Positive = deepening, Negative = shallowing. HP filter (λ={HP_LAMBDA}).",
+        "lfooter": f"Capital deepening = K growth − L growth. +ve = deepening. HP filter (λ={HP_LAMBDA}).",
         "rfooter": model_name,
     }
     for key in list(defaults.keys()):

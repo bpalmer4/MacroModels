@@ -4,11 +4,9 @@ Provides exports, imports, and net exports from National Accounts (5206.0).
 """
 
 import numpy as np
-import pandas as pd
 
 from src.data.abs_loader import ReqsTuple, load_series
 from src.data.dataseries import DataSeries
-
 
 # --- National Accounts (5206.0) - Expenditure components ---
 

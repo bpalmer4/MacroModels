@@ -23,6 +23,7 @@ References:
 - RBA estimates ~25% of monetary policy GDP transmission via housing/wealth channel
 - House prices typically fall 2-4% per 100bp rate increase
 - Marginal propensity to consume out of housing wealth: ~2-3 cents per dollar
+
 """
 
 import numpy as np
@@ -31,7 +32,6 @@ import readabs as ra
 from scipy import interpolate
 
 from src.data.dataseries import DataSeries
-
 
 # --- Constants ---
 
@@ -103,7 +103,7 @@ def _interpolate_annual_to_quarterly(annual: pd.Series) -> pd.Series:
     """
     # Convert to numeric for interpolation
     years = annual.index.year + 0.5  # Mid-year (June)
-    values = annual.values
+    values = annual.to_numpy()
 
     # Create quarterly target dates
     start_year = annual.index.min().year
@@ -271,12 +271,12 @@ if __name__ == "__main__":
     wealth = get_housing_wealth_qrtly(include_backcast=True)
     print(f"{wealth}")
     print(f"Date range: {wealth.data.index.min()} to {wealth.data.index.max()}")
-    print(f"\nEarly values ($ billions) - BACKCAST:")
+    print("\nEarly values ($ billions) - BACKCAST:")
     print(wealth.data.head(8).round(1))
-    print(f"\nSplice point 1988 ($ billions):")
+    print("\nSplice point 1988 ($ billions):")
     print(f"  1988Q2: {wealth.data['1988Q2']:.1f} (backcast)")
     print(f"  1988Q3: {wealth.data['1988Q3']:.1f} (actual)")
-    print(f"\nLatest values ($ trillions):")
+    print("\nLatest values ($ trillions):")
     print((wealth.data.tail(4) / 1000).round(2))
     print()
 

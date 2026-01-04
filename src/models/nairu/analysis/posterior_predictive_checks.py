@@ -32,7 +32,7 @@ def posterior_predictive_checks(
         var_labels = {k: k for k in obs_vars}
 
     for var_name, observed_data in obs_vars.items():
-        ppc_samples = ppc.posterior_predictive[var_name].values
+        ppc_samples = ppc.posterior_predictive[var_name].to_numpy()
         ppc_flat = ppc_samples.reshape(-1, ppc_samples.shape[-1])
 
         ppc_mean = ppc_flat.mean(axis=0)

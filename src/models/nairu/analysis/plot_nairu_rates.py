@@ -7,9 +7,9 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from src.data.rba_loader import PI_TARGET
 from src.models.nairu.analysis.extraction import get_vector_var
 from src.models.nairu.analysis.plot_posterior_timeseries import plot_posterior_timeseries
-from src.data.rba_loader import PI_TARGET
 
 # Plotting constants
 START = pd.Period("1985Q1", freq="Q")
@@ -27,6 +27,7 @@ def _quarterly_to_monthly(data: PandasT) -> PandasT:
 
     Returns:
         Data with monthly PeriodIndex, linearly interpolated (limit=2)
+
     """
     # Convert Q periods to end-of-quarter months
     monthly_idx = data.index.to_timestamp(how="end").to_period("M")
@@ -65,7 +66,7 @@ def plot_taylor_rule(
 
     # Calculate raw median and trend for reporting
     median = r_star.quantile(0.5, axis=1)
-    slope, intercept, *_ = stats.linregress(np.arange(len(median)), median.values)
+    slope, intercept, *_ = stats.linregress(np.arange(len(median)), median.to_numpy())
     trend = intercept + slope * np.arange(len(median))
 
     # Current r* values for annotation
@@ -80,8 +81,8 @@ def plot_taylor_rule(
 
     # Output gap: (Y - Y*)/Y* * 100
     log_gdp = pd.Series(results.obs["log_gdp"], index=results.obs_index)
-    actual_gdp = log_gdp.reindex(results.obs_index).values
-    output_gap = (actual_gdp[:, np.newaxis] - potential.values) / potential.values * 100
+    actual_gdp = log_gdp.reindex(results.obs_index).to_numpy()
+    output_gap = (actual_gdp[:, np.newaxis] - potential.to_numpy()) / potential.to_numpy() * 100
     output_gap = pd.DataFrame(output_gap, index=results.obs_index, columns=potential.columns)
     output_gap = output_gap.reindex(r_star.index)
 
@@ -152,7 +153,7 @@ def plot_equilibrium_rates(
     # r* trend from potential growth
     r_star = potential.diff(4).dropna().quantile(0.5, axis=1)
     x = np.arange(len(r_star))
-    slope, intercept, *_ = stats.linregress(x, r_star.values)
+    slope, intercept, *_ = stats.linregress(x, r_star.to_numpy())
     trend = pd.Series(intercept + slope * x, index=r_star.index)
 
     # Neutral = trend r* + pi_target
@@ -180,7 +181,7 @@ def plot_equilibrium_rates(
         ylabel="Per cent per annum",
         legend={"loc": "upper right", "fontsize": "x-small"},
         lfooter=f"Australia. Neutral rate = trend r* + pi_t (where pi_t = {pi_target}%).",
-        rfooter=f"Equilibrium rate when output gap = 0 and U = NAIRU: i = r* + pi_t",
+        rfooter="Equilibrium rate when output gap = 0 and U = NAIRU: i = r* + pi_t",
         rheader=RFOOTER,
         axisbelow=True,
         y0=True,

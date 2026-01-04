@@ -9,16 +9,17 @@ This module generates 4-quarter ahead forecasts using estimated model coefficien
 Interpretation: "No new shocks, economy trends toward equilibrium"
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import mgplot as mg
 import numpy as np
 import pandas as pd
 
-from src.models.nairu.analysis import get_scalar_var, get_vector_var
-from src.models.nairu.stage2 import load_results, NAIRUResults, build_model
-from src.utilities.rate_conversion import quarterly, annualize
+from src.data.inflation import get_inflation_qrtly
+from src.models.nairu.analysis import get_scalar_var
+from src.models.nairu.stage2 import NAIRUResults, build_model, load_results
+from src.utilities.rate_conversion import annualize, quarterly
 
 # Default paths
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
@@ -212,7 +213,7 @@ class ForecastResults:
         print("MODEL-CONSISTENT FORECAST (No Shocks, Trend to Equilibrium)")
         print("=" * 70)
 
-        print(f"\nModel coefficients (posterior median):")
+        print("\nModel coefficients (posterior median):")
         print(f"  rho_is (output gap persistence): {self.coefficients['rho_is']:.3f}")
         print(f"  beta_is (interest rate sensitivity): {self.coefficients['beta_is']:.3f}")
         print(f"  delta_dsr (debt servicing sensitivity): {self.coefficients['delta_dsr']:.3f}")
@@ -223,7 +224,7 @@ class ForecastResults:
         print(f"  Rate→DSR pass-through: {RATE_TO_DSR_PASSTHROUGH:.2f}pp per 100bp")
         print(f"  Rate→Housing wealth: {RATE_TO_HOUSING_WEALTH:.1f}% growth per 100bp")
         print(f"  Rate→Inflation (FX): {RATE_TO_INFLATION_FX * 4:.2f}pp per 100bp (RBA calibration)")
-        print(f"  Demand transmission multiplier: {DEMAND_TRANSMISSION_MULTIPLIER:.1f}x (to match RBA demand channel)")
+        print(f"  Demand multiplier: {DEMAND_TRANSMISSION_MULTIPLIER:.1f}x (RBA demand channel)")
 
         print(f"\nStarting point ({self.obs_index[-1]}):")
         print(f"  Output gap: {self.output_gap_final:+.4f}")
@@ -263,6 +264,7 @@ def forecast(
     results: NAIRUResults,
     cash_rate_override: float | None = None,
     scenario_name: str = "baseline",
+    seed: int = 42,
 ) -> ForecastResults:
     """Generate model-consistent 4-quarter forecast.
 
@@ -276,11 +278,13 @@ def forecast(
         results: NAIRUResults from stage2
         cash_rate_override: Override cash rate for period T (affects T+2 forecast)
         scenario_name: Name for this scenario
+        seed: Random seed for reproducibility
 
     Returns:
         ForecastResults with model-consistent forecasts
 
     """
+    rng = np.random.default_rng(seed)
     obs = results.obs
     obs_index = results.obs_index
     trace = results.trace
@@ -292,21 +296,21 @@ def forecast(
     n_samples = nairu_posterior.shape[1]
 
     # Coefficient posteriors (full distributions)
-    rho_is = get_scalar_var("rho_is", trace).values
-    beta_is = get_scalar_var("beta_is", trace).values
-    delta_dsr = get_scalar_var("delta_dsr", trace).values
-    eta_hw = get_scalar_var("eta_hw", trace).values
-    beta_okun = get_scalar_var("beta_okun", trace).values
-    gamma_pi_covid = get_scalar_var("gamma_pi_covid", trace).values
+    rho_is = get_scalar_var("rho_is", trace).to_numpy()
+    beta_is = get_scalar_var("beta_is", trace).to_numpy()
+    delta_dsr = get_scalar_var("delta_dsr", trace).to_numpy()
+    eta_hw = get_scalar_var("eta_hw", trace).to_numpy()
+    beta_okun = get_scalar_var("beta_okun", trace).to_numpy()
+    gamma_pi_covid = get_scalar_var("gamma_pi_covid", trace).to_numpy()
     # FX channel coefficients
-    beta_pt = get_scalar_var("beta_pt", trace).values  # TWI → import prices
-    rho_pi = get_scalar_var("rho_pi", trace).values    # import prices → inflation
+    beta_pt = get_scalar_var("beta_pt", trace).to_numpy()  # TWI → import prices
+    rho_pi = get_scalar_var("rho_pi", trace).to_numpy()    # import prices → inflation
 
     # Align sample sizes (trace may have different number of samples)
     n_coef_samples = len(rho_is)
     if n_coef_samples != n_samples:
         # Resample coefficients to match state variable samples
-        idx = np.random.choice(n_coef_samples, size=n_samples, replace=True)
+        idx = rng.choice(n_coef_samples, size=n_samples, replace=True)
         rho_is = rho_is[idx]
         beta_is = beta_is[idx]
         delta_dsr = delta_dsr[idx]
@@ -318,8 +322,8 @@ def forecast(
 
     # --- Historical values needed for forecasting ---
     # Final period states
-    nairu_T = nairu_posterior.iloc[-1].values
-    potential_T = potential_posterior.iloc[-1].values
+    nairu_T = nairu_posterior.iloc[-1].to_numpy()
+    potential_T = potential_posterior.iloc[-1].to_numpy()
     log_gdp_T = obs["log_gdp"][-1]
     U_T = obs["U"][-1]
 
@@ -542,7 +546,8 @@ def print_scenario_comparison(
                 "Cash Rate": f"{result.cash_rate:.2f}%",
                 "Output Gap": f"{result.output_gap_forecast.iloc[idx].median():.3f}",
                 "U": f"{result.unemployment_forecast.iloc[idx].median():.2f}%",
-                "U Gap": f"{(result.unemployment_forecast.iloc[idx] - result.nairu_forecast.iloc[idx]).median():.2f}",
+                "U Gap": f"{(result.unemployment_forecast.iloc[idx]
+                            - result.nairu_forecast.iloc[idx]).median():.2f}",
                 "π (ann)": f"{annualize(result.inflation_forecast.iloc[idx].median()):.2f}%",
             })
 
@@ -598,7 +603,6 @@ def plot_scenario_inflation(
     df = pd.DataFrame(inflation_data)
 
     # Plot historical actuals (fetch fresh CPI - may have more recent than model)
-    from src.data.inflation import get_inflation_qrtly
     cpi = annualize(get_inflation_qrtly().data)
     model_end = scenario_results["hold"].obs_index[-1]
     hist_actual = cpi.loc[cpi.index >= model_end - n_history + 1]
@@ -617,7 +621,7 @@ def plot_scenario_inflation(
 
     # Add target band and reference line
     if ax is not None:
-        ax.axhspan(2.0, 3.0, color="green", alpha=0.1, label="Target band (2-3%)")
+        ax.axhspan(2.0, 3.0, color="red", alpha=0.1, label="Target band (2-3%)")
         ax.axhline(y=2.5, color="grey", linestyle="--", linewidth=1, alpha=0.7, label="Target (2.5%)")
 
         # Add error bars at first point to show starting point uncertainty
@@ -899,7 +903,7 @@ def plot_scenario_unemployment(
             title=f"Unemployment Scenarios by Policy Rate{rate_str}",
             ylabel="Per cent",
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
-            lheader="Unemployment rate. Responds to policy more slowly and over a longer time horizon than inflation.",
+            lheader="Unemployment rate. Responds more slowly and over longer horizons than inflation.",
             lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
             rfooter="Ceteris paribus, no new shocks. RBA-calibrated transmission.",
             show=show,
@@ -958,15 +962,18 @@ def run_stage3(
         # Plot scenario comparisons
         if plot_scenarios:
             plot_scenario_inflation(scenario_results, chart_dir=chart_dir, show=False)
-            plot_scenario_gdp_growth(scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False)
-            plot_scenario_unemployment(scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False)
+            plot_scenario_gdp_growth(
+                scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False
+            )
+            plot_scenario_unemployment(
+                scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False
+            )
 
         return scenario_results
-    else:
-        # Single baseline forecast
-        forecast_results = forecast(results)
-        forecast_results.print_summary()
-        return forecast_results
+    # Single baseline forecast
+    forecast_results = forecast(results)
+    forecast_results.print_summary()
+    return forecast_results
 
 
 if __name__ == "__main__":

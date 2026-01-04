@@ -17,6 +17,7 @@ def plot_rstar(
         rstar: Series with PeriodIndex
         model_name: Model name for title/footer
         show: Whether to display plot
+
     """
     series = rstar.copy()
     series.name = "r* (Natural Rate)"

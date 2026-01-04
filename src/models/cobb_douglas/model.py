@@ -28,7 +28,6 @@ import numpy as np
 import pandas as pd
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
-from src.utilities.rate_conversion import annualize
 from src.data import (
     get_capital_share,
     get_capital_stock_qrtly,
@@ -38,9 +37,9 @@ from src.data import (
     get_labour_force_growth_qrtly,
     get_mfp_growth,
     get_ulc_growth_qrtly,
-    hma,
 )
 from src.data.gdp import get_gdp
+from src.utilities.rate_conversion import annualize
 
 # --- Constants ---
 

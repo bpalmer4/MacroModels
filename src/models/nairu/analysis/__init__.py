@@ -36,6 +36,7 @@ from src.models.nairu.analysis.inflation_decomposition import (
     plot_wage_drivers_unscaled,
 )
 from src.models.nairu.analysis.observations_plot import plot_obs_grid
+from src.models.nairu.analysis.plot_capital_deepening import plot_capital_deepening
 from src.models.nairu.analysis.plot_nairu_output import (
     plot_gdp_vs_potential,
     plot_output_gap,
@@ -52,10 +53,12 @@ from src.models.nairu.analysis.plot_posterior_timeseries import plot_posterior_t
 from src.models.nairu.analysis.plot_posteriors_bar import plot_posteriors_bar
 from src.models.nairu.analysis.plot_posteriors_kde import plot_posteriors_kde
 from src.models.nairu.analysis.posterior_predictive_checks import posterior_predictive_checks
-from src.models.nairu.analysis.plot_capital_deepening import plot_capital_deepening
 from src.models.nairu.analysis.residual_autocorrelation import residual_autocorrelation_analysis
 
 __all__ = [
+    "HCOEInflationDecomposition",
+    "InflationDecomposition",
+    "WageInflationDecomposition",
     "check_for_zero_coeffs",
     "check_model_diagnostics",
     "decompose_hcoe_inflation",
@@ -65,11 +68,9 @@ __all__ = [
     "get_scalar_var",
     "get_scalar_var_names",
     "get_vector_var",
-    "HCOEInflationDecomposition",
-    "InflationDecomposition",
     "inflation_policy_summary",
-    "WageInflationDecomposition",
     "is_scalar_var",
+    "plot_capital_deepening",
     "plot_demand_contribution",
     "plot_equilibrium_rates",
     "plot_gdp_vs_potential",
@@ -80,7 +81,6 @@ __all__ = [
     "plot_inflation_drivers",
     "plot_inflation_drivers_proportional",
     "plot_nairu",
-    "plot_capital_deepening",
     "plot_obs_grid",
     "plot_output_gap",
     "plot_phillips_curve_slope",
@@ -92,10 +92,10 @@ __all__ = [
     "plot_r_star_input_vs_output",
     "plot_supply_contribution",
     "plot_taylor_rule",
+    "plot_unemployment_gap",
     "plot_wage_decomposition",
     "plot_wage_drivers",
     "plot_wage_drivers_unscaled",
-    "plot_unemployment_gap",
     "posterior_predictive_checks",
     "residual_autocorrelation_analysis",
 ]

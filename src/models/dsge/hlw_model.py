@@ -35,6 +35,7 @@ Usage:
 """
 
 from dataclasses import dataclass, field
+
 import numpy as np
 import pandas as pd
 from scipy import linalg
@@ -124,6 +125,7 @@ class HLWModel:
             Z: Observation matrix (3×4) for [π, π_w, u_gap]
             Q: Shock covariance (4×4)
             H: Measurement error covariance (3×3)
+
         """
         p = self.params
 
@@ -248,8 +250,6 @@ class HLWModel:
             log_likelihood: Log-likelihood
             state_names: List of state names
         """
-        from src.models.dsge.kalman import kalman_smoother_tv
-
         p = self.params
         T_mat, R_mat, Z, Q, H = self.state_space_matrices(r_lag)
 
@@ -384,9 +384,9 @@ def load_hlw_data(
         dates: Period index
     """
     from src.data.abs_loader import load_series
-    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY
     from src.data.cash_rate import get_cash_rate_qrtly
     from src.data.import_prices import get_import_price_growth_annual
+    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY
     from src.models.dsge.data_loader import load_estimation_data
     from src.models.dsge.shared import ensure_period_index
 
@@ -409,12 +409,12 @@ def load_hlw_data(
     import_price_aligned = import_price_growth.reindex(df.index).fillna(0)
 
     # Build observation matrix
-    y = df[["inflation", "wage_inflation", "u_gap"]].values
+    y = df[["inflation", "wage_inflation", "u_gap"]].to_numpy()
 
     return {
         "y": y,
-        "r_lag": real_rate_lag.values,
-        "import_price_growth": import_price_aligned.values,
+        "r_lag": real_rate_lag.to_numpy(),
+        "import_price_growth": import_price_aligned.to_numpy(),
         "dates": df.index,
     }
 
@@ -448,9 +448,8 @@ def hlw_extract_states(params: HLWParameters, data: dict) -> dict:
 
     Returns:
         Dict with states DataFrame and log_likelihood
-    """
-    import pandas as pd
 
+    """
     model = HLWModel(params=params)
     result = model.kalman_smoother(
         y=data["y"],
@@ -499,7 +498,9 @@ HLW_SPEC = ModelSpec(
 
 if __name__ == "__main__":
     from pathlib import Path
+
     import mgplot as mg
+
     from src.models.dsge.estimation import estimate_two_stage, print_single_result
     from src.models.dsge.plot_output_gap import plot_output_gap
     from src.models.dsge.plot_rstar import plot_rstar

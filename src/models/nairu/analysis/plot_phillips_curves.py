@@ -20,8 +20,8 @@ import numpy as np
 import pandas as pd
 
 from src.models.nairu.analysis.extraction import get_scalar_var, get_vector_var
-from src.utilities.rate_conversion import annualize
 from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
+from src.utilities.rate_conversion import annualize
 
 
 def _compute_phillips_curve(
@@ -166,7 +166,7 @@ def plot_phillips_curves(
         "ylabel": "Demand pressures (pp, annualised)",
         "legend": {"loc": "best", "fontsize": "x-small"},
         "lheader": "ULC = Unit Labour Costs; HCOE = Hourly Compensation of Employees.",
-        "lfooter": f"Chart for {obs_index[-1]}. Convex form: gamma*(U-NAIRU)/U. Slope = gamma*NAIRU/U^2. 90% CI shown.",
+        "lfooter": f"Chart for {obs_index[-1]}. Convex form: γ(U-U*)/U. Slope = γU*/U². 90% CI.",
         "rfooter": model_name,
     }
     for key in list(defaults.keys()):
@@ -196,6 +196,7 @@ def plot_phillips_curve_slope(
         model_name: Name for the chart footer
         show: Whether to display the plot
         **kwargs: Additional arguments passed to finalise_plot
+
     """
     # Configuration based on curve type
     if curve_type == "wage":

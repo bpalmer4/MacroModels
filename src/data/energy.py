@@ -27,7 +27,6 @@ import pandas as pd
 
 from src.data.dataseries import DataSeries
 
-
 # World Bank Pink Sheet URL (monthly data)
 # WARNING: This URL may change as new data is added
 PINK_SHEET_URL = (

@@ -6,10 +6,10 @@ This directory contains a Bayesian state-space model for jointly estimating NAIR
 
 | Component | Method | Key Feature |
 |-----------|--------|-------------|
-| NAIRU | Gaussian random walk | No drift, σ ≈ 0.25 |
-| Potential Output | Cobb-Douglas + asymmetric innovations | Mean-zero SkewNormal (downward revisions rarer) |
+| NAIRU | Student-t random walk | No drift, ν=4, scale≈0.15 (fat tails for occasional large shifts) |
+| Potential Output | Cobb-Douglas + asymmetric innovations | Mean-zero SkewNormal (asymmetric: small positives common, large negatives rare) |
 | Phillips Curves | Regime-switching (3 regimes) | Pre-GFC, GFC-COVID, post-COVID |
-| Identification | 10 observation equations | Joint estimation with proper uncertainty |
+| Identification | 2 state + 10 observation equations | Joint estimation with proper uncertainty |
 | Scenario Analysis | Model-consistent projection | 4-quarter horizon with policy scenarios |
 
 The Bayesian approach with multiple observation equations provides good identification. MCMC diagnostics show convergence (R-hat < 1.01, ESS > 400), theoretical sign constraints are satisfied (Phillips slopes negative, Okun coefficient negative), and estimates align with RBA research on transmission magnitudes.
@@ -162,15 +162,16 @@ The model stages have different data dependencies:
 
 ### NAIRU (state_space.py)
 
-Gaussian random walk without drift:
+Student-t random walk without drift:
 
 ```
-NAIRU_t = NAIRU_{t-1} + ε_t,  ε_t ~ N(0, σ²)
+NAIRU_t = NAIRU_{t-1} + ε_t,  ε_t ~ StudentT(ν=4, 0, σ)
 ```
 
-- **σ (nairu_innovation)**: Typically fixed at 0.25 for smoothness
+- **ν (degrees of freedom)**: Fixed at 4 — fat tails with finite variance (many small moves, occasional large moves)
+- **σ (nairu_innovation)**: Typically fixed at 0.15 (RBA-consistent, ~0.15pp per quarter)
 - **Initial distribution**: N(6, 2) — centered on Australian historical NAIRU average (~5-7%) with moderate uncertainty
-- **Interpretation**: Natural rate evolves slowly with structural labor market changes
+- **Why Student-t?**: Most quarter-to-quarter changes are small, but the model allows occasional large shifts (e.g., GFC, COVID) via fat tails without requiring extreme probability draws. RBA research suggests NAIRU innovation SD around 0.15pp per quarter.
 
 ### Potential Output (production.py)
 
@@ -247,7 +248,7 @@ The ψ coefficient captures how productivity gains flow to wages.
 
 ### Okun's Law (okun.py)
 
-Error correction form combining dynamics and equilibrium anchoring:
+Error correction form for **estimation** (Stage 1):
 
 ```
 ΔU_t = β × OG_t + α × (U_{t-1} - NAIRU_{t-1} - γ × OG_{t-1}) + ε
@@ -258,16 +259,22 @@ Where:
 - **α (alpha_okun)**: Speed of adjustment toward equilibrium (negative, ~-0.12)
 - **γ (gamma_okun)**: Equilibrium relationship coefficient (negative, ~-0.16)
 
-**How it works:**
+**How it works in estimation:**
 - The term `(U - NAIRU - γ×OG)` measures disequilibrium
 - When U > equilibrium: error > 0, α×error < 0, so ΔU < 0 (unemployment falls)
 - When U < equilibrium: error < 0, α×error > 0, so ΔU > 0 (unemployment rises)
 
-**Why error correction?**
+**Why error correction for estimation?**
 - Separate level and change equations over-constrain NAIRU (level equation dominates identification)
 - Error correction constrains only the *change toward equilibrium*, not the level at every point
-- Gives Phillips curves room to identify NAIRU while providing equilibrium anchor for scenarios
-- α tells Stage 3 how fast unemployment corrects toward equilibrium (e.g., α=-0.12 → 12% per quarter, half-life ~5-6 quarters)
+- Gives Phillips curves room to identify NAIRU
+- Better sampling (0% divergences vs 14% with dual equations)
+
+**Stage 3 uses simple form:**
+```
+ΔU_t = β × OG_t × 1.6
+```
+The error correction term (α × equilibrium_error) is NOT used in scenario analysis. The drift toward NAIRU observed in historical data is probably an artefact of CB inflation targeting policy — the RBA actively steers unemployment toward U*. For "hold rates" counterfactuals, we shouldn't assume self-correction that may only exist due to active policy.
 
 ### IS Curve (is_curve.py)
 
@@ -621,7 +628,7 @@ Uses posterior **medians** for all coefficients and projects forward with **no s
 
 ### Scenario Horizon
 
-The model produces 4-quarter ahead scenarios. The IS curve uses rate gaps lagged 2 periods:
+The model produces 4-quarter ahead scenarios under a **move-and-hold** policy rule: the CB makes a one-off rate change at T, then holds that rate for the remainder of the horizon. The IS curve uses rate gaps lagged 2 periods:
 
 | Scenario Period | Rate Gap Used | Source |
 |-----------------|---------------|--------|
@@ -640,14 +647,13 @@ The scenario projection uses estimated coefficients and RBA-calibrated pass-thro
    ```
    Where Δdsr is projected using the rate→DSR pass-through (~1.0pp per 100bp).
 
-2. **Okun's Law** (error correction form):
+2. **Okun's Law** (simple form for counterfactuals):
    ```
-   equilibrium_error = U_{t-1} - NAIRU_{t-1} - γ_okun × y_gap_{t-1}
-   ΔU_t = β_okun × y_gap_t × 1.6 + α_okun × equilibrium_error
+   ΔU_t = β_okun × y_gap_t × 1.6
    ```
-   - α_okun (~-0.12) provides mean-reversion toward Okun-implied equilibrium
    - A demand transmission multiplier of 1.6 is applied to β_okun to match RBA's demand channel estimate
-   - See [Calibration Corrections](#calibration-corrections) below
+   - Error correction term NOT used in scenarios (see [Why Error Correction Okun's Law?](#why-error-correction-okuns-law))
+   - The drift toward NAIRU in historical data is probably an artefact of CB inflation targeting policy
 
 3. **Phillips Curve** (inflation from unemployment gap + FX channel):
    ```
@@ -838,7 +844,7 @@ Post-GFC flattening of the Phillips curve is well-documented. A single time-inva
 
 ### Why SkewNormal for Potential?
 
-Potential output innovations should be asymmetric (downward revisions rarer):
+Potential output innovations should be asymmetric (small positives common, large negatives rare):
 - Capital doesn't disappear in recessions
 - Productivity gains are hard to reverse
 - Labour force grows over time
@@ -873,6 +879,8 @@ MFP (Multi-Factor Productivity) trend growth is floored at zero before entering 
 - **True technological progress doesn't reverse**: Knowledge and process improvements persist. A recession doesn't make workers forget how to use computers.
 - **Potential output should reflect supply capacity**: The production function estimates what the economy *could* produce at full utilization. Cyclical MFP declines contaminate this with demand-side effects.
 - **Implementation**: MFP is derived from wage data using the Solow residual identity (LP = Δhcoe - Δulc; MFP = LP - α×(g_K - g_L)), then HP-filtered (λ=1600) to extract the trend, and floored with `np.maximum(mfp_trend, 0)`. This replaces direct sourcing from ABS 5204.0 MFP data.
+
+**Implicit assumption**: Structural technological progress is non-negative; measured negative MFP is treated as cyclical or mismeasurement.
 
 **Comparison with external forecasters**: Most economists assume the post-GFC and post-COVID productivity slowdown is more cyclical than structural, and therefore factor in some MFP growth on a return-to-trend basis. Indicative comparison (approximate, varies by vintage):
 
@@ -946,6 +954,61 @@ The Phillips curves use `(U - NAIRU) / U` rather than the simple difference `(U 
 - **Scale-invariant**: A 1pp gap matters more when unemployment is 4% than when it's 10%. Dividing by U captures this — the same absolute gap represents a larger percentage deviation when unemployment is low.
 - **Consistent with wage bargaining theory**: Workers' bargaining power depends on the relative tightness of the labour market, not absolute unemployment levels.
 - **Empirically superior**: Models using percentage gaps typically fit Australian wage and price data better than those using level gaps.
+
+### Why Error Correction Okun's Law?
+
+**For estimation**, Okun's Law uses error correction form (`src/models/nairu/equations/okun.py`):
+
+```
+ΔU_t = β × OG_t + α × (U_{t-1} - NAIRU_{t-1} - γ × OG_{t-1}) + ε
+```
+
+**Pros for estimation:**
+- **Doesn't dominate NAIRU identification**: Unlike a pure level equation, error correction only constrains the *change toward* equilibrium, letting Phillips curves identify NAIRU from inflation dynamics
+- **Provides adjustment speed**: α ≈ -0.12 means ~12% correction per quarter (half-life ~5-6 quarters)
+- **Better sampling**: 0% divergences vs 14% divergences with dual equations
+- **Theoretically standard**: Error correction is the canonical econometric approach when you have both short-run dynamics and long-run equilibrium
+
+**Cons:**
+- **More parameters**: Three coefficients (β, α, γ) vs one; more estimation uncertainty
+- **Assumes mean reversion**: Rules out hysteresis where unemployment doesn't fully return to equilibrium
+
+**Critical insight for scenario analysis (Lucas Critique):**
+
+The error correction term (α × equilibrium_error) is NOT used in Stage 3 forward projections. This is a deliberate application of the **Lucas Critique**: parameters estimated under one policy regime may not apply under a different regime. This is a modelling choice, not something the data can prove.
+
+**The identification problem:**
+
+In historical data, we cannot separately identify:
+1. **Natural labor market adjustment** — structural forces pulling U toward equilibrium
+2. **CB policy response** — RBA actively steering U toward NAIRU
+
+These are observationally equivalent when the CB was always active. The α we estimate captures their *combined* effect.
+
+**What the data shows:**
+- RBA sees U < U* → expects inflation → raises rates → U rises toward U*
+- RBA sees U > U* → expects disinflation → cuts rates → U falls toward U*
+
+The mean reversion we measure is probably an artefact of **CB inflation targeting policy**, not natural economic forces. NAIRU is a **policy target**, not a natural attractor.
+
+**Why this matters for counterfactuals:**
+
+For "hold rates" scenarios, we're asking: "What happens if the CB stops actively managing?"
+
+- If the EC term IS the CB reaction function, it shouldn't apply when CB isn't reacting
+- Since we can't separate natural vs policy-induced adjustment, we conservatively exclude the whole term
+- Including EC would assume self-correction that may only exist due to active policy
+
+**The "divergence risk" is the honest answer:**
+
+Critics may worry that without EC, scenarios could show unemployment drifting away from NAIRU indefinitely. But that's precisely the point — without active CB management, unemployment might NOT return to NAIRU. The consequence would be persistent inflation (if U < U*) or persistent disinflation (if U > U*). That's the counterfactual we're exploring.
+
+**Stage 3 uses simple Okun:**
+```
+ΔU_t = β × OG_t × 1.6
+```
+
+This is the honest counterfactual: output gap affects unemployment mechanically, with no assumption about equilibrium-seeking behavior that may only exist due to active policy. The 1.6 demand multiplier is calibrated to match RBA transmission estimates.
 
 ### Why Phase In the Inflation Target?
 

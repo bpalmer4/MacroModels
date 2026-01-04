@@ -5,7 +5,6 @@ Provides government final consumption expenditure from ABS National Accounts (52
 
 import numpy as np
 import readabs as ra
-from readabs import metacol as mc
 
 from src.data.dataseries import DataSeries
 from src.data.gdp import get_gdp_growth

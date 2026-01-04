@@ -35,6 +35,7 @@ Usage:
 """
 
 from dataclasses import dataclass, field
+
 import numpy as np
 import pandas as pd
 from scipy import linalg
@@ -114,6 +115,7 @@ class HLWNairuModel:
             R: Shock impact (5×5)
             Z: Observation matrix (3×5)
             Q: Shock covariance (5×5)
+
         """
         p = self.params
 
@@ -431,9 +433,9 @@ def load_hlw_nairu_data(
         dates: Period index
     """
     from src.data.abs_loader import load_series
-    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY, UNEMPLOYMENT_RATE
     from src.data.cash_rate import get_cash_rate_qrtly
     from src.data.import_prices import get_import_price_growth_annual
+    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY, UNEMPLOYMENT_RATE
     from src.data.ulc import get_ulc_growth_qrtly
     from src.models.dsge.data_loader import compute_inflation_anchor
     from src.models.dsge.shared import ensure_period_index, filter_date_range
@@ -481,11 +483,11 @@ def load_hlw_nairu_data(
     df = filter_date_range(df.dropna(), start, end)
 
     return {
-        "y": df[["inflation", "ulc_growth", "U"]].values,
-        "r_lag": df["real_rate_lag"].values,
-        "U_obs": df["U"].values,
-        "import_price_growth": df["import_price_growth"].values,
-        "nairu_prior": float(np.mean(df["U"].values)),
+        "y": df[["inflation", "ulc_growth", "U"]].to_numpy(),
+        "r_lag": df["real_rate_lag"].to_numpy(),
+        "U_obs": df["U"].to_numpy(),
+        "import_price_growth": df["import_price_growth"].to_numpy(),
+        "nairu_prior": float(np.mean(df["U"].to_numpy())),
         "dates": df.index,
     }
 
@@ -521,6 +523,7 @@ def hlw_nairu_extract_states(params: HLWNairuParameters, data: dict) -> dict:
 
     Returns:
         Dict with states DataFrame and log_likelihood
+
     """
     model = HLWNairuModel(params=params)
     result = model.kalman_smoother(
@@ -572,11 +575,13 @@ HLW_NAIRU_SPEC = ModelSpec(
 
 if __name__ == "__main__":
     from pathlib import Path
+
     import mgplot as mg
+
     from src.models.dsge.estimation import estimate_two_stage, print_single_result
+    from src.models.dsge.plot_nairu import plot_nairu
     from src.models.dsge.plot_output_gap import plot_output_gap
     from src.models.dsge.plot_rstar import plot_rstar
-    from src.models.dsge.plot_nairu import plot_nairu
 
     # Chart setup
     CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "dsge-hlw-nairu"

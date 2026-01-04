@@ -7,10 +7,10 @@ plus derived r* and real rate gap calculations.
 import pandas as pd
 
 from src.data.dataseries import DataSeries
+from src.data.henderson import hma
 from src.data.rba_loader import get_cash_rate as rba_get_cash_rate
 from src.data.rba_loader import get_historical_interbank_rate, get_inflation_anchor
 from src.data.series_specs import HISTORICAL_RATE_FILE
-from src.data.henderson import hma
 from src.data.transforms import splice_series
 
 

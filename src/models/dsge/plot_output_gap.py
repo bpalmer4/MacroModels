@@ -1,10 +1,8 @@
 """Plot output gap estimates from any DSGE model."""
 
-from pathlib import Path
 
 import mgplot as mg
 import pandas as pd
-
 
 EXCLUDED_PERIOD = {
     "axvspan": {
@@ -29,6 +27,7 @@ def plot_output_gap(
         output_gap: Series with PeriodIndex
         model_name: Model name for title/footer
         show: Whether to display plot
+
     """
     series = output_gap.copy()
     series.name = "Output Gap"

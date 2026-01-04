@@ -55,6 +55,7 @@ References
   A Survey of Recent Evidence." Journal of Empirical Finance, 3(2), 123-192.
 - Burnside, C. et al. (2011). "Carry Trade and Momentum in Currency Markets."
   Annual Review of Financial Economics, 3, 511-535.
+
 """
 
 from typing import Any

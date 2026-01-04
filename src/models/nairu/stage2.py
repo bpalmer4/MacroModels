@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
+from src.data import get_cash_rate_monthly
 from src.models.nairu.analysis import (
     check_for_zero_coeffs,
     check_model_diagnostics,
@@ -50,7 +51,6 @@ from src.models.nairu.analysis.plot_productivity import (
     plot_mfp,
     plot_productivity_comparison,
 )
-from src.data import get_cash_rate_monthly
 from src.models.nairu.stage1 import build_model
 
 # --- Constants ---
@@ -169,6 +169,8 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
     tests = [
         # Okun's Law (truncated upper=0)
         ("beta_okun", "nonzero", "Okun coefficient ≠ 0"),
+        ("alpha_okun", "nonzero", "Okun EC adjustment speed ≠ 0"),
+        ("gamma_okun", "nonzero", "Okun EC equilibrium coef ≠ 0"),
         # Price Phillips curve slopes (NOT truncated - test sign)
         ("gamma_pi_pre_gfc", "negative", "Price Phillips (pre-GFC) < 0"),
         ("gamma_pi_gfc", "negative", "Price Phillips (post-GFC) < 0"),
@@ -212,7 +214,7 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
 
     for param, expected, description in tests:
         try:
-            samples = get_scalar_var(param, trace).values
+            samples = get_scalar_var(param, trace).to_numpy()
         except KeyError:
             # Parameter not in model (e.g., equation not included)
             continue

@@ -6,6 +6,7 @@ For small rates the difference is minor, but compound conversion is more accurat
 Example:
     - Simple: 2.5% annual / 4 = 0.625% quarterly
     - Compound: (1.025)^(1/4) - 1 = 0.619% quarterly
+
 """
 
 import numpy as np

@@ -12,6 +12,7 @@ from src.data.abs_loader import get_abs_data, load_series
 from src.data.dataseries import DataSeries
 from src.data.series_specs import (
     HOURS_WORKED,
+    HOURS_WORKED_INDEX,
     LABOUR_FORCE_TOTAL,
     PARTICIPATION_RATE,
     UNEMPLOYED_TOTAL,
@@ -316,8 +317,6 @@ def get_hours_growth_qrtly() -> DataSeries:
         DataSeries with hours growth (% per quarter)
 
     """
-    from src.data.series_specs import HOURS_WORKED_INDEX
-
     hours_index = load_series(HOURS_WORKED_INDEX)
     log_hours = np.log(hours_index.data) * 100
     hours_growth = log_hours.diff(1)

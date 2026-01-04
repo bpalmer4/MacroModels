@@ -15,7 +15,6 @@ import pandas as pd
 
 from src.data.dataseries import DataSeries
 
-
 # --- Data file paths ---
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 FOREIGN_DEMAND_FILE = _PROJECT_ROOT / "data" / "foreign_demand.parquet"

@@ -9,7 +9,6 @@ Also loads RBA E13 data for mortgage buffers (excess payments) where available.
 
 import pandas as pd
 import readabs as ra
-from readabs import metacol as mc
 
 from src.data.dataseries import DataSeries
 

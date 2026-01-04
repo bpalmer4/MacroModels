@@ -30,11 +30,11 @@ This module provides a unified interface to the three-stage pipeline:
 import argparse
 from pathlib import Path
 
-from src.models.nairu.base import SamplerConfig
+from src.data import compute_r_star
 
 # Re-export key components for backwards compatibility
 from src.data.observations import HMA_TERM, build_observations
-from src.data import compute_r_star
+from src.models.nairu.base import SamplerConfig, sample_model
 from src.models.nairu.stage1 import (
     build_model,
     run_stage1,
@@ -42,8 +42,8 @@ from src.models.nairu.stage1 import (
 )
 from src.models.nairu.stage2 import (
     MODEL_NAME,
-    NAIRUResults,
     RFOOTER_OUTPUT,
+    NAIRUResults,
     load_results,
     plot_all,
     run_stage2,
@@ -124,12 +124,8 @@ def run_model(
         config = SamplerConfig()
 
     # Run stage 1 (without saving)
-    from src.models.nairu.stage1 import build_model as _build_model
-    from src.data.observations import build_observations as _build_obs
-    from src.models.nairu.base import sample_model
-
-    obs, obs_index = _build_obs(start=start, end=end, verbose=verbose)
-    model = _build_model(obs)
+    obs, obs_index = build_observations(start=start, end=end, verbose=verbose)
+    model = build_model(obs)
 
     print("Sampling...")
     trace = sample_model(model, config)

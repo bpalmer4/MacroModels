@@ -30,13 +30,11 @@ from scipy import linalg
 class IndeterminacyError(Exception):
     """Model has multiple solutions (eigenvalues inside unit circle)."""
 
-    pass
 
 
 class NoSolutionError(Exception):
     """Model has no stable solution (eigenvalues outside unit circle)."""
 
-    pass
 
 
 @dataclass
@@ -271,11 +269,10 @@ class NKModel:
                     f"Indeterminacy: {n_unstable} eigenvalues outside unit circle, "
                     f"need {self.n_forward}. Model has multiple solutions."
                 )
-            else:
-                raise NoSolutionError(
-                    f"No solution: {n_unstable} eigenvalues outside unit circle, "
-                    f"need exactly {self.n_forward}."
-                )
+            raise NoSolutionError(
+                f"No solution: {n_unstable} eigenvalues outside unit circle, "
+                f"need exactly {self.n_forward}."
+            )
 
         # QZ decomposition for B @ v = μ @ A @ v (eigenvalues of M = A^{-1}B)
         # Stable eigenvalues (|μ| < 1) first, unstable (|μ| > 1) last
@@ -524,6 +521,7 @@ def compute_nk_log_likelihood(
 
     Returns:
         Log-likelihood
+
     """
     from src.models.dsge.kalman import kalman_filter
 
@@ -563,12 +561,7 @@ def load_nk_data(
         y: Observations (T × 5)
         dates: Period index
     """
-    from src.data.abs_loader import load_series
-    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY, UNEMPLOYMENT_RATE
-    from src.data.cash_rate import get_cash_rate_qrtly
-    from src.data.ulc import get_ulc_growth_qrtly
     from src.models.dsge.data_loader import load_estimation_data
-    from src.models.dsge.shared import ensure_period_index
 
     # Load base data with 5 observables
     df = load_estimation_data(
@@ -576,7 +569,7 @@ def load_nk_data(
     )
 
     # Build observation matrix: [output_gap, inflation, interest_rate, wage_inflation, u_gap]
-    y = df[["output_gap", "inflation", "interest_rate", "wage_inflation", "u_gap"]].values
+    y = df[["output_gap", "inflation", "interest_rate", "wage_inflation", "u_gap"]].to_numpy()
 
     return {
         "y": y,
@@ -696,7 +689,9 @@ NK_SPEC = ModelSpec(
 
 if __name__ == "__main__":
     from pathlib import Path
+
     import mgplot as mg
+
     from src.models.dsge.estimation import estimate_two_stage, print_single_result
     from src.models.dsge.plot_output_gap import plot_output_gap
 

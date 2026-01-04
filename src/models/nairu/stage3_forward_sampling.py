@@ -20,15 +20,15 @@ Interpretation: "What does the model think happens next, with realistic transmis
 from dataclasses import dataclass
 from pathlib import Path
 
-import arviz as az
 import mgplot as mg
 import numpy as np
 import pandas as pd
 from scipy import stats
 
+from src.data.inflation import get_inflation_qrtly
 from src.models.nairu.analysis import get_scalar_var
-from src.models.nairu.stage2 import load_results, NAIRUResults, build_model
-from src.utilities.rate_conversion import quarterly, annualize
+from src.models.nairu.stage2 import NAIRUResults, build_model, load_results
+from src.utilities.rate_conversion import annualize, quarterly
 
 # Default paths
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
@@ -39,6 +39,9 @@ FORECAST_HORIZON = 4
 
 # Number of posterior samples to use (5000 is sufficient for stable HDI estimates)
 N_SAMPLES = 5000
+
+# Student-t degrees of freedom for NAIRU innovations (matches state_space.py)
+NAIRU_NU = 4
 
 # Policy scenarios (bp change from current rate)
 DEFAULT_POLICY_SCENARIOS = {
@@ -154,7 +157,13 @@ class BayesianScenarioResults:
         )
 
 
-def sample_skewnormal(loc: float, scale: float, alpha: float, size: int) -> np.ndarray:
+def sample_skewnormal(
+    loc: float,
+    scale: float,
+    alpha: float,
+    size: int,
+    rng: np.random.Generator | None = None,
+) -> np.ndarray:
     """Sample from skew-normal distribution.
 
     Uses scipy's skewnorm which parameterizes differently from PyMC.
@@ -165,7 +174,7 @@ def sample_skewnormal(loc: float, scale: float, alpha: float, size: int) -> np.n
     - We shift location to achieve E[X] = 0
     """
     # scipy skewnorm: a is the shape parameter (same as alpha)
-    return stats.skewnorm.rvs(a=alpha, loc=loc, scale=scale, size=size)
+    return stats.skewnorm.rvs(a=alpha, loc=loc, scale=scale, size=size, random_state=rng)
 
 
 def bayesian_forward_sample(
@@ -191,7 +200,7 @@ def bayesian_forward_sample(
         BayesianScenarioResults with posterior predictive distributions
 
     """
-    np.random.seed(seed)
+    rng = np.random.default_rng(seed)
 
     obs = results.obs
     obs_index = results.obs_index
@@ -205,7 +214,7 @@ def bayesian_forward_sample(
     # Subsample posterior if n_samples < total available
     total_samples = nairu_posterior.shape[1]
     if n_samples < total_samples:
-        idx = np.random.choice(total_samples, size=n_samples, replace=False)
+        idx = rng.choice(total_samples, size=n_samples, replace=False)
         nairu_posterior = nairu_posterior.iloc[:, idx]
         potential_posterior = potential_posterior.iloc[:, idx]
     else:
@@ -213,10 +222,10 @@ def bayesian_forward_sample(
 
     # --- Extract coefficient posteriors ---
     def get_coef(name: str) -> np.ndarray:
-        arr = get_scalar_var(name, trace).values
+        arr = get_scalar_var(name, trace).to_numpy()
         if len(arr) != n_samples:
             # Resample to match
-            idx = np.random.choice(len(arr), size=n_samples, replace=True)
+            idx = rng.choice(len(arr), size=n_samples, replace=True)
             arr = arr[idx]
         return arr
 
@@ -225,8 +234,8 @@ def bayesian_forward_sample(
     delta_dsr = get_coef("delta_dsr")
     eta_hw = get_coef("eta_hw")
     beta_okun = get_coef("beta_okun")
-    alpha_okun = get_coef("alpha_okun")
-    gamma_okun = get_coef("gamma_okun")
+    # Note: alpha_okun, gamma_okun not used - error correction removed for scenario analysis
+    # (EC term probably an artefact of CB inflation targeting policy, not natural dynamics)
     gamma_pi_covid = get_coef("gamma_pi_covid")
 
     # Innovation scales (observation equation residuals)
@@ -236,12 +245,12 @@ def bayesian_forward_sample(
 
     # State innovation scales (fixed in estimation, but we use them for sampling)
     # From model constants
-    sigma_nairu = 0.25  # Fixed in estimation
+    sigma_nairu = 0.15  # Fixed in estimation (Student-t scale, not Normal sigma)
     sigma_potential = 0.30  # Fixed in estimation
 
     # --- Historical values needed ---
-    nairu_T = nairu_posterior.iloc[-1].values
-    potential_T = potential_posterior.iloc[-1].values
+    nairu_T = nairu_posterior.iloc[-1].to_numpy()
+    potential_T = potential_posterior.iloc[-1].to_numpy()
     log_gdp_T = obs["log_gdp"][-1]
     U_T = obs["U"][-1]
     output_gap_T = log_gdp_T - potential_T
@@ -317,16 +326,13 @@ def bayesian_forward_sample(
     U_prev = np.full(n_samples, U_T)
 
     for t in range(h):
-        # Save lags for error correction (before they get updated)
-        nairu_lag = nairu_prev.copy()
-        og_lag = output_gap_prev.copy()
-
         # Sample innovations
-        eps_nairu = np.random.normal(0, sigma_nairu, n_samples)
-        eps_potential = sample_skewnormal(skew_loc, skew_sigma, skew_alpha, n_samples)
-        eps_is = np.random.normal(0, sigma_is)
-        eps_okun = np.random.normal(0, sigma_okun)
-        eps_pi = np.random.normal(0, sigma_pi)
+        # NAIRU uses Student-t(nu=4) for fat tails during occasional large shifts
+        eps_nairu = rng.standard_t(df=NAIRU_NU, size=n_samples) * sigma_nairu
+        eps_potential = sample_skewnormal(skew_loc, skew_sigma, skew_alpha, n_samples, rng=rng)
+        eps_is = rng.normal(0, sigma_is)
+        eps_okun = rng.normal(0, sigma_okun)
+        eps_pi = rng.normal(0, sigma_pi)
 
         # NAIRU: random walk
         nairu_fcst[t] = nairu_prev + eps_nairu
@@ -360,15 +366,12 @@ def bayesian_forward_sample(
         )
         output_gap_prev = output_gap_fcst[t]
 
-        # Okun's Law (error correction form):
-        # ΔU = β × OG + α × (U_{t-1} - NAIRU_{t-1} - γ × OG_{t-1})
-        # α < 0: when U > equilibrium, unemployment falls toward it
-        equilibrium_error = U_prev - nairu_lag - gamma_okun * og_lag
-        delta_U = (
-            beta_okun * output_gap_fcst[t] * DEMAND_MULTIPLIER
-            + alpha_okun * equilibrium_error
-            + eps_okun
-        )
+        # Okun's Law (simple form for "hold rates" scenarios):
+        # ΔU = β × OG
+        # Note: Error correction term removed. The drift toward NAIRU observed in
+        # historical data is probably an artefact of CB inflation targeting policy,
+        # not natural dynamics. For "hold rates" scenarios, we shouldn't assume self-correction.
+        delta_U = beta_okun * output_gap_fcst[t] * DEMAND_MULTIPLIER + eps_okun
         unemployment_fcst[t] = U_prev + delta_U
         U_prev = unemployment_fcst[t]
 
@@ -498,7 +501,6 @@ def plot_bayesian_scenario_inflation(
     }
 
     # Plot historical
-    from src.data.inflation import get_inflation_qrtly
     cpi = annualize(get_inflation_qrtly().data)
     model_end = scenario_results["hold"].obs_index[-1]
     hist_actual = cpi.loc[cpi.index >= model_end - n_history + 1]
@@ -522,8 +524,8 @@ def plot_bayesian_scenario_inflation(
         upper = inflation_annual.quantile(0.95, axis=1)
         ax.fill_between(
             [p.ordinal for p in hold.forecast_index],
-            lower.values,
-            upper.values,
+            lower.to_numpy(),
+            upper.to_numpy(),
             alpha=0.15,
             color="grey",
             label="90% HDI (hold)",
@@ -531,7 +533,7 @@ def plot_bayesian_scenario_inflation(
 
     if ax is not None:
         # Target band (2-3%)
-        ax.axhspan(2.0, 3.0, color="green", alpha=0.1, label="Target band (2-3%)")
+        ax.axhspan(2.0, 3.0, color="red", alpha=0.1, label="Target band (2-3%)")
         ax.axhline(y=2.5, color="grey", linestyle="--", linewidth=1, alpha=0.7, label="Target (2.5%)")
 
         current_rate = hold.cash_rate if hold else None
@@ -602,8 +604,8 @@ def plot_bayesian_scenario_unemployment(
         upper = hold.unemployment_samples.quantile(0.95, axis=1)
         ax.fill_between(
             [p.ordinal for p in hold.forecast_index],
-            lower.values,
-            upper.values,
+            lower.to_numpy(),
+            upper.to_numpy(),
             alpha=0.15,
             color="grey",
             label="90% HDI (hold)",
@@ -628,7 +630,7 @@ def plot_bayesian_scenario_unemployment(
             title=f"Unemployment: Policy Rate Scenarios{rate_str}",
             ylabel="Per cent",
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
-            lheader="Unemployment rate. Responds to policy more slowly and over a longer time horizon than inflation.",
+            lheader="Unemployment rate. Responds more slowly and over longer horizons than inflation.",
             lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
             rfooter="Bayesian sampling. RBA-calibrated transmission.",
             show=show,
@@ -692,8 +694,8 @@ def plot_bayesian_output_gap(
         upper = hold.output_gap_samples.quantile(0.95, axis=1)
         ax.fill_between(
             [p.ordinal for p in hold.forecast_index],
-            lower.values,
-            upper.values,
+            lower.to_numpy(),
+            upper.to_numpy(),
             alpha=0.15,
             color="grey",
             label="90% HDI (hold)",
@@ -784,8 +786,8 @@ def plot_bayesian_output_vs_potential(
         upper = gdp_hold.quantile(0.95, axis=1)
         ax.fill_between(
             [p.ordinal for p in hold.forecast_index],
-            lower.values,
-            upper.values,
+            lower.to_numpy(),
+            upper.to_numpy(),
             alpha=0.15,
             color="grey",
             label="90% HDI (hold)",

@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from src.data import (
+    compute_mfp_trend_floored,
     compute_r_star,
     get_capital_growth_qrtly,
     get_capital_share,
@@ -30,12 +31,10 @@ from src.data import (
     get_inflation_qrtly,
     get_labour_force_growth_qrtly,
     get_log_gdp,
-    compute_mfp_trend_floored,
     get_net_exports_ratio_change_qrtly,
     get_oil_change_lagged_annual,
     get_participation_rate_change_qrtly,
     get_real_wage_gap,
-    get_twi_change_annual,
     get_twi_change_lagged_annual,
     get_twi_change_lagged_qrtly,
     get_twi_change_qrtly,

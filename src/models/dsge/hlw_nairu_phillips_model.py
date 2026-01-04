@@ -25,6 +25,7 @@ Usage:
 """
 
 from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 from scipy import linalg
@@ -244,6 +245,7 @@ def extract_latent_estimates(
         rstar_std: Standard deviation of r* (T,)
         nairu: NAIRU estimates (T,)
         nairu_std: Standard deviation of NAIRU (T,)
+
     """
     from src.models.dsge.kalman import kalman_smoother_tv
 
@@ -292,11 +294,10 @@ def extract_latent_estimates(
             result.smoothed_states[:, 0], np.sqrt(result.smoothed_covs[:, 0, 0]),
             result.smoothed_states[:, 1], np.sqrt(result.smoothed_covs[:, 1, 1]),
         )
-    else:
-        return (
-            result.filtered_states[:, 0], np.sqrt(result.filtered_covs[:, 0, 0]),
-            result.filtered_states[:, 1], np.sqrt(result.filtered_covs[:, 1, 1]),
-        )
+    return (
+        result.filtered_states[:, 0], np.sqrt(result.filtered_covs[:, 0, 0]),
+        result.filtered_states[:, 1], np.sqrt(result.filtered_covs[:, 1, 1]),
+    )
 
 
 # Parameter bounds
@@ -341,11 +342,11 @@ def load_hlw_nairu_phillips_data(
         dates: Period index
     """
     from src.data.abs_loader import load_series
-    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY, UNEMPLOYMENT_RATE
     from src.data.cash_rate import get_cash_rate_qrtly
+    from src.data.energy import get_coal_change_annual, get_oil_change_lagged_annual
     from src.data.import_prices import get_import_price_growth_annual
+    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY, UNEMPLOYMENT_RATE
     from src.data.ulc import get_ulc_growth_qrtly
-    from src.data.energy import get_oil_change_lagged_annual, get_coal_change_annual
     from src.models.dsge.data_loader import compute_inflation_anchor
     from src.models.dsge.shared import ensure_period_index, filter_date_range
 
@@ -403,14 +404,14 @@ def load_hlw_nairu_phillips_data(
     df = filter_date_range(df.dropna(), start, end)
 
     return {
-        "y": df[["inflation", "ulc_growth"]].values,
-        "U_obs": df["U"].values,
-        "r_lag": df["real_rate_lag"].values,
-        "import_price_growth": df["import_price_growth"].values,
-        "delta_U_over_U": df["delta_U_over_U"].values,
-        "oil_change": df["oil_change"].values,
-        "coal_change": df["coal_change"].values,
-        "rstar_prior": float(np.mean(df["real_rate_lag"].values)),
+        "y": df[["inflation", "ulc_growth"]].to_numpy(),
+        "U_obs": df["U"].to_numpy(),
+        "r_lag": df["real_rate_lag"].to_numpy(),
+        "import_price_growth": df["import_price_growth"].to_numpy(),
+        "delta_U_over_U": df["delta_U_over_U"].to_numpy(),
+        "oil_change": df["oil_change"].to_numpy(),
+        "coal_change": df["coal_change"].to_numpy(),
+        "rstar_prior": float(np.mean(df["real_rate_lag"].to_numpy())),
         "nairu_prior": 5.0,  # Fixed lower prior
         "dates": df.index,
     }
@@ -451,6 +452,7 @@ def hlw_nairu_phillips_extract_states(params: HLWNairuPhillipsParameters, data: 
 
     Returns:
         Dict with states DataFrame and log_likelihood
+
     """
     rstar, rstar_std, nairu, nairu_std = extract_latent_estimates(
         y_obs=data["y"],
@@ -508,10 +510,12 @@ HLW_NAIRU_PHILLIPS_SPEC = ModelSpec(
 
 if __name__ == "__main__":
     from pathlib import Path
+
     import mgplot as mg
+
     from src.models.dsge.estimation import estimate_two_stage, print_single_result
-    from src.models.dsge.plot_rstar import plot_rstar
     from src.models.dsge.plot_nairu import plot_nairu
+    from src.models.dsge.plot_rstar import plot_rstar
 
     # Chart setup
     CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "dsge-hlw-nairu-phillips"

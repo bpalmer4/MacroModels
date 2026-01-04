@@ -12,8 +12,9 @@ Usage:
     result = estimate_model(NAIRU_PHILLIPS_SPEC, data)
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -43,6 +44,7 @@ class ModelSpec:
         fixed_params: Dict of parameter name -> fixed value (not estimated)
         description: Optional description for output
         state_extractor_fn: Function(params, data) -> dict with 'states' DataFrame
+
     """
 
     name: str
@@ -70,6 +72,7 @@ class EstimationResult:
         convergence: Dict with success, nit, nfev, message
         n_obs: Number of observations
         params_at_bounds: List of parameter names at bounds (if any)
+
     """
 
     params: Any
@@ -102,6 +105,7 @@ def estimate_model(
 
     Returns:
         EstimationResult with estimated parameters and diagnostics
+
     """
     if initial_params is None:
         initial_params = spec.param_class()
@@ -204,6 +208,7 @@ class TwoStageResult:
         states: DataFrame of smoothed states (from full data)
         estimation_dates: Dates used for parameter estimation
         full_dates: All dates (for state extraction)
+
     """
 
     params: Any
@@ -223,6 +228,7 @@ def exclude_period(data: dict, exclude_start: str, exclude_end: str) -> dict:
 
     Returns:
         New data dict with excluded period removed
+
     """
     dates = data.get("dates")
     if dates is None:
@@ -273,6 +279,7 @@ def estimate_two_stage(
 
     Returns:
         TwoStageResult with estimated params and full states
+
     """
     if spec.state_extractor_fn is None:
         raise ValueError(f"Model {spec.name} has no state_extractor_fn defined")
@@ -302,7 +309,7 @@ def estimate_two_stage(
 
     # Stage 2: Extract states on full data
     if verbose:
-        print(f"  Stage 2: Extract states for full period")
+        print("  Stage 2: Extract states for full period")
         print(f"    Using: {full_dates[0]} to {full_dates[-1]} (n={len(full_dates)})")
 
     state_result = spec.state_extractor_fn(est_result.params, full_data)
@@ -336,6 +343,7 @@ def print_single_result(
         result: EstimationResult to print
         spec: ModelSpec for the model
         params_to_show: List of parameter names to display
+
     """
     if params_to_show is None:
         params_to_show = spec.estimate_params

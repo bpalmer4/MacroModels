@@ -57,8 +57,8 @@ References
 from typing import Any
 
 import numpy as np
-import pytensor.tensor as pt
 import pymc as pm
+import pytensor.tensor as pt
 
 from src.models.nairu.base import set_model_coefficients
 

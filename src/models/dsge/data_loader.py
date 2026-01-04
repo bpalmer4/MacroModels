@@ -11,18 +11,16 @@ The data is transformed to match model requirements:
 - Interest rate: Quarterly average, deviation from sample mean
 """
 
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import signal
 
 from src.data.abs_loader import load_series
 from src.data.cash_rate import get_cash_rate_qrtly
 from src.data.series_specs import (
-    GDP_CVM,
-    CPI_TRIMMED_MEAN_QUARTERLY,
     COMPENSATION_OF_EMPLOYEES,
+    CPI_TRIMMED_MEAN_QUARTERLY,
+    GDP_CVM,
     UNEMPLOYMENT_RATE,
 )
 
@@ -152,7 +150,7 @@ def load_estimation_data(
         gdp.index = pd.PeriodIndex(gdp.index, freq="Q")
 
     # Output gap via HP filter on log GDP - use lower λ for less smoothing
-    log_gdp = np.log(gdp.values)
+    log_gdp = np.log(gdp.to_numpy())
     trend, cycle = hp_filter(log_gdp, lamb=400)  # λ=400 vs standard 1600
     output_gap = pd.Series(cycle * 100, index=gdp.index, name="output_gap")
 
@@ -216,7 +214,7 @@ def load_estimation_data(
             ur.index = pd.PeriodIndex(ur.index, freq="Q")
 
         # Unemployment gap via HP filter - lower λ for less smoothing
-        ur_trend, ur_cycle = hp_filter(ur.values, lamb=400)  # λ=400 vs standard 1600
+        ur_trend, ur_cycle = hp_filter(ur.to_numpy(), lamb=400)  # λ=400 vs standard 1600
         u_gap = pd.Series(ur_cycle, index=ur.index, name="u_gap")
 
         data_dict["u_gap"] = u_gap
@@ -262,7 +260,7 @@ def get_estimation_arrays(
     df = load_estimation_data(
         start=start, end=end, n_observables=n_observables, anchor_inflation=anchor_inflation
     )
-    y = df.values
+    y = df.to_numpy()
     dates = df.index
 
     return y, dates

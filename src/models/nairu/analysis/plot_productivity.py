@@ -10,9 +10,9 @@ import numpy as np
 import pandas as pd
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
-from src.utilities.rate_conversion import annualize
 from src.data import get_labour_productivity_growth, get_mfp_growth, hma
 from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
+from src.utilities.rate_conversion import annualize
 
 HMA_TERM = 41  # Henderson MA smoothing term
 HP_LAMBDA = 1600  # Hodrick-Prescott smoothing parameter for quarterly data
@@ -30,6 +30,7 @@ def _apply_smoothing(
 
     Returns:
         Tuple of (smoothed series, filter label for chart)
+
     """
     clean = series.dropna()
     if filter_type == "hp":
@@ -91,6 +92,7 @@ def plot_labour_productivity(
         model_name: Name for chart footer
         show: Whether to display the plot
         **kwargs: Additional arguments passed to finalise_plot
+
     """
     # Get LP from data layer
     lp = get_labour_productivity_growth(ulc_growth, hcoe_growth).data
@@ -121,7 +123,7 @@ def plot_labour_productivity(
         "title": f"Labour Productivity Growth (Derived) - {filter_label}",
         "ylabel": "Annual growth (%)",
         "legend": {"loc": "upper right", "fontsize": "small"},
-        "lfooter": f"LP = Δhcoe - Δulc. {filter_label}. HCOE = Hourly Compensation of Employees; ULC = Unit Labour Costs.",
+        "lfooter": f"LP = Δhcoe - Δulc. {filter_label}. HCOE = Hourly COE; ULC = Unit Labour Costs.",
         "rfooter": model_name,
     }
     for key in list(defaults.keys()):
@@ -156,6 +158,7 @@ def plot_mfp(
         model_name: Name for chart footer
         show: Whether to display the plot
         **kwargs: Additional arguments passed to finalise_plot
+
     """
     # Get MFP from data layer
     mfp = get_mfp_growth(ulc_growth, hcoe_growth, capital_growth, hours_growth, alpha).data
@@ -222,6 +225,7 @@ def plot_productivity_comparison(
         model_name: Name for chart footer
         show: Whether to display the plot
         **kwargs: Additional arguments passed to finalise_plot
+
     """
     # Get productivity from data layer
     lp = get_labour_productivity_growth(ulc_growth, hcoe_growth).data

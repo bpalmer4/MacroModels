@@ -47,8 +47,8 @@ import numpy as np
 import pandas as pd
 
 from src.models.nairu.analysis.extraction import get_scalar_var, get_vector_var
-from src.utilities.rate_conversion import annualize, quarterly
 from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
+from src.utilities.rate_conversion import annualize, quarterly
 
 # LaTeX equation strings for each chart type
 # Full Phillips curve: π_t = π^e_t + γ((U_t - U*_t)/U_t) + λΔρ^m_t + ξ·GSCPI² + ε_t
@@ -127,6 +127,7 @@ def _plot_decomposition_bars(
         eq_x: X position for equation box (0-1)
         eq_y: Y position for equation box (0-1)
         show: If True, display interactively
+
     """
     ax = mg.bar_plot(bar_data, stacked=True, color=colors)
 
@@ -176,6 +177,7 @@ class InflationDecomposition:
         indistinguishable from zero - their effects are already captured
         through the import price channel. GSCPI captures COVID-era supply
         chain disruptions.
+
     """
 
     observed: pd.Series

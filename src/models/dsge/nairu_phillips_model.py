@@ -26,6 +26,7 @@ Usage:
 """
 
 from dataclasses import dataclass, field
+
 import numpy as np
 import pandas as pd
 from scipy import linalg
@@ -213,8 +214,9 @@ def extract_nairu_estimates(
     Returns:
         nairu: Smoothed (or filtered) NAIRU estimates (T,)
         nairu_std: Standard deviation of NAIRU estimates (T,)
+
     """
-    from src.models.dsge.kalman import kalman_smoother_tv, kalman_filter
+    from src.models.dsge.kalman import kalman_smoother_tv
 
     p = params
 
@@ -255,8 +257,7 @@ def extract_nairu_estimates(
 
     if smooth:
         return result.smoothed_states[:, 0], np.sqrt(result.smoothed_covs[:, 0, 0])
-    else:
-        return result.filtered_states[:, 0], np.sqrt(result.filtered_covs[:, 0, 0])
+    return result.filtered_states[:, 0], np.sqrt(result.filtered_covs[:, 0, 0])
 
 
 # Parameter bounds matching state-space model
@@ -296,10 +297,10 @@ def load_nairu_phillips_data(
         dates: Period index
     """
     from src.data.abs_loader import load_series
-    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY, UNEMPLOYMENT_RATE
+    from src.data.energy import get_coal_change_annual, get_oil_change_lagged_annual
     from src.data.import_prices import get_import_price_growth_annual
+    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY, UNEMPLOYMENT_RATE
     from src.data.ulc import get_ulc_growth_qrtly
-    from src.data.energy import get_oil_change_lagged_annual, get_coal_change_annual
     from src.models.dsge.data_loader import compute_inflation_anchor
     from src.models.dsge.shared import ensure_period_index, filter_date_range
 
@@ -348,13 +349,13 @@ def load_nairu_phillips_data(
     df = filter_date_range(df.dropna(), start, end)
 
     return {
-        "y": df[["inflation", "ulc_growth"]].values,
-        "U_obs": df["U"].values,
-        "import_price_growth": df["import_price_growth"].values,
-        "delta_U_over_U": df["delta_U_over_U"].values,
-        "oil_change": df["oil_change"].values,
-        "coal_change": df["coal_change"].values,
-        "nairu_prior": float(np.mean(df["U"].values)),
+        "y": df[["inflation", "ulc_growth"]].to_numpy(),
+        "U_obs": df["U"].to_numpy(),
+        "import_price_growth": df["import_price_growth"].to_numpy(),
+        "delta_U_over_U": df["delta_U_over_U"].to_numpy(),
+        "oil_change": df["oil_change"].to_numpy(),
+        "coal_change": df["coal_change"].to_numpy(),
+        "nairu_prior": float(np.mean(df["U"].to_numpy())),
         "dates": df.index,
     }
 
@@ -373,6 +374,7 @@ def _nairu_phillips_likelihood(params: NairuPhillipsParameters, data: dict) -> f
 
     Returns:
         Log-likelihood value
+
     """
     return compute_nairu_phillips_log_likelihood(
         y_obs=data["y"],
@@ -400,6 +402,7 @@ def nairu_phillips_extract_states(params: NairuPhillipsParameters, data: dict) -
 
     Returns:
         Dict with states DataFrame and log_likelihood
+
     """
     nairu, nairu_std = extract_nairu_estimates(
         y_obs=data["y"],
@@ -454,7 +457,9 @@ NAIRU_PHILLIPS_SPEC = ModelSpec(
 
 if __name__ == "__main__":
     from pathlib import Path
+
     import mgplot as mg
+
     from src.models.dsge.estimation import estimate_two_stage, print_single_result
     from src.models.dsge.plot_nairu import plot_nairu
 

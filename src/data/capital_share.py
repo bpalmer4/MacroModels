@@ -6,7 +6,6 @@ This gives a time-varying capital share for the Cobb-Douglas production
 function, based on observed factor income shares rather than a fixed assumption.
 """
 
-import pandas as pd
 
 from src.data.abs_loader import get_abs_data
 from src.data.dataseries import DataSeries

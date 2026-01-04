@@ -3,9 +3,9 @@
 import mgplot as mg
 import pandas as pd
 
+from src.data.rba_loader import PI_TARGET_FULL, PI_TARGET_START
 from src.models.nairu.analysis.extraction import get_vector_var
 from src.models.nairu.analysis.plot_posterior_timeseries import plot_posterior_timeseries
-from src.data.rba_loader import PI_TARGET_FULL, PI_TARGET_START
 
 # Plotting constants
 START = pd.Period("1985Q1", freq="Q")
@@ -80,8 +80,8 @@ def plot_nairu(
             ylabel="Per cent",
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lfooter=r"Australia. $NAIRU = U^*$ "
-            f"WRT inflation expectations → {PI_TARGET_START} → blended to target → {PI_TARGET_FULL} → inflation target. ",
-            rheader=f"From {PI_TARGET_FULL} onwards, the model estimates NAIRU as the unemployment rate needed to hit the inflation target.",
+            f"WRT expectations → {PI_TARGET_START} → blended → {PI_TARGET_FULL} → target.",
+            rheader=f"From {PI_TARGET_FULL}, NAIRU = unemployment rate needed to hit inflation target.",
             rfooter=RFOOTER,
             axisbelow=True,
             **ANNUAL_RANGE,
@@ -112,7 +112,7 @@ def plot_unemployment_gap(
         start=START,
         title="Unemployment Gap Estimate for Australia",
         ylabel="Percentage points (U - U*)",
-        lfooter=r"Australia. $U\text{-}gap = U - U^*$. Positive = slack/disinflationary, Negative = tight/inflationary.",
+        lfooter=r"Australia. $U\text{-}gap = U - U^*$. Positive = slack, Negative = tight.",
         rfooter=RFOOTER,
         legend={"loc": "best", "fontsize": "x-small"},
         axisbelow=True,

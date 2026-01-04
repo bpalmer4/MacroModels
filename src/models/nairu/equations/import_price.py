@@ -53,6 +53,7 @@ References
   Prices." Review of Economics and Statistics, 87(4), 679-690.
 - Chung, E., Kohler, M. and Lewis, C. (2011). "The Exchange Rate and Consumer
   Prices." RBA Bulletin, September Quarter, 9-16.
+
 """
 
 from typing import Any

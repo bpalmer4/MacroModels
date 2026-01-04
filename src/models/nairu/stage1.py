@@ -19,6 +19,7 @@ import pymc as pm
 
 from src.data.henderson import hma
 from src.data.observations import build_observations
+from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
 from src.models.nairu.equations import (
     employment_equation,
     exchange_rate_equation,
@@ -33,7 +34,6 @@ from src.models.nairu.equations import (
     price_inflation_equation,
     wage_growth_equation,
 )
-from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
 
 # Default output directory
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
@@ -43,7 +43,8 @@ DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs
 
 
 # Default fixed constants for model building
-DEFAULT_NAIRU_CONST: dict[str, Any] = {"nairu_innovation": 0.25}
+# NAIRU uses Student-t(nu=4) innovations for robustness to occasional large shifts
+DEFAULT_NAIRU_CONST: dict[str, Any] = {"nairu_innovation": 0.15}
 DEFAULT_POTENTIAL_CONST: dict[str, Any] = {"potential_innovation": 0.3}
 
 
@@ -213,7 +214,7 @@ def run_stage1(
 
     # Apply HMA(13) smoothing to labour force growth for potential calculation
     lf_raw = pd.Series(obs["lf_growth"], index=obs_index)
-    obs["lf_growth"] = hma(lf_raw, 13).values
+    obs["lf_growth"] = hma(lf_raw, 13).to_numpy()
 
     # Build model
     print("Building model...")

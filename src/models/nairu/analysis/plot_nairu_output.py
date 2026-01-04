@@ -24,7 +24,7 @@ def plot_output_gap(
 
     # Calculate output gap: (Y - Y*)/Y* * 100
     actual_gdp = results.obs["log_gdp"]
-    output_gap = (actual_gdp[:, np.newaxis] - potential.values) / potential.values * 100
+    output_gap = (actual_gdp[:, np.newaxis] - potential.to_numpy()) / potential.to_numpy() * 100
     output_gap = pd.DataFrame(output_gap, index=results.obs_index)
 
     plot_posterior_timeseries(
@@ -114,7 +114,7 @@ def plot_potential_growth(
     # Add trend line
     median = r_star.quantile(0.5, axis=1)
     x = np.arange(len(median))
-    slope, intercept, *_ = stats.linregress(x, median.values)
+    slope, intercept, *_ = stats.linregress(x, median.to_numpy())
     trend = pd.Series(intercept + slope * x, index=median.index)
     trend.name = f"Trend (slope: {slope * 4:.2f}pp/year)"
     mg.line_plot(trend, ax=ax, color="darkred", width=1.5, style="--")
@@ -146,7 +146,8 @@ def plot_potential_growth(
         print(f"  Median (raw) endpoint: {median.iloc[-1]:.3f}%")
         print(f"  Trend endpoint: {trend.iloc[-1]:.3f}%")
         print(f"  Hybrid ({int(w*100)}% trend, {int((1-w)*100)}% raw) endpoint: {hybrid.iloc[-1]:.3f}%")
-        print(f"  Check: {(1-w):.2f} × {median.iloc[-1]:.3f} + {w:.2f} × {trend.iloc[-1]:.3f} = {(1-w)*median.iloc[-1] + w*trend.iloc[-1]:.3f}%")
+        check_val = (1-w)*median.iloc[-1] + w*trend.iloc[-1]
+        print(f"  Check: {(1-w):.2f}×{median.iloc[-1]:.3f} + {w:.2f}×{trend.iloc[-1]:.3f} = {check_val:.3f}%")
 
     median.name = "$r^*$ raw median (no smoothing)"
     trend.name = "Trend only"

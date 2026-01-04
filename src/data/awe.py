@@ -5,7 +5,6 @@ Note: ABS 6302 is published semi-annually (May and November quarters).
 """
 
 import numpy as np
-import pandas as pd
 
 from src.data.abs_loader import load_series
 from src.data.dataseries import DataSeries
