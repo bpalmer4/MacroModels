@@ -545,6 +545,7 @@ def plot_bayesian_scenario_inflation(
             ylabel="Per cent per annum",
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Trimmed mean, annualised",
+            rheader="Scenarios assume RBA moves then holds.",
             lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
             rfooter="Bayesian sampling. RBA-calibrated transmission.",
             show=show,
@@ -631,6 +632,7 @@ def plot_bayesian_scenario_unemployment(
             ylabel="Per cent",
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Unemployment rate. Responds more slowly and over longer horizons than inflation.",
+            rheader="Scenarios assume RBA moves then holds.",
             lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
             rfooter="Bayesian sampling. RBA-calibrated transmission.",
             show=show,
@@ -714,7 +716,7 @@ def plot_bayesian_output_gap(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Output gap = (GDP - Potential) / Potential × 100",
             rheader="Positive output gap is inflationary.",
-            lfooter="Australia. Potential growth exogenous over scenario horizon.",
+            lfooter="Australia. Scenarios assume RBA moves then holds.",
             rfooter="Bayesian sampling. RBA-calibrated transmission.",
             show=show,
         )
@@ -803,7 +805,7 @@ def plot_bayesian_output_vs_potential(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="GDP and potential output (log scale).",
             rheader="GDP above potential is inflationary.",
-            lfooter="Australia. Potential growth exogenous over scenario horizon.",
+            lfooter="Australia. Scenarios assume RBA moves then holds.",
             rfooter="Bayesian sampling. RBA-calibrated transmission.",
             show=show,
         )
