@@ -615,8 +615,9 @@ def plot_scenario_inflation(
             else:
                 mg.line_plot(series, ax=ax, color=colors[name], width=2 if name == "hold" else 1.5)
 
-    # Add reference line at 2.5% target
+    # Add target band and reference line
     if ax is not None:
+        ax.axhspan(2.0, 3.0, color="green", alpha=0.1, label="Target band (2-3%)")
         ax.axhline(y=2.5, color="grey", linestyle="--", linewidth=1, alpha=0.7, label="Target (2.5%)")
 
         # Add error bars at first point to show starting point uncertainty
@@ -651,12 +652,12 @@ def plot_scenario_inflation(
 
         mg.finalise_plot(
             ax,
-            title=f"Inflation Forecast by Policy Scenario{rate_str}",
+            title=f"Inflation Scenarios by Policy Rate{rate_str}",
             ylabel="Per cent per annum",
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Trimmed mean, annualised",
-            lfooter="Australia. Ceteris paribus: model-consistent forecasts, no new shocks.",
-            rfooter="4-quarter horizon. Demand, FX, DSR, housing wealth channels.",
+            lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
+            rfooter="Ceteris paribus, no new shocks. RBA-calibrated transmission.",
             show=show,
         )
 
@@ -776,12 +777,131 @@ def plot_scenario_gdp_growth(
 
         mg.finalise_plot(
             ax,
-            title=f"GDP Growth Forecast by Policy Scenario{rate_str}",
+            title=f"GDP Growth Scenarios by Policy Rate{rate_str}",
             ylabel="Per cent per annum",
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Annualised quarterly growth",
-            lfooter="Australia. Ceteris paribus: model-consistent forecasts, no new shocks.",
-            rfooter="4-quarter horizon. Demand channel via IS curve.",
+            lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
+            rfooter="Ceteris paribus, no new shocks. RBA-calibrated transmission.",
+            show=show,
+        )
+
+
+def plot_scenario_unemployment(
+    scenario_results: dict[str, ForecastResults],
+    obs: dict | None = None,
+    obs_index: pd.PeriodIndex | None = None,
+    n_history: int = 4,
+    chart_dir: Path | str | None = None,
+    show: bool = True,
+) -> None:
+    """Plot unemployment scenarios across policy scenarios.
+
+    Args:
+        scenario_results: Dict of {scenario_name: ForecastResults} from run_scenarios
+        obs: Observations dict containing historical data
+        obs_index: PeriodIndex for observations
+        n_history: Number of historical periods to show before scenario
+        chart_dir: Directory to save charts. If None, uses DEFAULT_CHART_DIR.
+        show: Display plots interactively.
+
+    """
+    if chart_dir is None:
+        chart_dir = DEFAULT_CHART_DIR
+    chart_dir = Path(chart_dir)
+    mg.set_chart_dir(str(chart_dir))
+
+    # Get scenario names and colors
+    scenario_order = ["+200bp", "+100bp", "+50bp", "+25bp", "hold", "-25bp", "-50bp", "-100bp", "-200bp"]
+    colors = {
+        "+200bp": "darkred",
+        "+100bp": "red",
+        "+50bp": "orangered",
+        "+25bp": "orange",
+        "hold": "black",
+        "-25bp": "deepskyblue",
+        "-50bp": "steelblue",
+        "-100bp": "blue",
+        "-200bp": "darkblue",
+    }
+
+    # Build DataFrame of unemployment medians
+    unemployment_data = {}
+    for name in scenario_order:
+        if name in scenario_results:
+            result = scenario_results[name]
+            unemployment_median = result.unemployment_forecast.median(axis=1)
+            unemployment_data[name] = unemployment_median
+
+    df = pd.DataFrame(unemployment_data)
+
+    # Plot historical actuals first (if provided)
+    ax = None
+    if obs is not None and obs_index is not None:
+        unemployment_hist = pd.Series(obs["U"], index=obs_index)
+        hist_recent = unemployment_hist.iloc[-n_history:]
+        hist_recent.name = "Actual"
+        ax = mg.line_plot(hist_recent, color="black", width=2)
+
+    # Plot each scenario
+    for name in scenario_order:
+        if name in df.columns:
+            series = df[name]
+            series.name = name
+            if ax is None:
+                ax = mg.line_plot(series, color=colors[name], width=2 if name == "hold" else 1.5)
+            else:
+                mg.line_plot(series, ax=ax, color=colors[name], width=2 if name == "hold" else 1.5)
+
+    if ax is not None:
+        # Get current cash rate and NAIRU for context
+        hold_result = scenario_results.get("hold")
+        current_rate = hold_result.cash_rate if hold_result else None
+        nairu = hold_result.nairu_final if hold_result else None
+        rate_str = f" (from {current_rate:.2f}%)" if current_rate is not None else ""
+
+        # Add reference line at NAIRU
+        if nairu is not None:
+            ax.axhline(
+                y=nairu,
+                color="grey",
+                linestyle="--",
+                linewidth=1,
+                alpha=0.7,
+                label=f"NAIRU ({nairu:.1f}%)",
+            )
+
+        # Add error bars at first point to show starting point uncertainty
+        if hold_result is not None:
+            first_period = hold_result.forecast_index[0]
+            # Get 90% HDI for first period unemployment
+            first_unemployment = hold_result.unemployment_forecast.iloc[0]
+            median_val = first_unemployment.median()
+            lower_val = first_unemployment.quantile(0.05)
+            upper_val = first_unemployment.quantile(0.95)
+
+            # Draw error bar at first point
+            ax.errorbar(
+                first_period.ordinal,
+                median_val,
+                yerr=[[median_val - lower_val], [upper_val - median_val]],
+                fmt="none",
+                ecolor="black",
+                elinewidth=2,
+                capsize=6,
+                capthick=2,
+                zorder=10,
+                label=f"90% HDI for {first_period} (ex. shocks)",
+            )
+
+        mg.finalise_plot(
+            ax,
+            title=f"Unemployment Scenarios by Policy Rate{rate_str}",
+            ylabel="Per cent",
+            legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
+            lheader="Unemployment rate",
+            lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
+            rfooter="Ceteris paribus, no new shocks. RBA-calibrated transmission.",
             show=show,
         )
 
@@ -839,6 +959,7 @@ def run_stage3(
         if plot_scenarios:
             plot_scenario_inflation(scenario_results, chart_dir=chart_dir, show=False)
             plot_scenario_gdp_growth(scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False)
+            plot_scenario_unemployment(scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False)
 
         return scenario_results
     else:
