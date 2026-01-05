@@ -331,8 +331,8 @@ def forecast(
     output_gap_T = log_gdp_T - potential_T
 
     # Rate gaps for IS curve (lagged 2 periods)
-    # rate_gap = (cash_rate - pi_anchor) - r_star
-    real_rate = obs["cash_rate"] - obs["π_anchor"]
+    # rate_gap = (cash_rate - pi_exp) - r_star
+    real_rate = obs["cash_rate"] - obs["π_exp"]
     rate_gap = real_rate - obs["det_r_star"]
 
     # Rate gaps for IS curve (lagged 2 periods)
@@ -349,18 +349,17 @@ def forecast(
         cash_rate_T = cash_rate_override
 
     # Compute rate gap assuming rate holds at cash_rate_T
-    pi_anchor_T = obs["π_anchor"][-1]
+    pi_exp_T = obs["π_exp"][-1]
     r_star_T = obs["det_r_star"][-1]
-    real_rate_hold = cash_rate_T - pi_anchor_T
+    real_rate_hold = cash_rate_T - pi_exp_T
     rate_gap_hold = real_rate_hold - r_star_T  # used for T, T+1, T+2, ...
 
     # Rate change for DSR transmission
     # If policy changes rate, this feeds through to DSR at lag 1
     rate_change = cash_rate_T - obs["cash_rate"][-1]  # 0 if no override
 
-    # Inflation anchor (2.5% annual, convert to quarterly)
-    pi_anchor_annual = 2.5
-    pi_anchor_qtr = quarterly(pi_anchor_annual)
+    # Inflation expectations (hold at final observed value from signal extraction model)
+    pi_exp_qtr = quarterly(obs["π_exp"][-1])
 
     # --- Compute potential growth (Cobb-Douglas drift) ---
     n_recent = min(4, len(obs["capital_growth"]))
@@ -441,15 +440,15 @@ def forecast(
         delta_U = beta_okun * output_gap_fcst[t] * DEMAND_TRANSMISSION_MULTIPLIER
         unemployment_fcst[t] = U_prev + delta_U
 
-        # Phillips curve: π = π_anchor + γ × u_gap + FX effect
+        # Phillips curve: π = π_exp + γ × u_gap + FX effect
         # u_gap = (U - NAIRU) / U
         # FX channel: at t=0 use model's ρ_pi × historical import prices
         #             at t>=1 use RBA-calibrated rate→inflation passthrough
         u_gap = (unemployment_fcst[t] - nairu_fcst[t]) / unemployment_fcst[t]
         if t == 0:
-            inflation_fcst[t] = pi_anchor_qtr + gamma_pi_covid * u_gap + rho_pi * delta_import_price
+            inflation_fcst[t] = pi_exp_qtr + gamma_pi_covid * u_gap + rho_pi * delta_import_price
         else:
-            inflation_fcst[t] = pi_anchor_qtr + gamma_pi_covid * u_gap + fx_inflation_effect
+            inflation_fcst[t] = pi_exp_qtr + gamma_pi_covid * u_gap + fx_inflation_effect
 
         # Update for next iteration
         output_gap_prev = output_gap_fcst[t]
@@ -661,7 +660,7 @@ def plot_scenario_inflation(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Trimmed mean, annualised",
             rheader="Scenarios assume RBA moves then holds.",
-            lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
+            lfooter="Australia. NAIRU and inflation expectations assumed fixed over scenario horizon.",
             rfooter="Ceteris paribus, no new shocks. RBA-calibrated transmission.",
             show=show,
         )
@@ -787,7 +786,7 @@ def plot_scenario_gdp_growth(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Annualised quarterly growth",
             rheader="Scenarios assume RBA moves then holds.",
-            lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
+            lfooter="Australia. NAIRU and inflation expectations assumed fixed over scenario horizon.",
             rfooter="Ceteris paribus, no new shocks. RBA-calibrated transmission.",
             show=show,
         )
@@ -907,7 +906,7 @@ def plot_scenario_unemployment(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Unemployment rate. Responds more slowly and over longer horizons than inflation.",
             rheader="Scenarios assume RBA moves then holds.",
-            lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
+            lfooter="Australia. NAIRU and inflation expectations assumed fixed over scenario horizon.",
             rfooter="Ceteris paribus, no new shocks. RBA-calibrated transmission.",
             show=show,
         )

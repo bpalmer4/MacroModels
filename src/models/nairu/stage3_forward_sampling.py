@@ -254,7 +254,7 @@ def bayesian_forward_sample(
     output_gap_T = log_gdp_T - potential_T
 
     # Rate gaps
-    real_rate = obs["cash_rate"] - obs["π_anchor"]
+    real_rate = obs["cash_rate"] - obs["π_exp"]
     rate_gap = real_rate - obs["det_r_star"]
     rate_gap_Tm1 = rate_gap[-2]
 
@@ -264,9 +264,9 @@ def bayesian_forward_sample(
         cash_rate_T = cash_rate_override
 
     # Rate gap under scenario
-    pi_anchor_T = obs["π_anchor"][-1]
+    pi_exp_T = obs["π_exp"][-1]
     r_star_T = obs["det_r_star"][-1]
-    real_rate_hold = cash_rate_T - pi_anchor_T
+    real_rate_hold = cash_rate_T - pi_exp_T
     rate_gap_hold = real_rate_hold - r_star_T
 
     # DSR and housing wealth changes (historical)
@@ -280,8 +280,8 @@ def bayesian_forward_sample(
     # Rate change for transmission
     rate_change = cash_rate_T - obs["cash_rate"][-1]
 
-    # Inflation anchor (quarterly)
-    pi_anchor_qtr = quarterly(2.5)
+    # Inflation expectations (hold at final observed value from signal extraction model)
+    pi_exp_qtr = quarterly(obs["π_exp"][-1])
 
     # Potential growth (Cobb-Douglas components - last Q values held constant)
     # "As-is" assumption: current trajectory continues without structural changes
@@ -375,7 +375,7 @@ def bayesian_forward_sample(
 
         # Phillips curve (model estimates + import price effect)
         u_gap = (unemployment_fcst[t] - nairu_fcst[t]) / unemployment_fcst[t]
-        inflation_fcst[t] = pi_anchor_qtr + gamma_pi_covid * u_gap + import_price_effect + eps_pi
+        inflation_fcst[t] = pi_exp_qtr + gamma_pi_covid * u_gap + import_price_effect + eps_pi
 
     # --- Package results ---
     cols = [f"sample_{i}" for i in range(n_samples)]
@@ -544,7 +544,7 @@ def plot_bayesian_scenario_inflation(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Trimmed mean, annualised",
             rheader="Scenarios assume RBA moves then holds.",
-            lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
+            lfooter="Australia. NAIRU and inflation expectations assumed fixed over scenario horizon.",
             rfooter="Bayesian sampling. RBA-calibrated transmission.",
             show=show,
         )
@@ -631,7 +631,7 @@ def plot_bayesian_scenario_unemployment(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Unemployment rate. Responds more slowly and over longer horizons than inflation.",
             rheader="Scenarios assume RBA moves then holds.",
-            lfooter="Australia. NAIRU assumed fixed over scenario horizon.",
+            lfooter="Australia. NAIRU and inflation expectations assumed fixed over scenario horizon.",
             rfooter="Bayesian sampling. RBA-calibrated transmission.",
             show=show,
         )

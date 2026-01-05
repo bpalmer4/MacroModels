@@ -1,7 +1,7 @@
 """Phillips curve visualizations showing non-linear relationship.
 
 Plots the convex Phillips curve specification used by the RBA:
-    pi - pi_anchor = gamma * (u - u*) / u
+    pi - pi_exp = gamma * (u - u*) / u
 
 This specification implies a slope of gamma * u* / u^2, meaning the curve
 is steeper when:

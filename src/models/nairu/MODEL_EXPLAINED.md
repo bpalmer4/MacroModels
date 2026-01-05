@@ -223,14 +223,14 @@ Regime boundaries are fixed breakpoints chosen to align with well-known macroeco
 
 **Price Phillips Curve:**
 ```
-π = quarterly(π_anchor) + γ_regime × u_gap + controls + ε
+π = quarterly(π_exp) + γ_regime × u_gap + controls + ε
 ```
 
 Where `u_gap = (U - NAIRU) / U` (percentage deviation from NAIRU)
 
 **Wage Phillips Curve (ULC):**
 ```
-Δulc = α + γ_regime × u_gap + λ × (ΔU/U) + φ × Δ4dfd + θ × π_anchor + ε
+Δulc = α + γ_regime × u_gap + λ × (ΔU/U) + φ × Δ4dfd + θ × π_exp + ε
 ```
 
 Includes:
@@ -432,19 +432,19 @@ This is consistent with RBA research showing monetary policy transmission of app
 
 ---
 
-## Inflation Anchor
+## Inflation Expectations
 
-The model uses an inflation anchor that transitions from RBA-constructed expectations to the 2.5% target:
+The Phillips curves use inflation expectations from a signal extraction model (see `src/models/expectations/`). This model estimates latent long-run expectations from multiple survey and market-based measures following Cusbert (2017).
 
-| Period | Anchor |
-|--------|--------|
-| Pre-1993Q1 | RBA expectations (signal extraction from surveys + bond yields) |
-| 1993Q1–1998Q1 | Linear blend to target |
-| Post-1998Q1 | 2.5% target |
+**Key features:**
+- Student-t random walk innovations (σ=0.075, ν=4) allowing occasional large shifts during regime changes
+- Multiple measures: NAB business survey, market economists, breakeven inflation, plus early-period proxies (headline CPI, nominal bonds)
+- Series-specific bias corrections and backward-looking adjustments
+- Sample: 1983Q1 to present
 
-**Data source**: The pre-1998 expectations series (PIE_RBAQ) is constructed by the RBA using the Cusbert (2017) methodology — signal extraction from multiple measures (surveys, bond yields) after controlling for co-movement with recent inflation, bias-adjusted to post-1996 mean. Sourced via [MacroDave/MARTIN](https://github.com/MacroDave/MARTIN).
+**NAIRU interpretation**: NAIRU is the unemployment rate consistent with inflation equal to expectations. When expectations are anchored near 2.5% (as they have been since ~1998), this is effectively the unemployment rate needed to hit the target. In earlier periods when expectations were higher and more volatile, NAIRU represents the rate consistent with stable (but potentially elevated) inflation.
 
-This means **NAIRU is interpreted as the unemployment rate consistent with achieving the inflation target** (in the post-1998 period). See [Why Phase In the Inflation Target?](#why-phase-in-the-inflation-target) for rationale.
+See `src/models/expectations/MODEL_EXPLAINED.md` for full model documentation.
 
 ---
 
@@ -582,7 +582,7 @@ Uses posterior **medians** for all coefficients and projects forward with **no s
 
 - Clean scenario lines for policy communication
 - 90% HDI captures parameter uncertainty only
-- NAIRU assumed fixed over scenario horizon
+- NAIRU and inflation expectations assumed fixed over scenario horizon
 
 ### Stage 3b: Monte Carlo Forward Sampling
 
@@ -643,7 +643,7 @@ The scenario projection uses estimated coefficients and RBA-calibrated pass-thro
 
 3. **Phillips Curve** (inflation from unemployment gap + FX channel):
    ```
-   π_t = π_anchor + γ_covid × (U_t - NAIRU_t) / U_t + FX_effect_t
+   π_t = π_exp + γ_covid × (U_t - NAIRU_t) / U_t + FX_effect_t
    ```
    Where FX_effect uses RBA-calibrated pass-through (~0.35pp per 100bp).
 
@@ -968,18 +968,13 @@ An error correction form was considered:
 
 Output gap affects unemployment mechanically. The 1.6 demand multiplier applied in Stage 3 scenarios is calibrated to match RBA transmission estimates.
 
-### Why Phase In the Inflation Target?
+### Why Use a Signal Extraction Model for Expectations?
 
-The inflation anchor transitions gradually from expectations to the 2.5% target (`src/data/rba_loader.py`):
+Rather than imposing a mechanical transition from backward-looking expectations to the 2.5% target, we estimate expectations directly using a Bayesian signal extraction model. This approach:
 
-| Period | Anchor |
-|--------|--------|
-| Pre-1993Q1 | RBA-constructed expectations (PIE_RBAQ) |
-| 1993Q1–1998Q1 | Linear blend from expectations to target |
-| Post-1998Q1 | Fixed at 2.5% |
+- **Lets the data speak**: The transition from high/volatile expectations (1980s) to anchored expectations (~2.5% post-1998) emerges from the estimation rather than being imposed
+- **Captures uncertainty**: The signal extraction model provides credible intervals on expectations, which propagate through to NAIRU uncertainty
+- **Uses multiple measures**: Combines surveys (NAB business, market economists), market-based measures (breakeven inflation), and early-period proxies (headline CPI, nominal bonds)
+- **Handles regime changes**: Student-t innovations allow the model to capture sharp shifts during the 1988-1992 disinflation while remaining smooth in the targeting era
 
-- **Inflation targeting was announced in 1993**: The RBA adopted the 2–3% target band, but credibility wasn't instant.
-- **Credibility takes time to build**: Wage and price setters didn't immediately anchor expectations to the target — surveys show gradual convergence through the mid-1990s.
-- **1998 marks full credibility**: By this point, inflation expectations had converged to target and remained anchored through subsequent shocks.
-- **Affects NAIRU interpretation**: Post-1998, NAIRU is the unemployment rate consistent with achieving the inflation target. Pre-1993, it's the rate consistent with stable (but potentially high) inflation.
-- **Data provenance**: The PIE_RBAQ series is RBA-constructed using Cusbert (2017) signal extraction methodology — combines surveys and bond yields, bias-adjusted to post-1996 inflation mean. Sourced via [MacroDave/MARTIN](https://github.com/MacroDave/MARTIN) GitHub repository.
+The estimated expectations show gradual convergence to ~2.5% through the mid-1990s, consistent with the RBA's inflation targeting credibility building over time. See `src/models/expectations/MODEL_EXPLAINED.md` for full details.

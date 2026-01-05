@@ -17,7 +17,7 @@ def price_inflation_equation(
 ) -> None:
     """Anchor-augmented Phillips Curve for price inflation with regime-switching.
 
-    Model: π = quarterly(π_anchor) + γ_regime × u_gap + controls + ε
+    Model: π = quarterly(π_exp) + γ_regime × u_gap + controls + ε
 
     Uses regime-specific Phillips curve slopes (3 regimes):
     - gamma_pi_pre_gfc: Pre-GFC (up to 2007Q4) - moderate slope
@@ -32,7 +32,7 @@ def price_inflation_equation(
         inputs: Must contain:
             - "U": Unemployment rate
             - "π": Observed quarterly inflation
-            - "π_anchor": Annual inflation anchor (expectations → target blend)
+            - "π_exp": Annual inflation expectations (from signal extraction model)
             - "regime_pre_gfc", "regime_gfc", "regime_covid": Regime indicators
             - "Δ4ρm_1": Lagged import price growth (optional control)
             - "ξ_2": GSCPI (COVID supply chain pressure, optional control)
@@ -62,8 +62,8 @@ def price_inflation_equation(
         # Unemployment gap (relative to NAIRU)
         u_gap = (inputs["U"] - nairu) / inputs["U"]
 
-        # Expected quarterly inflation from anchor (compound conversion)
-        pi_anchor_quarterly = quarterly(inputs["π_anchor"])
+        # Expected quarterly inflation from expectations (compound conversion)
+        pi_exp_quarterly = quarterly(inputs["π_exp"])
 
         # Phillips curve with regime-specific slopes
         # γ_effective = Σ γ_regime × regime_indicator
@@ -73,7 +73,7 @@ def price_inflation_equation(
             + mc["gamma_pi_covid"] * inputs["regime_covid"]
         )
 
-        mu = pi_anchor_quarterly + gamma_effective * u_gap
+        mu = pi_exp_quarterly + gamma_effective * u_gap
 
         # Add optional controls if present
         if "Δ4ρm_1" in inputs:
@@ -119,7 +119,7 @@ def wage_growth_equation(
             - "Δulc": Unit labor cost growth (observed wage variable)
             - "ΔU_1_over_U": Lagged unemployment change over unemployment level
             - "Δ4dfd": DFD deflator growth (year-ended)
-            - "π_anchor": Trend inflation expectations
+            - "π_exp": Inflation expectations (from signal extraction model)
             - "regime_pre_gfc", "regime_gfc", "regime_covid": Regime indicators
         model: PyMC model context
         nairu: NAIRU latent variable
@@ -157,8 +157,8 @@ def wage_growth_equation(
             + mc["gamma_wg_covid"] * inputs["regime_covid"]
         )
 
-        # Convert annual π_anchor to quarterly for consistency with ULC growth
-        pi_anchor_quarterly = quarterly(inputs["π_anchor"])
+        # Convert annual expectations to quarterly for consistency with ULC growth
+        pi_exp_quarterly = quarterly(inputs["π_exp"])
 
         pm.Normal(
             "observed_wage_growth",
@@ -167,7 +167,7 @@ def wage_growth_equation(
                 + gamma_effective * u_gap                   # unemployment gap
                 + mc["lambda_wg"] * inputs["ΔU_1_over_U"]   # speed limit
                 + mc["phi_wg"] * inputs["Δ4dfd"]            # demand deflator
-                + mc["theta_wg"] * pi_anchor_quarterly      # trend expectations
+                + mc["theta_wg"] * pi_exp_quarterly         # inflation expectations
             ),
             sigma=mc["epsilon_wg"],
             observed=inputs["Δulc"],
@@ -207,7 +207,7 @@ def hourly_coe_equation(
             - "Δhcoe": Hourly COE growth (observed wage variable)
             - "ΔU_1_over_U": Lagged unemployment change over unemployment level
             - "Δ4dfd": DFD deflator growth (year-ended)
-            - "π_anchor": Trend inflation expectations
+            - "π_exp": Inflation expectations (from signal extraction model)
             - "mfp_growth": MFP trend growth (HP-filtered)
             - "regime_pre_gfc", "regime_gfc", "regime_covid": Regime indicators
         model: PyMC model context
@@ -246,8 +246,8 @@ def hourly_coe_equation(
             + mc["gamma_hcoe_covid"] * inputs["regime_covid"]
         )
 
-        # Convert annual π_anchor to quarterly for consistency
-        pi_anchor_quarterly = quarterly(inputs["π_anchor"])
+        # Convert annual expectations to quarterly for consistency
+        pi_exp_quarterly = quarterly(inputs["π_exp"])
 
         pm.Normal(
             "observed_hourly_coe",
@@ -256,7 +256,7 @@ def hourly_coe_equation(
                 + gamma_effective * u_gap                      # unemployment gap
                 + mc["lambda_hcoe"] * inputs["ΔU_1_over_U"]    # speed limit
                 + mc["phi_hcoe"] * inputs["Δ4dfd"]             # demand deflator
-                + mc["theta_hcoe"] * pi_anchor_quarterly       # trend expectations
+                + mc["theta_hcoe"] * pi_exp_quarterly          # inflation expectations
                 + mc["psi_hcoe"] * inputs["mfp_growth"]        # productivity → wages
             ),
             sigma=mc["epsilon_hcoe"],

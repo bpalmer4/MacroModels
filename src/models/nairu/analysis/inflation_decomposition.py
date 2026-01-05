@@ -15,10 +15,10 @@ Components
 ----------
 The Phillips curve decomposes quarterly inflation as:
 
-    π = quarterly(π_anchor) + γ_π·u_gap + ρ_π·Δ4ρm + ξ_π·GSCPI² + ε
+    π = quarterly(π_exp) + γ_π·u_gap + ρ_π·Δ4ρm + ξ_π·GSCPI² + ε
 
 Where:
-    - quarterly(π_anchor): Baseline from expectations/target (neutral)
+    - quarterly(π_exp): Baseline from expectations/target (neutral)
     - γ_π·u_gap: Demand component (unemployment gap)
     - ρ_π·Δ4ρm: Supply component - import prices
     - ξ_π·GSCPI²: Supply component - global supply chain pressure (COVID-era)
@@ -290,7 +290,7 @@ def decompose_inflation(
 
     # Convert observed data to Series
     U = pd.Series(obs["U"], index=obs_index, name="U")
-    pi_anchor = pd.Series(obs["π_anchor"], index=obs_index, name="pi_anchor")
+    pi_exp = pd.Series(obs["π_exp"], index=obs_index, name="pi_exp")
     pi_observed = pd.Series(obs["π"], index=obs_index, name="observed")
 
     # Import prices (lagged) - may not be present
@@ -305,7 +305,7 @@ def decompose_inflation(
 
     # Compute components (all operations on Series)
     # 1. Anchor contribution (quarterly, using compound conversion)
-    anchor = quarterly(pi_anchor)
+    anchor = quarterly(pi_exp)
     anchor.name = "anchor"
 
     # 2. Demand contribution (unemployment gap)
@@ -542,7 +542,7 @@ def plot_inflation_drivers_proportional(
     # Anchor as baseline, then demand and supply stack on top
     bar_data = pd.DataFrame(
         {
-            "Inflation expectations / inflation target": anchor,
+            "Inflation expectations": anchor,
             "Demand": demand_prop,
             "Supply": supply_prop,
         },
@@ -594,7 +594,7 @@ def plot_inflation_drivers_unscaled(
 
     bar_data = pd.DataFrame(
         {
-            "Inflation expectations / inflation target": df["anchor"],
+            "Inflation expectations": df["anchor"],
             "Demand": df["demand"],
             "Supply": df["supply_total"],
             "Noise": df["residual"],
@@ -672,7 +672,7 @@ class WageInflationDecomposition:
     """
 
     observed: pd.Series
-    anchor: pd.Series          # α + θ×π_anchor
+    anchor: pd.Series          # α + θ×π_exp
     demand: pd.Series          # γ×u_gap + λ×ΔU/U
     price_passthrough: pd.Series  # φ×Δ4dfd
     residual: pd.Series
@@ -721,13 +721,13 @@ def decompose_wage_inflation(
 
     # Convert observed data to Series
     U = pd.Series(obs["U"], index=obs_index)
-    pi_anchor = pd.Series(obs["π_anchor"], index=obs_index)
+    pi_exp = pd.Series(obs["π_exp"], index=obs_index)
     ulc_observed = pd.Series(obs["Δulc"], index=obs_index)
     delta_u_over_u = pd.Series(obs["ΔU_1_over_U"], index=obs_index)
     dfd_growth = pd.Series(obs["Δ4dfd"], index=obs_index)
 
     # Compute components
-    anchor = alpha_wg + theta_wg * quarterly(pi_anchor)
+    anchor = alpha_wg + theta_wg * quarterly(pi_exp)
     u_gap = (U - nairu) / U
     demand = gamma_wg * u_gap + lambda_wg * delta_u_over_u
     price_passthrough = phi_wg * dfd_growth
@@ -800,7 +800,7 @@ def plot_wage_drivers_unscaled(
 
     bar_data = pd.DataFrame(
         {
-            "Anchor (intercept + expectations)": df["anchor"],
+            "Baseline (α + θ×expectations)": df["anchor"],
             "Demand (labor market)": df["demand"],
             "Price pass-through": df["price_passthrough"],
             "Noise": df["residual"],
@@ -865,7 +865,7 @@ class HCOEInflationDecomposition:
     """
 
     observed: pd.Series
-    anchor: pd.Series          # α + θ×π_anchor
+    anchor: pd.Series          # α + θ×π_exp
     demand: pd.Series          # γ×u_gap + λ×ΔU/U
     price_passthrough: pd.Series  # φ×Δ4dfd
     productivity: pd.Series    # ψ×mfp_growth
@@ -917,14 +917,14 @@ def decompose_hcoe_inflation(
 
     # Convert observed data to Series
     U = pd.Series(obs["U"], index=obs_index)
-    pi_anchor = pd.Series(obs["π_anchor"], index=obs_index)
+    pi_exp = pd.Series(obs["π_exp"], index=obs_index)
     hcoe_observed = pd.Series(obs["Δhcoe"], index=obs_index)
     delta_u_over_u = pd.Series(obs["ΔU_1_over_U"], index=obs_index)
     dfd_growth = pd.Series(obs["Δ4dfd"], index=obs_index)
     mfp_growth = pd.Series(obs["mfp_growth"], index=obs_index)
 
     # Compute components
-    anchor = alpha_hcoe + theta_hcoe * quarterly(pi_anchor)
+    anchor = alpha_hcoe + theta_hcoe * quarterly(pi_exp)
     u_gap = (U - nairu) / U
     demand = gamma_hcoe * u_gap + lambda_hcoe * delta_u_over_u
     price_passthrough = phi_hcoe * dfd_growth
@@ -1003,7 +1003,7 @@ def plot_hcoe_drivers_unscaled(
 
     bar_data = pd.DataFrame(
         {
-            "Anchor (intercept + expectations)": df["anchor"],
+            "Baseline (α + θ×expectations)": df["anchor"],
             "Demand (labor market)": df["demand"],
             "Price pass-through": df["price_passthrough"],
             "Productivity": df["productivity"],

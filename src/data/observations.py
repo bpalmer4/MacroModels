@@ -46,7 +46,7 @@ from src.data import (
     get_unemployment_speed_limit_qrtly,
     hma,
 )
-from src.data.rba_loader import get_inflation_anchor
+from src.data.expectations_model import get_model_expectations
 from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
 
 # --- Constants ---
@@ -142,7 +142,9 @@ def build_observations(
     # Inflation
     π = get_trimmed_mean_qrtly().data
     π4 = get_trimmed_mean_annual().data
-    π_anchor = get_inflation_anchor().data
+
+    # Inflation expectations from signal extraction model
+    π_exp = get_model_expectations().data
 
     # Interest rates
     cash_rate = get_cash_rate_qrtly().data
@@ -207,15 +209,24 @@ def build_observations(
     ).data
 
     # Real rate gap (for exchange rate equation)
-    r_gap = cash_rate - π_anchor - r_star
+    r_gap = cash_rate - π_exp - r_star
     r_gap_1 = r_gap.shift(1)
+
+    # Check expectations end date vs GDP
+    gdp_end = log_gdp.last_valid_index()
+    exp_end = π_exp.last_valid_index()
+    if exp_end < gdp_end:
+        print(
+            f"WARNING: Expectations end ({exp_end}) is before GDP end ({gdp_end}). "
+            "Re-run expectations model to update."
+        )
 
     # Build DataFrame
     observed = pd.DataFrame({
         # Inflation
         "π": π,
         "π4": π4,
-        "π_anchor": π_anchor,
+        "π_exp": π_exp,
         # Unemployment
         "U": U,
         "U_1": U_1,

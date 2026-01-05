@@ -25,7 +25,7 @@ def is_equation(
 
     Where:
         - y_gap = log_gdp - potential_output (output gap)
-        - r = cash_rate - π_anchor (real interest rate)
+        - r = cash_rate - π_exp (real interest rate)
         - r* = det_r_star (equilibrium real rate)
         - fiscal_impulse = Δlog(G) - Δlog(GDP) (expansionary when positive)
         - Δdsr = change in debt servicing ratio (interest payments / income)
@@ -54,7 +54,7 @@ def is_equation(
         inputs: Must contain:
             - "log_gdp": Log of real GDP
             - "cash_rate": Nominal interest rate (annual)
-            - "π_anchor": Inflation anchor (annual)
+            - "π_exp": Inflation expectations (annual)
             - "det_r_star": Deterministic equilibrium real rate
             - "fiscal_impulse_1": Lagged fiscal impulse (G growth - GDP growth)
             - "Δdsr_1": Lagged change in debt servicing ratio (pp)
@@ -81,8 +81,8 @@ def is_equation(
         }
         mc = set_model_coefficients(model, settings, constant)
 
-        # Real interest rate: i - π_anchor
-        real_rate = inputs["cash_rate"] - inputs["π_anchor"]
+        # Real interest rate: i - π_exp
+        real_rate = inputs["cash_rate"] - inputs["π_exp"]
 
         # Real rate gap: (r - r*)
         rate_gap = real_rate - inputs["det_r_star"]

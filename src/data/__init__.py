@@ -13,8 +13,6 @@ from src.data.cash_rate import (
     compute_r_star,
     get_cash_rate_monthly,
     get_cash_rate_qrtly,
-    get_real_rate_gap_lagged_qrtly,
-    get_real_rate_gap_qrtly,
 )
 from src.data.dataseries import DataSeries
 from src.data.debt_servicing import (
@@ -161,8 +159,6 @@ __all__ = [
     "compute_r_star",
     "get_cash_rate_monthly",
     "get_cash_rate_qrtly",
-    "get_real_rate_gap_lagged_qrtly",
-    "get_real_rate_gap_qrtly",
     # Wages and labour costs
     "get_ulc_growth_lagged_qrtly",
     "get_ulc_growth_qrtly",

@@ -3,25 +3,12 @@
 import mgplot as mg
 import pandas as pd
 
-from src.data.rba_loader import PI_TARGET_FULL, PI_TARGET_START
 from src.models.nairu.analysis.extraction import get_vector_var
 from src.models.nairu.analysis.plot_posterior_timeseries import plot_posterior_timeseries
 
 # Plotting constants
 START = pd.Period("1985Q1", freq="Q")
 RFOOTER = "Joint NAIRU + Output Gap Model"
-
-# NAIRU warning region (before inflation target fully anchored)
-NAIRU_WARN = {
-    "axvspan": {
-        "xmin": START.ordinal,
-        "xmax": PI_TARGET_FULL.ordinal,
-        "label": r"NAIRU ($U^*$) WRT $\pi^e$ (before inflation target fully anchored)",
-        "color": "goldenrod",
-        "alpha": 0.2,
-        "zorder": -2,
-    }
-}
 
 ANNUAL_RANGE = {
     "axhspan": {
@@ -79,14 +66,11 @@ def plot_nairu(
             title="NAIRU Estimate for Australia",
             ylabel="Per cent",
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
-            lfooter=r"Australia. $NAIRU = U^*$ "
-            f"WRT expectations → {PI_TARGET_START} → blended → {PI_TARGET_FULL} → target.",
-            rheader=f"From {PI_TARGET_FULL}, NAIRU = unemployment rate needed to hit inflation target.",
+            lfooter=r"Australia. $NAIRU = U^*$. Inflation expectations from signal extraction model.",
             rfooter=RFOOTER,
             axisbelow=True,
             **ANNUAL_RANGE,
             **ANNUAL_TARGET,
-            **NAIRU_WARN,
             show=show,
         )
 
@@ -117,6 +101,5 @@ def plot_unemployment_gap(
         legend={"loc": "best", "fontsize": "x-small"},
         axisbelow=True,
         y0=True,
-        **NAIRU_WARN,
         show=show,
     )
