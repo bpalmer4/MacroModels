@@ -4,10 +4,27 @@ Collates data from various data modules into a single observation dictionary
 ready for model estimation.
 """
 
-from typing import cast
+from typing import Literal, cast
 
 import numpy as np
 import pandas as pd
+
+# --- Anchor Mode ---
+
+AnchorMode = Literal["expectations", "target"]
+
+# Inflation target (RBA's 2-3% band midpoint)
+INFLATION_TARGET = 2.5
+
+# Phasing period for target anchor mode
+PHASE_START = pd.Period("1992Q4")  # Last quarter using pure expectations
+PHASE_END = pd.Period("1998Q4")    # First quarter using pure target
+
+# Labels for chart annotations
+ANCHOR_LABELS = {
+    "expectations": "Anchor: Estimated expectations",
+    "target": "Anchor: Expectations → 1993 → phased → 1998 → Target",
+}
 
 from src.data import (
     compute_mfp_trend_floored,
@@ -54,6 +71,50 @@ from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
 HMA_TERM = 13  # Henderson MA smoothing term
 
 
+# --- Anchor Mode Helpers ---
+
+
+def apply_anchor_mode(
+    expectations: pd.Series,
+    anchor_mode: AnchorMode,
+) -> pd.Series:
+    """Apply anchor mode to expectations series.
+
+    Args:
+        expectations: Raw expectations series from signal extraction model
+        anchor_mode: How to anchor expectations
+            - "expectations": Use full series as-is
+            - "target": Use expectations to PHASE_START, phase to target by PHASE_END,
+                        then use target from PHASE_END onwards
+
+    Returns:
+        Anchored expectations series
+    """
+    if anchor_mode == "expectations":
+        return expectations
+
+    # Target mode: phase from expectations to target
+    result = expectations.copy()
+
+    # Calculate phase weights (linear interpolation)
+    # 0 at PHASE_START, 1 at PHASE_END
+    phase_periods = pd.period_range(PHASE_START, PHASE_END, freq="Q")
+    n_periods = len(phase_periods)
+
+    for i, period in enumerate(phase_periods):
+        if period in result.index:
+            # Weight increases linearly from 0 to 1
+            weight = i / (n_periods - 1)
+            exp_value = expectations.loc[period] if period in expectations.index else INFLATION_TARGET
+            result.loc[period] = (1 - weight) * exp_value + weight * INFLATION_TARGET
+
+    # After PHASE_END: use target
+    post_phase = result.index > PHASE_END
+    result.loc[post_phase] = INFLATION_TARGET
+
+    return result
+
+
 # --- Data Preparation Helpers ---
 
 
@@ -97,8 +158,9 @@ def build_observations(
     start: str | None = None,
     end: str | None = None,
     hma_term: int = HMA_TERM,
+    anchor_mode: AnchorMode = "target",
     verbose: bool = False,
-) -> tuple[dict[str, np.ndarray], pd.PeriodIndex]:
+) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, str]:
     """Build observation dictionary for model.
 
     Loads all data from library, applies model-specific transformations,
@@ -111,10 +173,13 @@ def build_observations(
         start: Start period (e.g., "1980Q1")
         end: End period
         hma_term: Henderson MA smoothing term (default 13)
+        anchor_mode: How to anchor expectations
+            - "expectations": Use full estimated expectations series
+            - "target": Phase from expectations to 2.5% target (1993-1998)
         verbose: Print sample info
 
     Returns:
-        Tuple of (observations dict, period index)
+        Tuple of (observations dict, period index, anchor label)
 
     """
     # --- Load data from library ---
@@ -144,7 +209,8 @@ def build_observations(
     π4 = get_trimmed_mean_annual().data
 
     # Inflation expectations from signal extraction model
-    π_exp = get_model_expectations().data
+    π_exp_raw = get_model_expectations().data
+    π_exp = apply_anchor_mode(π_exp_raw, anchor_mode)
 
     # Interest rates
     cash_rate = get_cash_rate_qrtly().data
@@ -320,4 +386,7 @@ def build_observations(
     obs_dict = {col: observed[col].to_numpy() for col in observed.columns}
     obs_index = cast("pd.PeriodIndex", observed.index)
 
-    return obs_dict, obs_index
+    # Get anchor label for chart annotations
+    anchor_label = ANCHOR_LABELS[anchor_mode]
+
+    return obs_dict, obs_index, anchor_label

@@ -475,6 +475,7 @@ def print_bayesian_comparison(
 
 def plot_bayesian_scenario_inflation(
     scenario_results: dict[str, BayesianScenarioResults],
+    anchor_label: str = "",
     n_history: int = 4,
     chart_dir: Path | str | None = None,
     show: bool = True,
@@ -544,7 +545,7 @@ def plot_bayesian_scenario_inflation(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Trimmed mean, annualised",
             rheader="Scenarios assume RBA moves then holds.",
-            lfooter="Australia. NAIRU and inflation expectations assumed fixed over scenario horizon.",
+            lfooter=f"Australia. {anchor_label}." if anchor_label else "Australia.",
             rfooter="Bayesian sampling. RBA-calibrated transmission.",
             show=show,
         )
@@ -554,6 +555,7 @@ def plot_bayesian_scenario_unemployment(
     scenario_results: dict[str, BayesianScenarioResults],
     obs: dict | None = None,
     obs_index: pd.PeriodIndex | None = None,
+    anchor_label: str = "",
     n_history: int = 4,
     chart_dir: Path | str | None = None,
     show: bool = True,
@@ -631,7 +633,7 @@ def plot_bayesian_scenario_unemployment(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Unemployment rate. Responds more slowly and over longer horizons than inflation.",
             rheader="Scenarios assume RBA moves then holds.",
-            lfooter="Australia. NAIRU and inflation expectations assumed fixed over scenario horizon.",
+            lfooter=f"Australia. {anchor_label}." if anchor_label else "Australia.",
             rfooter="Bayesian sampling. RBA-calibrated transmission.",
             show=show,
         )
@@ -641,6 +643,7 @@ def plot_bayesian_output_gap(
     scenario_results: dict[str, BayesianScenarioResults],
     obs: dict | None = None,
     obs_index: pd.PeriodIndex | None = None,
+    anchor_label: str = "",
     n_history: int = 8,
     chart_dir: Path | str | None = None,
     show: bool = True,
@@ -714,7 +717,7 @@ def plot_bayesian_output_gap(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Output gap = (GDP - Potential) / Potential × 100",
             rheader="Positive output gap is inflationary.",
-            lfooter="Australia. Scenarios assume RBA moves then holds.",
+            lfooter=f"Australia. {anchor_label}." if anchor_label else "Australia.",
             rfooter="Bayesian sampling. RBA-calibrated transmission.",
             show=show,
         )
@@ -724,6 +727,7 @@ def plot_bayesian_output_vs_potential(
     scenario_results: dict[str, BayesianScenarioResults],
     obs: dict | None = None,
     obs_index: pd.PeriodIndex | None = None,
+    anchor_label: str = "",
     n_history: int = 8,
     chart_dir: Path | str | None = None,
     show: bool = True,
@@ -803,7 +807,7 @@ def plot_bayesian_output_vs_potential(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="GDP and potential output (log scale).",
             rheader="GDP above potential is inflationary.",
-            lfooter="Australia. Scenarios assume RBA moves then holds.",
+            lfooter=f"Australia. {anchor_label}." if anchor_label else "Australia.",
             rfooter="Bayesian sampling. RBA-calibrated transmission.",
             show=show,
         )
@@ -834,7 +838,7 @@ def run_stage3_bayesian(
     print("Loading model results...")
 
     # Load results
-    trace, obs, obs_index, constants = load_results(output_dir=output_dir, prefix=prefix)
+    trace, obs, obs_index, constants, anchor_label = load_results(output_dir=output_dir, prefix=prefix)
 
     # Rebuild model and create results container
     model = build_model(obs)
@@ -843,6 +847,7 @@ def run_stage3_bayesian(
         obs=obs,
         obs_index=obs_index,
         model=model,
+        anchor_label=anchor_label,
     )
 
     current_rate = obs["cash_rate"][-1]
@@ -855,15 +860,20 @@ def run_stage3_bayesian(
 
     # Plot
     if plot_scenarios:
-        plot_bayesian_scenario_inflation(scenario_results, chart_dir=chart_dir, show=False)
+        plot_bayesian_scenario_inflation(
+            scenario_results, anchor_label=anchor_label, chart_dir=chart_dir, show=False
+        )
         plot_bayesian_scenario_unemployment(
-            scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False
+            scenario_results, obs=obs, obs_index=obs_index, anchor_label=anchor_label,
+            chart_dir=chart_dir, show=False
         )
         plot_bayesian_output_gap(
-            scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False
+            scenario_results, obs=obs, obs_index=obs_index, anchor_label=anchor_label,
+            chart_dir=chart_dir, show=False
         )
         plot_bayesian_output_vs_potential(
-            scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False
+            scenario_results, obs=obs, obs_index=obs_index, anchor_label=anchor_label,
+            chart_dir=chart_dir, show=False
         )
 
     return scenario_results

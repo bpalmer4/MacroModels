@@ -18,7 +18,7 @@ import pandas as pd
 import pymc as pm
 
 from src.data.henderson import hma
-from src.data.observations import build_observations
+from src.data.observations import ANCHOR_LABELS, AnchorMode, build_observations
 from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
 from src.models.nairu.equations import (
     employment_equation,
@@ -136,6 +136,7 @@ def save_results(
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
     constants: dict[str, Any] | None = None,
+    anchor_label: str | None = None,
     output_dir: Path | str | None = None,
     prefix: str = "nairu_output_gap",
 ) -> Path:
@@ -146,6 +147,7 @@ def save_results(
         obs: Observation dictionary
         obs_index: Period index for observations
         constants: Fixed parameter values used in model building
+        anchor_label: Label describing expectations anchor mode (for chart annotations)
         output_dir: Directory to save to (default: model_outputs/)
         prefix: Filename prefix
 
@@ -157,6 +159,8 @@ def save_results(
         output_dir = DEFAULT_OUTPUT_DIR
     if constants is None:
         constants = {}
+    if anchor_label is None:
+        anchor_label = ANCHOR_LABELS["expectations"]
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -165,10 +169,15 @@ def save_results(
     trace.to_netcdf(str(trace_path))
     print(f"Saved trace to: {trace_path}")
 
-    # Save observations, index, and constants as pickle
+    # Save observations, index, constants, and anchor label as pickle
     obs_path = output_dir / f"{prefix}_obs.pkl"
     with open(obs_path, "wb") as f:
-        pickle.dump({"obs": obs, "obs_index": obs_index, "constants": constants}, f)
+        pickle.dump({
+            "obs": obs,
+            "obs_index": obs_index,
+            "constants": constants,
+            "anchor_label": anchor_label,
+        }, f)
     print(f"Saved observations to: {obs_path}")
 
     return output_dir
@@ -180,23 +189,27 @@ def save_results(
 def run_stage1(
     start: str | None = "1980Q1",
     end: str | None = None,
+    anchor_mode: AnchorMode = "target",
     config: SamplerConfig | None = None,
     output_dir: Path | str | None = None,
     prefix: str = "nairu_output_gap",
     verbose: bool = False,
-) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex]:
+) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex, str]:
     """Run Stage 1: Build observations, sample model, and save results.
 
     Args:
         start: Start period
         end: End period
+        anchor_mode: How to anchor expectations
+            - "expectations": Use full estimated expectations series
+            - "target": Phase from expectations to 2.5% target (1993-1998)
         config: Sampler configuration
         output_dir: Directory to save results
         prefix: Filename prefix for saved files
         verbose: Print progress messages
 
     Returns:
-        Tuple of (trace, obs, obs_index)
+        Tuple of (trace, obs, obs_index, anchor_label)
 
     """
     if config is None:
@@ -210,7 +223,10 @@ def run_stage1(
 
     # Build observations
     print("Building observations...")
-    obs, obs_index = build_observations(start=start, end=end, verbose=verbose)
+    print(f"  Anchor mode: {anchor_mode}")
+    obs, obs_index, anchor_label = build_observations(
+        start=start, end=end, anchor_mode=anchor_mode, verbose=verbose
+    )
 
     # Apply HMA(13) smoothing to labour force growth for potential calculation
     lf_raw = pd.Series(obs["lf_growth"], index=obs_index)
@@ -227,9 +243,15 @@ def run_stage1(
 
     # Save results (including fixed constants from model)
     constants = get_fixed_constants(model)
-    save_results(trace, obs, obs_index, constants=constants, output_dir=output_dir, prefix=prefix)
+    save_results(
+        trace, obs, obs_index,
+        constants=constants,
+        anchor_label=anchor_label,
+        output_dir=output_dir,
+        prefix=prefix,
+    )
 
-    return trace, obs, obs_index
+    return trace, obs, obs_index, anchor_label
 
 
 if __name__ == "__main__":
@@ -240,11 +262,19 @@ if __name__ == "__main__":
     parser.add_argument("--start", type=str, default="1980Q1", help="Start period")
     parser.add_argument("--end", type=str, default=None, help="End period")
     parser.add_argument("--output-dir", type=str, default=None, help="Output directory")
+    parser.add_argument(
+        "--anchor",
+        type=str,
+        choices=["expectations", "target"],
+        default="target",
+        help="Expectations anchor mode: 'target' (phase to 2.5%%, default) or 'expectations' (full series)",
+    )
     args = parser.parse_args()
 
     run_stage1(
         start=args.start,
         end=args.end,
+        anchor_mode=args.anchor,
         output_dir=args.output_dir,
         verbose=args.verbose,
     )

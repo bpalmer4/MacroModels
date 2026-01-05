@@ -33,7 +33,7 @@ from pathlib import Path
 from src.data import compute_r_star
 
 # Re-export key components for backwards compatibility
-from src.data.observations import HMA_TERM, build_observations
+from src.data.observations import ANCHOR_LABELS, AnchorMode, HMA_TERM, build_observations
 from src.models.nairu.base import SamplerConfig, sample_model
 from src.models.nairu.stage1 import (
     build_model,
@@ -69,6 +69,9 @@ __all__ = [
     "RFOOTER_OUTPUT",
     "FORECAST_HORIZON",
     "DEFAULT_POLICY_SCENARIOS",
+    "ANCHOR_LABELS",
+    # Types
+    "AnchorMode",
     # Stage 1
     "build_observations",
     "build_model",
@@ -101,6 +104,7 @@ __all__ = [
 def run_model(
     start: str | None = "1980Q1",
     end: str | None = None,
+    anchor_mode: AnchorMode = "target",
     config: SamplerConfig | None = None,
     verbose: bool = False,
 ) -> NAIRUResults:
@@ -113,6 +117,9 @@ def run_model(
     Args:
         start: Start period
         end: End period
+        anchor_mode: How to anchor expectations
+            - "expectations": Use full estimated expectations series
+            - "target": Phase from expectations to 2.5% target (1993-1998)
         config: Sampler configuration
         verbose: Print progress messages
 
@@ -124,7 +131,9 @@ def run_model(
         config = SamplerConfig()
 
     # Run stage 1 (without saving)
-    obs, obs_index = build_observations(start=start, end=end, verbose=verbose)
+    obs, obs_index, anchor_label = build_observations(
+        start=start, end=end, anchor_mode=anchor_mode, verbose=verbose
+    )
     model = build_model(obs)
 
     print("Sampling...")
@@ -135,19 +144,31 @@ def run_model(
         obs=obs,
         obs_index=obs_index,
         model=model,
+        anchor_label=anchor_label,
     )
 
 
 # --- CLI Entry Point ---
 
 
-def main(verbose: bool = False, skip_forecast: bool = False) -> None:
+def main(
+    anchor_mode: AnchorMode = "target",
+    verbose: bool = False,
+    skip_forecast: bool = False,
+) -> None:
     """Run the full NAIRU + Output Gap estimation pipeline.
 
     This runs all three stages:
     1. Stage 1: Build observations, sample model, save results
     2. Stage 2: Load results, run diagnostics, generate all plots
     3. Stage 3: Model-consistent forecasting with policy scenarios
+
+    Args:
+        anchor_mode: How to anchor expectations
+            - "expectations": Use full estimated expectations series
+            - "target": Phase from expectations to 2.5% target (1993-1998)
+        verbose: Print detailed output
+        skip_forecast: Skip Stage 3 (scenario analysis)
     """
     # Default output directory
     output_dir = Path(__file__).parent.parent.parent.parent / "model_outputs"
@@ -156,7 +177,7 @@ def main(verbose: bool = False, skip_forecast: bool = False) -> None:
     print("=" * 60)
     print("STAGE 1: Sampling")
     print("=" * 60)
-    run_stage1(output_dir=output_dir, verbose=verbose)
+    run_stage1(anchor_mode=anchor_mode, output_dir=output_dir, verbose=verbose)
 
     print("\n")
     print("=" * 60)
@@ -192,5 +213,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Skip Stage 3 (scenario analysis)",
     )
+    parser.add_argument(
+        "--anchor",
+        type=str,
+        choices=["expectations", "target"],
+        default="target",
+        help="Expectations anchor mode: 'target' (phase to 2.5%%, default) or 'expectations' (full series)",
+    )
     args = parser.parse_args()
-    main(verbose=args.verbose, skip_forecast=args.skip_forecast)
+    main(anchor_mode=args.anchor, verbose=args.verbose, skip_forecast=args.skip_forecast)

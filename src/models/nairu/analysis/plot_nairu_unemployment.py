@@ -61,12 +61,13 @@ def plot_nairu(
         mg.line_plot(π4, ax=ax, color=color if color else "darkorange", width=width, zorder=4)
 
     if ax is not None:
+        lfooter = rf"Australia. $NAIRU = U^*$. {results.anchor_label}."
         mg.finalise_plot(
             ax,
             title="NAIRU Estimate for Australia",
             ylabel="Per cent",
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
-            lfooter=r"Australia. $NAIRU = U^*$. Inflation expectations from signal extraction model.",
+            lfooter=lfooter,
             rfooter=RFOOTER,
             axisbelow=True,
             **ANNUAL_RANGE,
@@ -89,6 +90,7 @@ def plot_unemployment_gap(
     if verbose:
         print("Last data point:", u_gap.index[-1])
 
+    lfooter = rf"Australia. $U\text{{-}}gap = U - U^*$. {results.anchor_label}."
     plot_posterior_timeseries(
         data=u_gap,
         legend_stem="Unemployment Gap",
@@ -96,7 +98,7 @@ def plot_unemployment_gap(
         start=START,
         title="Unemployment Gap Estimate for Australia",
         ylabel="Percentage points (U - U*)",
-        lfooter=r"Australia. $U\text{-}gap = U - U^*$. Positive = slack, Negative = tight.",
+        lfooter=lfooter,
         rfooter=RFOOTER,
         legend={"loc": "best", "fontsize": "x-small"},
         axisbelow=True,

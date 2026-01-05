@@ -229,7 +229,7 @@ def hourly_coe_equation(
             "gamma_hcoe_gfc": {"mu": -0.5, "sigma": 0.5, "upper": 0},       # post-GFC (flat)
             "gamma_hcoe_covid": {"mu": -1.5, "sigma": 0.75, "upper": 0},    # post-COVID
             "lambda_hcoe": {"mu": -4.0, "sigma": 2.0},   # UE rate change (speed limit)
-            "phi_hcoe": {"mu": 0.1, "sigma": 0.1},       # demand deflator (price→wage)
+            "phi_hcoe": {"mu": 0.1, "sigma": 0.1, "lower": 0},  # demand deflator (price→wage, positive by theory)
             "theta_hcoe": {"mu": 0.1, "sigma": 0.1, "lower": 0},  # trend expectations (positive by theory)
             "psi_hcoe": {"mu": 1.0, "sigma": 0.5, "lower": 0},    # MFP → wages (positive: productivity gains shared)
             "epsilon_hcoe": {"sigma": 0.75},            # error term (tighter than ULC)

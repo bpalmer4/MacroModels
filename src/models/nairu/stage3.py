@@ -558,6 +558,7 @@ def print_scenario_comparison(
 
 def plot_scenario_inflation(
     scenario_results: dict[str, ForecastResults],
+    anchor_label: str = "",
     n_history: int = 4,
     chart_dir: Path | str | None = None,
     show: bool = True,
@@ -566,6 +567,7 @@ def plot_scenario_inflation(
 
     Args:
         scenario_results: Dict of {scenario_name: ForecastResults} from run_scenarios
+        anchor_label: Label describing expectations anchor mode (for chart footer)
         n_history: Number of historical periods to show before forecast
         chart_dir: Directory to save charts. If None, uses DEFAULT_CHART_DIR.
         show: Display plots interactively.
@@ -660,7 +662,7 @@ def plot_scenario_inflation(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Trimmed mean, annualised",
             rheader="Scenarios assume RBA moves then holds.",
-            lfooter="Australia. NAIRU and inflation expectations assumed fixed over scenario horizon.",
+            lfooter=f"Australia. {anchor_label}." if anchor_label else "Australia.",
             rfooter="Ceteris paribus, no new shocks. RBA-calibrated transmission.",
             show=show,
         )
@@ -670,6 +672,7 @@ def plot_scenario_gdp_growth(
     scenario_results: dict[str, ForecastResults],
     obs: dict | None = None,
     obs_index: pd.PeriodIndex | None = None,
+    anchor_label: str = "",
     n_history: int = 4,
     chart_dir: Path | str | None = None,
     show: bool = True,
@@ -680,6 +683,7 @@ def plot_scenario_gdp_growth(
         scenario_results: Dict of {scenario_name: ForecastResults} from run_scenarios
         obs: Observations dict containing historical data
         obs_index: PeriodIndex for observations
+        anchor_label: Label describing expectations anchor mode (for chart footer)
         n_history: Number of historical periods to show before forecast
         chart_dir: Directory to save charts. If None, uses DEFAULT_CHART_DIR.
         show: Display plots interactively.
@@ -786,7 +790,7 @@ def plot_scenario_gdp_growth(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Annualised quarterly growth",
             rheader="Scenarios assume RBA moves then holds.",
-            lfooter="Australia. NAIRU and inflation expectations assumed fixed over scenario horizon.",
+            lfooter=f"Australia. {anchor_label}." if anchor_label else "Australia.",
             rfooter="Ceteris paribus, no new shocks. RBA-calibrated transmission.",
             show=show,
         )
@@ -796,6 +800,7 @@ def plot_scenario_unemployment(
     scenario_results: dict[str, ForecastResults],
     obs: dict | None = None,
     obs_index: pd.PeriodIndex | None = None,
+    anchor_label: str = "",
     n_history: int = 4,
     chart_dir: Path | str | None = None,
     show: bool = True,
@@ -806,6 +811,7 @@ def plot_scenario_unemployment(
         scenario_results: Dict of {scenario_name: ForecastResults} from run_scenarios
         obs: Observations dict containing historical data
         obs_index: PeriodIndex for observations
+        anchor_label: Label describing expectations anchor mode (for chart footer)
         n_history: Number of historical periods to show before scenario
         chart_dir: Directory to save charts. If None, uses DEFAULT_CHART_DIR.
         show: Display plots interactively.
@@ -906,7 +912,7 @@ def plot_scenario_unemployment(
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lheader="Unemployment rate. Responds more slowly and over longer horizons than inflation.",
             rheader="Scenarios assume RBA moves then holds.",
-            lfooter="Australia. NAIRU and inflation expectations assumed fixed over scenario horizon.",
+            lfooter=f"Australia. {anchor_label}." if anchor_label else "Australia.",
             rfooter="Ceteris paribus, no new shocks. RBA-calibrated transmission.",
             show=show,
         )
@@ -937,7 +943,7 @@ def run_stage3(
     print("Loading model results...")
 
     # Load results
-    trace, obs, obs_index, constants = load_results(output_dir=output_dir, prefix=prefix)
+    trace, obs, obs_index, constants, anchor_label = load_results(output_dir=output_dir, prefix=prefix)
 
     # Rebuild model and create results container
     model = build_model(obs)
@@ -946,6 +952,7 @@ def run_stage3(
         obs=obs,
         obs_index=obs_index,
         model=model,
+        anchor_label=anchor_label,
     )
 
     current_rate = obs["cash_rate"][-1]
@@ -963,12 +970,12 @@ def run_stage3(
 
         # Plot scenario comparisons
         if plot_scenarios:
-            plot_scenario_inflation(scenario_results, chart_dir=chart_dir, show=False)
+            plot_scenario_inflation(scenario_results, anchor_label=anchor_label, chart_dir=chart_dir, show=False)
             plot_scenario_gdp_growth(
-                scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False
+                scenario_results, obs=obs, obs_index=obs_index, anchor_label=anchor_label, chart_dir=chart_dir, show=False
             )
             plot_scenario_unemployment(
-                scenario_results, obs=obs, obs_index=obs_index, chart_dir=chart_dir, show=False
+                scenario_results, obs=obs, obs_index=obs_index, anchor_label=anchor_label, chart_dir=chart_dir, show=False
             )
 
         return scenario_results

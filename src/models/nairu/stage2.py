@@ -74,6 +74,7 @@ class NAIRUResults:
     obs: dict[str, np.ndarray]
     obs_index: pd.PeriodIndex
     model: pm.Model
+    anchor_label: str
 
     def nairu_posterior(self) -> pd.DataFrame:
         """Extract NAIRU posterior as DataFrame."""
@@ -112,7 +113,7 @@ class NAIRUResults:
 def load_results(
     output_dir: Path | str | None = None,
     prefix: str = "nairu_output_gap",
-) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex, dict[str, Any]]:
+) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex, dict[str, Any], str]:
     """Load model results from disk.
 
     Args:
@@ -120,7 +121,7 @@ def load_results(
         prefix: Filename prefix used when saving
 
     Returns:
-        Tuple of (trace, obs, obs_index, constants)
+        Tuple of (trace, obs, obs_index, constants, anchor_label)
 
     """
     if output_dir is None:
@@ -132,19 +133,21 @@ def load_results(
     trace = az.from_netcdf(str(trace_path))
     print(f"Loaded trace from: {trace_path}")
 
-    # Load observations and constants
+    # Load observations, constants, and anchor label
     obs_path = output_dir / f"{prefix}_obs.pkl"
     with open(obs_path, "rb") as f:
         data = pickle.load(f)
     obs = data["obs"]
     obs_index = data["obs_index"]
     constants = data.get("constants", {})  # backwards compatible
+    anchor_label = data.get("anchor_label", "Anchor: Estimated expectations")  # backwards compatible
     print(f"Loaded observations from: {obs_path}")
     print(f"  Period: {obs_index.min()} to {obs_index.max()} ({len(obs_index)} periods)")
+    print(f"  {anchor_label}")
     if constants:
         print(f"  Fixed constants: {constants}")
 
-    return trace, obs, obs_index, constants
+    return trace, obs, obs_index, constants, anchor_label
 
 
 # --- Analysis Functions ---
@@ -183,7 +186,7 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
         ("gamma_hcoe_pre_gfc", "nonzero", "Hourly COE Phillips (pre-GFC) ≠ 0"),
         ("gamma_hcoe_gfc", "nonzero", "Hourly COE Phillips (post-GFC) ≠ 0"),
         ("gamma_hcoe_covid", "nonzero", "Hourly COE Phillips (post-COVID) ≠ 0"),
-        ("phi_hcoe", "positive", "Hourly COE demand deflator > 0"),
+        ("phi_hcoe", "nonzero", "Hourly COE demand deflator ≠ 0"),
         ("theta_hcoe", "nonzero", "Hourly COE trend expectations ≠ 0"),
         ("psi_hcoe", "nonzero", "Productivity → hourly wages ≠ 0"),
         # IS curve (truncated lower=0)
@@ -358,7 +361,7 @@ def run_stage2(
     print("Running NAIRU + Output Gap analysis (Stage 2)...\n")
 
     # Load results
-    trace, obs, obs_index, constants = load_results(output_dir=output_dir, prefix=prefix)
+    trace, obs, obs_index, constants, anchor_label = load_results(output_dir=output_dir, prefix=prefix)
 
     # Rebuild model (needed for posterior predictive checks)
     model = build_model(obs)
@@ -369,6 +372,7 @@ def run_stage2(
         obs=obs,
         obs_index=obs_index,
         model=model,
+        anchor_label=anchor_label,
     )
 
     # Plot observation grid
