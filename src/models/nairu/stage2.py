@@ -169,8 +169,6 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
     tests = [
         # Okun's Law (truncated upper=0)
         ("beta_okun", "nonzero", "Okun coefficient ≠ 0"),
-        ("alpha_okun", "nonzero", "Okun EC adjustment speed ≠ 0"),
-        ("gamma_okun", "nonzero", "Okun EC equilibrium coef ≠ 0"),
         # Price Phillips curve slopes (NOT truncated - test sign)
         ("gamma_pi_pre_gfc", "negative", "Price Phillips (pre-GFC) < 0"),
         ("gamma_pi_gfc", "negative", "Price Phillips (post-GFC) < 0"),
@@ -408,7 +406,7 @@ def run_stage2(
 
     # Posterior predictive checks and residual analysis
     obs_vars = {
-        "okun_ec": obs["ΔU"],
+        "okun": obs["ΔU"],
         "observed_price_inflation": obs["π"],
         "observed_wage_growth": obs["Δulc"],
         "observed_hourly_coe": obs["Δhcoe"],
@@ -418,7 +416,7 @@ def run_stage2(
         "observed_net_exports": obs["Δnx_ratio"],
     }
     var_labels = {
-        "okun_ec": "Change in Unemployment (pp)",
+        "okun": "Change in Unemployment (pp)",
         "observed_price_inflation": "Quarterly Inflation (%)",
         "observed_wage_growth": "Unit Labour Cost Growth (%)",
         "observed_hourly_coe": "Hourly COE Growth (%)",

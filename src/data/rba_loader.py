@@ -160,6 +160,76 @@ def get_inflation_anchor() -> DataSeries:
     )
 
 
+# --- Bond Yields (F2) ---
+
+F2_HIST_URL = "https://www.rba.gov.au/statistics/tables/xls-hist/f02histhist.xls"
+F2_CURRENT_URL = "https://www.rba.gov.au/statistics/tables/xls/f02hist.xlsx"
+
+
+def _load_f2_series(col: str) -> pd.Series:
+    """Load a series from RBA F2 bond yield tables (spliced historical + current).
+
+    Args:
+        col: Column name (e.g., "FCMYGBAG10", "FCMYGBAGI")
+
+    Returns:
+        Combined historical and current series with DatetimeIndex
+
+    """
+    # Historical (1969-2013)
+    hist = pd.read_excel(F2_HIST_URL, sheet_name="Data", skiprows=10, index_col=0)
+    hist.index = pd.to_datetime(hist.index)
+
+    # Current (2013+)
+    curr = pd.read_excel(F2_CURRENT_URL, sheet_name="Data", skiprows=10, index_col=0)
+    curr.index = pd.to_datetime(curr.index)
+
+    # Splice: current takes precedence
+    hist_s = hist[col] if col in hist.columns else pd.Series(dtype=float)
+    curr_s = curr[col] if col in curr.columns else pd.Series(dtype=float)
+
+    combined = curr_s.combine_first(hist_s)
+    return combined.dropna()
+
+
+def get_bond_yield_10y() -> DataSeries:
+    """Get 10-year nominal government bond yield (spliced 1969-present).
+
+    Returns:
+        DataSeries with monthly 10-year bond yield (%)
+
+    """
+    series = _load_f2_series("FCMYGBAG10")
+
+    return DataSeries(
+        data=series,
+        source="RBA",
+        units="%",
+        description="10-year Government Bond Yield",
+        table="F2",
+        series_id="FCMYGBAG10",
+    )
+
+
+def get_indexed_bond_yield() -> DataSeries:
+    """Get indexed (inflation-linked) bond yield (spliced 1986-present).
+
+    Returns:
+        DataSeries with monthly indexed bond yield (%)
+
+    """
+    series = _load_f2_series("FCMYGBAGI")
+
+    return DataSeries(
+        data=series,
+        source="RBA",
+        units="%",
+        description="Indexed Bond Yield",
+        table="F2",
+        series_id="FCMYGBAGI",
+    )
+
+
 # --- Exchange Rates ---
 
 

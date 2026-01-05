@@ -27,8 +27,8 @@ from src.data import (
     get_housing_wealth_growth_lagged_qrtly,
     get_import_price_growth_annual,
     get_import_price_growth_lagged_annual,
-    get_inflation_annual,
-    get_inflation_qrtly,
+    get_trimmed_mean_annual,
+    get_trimmed_mean_qrtly,
     get_labour_force_growth_qrtly,
     get_log_gdp,
     get_net_exports_ratio_change_qrtly,
@@ -140,8 +140,8 @@ def build_observations(
     alpha = get_capital_share().data
 
     # Inflation
-    π = get_inflation_qrtly().data
-    π4 = get_inflation_annual().data
+    π = get_trimmed_mean_qrtly().data
+    π4 = get_trimmed_mean_annual().data
     π_anchor = get_inflation_anchor().data
 
     # Interest rates

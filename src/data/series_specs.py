@@ -83,7 +83,7 @@ CPI_ALL_GROUPS = ReqsTuple(
     zip_file=CPI_ZIP_FILE,
 )
 
-CPI_ALL_GROUPS_GROWTH = ReqsTuple(
+CPI_HEADLINE_ANNUAL = ReqsTuple(
     cat="",
     table="640101",
     did="All groups CPI ;  Australia ;",

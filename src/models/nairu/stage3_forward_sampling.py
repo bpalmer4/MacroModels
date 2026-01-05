@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from src.data.inflation import get_inflation_qrtly
+from src.data.inflation import get_trimmed_mean_qrtly
 from src.models.nairu.analysis import get_scalar_var
 from src.models.nairu.stage2 import NAIRUResults, build_model, load_results
 from src.utilities.rate_conversion import annualize, quarterly
@@ -234,8 +234,6 @@ def bayesian_forward_sample(
     delta_dsr = get_coef("delta_dsr")
     eta_hw = get_coef("eta_hw")
     beta_okun = get_coef("beta_okun")
-    # Note: alpha_okun, gamma_okun not used - error correction removed for scenario analysis
-    # (EC term probably an artefact of CB inflation targeting policy, not natural dynamics)
     gamma_pi_covid = get_coef("gamma_pi_covid")
 
     # Innovation scales (observation equation residuals)
@@ -501,7 +499,7 @@ def plot_bayesian_scenario_inflation(
     }
 
     # Plot historical
-    cpi = annualize(get_inflation_qrtly().data)
+    cpi = annualize(get_trimmed_mean_qrtly().data)
     model_end = scenario_results["hold"].obs_index[-1]
     hist_actual = cpi.loc[cpi.index >= model_end - n_history + 1]
     hist_actual.name = "Actual"

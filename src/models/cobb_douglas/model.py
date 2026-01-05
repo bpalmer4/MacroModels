@@ -33,7 +33,7 @@ from src.data import (
     get_capital_stock_qrtly,
     get_hourly_coe_growth_qrtly,
     get_hours_worked_qrtly,
-    get_inflation_annual,
+    get_trimmed_mean_annual,
     get_labour_force_growth_qrtly,
     get_mfp_growth,
     get_ulc_growth_qrtly,
@@ -122,7 +122,7 @@ def load_inflation_data() -> pd.Series:
         Annual trimmed mean inflation (year-over-year growth)
 
     """
-    return get_inflation_annual().data
+    return get_trimmed_mean_annual().data
 
 
 # --- Growth Accounting ---

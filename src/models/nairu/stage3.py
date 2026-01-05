@@ -16,7 +16,7 @@ import mgplot as mg
 import numpy as np
 import pandas as pd
 
-from src.data.inflation import get_inflation_qrtly
+from src.data.inflation import get_trimmed_mean_qrtly
 from src.models.nairu.analysis import get_scalar_var
 from src.models.nairu.stage2 import NAIRUResults, build_model, load_results
 from src.utilities.rate_conversion import annualize, quarterly
@@ -603,7 +603,7 @@ def plot_scenario_inflation(
     df = pd.DataFrame(inflation_data)
 
     # Plot historical actuals (fetch fresh CPI - may have more recent than model)
-    cpi = annualize(get_inflation_qrtly().data)
+    cpi = annualize(get_trimmed_mean_qrtly().data)
     model_end = scenario_results["hold"].obs_index[-1]
     hist_actual = cpi.loc[cpi.index >= model_end - n_history + 1]
     hist_actual.name = "Actual"

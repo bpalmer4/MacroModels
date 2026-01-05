@@ -68,7 +68,7 @@ from src.data.import_prices import (
     get_import_price_growth_lagged_annual,
     get_import_price_index_qrtly,
 )
-from src.data.inflation import get_inflation_annual, get_inflation_qrtly
+from src.data.inflation import get_trimmed_mean_annual, get_trimmed_mean_qrtly
 from src.data.labour_force import (
     get_employed_qrtly,
     get_employment_growth_lagged_qrtly,
@@ -155,8 +155,8 @@ __all__ = [
     "compute_mfp_trend_floored",
     "get_real_wage_gap",
     # Inflation
-    "get_inflation_annual",
-    "get_inflation_qrtly",
+    "get_trimmed_mean_annual",
+    "get_trimmed_mean_qrtly",
     # Interest rates
     "compute_r_star",
     "get_cash_rate_monthly",
