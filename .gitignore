@@ -22,6 +22,6 @@ CLAUDE.md
 # too much detail
 charts/**
 .readabs_cache/**
-model_outputs/
-output/
+model_outputs/**
+output/**
 
