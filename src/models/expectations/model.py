@@ -1,15 +1,23 @@
-"""Cusbert (2017) style inflation expectations signal extraction.
+"""Inflation expectations signal extraction model.
 
-Extracts a common signal of long-term inflation expectations from multiple
-survey and market measures, controlling for backward-looking bias.
+Extracts latent long-run inflation expectations from multiple survey and
+market-based measures, following the approach in Cusbert (2017).
 
-State equation:
-    πᵉ_t = ρ × πᵉ_{t-1} + (1-ρ) × μ_t + ε_t
+State equation (random walk with fat tails):
+    πᵉ_t = πᵉ_{t-1} + ε_t,    ε_t ~ StudentT(ν=4, σ=0.075)
 
-Where μ_t transitions from adaptive (lagged inflation) to target (2.5%) post-1993.
+Observation equations:
+    survey_m,t = πᵉ_t + α_m + λ_m × π_{t-1} + ε_m,t
 
-Observation equations (for each measure m):
-    survey_m,t = πᵉ_t + λ_m × π_{t-1} + ε_m,t
+Where:
+    - α_m: Series-specific level effect (market_yoy is reference)
+    - λ_m: Backward-looking bias coefficient
+    - π_{t-1}: Lagged actual inflation
+
+Additional observations for early period anchoring:
+    - Lagged trimmed mean/weighted median inflation (full sample)
+    - Lagged headline CPI (pre-1993 only)
+    - Nominal 10y bond yields (pre-1986 only, with real rate offset)
 
 Reference:
     Cusbert T (2017), "Estimating the NAIRU and the Unemployment Gap",
@@ -178,11 +186,17 @@ def build_model(
     # Lagged inflation for backward-looking bias
     inflation_lag = inflation.shift(1).bfill().values
 
+    # Regime break for innovation variance (inflation targeting adoption)
+    regime_break = pd.Period("1993Q1")
+    n_early = int((index < regime_break).sum())
+    n_late = int((index >= regime_break).sum())
+
+    # Innovation scales: larger early (volatile), original late (anchored)
+    sigma_early = 0.12
+    sigma_late = 0.075
+
     with pm.Model() as model:
         # --- Priors ---
-
-        # State innovation scale (fixed for now - estimate later if diagnostics are clean)
-        sigma_state = 0.075
 
         # Series-specific level effect (e.g., business reads low)
         # Last series (market_yoy) is reference, others estimated relative to it
@@ -200,14 +214,31 @@ def build_model(
         sigma_obs = pm.HalfNormal("sigma_obs", sigma=1.0, shape=n_measures)
 
         # --- State Equation ---
-        # Initial state centered on actual inflation at start (adaptive expectations era)
-        # StudentT innovations allow occasional larger jumps (e.g., 88-92 disinflation)
+        # Two-regime random walk: volatile pre-targeting, anchored post-targeting
         init_inflation = inflation.iloc[0] if not np.isnan(inflation.iloc[0]) else 5.0
-        pi_exp = pm.RandomWalk(
-            "pi_exp",
-            innovation_dist=pm.StudentT.dist(mu=0, sigma=sigma_state, nu=4),
+
+        # Early period (pre-targeting): larger innovations
+        pi_exp_early = pm.RandomWalk(
+            "pi_exp_early",
+            innovation_dist=pm.StudentT.dist(mu=0, sigma=sigma_early, nu=4),
             init_dist=pm.Normal.dist(mu=init_inflation, sigma=2.0),
-            steps=n_obs - 1,
+            steps=n_early - 1,
+        )
+
+        # Late period (post-targeting): smaller innovations, continues from early
+        pi_exp_late_raw = pm.RandomWalk(
+            "pi_exp_late_raw",
+            innovation_dist=pm.StudentT.dist(mu=0, sigma=sigma_late, nu=4),
+            init_dist=pm.Normal.dist(mu=0, sigma=0.01),
+            steps=n_late - 1,
+        )
+        # Shift to continue from where early ended
+        pi_exp_late = pi_exp_late_raw - pi_exp_late_raw[0] + pi_exp_early[-1]
+
+        # Concatenate into single series
+        pi_exp = pm.Deterministic(
+            "pi_exp",
+            pm.math.concatenate([pi_exp_early, pi_exp_late])
         )
 
         # --- Observation Equations ---
@@ -258,12 +289,13 @@ def build_model(
 
         # Nominal 10y bond yields as early observation (pre-1986, before indexed bonds)
         # Nominal yield ≈ real rate + inflation expectations + term premium
+        # Early 80s had high real rates (Volcker era) - nominal 13-15%, inflation 8-10%
         nominal = get_nominal_10y().data.reindex(index)
         pre_indexed = index < pd.Period("1986Q3")
         nominal_mask = ~np.isnan(nominal.values) & pre_indexed
         if nominal_mask.sum() > 0:
             # Real rate offset (nominal = expectations + real_rate)
-            real_rate = pm.Normal("real_rate", mu=3.0, sigma=1.0)
+            real_rate = pm.Normal("real_rate", mu=5.0, sigma=1.5)
             sigma_nominal = pm.HalfNormal("sigma_nominal", sigma=2.0)
             pm.Normal(
                 "obs_nominal",

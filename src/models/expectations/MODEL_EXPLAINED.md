@@ -7,7 +7,7 @@ This directory contains a Bayesian signal extraction model for estimating latent
 | Component | Method | Key Feature |
 |-----------|--------|-------------|
 | Sample | 1983Q1 to present | Extended early period using bonds and headline CPI |
-| Latent State | Student-t random walk | σ=0.075, ν=4 allows occasional large shifts |
+| Latent State | Regime-switching Student-t random walk | σ_early=0.12 (pre-1993), σ_late=0.075 (post-1993) |
 | Observation Model | Multiple measures with bias correction | Series effects (α) and backward-looking bias (λ) |
 | Measures | Surveys + breakeven + early proxies | Business, market economists, breakevens, headline CPI, nominal bonds |
 
@@ -65,9 +65,16 @@ analysis/
 
 ## Model Design Decisions
 
-### 1. Student-t Innovations (σ=0.075, ν=4)
+### 1. Regime-Switching Student-t Innovations
 
-Normal innovations struggled to capture the sharp 1988-1992 disinflation while remaining smooth in the targeting era. Student-t with ν=4 allows occasional larger jumps during regime changes while staying smooth otherwise.
+The innovation variance switches at 1993Q1 (inflation targeting adoption):
+
+| Period | σ | Rationale |
+|--------|---|-----------|
+| Pre-1993 (early) | 0.12 | Volatile pre-targeting era, expectations unanchored |
+| Post-1993 (late) | 0.075 | Anchored post-targeting era, RBA credibility |
+
+Student-t with ν=4 allows occasional larger jumps (e.g., 1988-92 disinflation) while remaining smooth otherwise. The larger early variance reflects that expectations genuinely were more volatile before inflation targeting.
 
 ### 2. Series Effects (α)
 
@@ -98,7 +105,13 @@ Published inflation shapes expectations with a lag. Observation equations use in
 
 ### State Equation
 
+Two concatenated random walks with regime-switching innovation variance:
+
 ```
+# Early period (1983Q1 to 1992Q4)
+πᵉ_t = πᵉ_{t-1} + ε_t,    ε_t ~ StudentT(ν=4, μ=0, σ=0.12)
+
+# Late period (1993Q1 onwards) - continues from early
 πᵉ_t = πᵉ_{t-1} + ε_t,    ε_t ~ StudentT(ν=4, μ=0, σ=0.075)
 ```
 
@@ -125,7 +138,7 @@ headline_{t-1} ~ N(πᵉ_t, σ_headline)
 **Nominal 10y bonds** (pre-1986 only):
 ```
 nominal_t ~ N(πᵉ_t + real_rate, σ_nominal)
-real_rate ~ N(3.0, 1.0)  # Estimated ~6%
+real_rate ~ N(5.0, 1.5)  # Estimated ~5-6%
 ```
 
 ### Priors
@@ -138,7 +151,7 @@ real_rate ~ N(3.0, 1.0)  # Estimated ~6%
 | σ_inflation | HalfNormal(1.5) | ~1.0 |
 | σ_headline | HalfNormal(2.0) | ~1.9 |
 | σ_nominal | HalfNormal(2.0) | ~0.7 |
-| real_rate | N(3.0, 1.0) | ~6% |
+| real_rate | N(5.0, 1.5) | ~5-6% |
 
 ---
 
@@ -147,7 +160,7 @@ real_rate ~ N(3.0, 1.0)  # Estimated ~6%
 ### Command Line
 
 ```bash
-# Run with defaults (1983Q1 start, 10000 draws, 4 chains)
+# Run with defaults (1984Q1 start, 10000 draws, 4 chains)
 uv run python -m src.models.expectations.model
 
 # Quick run for testing
@@ -162,7 +175,7 @@ uv run python -m src.models.expectations.model -q
 ```python
 from src.models.expectations import run_model
 
-results = run_model(start="1983Q1", verbose=True)
+results = run_model(start="1984Q1", verbose=True)
 
 # Access results
 median = results.expectations_median()
@@ -191,10 +204,28 @@ Typical run time: ~30 seconds.
 
 ## Integration with NAIRU Model
 
-The expectations series feeds into the NAIRU model's Phillips curve as the inflation anchor:
+The expectations series feeds into the NAIRU model's Phillips curves:
 
 1. Run expectations model to extract πᵉ
 2. Save results with `results.save()`
-3. NAIRU model loads expectations from `output/expectations/expectations_hdi.parquet`
+3. NAIRU model loads median expectations from `output/expectations/expectations_hdi.parquet` via `src/data/expectations_model.py`
+4. Phillips curves use `π_exp` as the baseline around which demand/supply effects operate
+
+### Anchor Modes
+
+The NAIRU model supports two modes for anchoring expectations:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `target` (default) | Use estimated expectations to 1992Q4, phase linearly to 2.5% by 1998Q4, then 2.5% target thereafter | Policy analysis |
+| `expectations` | Use full estimated expectations series as-is | Historical analysis |
+
+**Why `target` is the default**: The key policy question is "what interest rate path gets inflation to target?" Using the 2.5% target post-1998 makes NAIRU directly interpretable as the unemployment rate consistent with hitting the inflation target. This is more policy-relevant than asking what rate achieves whatever expectations happen to be.
+
+The phasing period (1993-1998) reflects the RBA's gradual establishment of inflation targeting credibility. By 1998, expectations were effectively anchored at the 2-3% band midpoint.
+
+**NAIRU interpretation**:
+- With `target` anchor: NAIRU is the unemployment rate where inflation equals the 2.5% target
+- With `expectations` anchor: NAIRU is the unemployment rate where inflation equals current expectations
 
 See `src/models/nairu/` for NAIRU model implementation.
