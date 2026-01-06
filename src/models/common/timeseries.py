@@ -21,6 +21,7 @@ def plot_posterior_timeseries(
     start: pd.Period | None = None,
     cuts: Sequence[float] = (0.005, 0.025, 0.16),
     alphas: Sequence[float] = (0.1, 0.2, 0.3),
+    ax: Axes | None = None,
     finalise: bool = True,
     **finalise_kwargs: Any,
 ) -> Axes | None:
@@ -40,6 +41,7 @@ def plot_posterior_timeseries(
         start: Start period for filtering
         cuts: Quantile cuts for credible intervals
         alphas: Alpha values for credible interval bands
+        ax: Existing Axes to plot on (for overlaying multiple posteriors)
         finalise: If True, call finalise_plot and return None.
             If False, return Axes for composition.
         **finalise_kwargs: Passed to mg.finalise_plot (title, lfooter, rfooter, etc.)
@@ -62,7 +64,6 @@ def plot_posterior_timeseries(
     if start is not None:
         samples = samples[samples.index >= start]
 
-    ax = None
     for cut, alpha in zip(cuts, alphas):
         if not (0 < cut < 0.5):
             raise ValueError("Cuts must be between 0 and 0.5")
