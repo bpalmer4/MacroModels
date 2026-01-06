@@ -9,7 +9,7 @@ This directory contains a Bayesian signal extraction model for estimating latent
 | Sample | 1983Q1 to present | Extended early period using bonds, headline CPI, and HCOE |
 | Latent State | Regime-switching Student-t random walk | σ_early=0.12 (pre-1994), σ_late=0.075 (post-1994) |
 | Model Types | Target Anchored, Short Run (1yr), Long Run (10yr) | Different observation equations per type |
-| Measures | market_1y, breakeven, inflation, HCOE, headline CPI (pre-1993), nominal bonds (pre-1993Q3) | Series-specific effects (α) and backward-looking bias (λ) |
+| Measures | market_1y, breakeven, inflation, HCOE, headline CPI (pre-1993), nominal bonds (pre-1993Q3) | Series-specific effects (α) and backward-looking bias (λ) for target/market models |
 
 ## Reference
 
@@ -23,8 +23,8 @@ The model estimates three separate latent expectations series:
 
 | Model | Code | Survey Series | Anchor | Use Case |
 |-------|------|---------------|--------|----------|
-| **Target Anchored** | `long` | market_1y + breakeven | Yes (2.5% post-1998Q4) | Policy analysis - assumes credible anchoring |
-| **Short Run (1 Year)** | `short` | market_1y only | No | Wage-relevant expectations for Phillips curve |
+| **Target Anchored** | `target` | market_1y + breakeven | Yes (2.5% post-1998Q4) | Policy analysis - assumes credible anchoring |
+| **Short Run (1 Year)** | `short` | market_1y only (no α, λ) | No | Wage-relevant expectations for Phillips curve |
 | **Long Run (10-Year Bond)** | `market` | breakeven only | No | What markets actually believe |
 
 ### Excluded Series
@@ -42,7 +42,7 @@ Results are saved to `output/expectations/` with model type suffixes:
 - `expectations_{code}_hdi.parquet` - Point estimates with HDI bounds
 - `expectations_{code}_hdi.csv` - Same in CSV format
 
-Where `{code}` is `long`, `short`, or `market`.
+Where `{code}` is `target`, `short`, or `market`.
 
 Charts are saved to `charts/expectations/`.
 
@@ -72,7 +72,7 @@ analysis/
 | Series | Start | Description | Used In |
 |--------|-------|-------------|---------|
 | breakeven | 1993Q3 | 10-year nominal yield minus indexed bond yield | Target Anchored, Long Run |
-| nominal_10y | 1969 | Nominal 10-year government bond yield | All (pre-1993Q3 only) |
+| nominal_10y | 1969 | Nominal 10-year government bond yield | Target Anchored, Long Run (pre-1993Q3 only) |
 
 ### Inflation Measures (ABS 6401.0)
 | Series | Start | Description | Used In |
@@ -84,8 +84,8 @@ analysis/
 ### Wage Measures (ABS 5206.0, derived)
 | Series | Start | Description | Used In |
 |--------|-------|-------------|---------|
-| HCOE growth | 1978Q4 | Annual hourly compensation of employees growth | Target Anchored, Short Run |
-| MFP trend | 1978Q4 | Derived from wage data: MFP = LP - α×(g_K - g_L), HP-filtered, floored at zero | Target Anchored, Short Run |
+| HCOE growth | 1978Q4 | Annual hourly compensation of employees growth | Target Anchored only |
+| MFP trend | 1978Q4 | Derived from wage data: MFP = LP - α×(g_K - g_L), HP-filtered, floored at zero | Target Anchored only |
 
 ---
 
@@ -139,10 +139,6 @@ Hourly compensation of employees growth provides wage-based information about in
 ### 7. Lagged Inflation Observations
 
 Published inflation shapes expectations with a lag. Observation equations use inflation_{t-1} rather than contemporaneous inflation.
-
-### 8. Short Run Model: Tied Sigma
-
-In the Short Run (1 Year) model, σ_inflation is tied to σ_obs (the survey observation noise) to give equal weight to inflation and survey observations.
 
 ---
 
@@ -199,17 +195,19 @@ hcoe_adjustment ~ N(0, 0.5)  # Estimated ≈ 0
 
 ### Priors
 
-| Parameter | Prior | Typical Estimate |
-|-----------|-------|------------------|
-| α (series effects) | N(0, 0.5) | -0.4 to -0.6 |
-| λ (backward-looking bias) | N(0.1, 0.15) | -0.1 to 0.2 |
-| σ_obs | HalfNormal(1.0) | 0.1 to 0.9 |
-| σ_inflation | HalfNormal(1.5) | ~1.0 (Target Anchored), tied to σ_obs (Short Run) |
-| σ_headline | HalfNormal(2.0) | ~1.9 |
-| σ_nominal | HalfNormal(2.0) | ~0.7 |
-| σ_hcoe | HalfNormal(2.0) | ~2.0 |
-| hcoe_adjustment | N(0, 0.5) | ~0 |
-| real_rate | N(5.0, 1.5) | ~5-6% |
+| Parameter | Prior | Typical Estimate | Models |
+|-----------|-------|------------------|--------|
+| α (series effects) | N(0, 0.5) | -0.4 to -0.6 | Target, Long Run |
+| λ (backward-looking bias) | N(0.1, 0.15) | -0.1 to 0.2 | Target, Long Run |
+| σ_obs | HalfNormal(1.0) | 0.1 to 0.9 | All |
+| σ_inflation | HalfNormal(1.5) | ~1.0 | Target only |
+| σ_headline | HalfNormal(2.0) | ~1.9 | Target, Short Run |
+| σ_nominal | HalfNormal(2.0) | ~0.7 | Target, Long Run |
+| σ_hcoe | HalfNormal(2.0) | ~2.0 | Target only |
+| σ_early (innovation) | HalfNormal(0.15) | ~0.4 | Short Run only |
+| σ_late (innovation) | HalfNormal(0.1) | ~0.14 | Short Run only |
+| hcoe_adjustment | N(0, 0.5) | ~0 | Target only |
+| real_rate | N(5.0, 1.5) | ~5-6% | Target, Long Run |
 
 ---
 
@@ -218,11 +216,96 @@ hcoe_adjustment ~ N(0, 0.5)  # Estimated ≈ 0
 | Feature | Target Anchored | Short Run (1yr) | Long Run (10yr) |
 |---------|-----------------|-----------------|-----------------|
 | Survey series | market_1y, breakeven | market_1y | breakeven |
+| Survey bias (α, λ) | ✓ | ✗ | ✓ |
+| Innovation variance | Fixed (0.12/0.075) | Estimated | Fixed (0.12/0.075) |
 | Target anchor (post-1998Q4) | ✓ | ✗ | ✗ |
 | Headline CPI (pre-1993) | ✓ | ✓ | ✗ |
-| Nominal bonds (pre-1993Q3) | ✓ | ✓ | ✓ |
-| HCOE growth | ✓ | ✓ | ✗ |
-| Inflation observation | ✓ | ✓ (tied σ) | ✗ |
+| Nominal bonds (pre-1993Q3) | ✓ | ✗ | ✓ |
+| HCOE growth | ✓ | ✗ | ✗ |
+| Inflation observation | ✓ | ✓ (shared σ) | ✗ |
+
+---
+
+## Per-Model Equations
+
+### Long Run (10-Year Bond) — `market`
+
+The simplest model. Uses only breakeven inflation and nominal bonds (pre-breakeven).
+
+**State equation:**
+```
+πᵉ_t = πᵉ_{t-1} + ε_t
+
+where:
+  ε_t ~ StudentT(ν=4, μ=0, σ=0.12)   for t < 1994Q1
+  ε_t ~ StudentT(ν=4, μ=0, σ=0.075)  for t ≥ 1994Q1
+
+Initial: πᵉ_0 ~ N(inflation_1983Q1, 2.0)
+```
+
+**Observation equations:**
+```
+breakeven_t = πᵉ_t + α_breakeven + λ_breakeven × π_{t-1} + ε_t
+  ε_t ~ N(0, σ_obs)
+
+nominal_t = πᵉ_t + real_rate + (πᵉ_t × real_rate / 100) + ε_t   [pre-1993Q3 only]
+  ε_t ~ N(0, σ_nominal)
+```
+
+### Short Run (1 Year) — `short`
+
+Simplified model with estimated innovation variance. Uses market_1y survey and inflation with shared σ. No survey bias terms (α, λ), no nominal bonds, no HCOE.
+
+**State equation:** Estimated innovation variance (unlike target/market which use fixed values).
+```
+πᵉ_t = πᵉ_{t-1} + ε_t
+
+where:
+  ε_t ~ StudentT(ν=4, μ=0, σ_early)   for t < 1994Q1
+  ε_t ~ StudentT(ν=4, μ=0, σ_late)    for t ≥ 1994Q1
+
+  σ_early ~ HalfNormal(0.15)          [estimated, typical ~0.4]
+  σ_late ~ HalfNormal(0.1)            [estimated, typical ~0.14]
+```
+
+**Observation equations:**
+```
+market_1y_t = πᵉ_t + ε_t                                        [no α, no λ]
+  ε_t ~ N(0, σ_obs)
+
+π_{t-1} ~ N(πᵉ_t, σ_obs)                                        [shared σ]
+
+headline_{t-1} ~ N(πᵉ_t, σ_headline)                            [pre-1993 only]
+
+σ_obs ~ HalfNormal(1.0)                                         [estimated, typical ~0.46]
+```
+
+### Target Anchored — `target`
+
+The full model. Uses market_1y, breakeven, inflation, headline CPI, nominal bonds, HCOE, and the 2.5% target anchor.
+
+**State equation:** Same as Long Run.
+
+**Observation equations:**
+```
+market_1y_t = πᵉ_t + α_market_1y + λ_market_1y × π_{t-1} + ε_t
+  ε_t ~ N(0, σ_obs_market_1y)
+
+breakeven_t = πᵉ_t + α_breakeven + λ_breakeven × π_{t-1} + ε_t
+  ε_t ~ N(0, σ_obs_breakeven)
+
+π_{t-1} ~ N(πᵉ_t, σ_inflation)
+
+headline_{t-1} ~ N(πᵉ_t, σ_headline)                            [pre-1993 only]
+
+nominal_t = πᵉ_t + real_rate + (πᵉ_t × real_rate / 100) + ε_t   [pre-1993Q3 only]
+  ε_t ~ N(0, σ_nominal)
+
+hcoe_t = πᵉ_t + mfp_t + hcoe_adjustment + ε_t
+  ε_t ~ N(0, σ_hcoe)
+
+2.5 ~ N(πᵉ_t, 0.3)                                              [post-1998Q4 only]
+```
 
 ---
 
@@ -284,8 +367,8 @@ uv run python -m src.models.expectations.model -q
 ```python
 from src.models.expectations import run_model, run_all_models
 
-# Run single model (use code: "long", "short", or "market")
-results = run_model(model_type="long", start="1984Q1", verbose=True)
+# Run single model (use code: "target", "short", or "market")
+results = run_model(model_type="target", start="1984Q1", verbose=True)
 
 # Run all three models
 all_results = run_all_models(start="1984Q1", verbose=True)
@@ -305,11 +388,11 @@ results.save()
 
 | Setting | Value |
 |---------|-------|
-| Draws | 20,000 |
+| Draws | 10,000 |
 | Tune | 4,000 |
 | Chains | 4 |
 | Sampler | NUMPyro NUTS |
-| Total samples | 80,000 |
+| Total samples | 40,000 |
 
 ---
 
@@ -319,7 +402,7 @@ The expectations series feeds into the NAIRU model's Phillips curves:
 
 1. Run expectations model to extract πᵉ
 2. Save results with `results.save()`
-3. NAIRU model loads median expectations from `output/expectations/expectations_{code}_hdi.parquet` via `src/data/expectations_model.py`
+3. NAIRU model loads median expectations from `output/expectations/expectations_target_hdi.parquet` via `src/data/expectations_model.py`
 4. Phillips curves use `π_exp` as the baseline around which demand/supply effects operate
 
 ### Anchor Modes

@@ -59,8 +59,8 @@ def get_model_expectations_hdi() -> pd.DataFrame:
 
 
 def _load_hdi() -> pd.DataFrame:
-    """Load HDI parquet file."""
-    path = OUTPUT_DIR / "expectations_hdi.parquet"
+    """Load HDI parquet file from target-anchored model."""
+    path = OUTPUT_DIR / "expectations_target_hdi.parquet"
     if not path.exists():
         raise FileNotFoundError(
             f"Expectations model output not found at {path}. "
