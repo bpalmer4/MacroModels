@@ -34,6 +34,7 @@ The model estimates four separate latent expectations series:
 
 Results are saved to `output/expectations/` with model type suffixes:
 - `expectations_{code}_trace.nc` - Full MCMC trace (ArviZ InferenceData)
+- `expectations_{code}_metadata.pkl` - Index, measures, inflation data
 - `expectations_{code}_hdi.parquet` - Point estimates with HDI bounds
 - `expectations_{code}_hdi.csv` - Same in CSV format
 
@@ -46,10 +47,10 @@ Charts are saved to `charts/expectations/`.
 ## File Structure
 
 ```
-model.py                    # Model building, estimation, results container, CLI
-analysis/
-  __init__.py               # Re-exports analysis functions
-  validation.py             # Validation utilities
+stage1.py                   # Model building and estimation
+stage2.py                   # Diagnostics and plotting
+common.py                   # Constants (ANCHOR_SIGMA, MODEL_TYPES, etc.)
+MODEL_NOTES.md              # This documentation
 ```
 
 ---
@@ -59,28 +60,28 @@ analysis/
 ### Survey Measures (RBA Table G3)
 | Series | Start | Description | Used In |
 |--------|-------|-------------|---------|
-| market_1y | 1993Q3 | Market economists 1-year ahead | Target Anchored, Short Run |
-| business | 1989Q3 | NAB Business Survey inflation expectations | Target Anchored |
-| market_yoy | 1994Q3 | Market economists year-on-year | Target Anchored |
+| market_1y | 1993Q3 | Market economists 1-year ahead | Target Anchored, Unanchored, Short Run |
+| business | 1989Q3 | NAB Business Survey inflation expectations | Target Anchored, Unanchored |
+| market_yoy | 1994Q3 | Market economists year-on-year | Target Anchored, Unanchored |
 
 ### Market Measures (RBA Table F2)
 | Series | Start | Description | Used In |
 |--------|-------|-------------|---------|
-| breakeven | 1993Q3 | 10-year nominal yield minus indexed bond yield | Target Anchored, Long Run |
-| nominal_10y | 1969 | Nominal 10-year government bond yield | Target Anchored (pre-1993Q3), Long Run (pre-1995Q3 for 2yr overlap) |
+| breakeven | 1986Q3 | 10-year nominal yield minus indexed bond yield | Target Anchored, Unanchored, Long Run |
+| nominal_10y | 1969 | Nominal 10-year government bond yield | Target/Unanchored (pre-1993Q3, 7yr overlap), Long Run (pre-1988Q3, 2yr overlap) |
 
 ### Inflation Measures (ABS 6401.0)
 | Series | Start | Description | Used In |
 |--------|-------|-------------|---------|
-| Trimmed mean | 1983Q1 | Annual trimmed mean CPI | Target Anchored, Short Run |
-| Weighted median | 1983Q1 | Annual weighted median CPI | Target Anchored, Short Run |
-| Headline CPI | 1949Q3 | Annual headline CPI | Target Anchored, Short Run (pre-1993 only) |
+| Trimmed mean | 1983Q1 | Annual trimmed mean CPI | Target Anchored, Unanchored, Short Run |
+| Weighted median | 1983Q1 | Annual weighted median CPI | Target Anchored, Unanchored, Short Run |
+| Headline CPI | 1949Q3 | Annual headline CPI | Target Anchored, Unanchored, Short Run (pre-1993 only) |
 
 ### Wage Measures (ABS 5206.0, derived)
 | Series | Start | Description | Used In |
 |--------|-------|-------------|---------|
-| HCOE growth | 1978Q4 | Annual hourly compensation of employees growth | Target Anchored only |
-| MFP trend | 1978Q4 | Derived from wage data: MFP = LP - α×(g_K - g_L), HP-filtered, floored at zero | Target Anchored only |
+| HCOE growth | 1978Q4 | Annual hourly compensation of employees growth | Target Anchored, Unanchored |
+| MFP trend | 1978Q4 | Derived from wage data: MFP = LP - α×(g_K - g_L), HP-filtered, floored at zero | Target Anchored, Unanchored |
 
 ---
 
@@ -88,18 +89,18 @@ analysis/
 
 ### 1. Regime-Switching Student-t Innovations
 
-The innovation variance switches at 1994Q1 (inflation targeting bedded down). For Target Anchored and Short Run models, the variance is estimated; for Long Run it remains fixed.
+The innovation variance switches at 1994Q1 (inflation targeting bedded down). For Target Anchored and Short Run models, the variance is estimated; for Unanchored and Long Run it is fixed.
 
-| Period | Target/Short (estimated) | Long Run (fixed) |
+| Period | Target/Short (estimated) | Unanchored/Long Run (fixed) |
 |--------|--------------------------|------------------|
-| Pre-1994 (early) | σ_early ~ HalfNormal(0.15), typical ~0.30 | σ = 0.12 |
-| Post-1994 (late) | σ_late ~ HalfNormal(0.1), typical ~0.07 | σ = 0.075 |
+| Pre-1994 (early) | σ_early ~ HalfNormal(0.15), typical ~0.30-0.40 | σ = 0.30 (Unanchored) / 0.12 (Long Run) |
+| Post-1994 (late) | σ_late ~ HalfNormal(0.1), typical ~0.07-0.14 | σ = 0.07 (Unanchored) / 0.075 (Long Run) |
 
 Student-t with ν=4 allows occasional larger jumps (e.g., 1988-92 disinflation) while remaining smooth otherwise. The larger early variance reflects that expectations genuinely were more volatile before inflation targeting. The 1994 switchpoint (rather than 1993) gives a year for inflation targeting to bed down.
 
-### 2. Series Effects (α) — Target Anchored Only
+### 2. Series Effects (α) — Target Anchored and Unanchored Only
 
-Each measure has its own systematic level effect (Target Anchored model only):
+Each measure has its own systematic level effect:
 - **market_1y**: α ≈ -0.44 (reads below latent)
 - **breakeven**: α ≈ -0.46 (includes liquidity/term premium)
 - **business**: α ≈ -0.60 (own-price vs CPI)
@@ -114,11 +115,11 @@ Market economists' expectations in 1999Q3-2000Q3 were distorted by GST anticipat
 ### 4. Early Period Anchoring
 
 Pre-survey period (1983-1993) is anchored using:
-- **Headline CPI** (pre-1993): Informative when expectations were adaptive (Target Anchored, Short Run)
+- **Headline CPI** (pre-1993): Informative when expectations were adaptive (Target Anchored, Unanchored, Short Run)
 - **Nominal 10y bonds**: Using multiplicative Fisher equation
-  - Target Anchored: pre-1993Q3
-  - Long Run: pre-1995Q3 (2yr overlap with breakeven to anchor r*)
-- **Lagged inflation** observation equation throughout (Target Anchored, Short Run)
+  - Target Anchored, Unanchored: pre-1993Q3
+  - Long Run: pre-1988Q3 (2yr overlap with breakeven which starts 1986Q3)
+- **Lagged inflation** observation equation throughout (Target Anchored, Unanchored, Short Run)
 
 ### 5. Post-1998 Target Anchoring (Target Anchored model only)
 
@@ -127,7 +128,7 @@ Once RBA credibility was established, expectations should be tightly anchored to
 - This tightens the posterior variance in the anchored period
 - Only applies to the Target Anchored model
 
-### 6. HCOE Growth Observation (Target Anchored only)
+### 6. HCOE Growth Observation (Target Anchored and Unanchored)
 
 Hourly compensation of employees growth provides wage-based information about inflation expectations throughout the sample:
 - **HCOE growth** ≈ inflation expectations + MFP growth + adjustment
@@ -139,6 +140,19 @@ Hourly compensation of employees growth provides wage-based information about in
 
 Published inflation shapes expectations with a lag. Observation equations use inflation_{t-1} rather than contemporaneous inflation.
 
+### 8. Real Rate (r*) Identification
+
+The nominal bond observation uses the Fisher equation:
+```
+nominal = π_exp + r* + (π_exp × r* / 100)
+```
+
+With limited overlap between nominal bonds and breakeven data, **r* and π_exp are only weakly identified from each other**. In the pre-breakeven period:
+- If r* is estimated lower → π_exp adjusts higher to fit nominal yields
+- If r* is estimated higher → π_exp adjusts lower
+
+This trade-off means the r* estimate should be interpreted cautiously. The model finds a combination of r* and π_exp that fits the data, but the decomposition depends on the overlap period length. The 2-year overlap provides some anchor for r*, but the pre-breakeven π_exp level can shift to compensate.
+
 ---
 
 ## Model Specification
@@ -149,10 +163,10 @@ Two concatenated random walks with regime-switching innovation variance:
 
 ```
 # Early period (1983Q1 to 1993Q4)
-πᵉ_t = πᵉ_{t-1} + ε_t,    ε_t ~ StudentT(ν=4, μ=0, σ=0.12)
+πᵉ_t = πᵉ_{t-1} + ε_t,    ε_t ~ StudentT(ν=4, μ=0, σ_early)
 
 # Late period (1994Q1 onwards) - continues from early
-πᵉ_t = πᵉ_{t-1} + ε_t,    ε_t ~ StudentT(ν=4, μ=0, σ=0.075)
+πᵉ_t = πᵉ_{t-1} + ε_t,    ε_t ~ StudentT(ν=4, μ=0, σ_late)
 ```
 
 Initial state: `πᵉ_0 ~ N(inflation_1983Q1, 2.0)` ≈ N(10.2, 2.0)
@@ -165,23 +179,23 @@ measure_{m,t} = πᵉ_t + α_m + λ_m × π_{t-1} + ε_{m,t}
 ε_{m,t} ~ N(0, σ_{obs,m})
 ```
 
-**Trimmed mean/weighted median inflation** (lagged, Target Anchored and Short Run):
+**Trimmed mean/weighted median inflation** (lagged, Target Anchored, Unanchored, Short Run):
 ```
 inflation_{t-1} ~ N(πᵉ_t, σ_inflation)
 ```
 
-**Headline CPI** (lagged, pre-1993, Target Anchored and Short Run):
+**Headline CPI** (lagged, pre-1993, Target Anchored, Unanchored, Short Run):
 ```
 headline_{t-1} ~ N(πᵉ_t, σ_headline)
 ```
 
-**Nominal 10y bonds** (pre-1993Q3, all models, multiplicative Fisher):
+**Nominal 10y bonds** (multiplicative Fisher):
 ```
 nominal_t ~ N(πᵉ_t + real_rate + (πᵉ_t × real_rate / 100), σ_nominal)
-real_rate ~ N(5.0, 1.5)  # Estimated ~5-6%
+real_rate ~ N(5.0, 1.5)  # Estimated
 ```
 
-**HCOE growth** (Target Anchored and Short Run):
+**HCOE growth** (Target Anchored and Unanchored):
 ```
 hcoe_t ~ N(πᵉ_t + mfp_t + hcoe_adjustment, σ_hcoe)
 hcoe_adjustment ~ N(0, 0.5)  # Estimated ≈ 0
@@ -196,17 +210,19 @@ hcoe_adjustment ~ N(0, 0.5)  # Estimated ≈ 0
 
 | Parameter | Prior | Typical Estimate | Models |
 |-----------|-------|------------------|--------|
-| α (series effects) | N(0, 0.5) | -0.4 to -0.6 | Target only |
-| λ (backward-looking bias) | N(0.1, 0.15) | -0.1 to 0.2 | Target only |
+| α (series effects) | N(0, 0.5) | -0.4 to -0.6 | Target, Unanchored |
+| λ (backward-looking bias) | N(0.1, 0.15) | -0.2 to 0.2 | Target, Unanchored |
 | σ_obs | HalfNormal(1.0) | 0.1 to 0.9 | All |
-| σ_inflation | HalfNormal(1.5) | ~0.95 | Target only |
-| σ_headline | HalfNormal(2.0) | ~1.7 | Target, Short Run |
-| σ_nominal | HalfNormal(2.0) | ~0.7 | Target, Long Run |
-| σ_hcoe | HalfNormal(2.0) | ~2.0 | Target only |
-| σ_early (innovation) | HalfNormal(0.15) | ~0.30 | Target, Short Run |
-| σ_late (innovation) | HalfNormal(0.1) | ~0.07 | Target, Short Run |
-| hcoe_adjustment | N(0, 0.5) | ~0 | Target only |
-| real_rate | N(5.0, 1.5) | Target ~5.5%, Long Run ~4.5% | Target, Long Run |
+| σ_inflation | HalfNormal(1.5) | ~0.95 | Target, Unanchored |
+| σ_headline | HalfNormal(2.0) | ~1.7 | Target, Unanchored, Short Run |
+| σ_nominal | HalfNormal(2.0) | ~0.7 | Target, Unanchored, Long Run |
+| σ_hcoe | HalfNormal(2.0) | ~2.0 | Target, Unanchored |
+| σ_early (innovation) | HalfNormal(0.15) | ~0.30-0.40 | Target, Short Run |
+| σ_late (innovation) | HalfNormal(0.1) | ~0.07-0.14 | Target, Short Run |
+| hcoe_adjustment | N(0, 0.5) | ~0 | Target, Unanchored |
+| real_rate | N(5.0, 1.5) | 3.8-5.4% (see note) | Target, Unanchored, Long Run |
+
+**Note on real_rate (r*)**: Estimates vary by model due to identification trade-off with π_exp. Target ~5.4%, Unanchored ~5.3%, Long Run ~3.8%. The Long Run estimate is lower because it has less data to anchor r* (only 2yr overlap vs full pre-1993 period for Target/Unanchored).
 
 ---
 
@@ -215,13 +231,13 @@ hcoe_adjustment ~ N(0, 0.5)  # Estimated ≈ 0
 | Feature | Target Anchored | Unanchored | Short Run (1yr) | Long Run (10yr) |
 |---------|-----------------|------------|-----------------|-----------------|
 | Survey series | market_1y, breakeven, business, market_yoy | market_1y, breakeven, business, market_yoy | market_1y | breakeven |
-| Survey bias (α, λ) | ✓ | ✓ | ✗ | ✗ |
+| Survey bias (α, λ) | Yes | Yes | No | No |
 | Innovation variance | Estimated | Fixed (0.30/0.07) | Estimated | Fixed (0.12/0.075) |
-| Target anchor (post-1998Q4) | ✓ (σ=0.35) | ✗ | ✗ | ✗ |
-| Headline CPI (pre-1993) | ✓ | ✓ | ✓ | ✗ |
-| Nominal bonds | ✓ (pre-1993Q3) | ✓ (pre-1993Q3) | ✗ | ✓ (pre-1995Q3, 2yr overlap) |
-| HCOE growth | ✓ | ✓ | ✗ | ✗ |
-| Inflation observation | ✓ | ✓ | ✓ (shared σ) | ✗ |
+| Target anchor (post-1998Q4) | Yes (σ=0.35) | No | No | No |
+| Headline CPI (pre-1993) | Yes | Yes | Yes | No |
+| Nominal bonds | Yes (pre-1993Q3) | Yes (pre-1993Q3) | No | Yes (pre-1988Q3, 2yr overlap) |
+| HCOE growth | Yes | Yes | No | No |
+| Inflation observation | Yes | Yes | Yes (shared σ) | No |
 
 ---
 
@@ -247,16 +263,18 @@ Initial: πᵉ_0 ~ N(inflation_1983Q1, 2.0)
 breakeven_t = πᵉ_t + ε_t                                         [no α, no λ]
   ε_t ~ N(0, σ_obs)
 
-nominal_t = πᵉ_t + real_rate + (πᵉ_t × real_rate / 100) + ε_t   [pre-1995Q3, 2yr overlap]
+nominal_t = πᵉ_t + real_rate + (πᵉ_t × real_rate / 100) + ε_t   [pre-1988Q3, 2yr overlap]
   ε_t ~ N(0, σ_nominal)
-  real_rate ~ N(5.0, 1.5)                                        [estimated ~4.5%]
+  real_rate ~ N(5.0, 1.5)                                        [estimated ~3.8%]
 ```
+
+**Note:** The 2-year overlap (1986Q3-1988Q3) provides limited data for separating r* from π_exp. The lower r* estimate (~3.8%) compared to Target/Unanchored (~5.3-5.4%) reflects this identification uncertainty. The π_exp path adjusts to compensate.
 
 ### Short Run (1 Year) — `short`
 
 Simplified model with estimated innovation variance. Uses market_1y survey and inflation with shared σ. No survey bias terms (α, λ), no nominal bonds, no HCOE.
 
-**State equation:** Estimated innovation variance (unlike target/market which use fixed values).
+**State equation:** Estimated innovation variance (unlike Unanchored/Long Run which use fixed values).
 ```
 πᵉ_t = πᵉ_{t-1} + ε_t
 
@@ -318,7 +336,7 @@ headline_{t-1} ~ N(πᵉ_t, σ_headline)                            [pre-1993 on
 
 nominal_t = πᵉ_t + real_rate + (πᵉ_t × real_rate / 100) + ε_t   [pre-1993Q3 only]
   ε_t ~ N(0, σ_nominal)
-  real_rate ~ N(5.0, 1.5)                                        [estimated ~5.5%]
+  real_rate ~ N(5.0, 1.5)                                        [estimated ~5.4%]
 
 hcoe_t = πᵉ_t + mfp_t + hcoe_adjustment + ε_t
   ε_t ~ N(0, σ_hcoe)
@@ -422,34 +440,45 @@ The gap between Target Anchored and Unanchored directly measures how much the 2.
 ### Command Line
 
 ```bash
-# Run all four models (default: 1983Q1 start, 10000 draws, 4 chains)
-uv run python -m src.models.expectations.model
+# Stage 1: Run all four models (default: 1983Q1 start, 10000 draws, 4 chains)
+uv run python -m src.models.expectations.stage1
+
+# Run single model
+uv run python -m src.models.expectations.stage1 --model target
 
 # Quick run for testing
-uv run python -m src.models.expectations.model --draws 2000 --tune 1000
+uv run python -m src.models.expectations.stage1 --draws 2000 --tune 1000
 
 # Suppress progress bar
-uv run python -m src.models.expectations.model -q
+uv run python -m src.models.expectations.stage1 -q
+
+# Stage 2: Diagnostics and plots (loads saved results from stage1)
+uv run python -m src.models.expectations.stage2
+
+# Skip plot generation
+uv run python -m src.models.expectations.stage2 --no-plots
 ```
 
 ### Python API
 
 ```python
-from src.models.expectations import run_model, run_all_models
+from src.models.expectations.stage1 import run_model, run_all_models
+from src.models.expectations.stage2 import load_results, load_all_results
 
 # Run single model (use code: "target", "unanchored", "short", or "market")
 results = run_model(model_type="target", start="1984Q1", verbose=True)
 
 # Run all four models
-all_results = run_all_models(start="1984Q1", verbose=True)
+run_all_models(start="1984Q1", verbose=True)
+
+# Load saved results (stage2)
+results = load_results("target")
+all_results = load_all_results()
 
 # Access results
 median = results.expectations_median()
 hdi = results.expectations_hdi(prob=0.9)
 samples = results.expectations_posterior()
-
-# Save
-results.save()
 ```
 
 ---

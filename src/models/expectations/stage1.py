@@ -37,6 +37,63 @@ from src.models.expectations.common import (
 )
 from src.utilities.rate_conversion import annualize
 
+# --- Model Configurations ---
+
+MODEL_CONFIGS = {
+    "target": {
+        "survey_series": ["market_1y", "breakeven", "business", "market_yoy"],
+        "use_anchor": True,
+        "use_headline": True,
+        "use_nominal": True,
+        "nominal_cutoff": "1993Q3",  # 7yr overlap with breakeven for r* identification
+        "use_hcoe": True,
+        "use_inflation": True,
+        "use_survey_bias": True,
+        "inflation_sigma_prior": 1.5,
+        "tie_inflation_sigma": False,
+        "estimate_innovation": True,
+        "sigma_early": 0.12,  # Prior center (estimated)
+        "sigma_late": 0.075,  # Prior center (estimated)
+    },
+    "short": {
+        "survey_series": ["market_1y"],
+        "use_anchor": False,
+        "use_headline": True,
+        "use_nominal": False,
+        "use_hcoe": False,
+        "use_inflation": True,
+        "use_survey_bias": False,
+        "inflation_sigma_prior": 1.5,
+        "tie_inflation_sigma": True,
+        "estimate_innovation": True,
+        "sigma_early": 0.12,
+        "sigma_late": 0.075,
+    },
+    "market": {
+        "survey_series": ["breakeven"],
+        "use_anchor": False,
+        "use_headline": False,
+        "use_nominal": True,
+        "use_hcoe": False,
+        "use_inflation": False,
+        "use_survey_bias": False,
+        "inflation_sigma_prior": 2.0,
+        "tie_inflation_sigma": False,
+        "estimate_innovation": False,
+        "sigma_early": 0.12,
+        "sigma_late": 0.075,
+    },
+}
+
+# Unanchored is target without the anchor (fixed innovation to avoid funnel geometry)
+MODEL_CONFIGS["unanchored"] = {
+    **MODEL_CONFIGS["target"],
+    "use_anchor": False,
+    "estimate_innovation": False,
+    "sigma_early": 0.30,
+    "sigma_late": 0.07,
+}
+
 
 # --- Data Loading ---
 
@@ -86,17 +143,119 @@ def load_data(
     return measures, inflation, common_index
 
 
+# --- Observation Equations ---
+
+
+def _add_survey_obs(pi_exp, measures: pd.DataFrame, inflation_lag: np.ndarray, **kwargs) -> None:
+    """Add survey/market expectation observations."""
+    survey_series = kwargs.get("survey_series", [])
+    use_bias = kwargs.get("use_survey_bias", False)
+
+    n_series = len(survey_series)
+    if n_series == 0:
+        return
+
+    sigma_obs = pm.HalfNormal("sigma_obs", sigma=1.0, shape=n_series)
+
+    if use_bias:
+        alpha = pm.Normal("alpha", mu=0, sigma=0.5, shape=n_series)
+        lambda_bias = pm.Normal("lambda_bias", mu=0.1, sigma=0.15, shape=n_series)
+
+    for i, col in enumerate(survey_series):
+        if col not in measures.columns:
+            continue
+        obs_data = measures[col].values
+        mask = ~np.isnan(obs_data)
+        if mask.sum() > 0:
+            mu = pi_exp[mask] + alpha[i] + lambda_bias[i] * inflation_lag[mask] if use_bias else pi_exp[mask]
+            pm.Normal(f"obs_{col}", mu=mu, sigma=sigma_obs[i], observed=obs_data[mask])
+
+
+def _add_inflation_obs(pi_exp, inflation_mask: np.ndarray, inflation_lagged: np.ndarray, **kwargs) -> None:
+    """Add actual inflation observation."""
+    if not kwargs.get("use_inflation", False):
+        return
+
+    if kwargs.get("tie_inflation_sigma", False):
+        # Use sigma_obs[0] from survey - must be called after _add_survey_obs
+        sigma = pm.modelcontext(None)["sigma_obs"][0]
+    else:
+        sigma = pm.HalfNormal("sigma_inflation", sigma=kwargs.get("inflation_sigma_prior", 1.5))
+
+    pm.Normal("obs_inflation", mu=pi_exp[inflation_mask], sigma=sigma, observed=inflation_lagged[inflation_mask])
+
+
+def _add_headline_obs(pi_exp, index: pd.PeriodIndex, **kwargs) -> None:
+    """Add pre-1993 headline CPI observation."""
+    if not kwargs.get("use_headline", False):
+        return
+
+    headline = get_headline_annual().data.reindex(index).shift(1)
+    pre_targeting = index < pd.Period("1993Q1")
+    mask = ~np.isnan(headline.values) & pre_targeting
+
+    if mask.sum() > 0:
+        sigma = pm.HalfNormal("sigma_headline", sigma=2.0)
+        pm.Normal("obs_headline", mu=pi_exp[mask], sigma=sigma, observed=headline.values[mask])
+
+
+def _add_nominal_obs(pi_exp, index: pd.PeriodIndex, **kwargs) -> None:
+    """Add nominal bond observation for pre-breakeven period."""
+    if not kwargs.get("use_nominal", False):
+        return
+
+    nominal = get_nominal_10y().data.reindex(index)
+    cutoff = kwargs.get("nominal_cutoff", "1988Q3")  # 2yr overlap with breakeven (starts 1986Q3)
+    pre_breakeven = index < pd.Period(cutoff)
+    mask = ~np.isnan(nominal.values) & pre_breakeven
+
+    if mask.sum() > 0:
+        fixed_rate = kwargs.get("fixed_real_rate")
+        real_rate = fixed_rate if fixed_rate is not None else pm.Normal("real_rate", mu=5.0, sigma=1.5)
+        sigma = pm.HalfNormal("sigma_nominal", sigma=2.0)
+        pi_masked = pi_exp[mask]
+        mu = pi_masked + real_rate + (pi_masked * real_rate / 100)
+        pm.Normal("obs_nominal", mu=mu, sigma=sigma, observed=nominal.values[mask])
+
+
+def _add_hcoe_obs(pi_exp, index: pd.PeriodIndex, **kwargs) -> None:
+    """Add hourly compensation observation."""
+    if not kwargs.get("use_hcoe", False):
+        return
+
+    hcoe = get_hourly_coe_growth_annual().data.reindex(index)
+    ulc_q = get_ulc_growth_qrtly().data
+    hcoe_q = get_hourly_coe_growth_qrtly().data
+    capital_q = get_capital_growth_qrtly().data
+    hours_q = get_hours_growth_qrtly().data
+    mfp_trend_q = compute_mfp_trend_floored(ulc_q, hcoe_q, capital_q, hours_q, alpha=0.3).data
+    mfp = annualize(mfp_trend_q).reindex(index)
+    mask = ~np.isnan(hcoe.values) & ~np.isnan(mfp.values)
+
+    if mask.sum() > 0:
+        adjustment = pm.Normal("hcoe_adjustment", mu=0.0, sigma=0.5)
+        sigma = pm.HalfNormal("sigma_hcoe", sigma=2.0)
+        pm.Normal("obs_hcoe", mu=pi_exp[mask] + mfp.values[mask] + adjustment, sigma=sigma,
+                  observed=hcoe.values[mask])
+
+
+def _add_target_anchor(pi_exp, index: pd.PeriodIndex, **kwargs) -> None:
+    """Add target anchor observation post-1998."""
+    if not kwargs.get("use_anchor", False):
+        return
+
+    post_anchored = index >= pd.Period("1998Q4")
+    if post_anchored.sum() > 0:
+        pm.Normal("obs_target", mu=pi_exp[post_anchored], sigma=ANCHOR_SIGMA,
+                  observed=np.full(post_anchored.sum(), ANCHOR_TARGET))
+
+
 # --- Model Building ---
 
 
-def build_model(
-    measures: pd.DataFrame,
-    inflation: pd.Series,
-    index: pd.PeriodIndex,
-    model_type: str = "target",
-) -> pm.Model:
-    """Build signal extraction model for a specific expectation type."""
-    # Lagged inflation for backward-looking bias
+def _build_pymc_model(measures: pd.DataFrame, inflation: pd.Series, index: pd.PeriodIndex, **kwargs) -> pm.Model:
+    """Build the PyMC model with the given configuration."""
+    # Prepare data
     inflation_lag = inflation.shift(1).bfill().values
     inflation_lagged = inflation.shift(1).values
     inflation_mask = ~np.isnan(inflation_lagged)
@@ -106,73 +265,14 @@ def build_model(
     n_early = int((index < regime_break).sum())
     n_late = int((index >= regime_break).sum())
 
-    # Innovation scales (defaults, may be overridden)
-    sigma_early = 0.12
-    sigma_late = 0.075
-    estimate_innovation = False  # Default: use fixed innovation variance
-
-    # Configure observations based on model type
-    fix_sigma = None
-    fix_inflation_sigma = None
-    use_survey_bias = True  # Default: include α and λ in survey equation
-    if model_type == "target":
-        survey_series = ["market_1y", "breakeven", "business", "market_yoy"]
-        use_anchor = True
-        use_headline = True
-        use_nominal = True
-        use_hcoe = True
-        use_inflation = True
-        inflation_sigma_prior = 1.5
-        tie_inflation_sigma = False
-        estimate_innovation = True  # Let model determine smoothness
-    elif model_type == "unanchored":
-        # Same as target but without the 2.5% anchor
-        survey_series = ["market_1y", "breakeven", "business", "market_yoy"]
-        use_anchor = False
-        use_headline = True
-        use_nominal = True
-        use_hcoe = True
-        use_inflation = True
-        inflation_sigma_prior = 1.5
-        tie_inflation_sigma = False
-        estimate_innovation = False  # Fixed innovation to avoid funnel geometry
-        sigma_early = 0.30
-        sigma_late = 0.07
-    elif model_type == "short":
-        survey_series = ["market_1y"]
-        use_anchor = False
-        use_headline = True
-        use_nominal = False  # 10yr bond irrelevant for short-run
-        use_hcoe = False
-        use_inflation = True
-        use_survey_bias = False  # No α or λ - take survey at face value
-        inflation_sigma_prior = 1.5
-        tie_inflation_sigma = True  # Share one σ for survey and inflation
-        estimate_innovation = True  # Estimate innovation variance
-    else:  # market
-        survey_series = ["breakeven"]
-        use_anchor = False
-        use_headline = False
-        use_nominal = True
-        use_hcoe = False
-        use_inflation = False
-        use_survey_bias = False  # No α or λ - take breakeven at face value
-        inflation_sigma_prior = 2.0
-        tie_inflation_sigma = False
-
-    n_series = len(survey_series)
     init_inflation = inflation.iloc[0] if not np.isnan(inflation.iloc[0]) else 5.0
 
-    with pm.Model() as model:
-        # --- Priors ---
-        if use_survey_bias:
-            alpha = pm.Normal("alpha", mu=0, sigma=0.5, shape=n_series)
-            lambda_bias = pm.Normal("lambda_bias", mu=0.1, sigma=0.15, shape=n_series)
-        if fix_sigma is not None:
-            sigma_obs = fix_sigma
-        else:
-            sigma_obs = pm.HalfNormal("sigma_obs", sigma=1.0, shape=n_series)
+    # Innovation variance config
+    estimate_innovation = kwargs.get("estimate_innovation", False)
+    sigma_early = kwargs.get("sigma_early", 0.12)
+    sigma_late = kwargs.get("sigma_late", 0.075)
 
+    with pm.Model() as model:
         # --- State Equation ---
         if estimate_innovation:
             sigma_early = pm.HalfNormal("sigma_early", sigma=0.15)
@@ -191,85 +291,33 @@ def build_model(
             steps=n_late - 1,
         )
         pi_exp_late = pi_exp_late_raw - pi_exp_late_raw[0] + pi_exp_early[-1]
-        pi_exp = pm.Deterministic(
-            "pi_exp",
-            pm.math.concatenate([pi_exp_early, pi_exp_late])
-        )
+        pi_exp = pm.Deterministic("pi_exp", pm.math.concatenate([pi_exp_early, pi_exp_late]))
 
-        # --- Survey/Market Observations ---
-        for i, col in enumerate(survey_series):
-            if col not in measures.columns:
-                continue
-            obs_data = measures[col].values
-            mask = ~np.isnan(obs_data)
-            if mask.sum() > 0:
-                if use_survey_bias:
-                    mu = pi_exp[mask] + alpha[i] + lambda_bias[i] * inflation_lag[mask]
-                else:
-                    mu = pi_exp[mask]  # Simple: survey directly measures expectations
-                obs_sigma = fix_sigma if fix_sigma is not None else sigma_obs[i]
-                pm.Normal(f"obs_{col}", mu=mu, sigma=obs_sigma, observed=obs_data[mask])
-
-        # --- Inflation Observation ---
-        if use_inflation:
-            if fix_sigma is not None:
-                pm.Normal("obs_inflation", mu=pi_exp[inflation_mask], sigma=fix_sigma,
-                          observed=inflation_lagged[inflation_mask])
-            elif tie_inflation_sigma:
-                pm.Normal("obs_inflation", mu=pi_exp[inflation_mask], sigma=sigma_obs[0],
-                          observed=inflation_lagged[inflation_mask])
-            else:
-                sigma_inflation = pm.HalfNormal("sigma_inflation", sigma=inflation_sigma_prior)
-                pm.Normal("obs_inflation", mu=pi_exp[inflation_mask], sigma=sigma_inflation,
-                          observed=inflation_lagged[inflation_mask])
-
-        # --- Headline CPI (pre-1993) ---
-        if use_headline:
-            headline = get_headline_annual().data.reindex(index).shift(1)
-            pre_targeting = index < pd.Period("1993Q1")
-            headline_mask = ~np.isnan(headline.values) & pre_targeting
-            if headline_mask.sum() > 0:
-                sigma_headline = pm.HalfNormal("sigma_headline", sigma=2.0)
-                pm.Normal("obs_headline", mu=pi_exp[headline_mask], sigma=sigma_headline,
-                          observed=headline.values[headline_mask])
-
-        # --- Nominal 10y Bonds (pre-breakeven) ---
-        if use_nominal:
-            nominal = get_nominal_10y().data.reindex(index)
-            pre_breakeven = index < pd.Period("1995Q3")  # 2yr overlap with breakeven to anchor r*
-            nominal_mask = ~np.isnan(nominal.values) & pre_breakeven
-            if nominal_mask.sum() > 0:
-                real_rate = pm.Normal("real_rate", mu=5.0, sigma=1.5)
-                sigma_nominal = pm.HalfNormal("sigma_nominal", sigma=2.0)
-                pi_masked = pi_exp[nominal_mask]
-                mu_nominal = pi_masked + real_rate + (pi_masked * real_rate / 100)
-                pm.Normal("obs_nominal", mu=mu_nominal, sigma=sigma_nominal,
-                          observed=nominal.values[nominal_mask])
-
-        # --- HCOE Growth ---
-        if use_hcoe:
-            hcoe = get_hourly_coe_growth_annual().data.reindex(index)
-            ulc_q = get_ulc_growth_qrtly().data
-            hcoe_q = get_hourly_coe_growth_qrtly().data
-            capital_q = get_capital_growth_qrtly().data
-            hours_q = get_hours_growth_qrtly().data
-            mfp_trend_q = compute_mfp_trend_floored(ulc_q, hcoe_q, capital_q, hours_q, alpha=0.3).data
-            mfp = annualize(mfp_trend_q).reindex(index)
-            hcoe_mask = ~np.isnan(hcoe.values) & ~np.isnan(mfp.values)
-            if hcoe_mask.sum() > 0:
-                hcoe_adjustment = pm.Normal("hcoe_adjustment", mu=0.0, sigma=0.5)
-                sigma_hcoe = pm.HalfNormal("sigma_hcoe", sigma=2.0)
-                pm.Normal("obs_hcoe", mu=pi_exp[hcoe_mask] + mfp.values[hcoe_mask] + hcoe_adjustment,
-                          sigma=sigma_hcoe, observed=hcoe.values[hcoe_mask])
-
-        # --- Target Anchoring ---
-        if use_anchor:
-            post_anchored = index >= pd.Period("1998Q4")
-            if post_anchored.sum() > 0:
-                pm.Normal("obs_target", mu=pi_exp[post_anchored], sigma=ANCHOR_SIGMA,
-                          observed=np.full(post_anchored.sum(), ANCHOR_TARGET))
+        # --- Observation Equations ---
+        _add_survey_obs(pi_exp, measures, inflation_lag, **kwargs)
+        _add_inflation_obs(pi_exp, inflation_mask, inflation_lagged, **kwargs)
+        _add_headline_obs(pi_exp, index, **kwargs)
+        _add_nominal_obs(pi_exp, index, **kwargs)
+        _add_hcoe_obs(pi_exp, index, **kwargs)
+        _add_target_anchor(pi_exp, index, **kwargs)
 
     return model
+
+
+def build_model(
+    measures: pd.DataFrame,
+    inflation: pd.Series,
+    index: pd.PeriodIndex,
+    model_type: str = "target",
+) -> pm.Model:
+    """Build signal extraction model for a specific expectation type."""
+    match model_type:
+        case "target" | "unanchored" | "short" | "market":
+            config = MODEL_CONFIGS[model_type]
+        case _:
+            raise ValueError(f"Unknown model type: {model_type}")
+
+    return _build_pymc_model(measures, inflation, index, **config)
 
 
 # --- Estimation ---
@@ -364,6 +412,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Expectations Stage 1: Sampling")
     parser.add_argument("--start", default="1983Q1", help="Start period")
+    parser.add_argument("--model", choices=MODEL_TYPES, help="Run single model (default: all)")
     parser.add_argument("--draws", type=int, default=DEFAULT_DRAWS)
     parser.add_argument("--tune", type=int, default=DEFAULT_TUNE)
     parser.add_argument("--chains", type=int, default=DEFAULT_CHAINS)
@@ -371,11 +420,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    models_to_run = [args.model] if args.model else MODEL_TYPES
+
     print("=" * 60)
     print("EXPECTATIONS STAGE 1: SAMPLING")
     print("=" * 60)
 
-    for model_type in MODEL_TYPES:
+    for model_type in models_to_run:
         print("\n" + "=" * 60)
         print(f"Running {MODEL_NAMES[model_type]} model")
         print("=" * 60)

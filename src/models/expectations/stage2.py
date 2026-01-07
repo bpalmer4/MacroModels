@@ -82,11 +82,14 @@ def load_results(model_type: str, output_dir: Path | None = None) -> Expectation
 
 
 def load_all_results(output_dir: Path | None = None) -> dict[str, ExpectationsResults]:
-    """Load all three model results."""
-    return {
-        model_type: load_results(model_type, output_dir)
-        for model_type in MODEL_TYPES
-    }
+    """Load all available model results, skipping missing ones."""
+    results = {}
+    for model_type in MODEL_TYPES:
+        try:
+            results[model_type] = load_results(model_type, output_dir)
+        except FileNotFoundError:
+            print(f"  Skipping {model_type}: no saved results found")
+    return results
 
 
 # --- Diagnostics ---
@@ -123,6 +126,39 @@ def run_diagnostics(results: ExpectationsResults, verbose: bool = True) -> None:
 
 # --- Plotting ---
 
+# Common plot styling
+PLOT_KWARGS = {
+    "axhspan": {"ymin": 2, "ymax": 3, "color": "red", "alpha": 0.1, "zorder": -1},
+    "axhline": {"y": 2.5, "color": "black", "linestyle": "dashed", "linewidth": 0.75},
+    "legend": {"loc": "best", "fontsize": "x-small"},
+}
+
+
+def _plot_model(
+    results: ExpectationsResults,
+    title: str,
+    lfooter: str,
+    legend_stem: str,
+    overlays: list[tuple[pd.Series, str]] | None = None,
+    axvspan: dict | None = None,  # Empty dict if no span needed
+) -> None:
+    """Plot a single model's posterior with optional overlays."""
+    posterior = results.expectations_posterior()
+    ax = plot_posterior_timeseries(data=posterior, legend_stem=legend_stem, finalise=False)
+
+    if overlays:
+        for series, color in overlays:
+            mg.line_plot(series, ax=ax, color=color, width=1.5, annotate=False, zorder=5)
+
+    mg.finalise_plot(
+        ax,
+        title=title,
+        lfooter=lfooter,
+        rfooter=f"Sample: {results.index[0]} to {results.index[-1]}",
+        axvspan=axvspan,
+        **PLOT_KWARGS,
+    )
+
 
 def generate_plots(
     all_results: dict[str, ExpectationsResults],
@@ -133,143 +169,93 @@ def generate_plots(
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
 
-    results_target = all_results["target"]
-    results_unanchored = all_results["unanchored"]
-    results_short = all_results["short"]
-    results_market = all_results["market"]
+    # Use first available result for shared data
+    first_result = next(iter(all_results.values()))
 
     # Prepare overlay data
     trimmed = get_trimmed_mean_annual().data
-    trimmed = trimmed[trimmed.index >= results_target.index[0]]
+    trimmed = trimmed[trimmed.index >= first_result.index[0]]
     trimmed.name = "Trimmed Mean Inflation"
 
-    market_1y = results_target.measures["market_1y"].dropna()
+    market_1y = first_result.measures["market_1y"].dropna()
     market_1y.name = "Market Economists (1yr)"
-    breakeven_series = results_target.measures["breakeven"].dropna()
+    breakeven_series = first_result.measures["breakeven"].dropna()
     breakeven_series.name = "Breakeven (10yr)"
 
-    plot_kwargs = {
-        "axhspan": {"ymin": 2, "ymax": 3, "color": "red", "alpha": 0.1, "zorder": -1},
-        "axhline": {"y": 2.5, "color": "black", "linestyle": "dashed", "linewidth": 0.75},
-        "legend": {"loc": "best", "fontsize": "x-small"},
-    }
-
-    # Get posteriors
-    posterior_target = results_target.expectations_posterior()
-    posterior_unanchored = results_unanchored.expectations_posterior()
-    posterior_short = results_short.expectations_posterior()
-    posterior_market = results_market.expectations_posterior()
-
-    # Load PIE_RBAQ for comparison
     pie_rbaq = get_inflation_expectations().data
-    pie_rbaq = pie_rbaq[pie_rbaq.index >= results_target.index[0]]
+    pie_rbaq = pie_rbaq[pie_rbaq.index >= first_result.index[0]]
     pie_rbaq.name = "RBA PIE_RBAQ"
 
-    # Chart 1: Target-anchored vs Trimmed Mean
-    ax = plot_posterior_timeseries(data=posterior_target, legend_stem="Target Anchored", finalise=False)
-    mg.line_plot(trimmed, ax=ax, color="darkorange", width=2, annotate=False, zorder=5)
-    mg.finalise_plot(
-        ax,
-        title="Target Anchored Inflation Expectations",
-        lfooter="Australia. Model: market_1y + breakeven + business + market_yoy + anchor.",
-        rfooter=f"Sample: {results_target.index[0]} to {results_target.index[-1]}",
-        **plot_kwargs,
-    )
+    # Single-model plot specs: (model_type, title, lfooter, legend_stem, overlays, axvspan_fn)
+    plot_specs = [
+        ("target", "Target Anchored Inflation Expectations",
+         "Australia. Model: market_1y + breakeven + business + market_yoy + anchor.",
+         "Target Anchored", [(trimmed, "darkorange")], None),
+        ("target", "Target Anchored Inflation Expectations vs RBA PIE_RBAQ",
+         "Australia. Model: market_1y + breakeven + business + market_yoy + anchor.",
+         "Target Anchored", [(pie_rbaq, "darkorange")], None),
+        ("unanchored", "Unanchored Inflation Expectations",
+         "Australia. Model: market_1y + breakeven + business + market_yoy (no target anchor).",
+         "Unanchored", [(trimmed, "darkorange")], None),
+        ("unanchored", "Unanchored Inflation Expectations vs RBA PIE_RBAQ",
+         "Australia. Model: market_1y + breakeven + business + market_yoy (no target anchor).",
+         "Unanchored", [(pie_rbaq, "darkorange")], None),
+        ("short", "Short Run Inflation Expectations (1 Year)",
+         "Australia. Bayesian signal extraction from market economist 1-year expectations.",
+         "Short Run", [(market_1y, "darkorange"), (trimmed, "brown")],
+         lambda r: {"xmin": r.index[0].ordinal, "xmax": market_1y.index[0].ordinal,
+                    "color": "goldenrod", "alpha": 0.2, "label": "Proxy period (headline CPI)"}),
+        ("market", "Long Run Inflation Expectations (10-Year)",
+         "Australia. Bayesian signal extraction from breakeven inflation and nominal bonds.",
+         "Long Run", [(breakeven_series, "darkorange"), (trimmed, "brown")],
+         lambda r: {"xmin": r.index[0].ordinal, "xmax": breakeven_series.index[0].ordinal,
+                    "color": "goldenrod", "alpha": 0.2, "label": "Proxy period (nominal bonds)"}),
+    ]
 
-    # Chart 1b: Target-anchored vs PIE_RBAQ
-    ax = plot_posterior_timeseries(data=posterior_target, legend_stem="Target Anchored", finalise=False)
-    mg.line_plot(pie_rbaq, ax=ax, color="darkorange", width=2, annotate=False, zorder=5)
-    mg.finalise_plot(
-        ax,
-        title="Target Anchored Inflation Expectations vs RBA PIE_RBAQ",
-        lfooter="Australia. Model: market_1y + breakeven + business + market_yoy + anchor.",
-        rfooter=f"Sample: {results_target.index[0]} to {results_target.index[-1]}",
-        **plot_kwargs,
-    )
+    for model_type, title, lfooter, legend_stem, overlays, axvspan_fn in plot_specs:
+        if model_type in all_results:
+            results = all_results[model_type]
+            axvspan = axvspan_fn(results) if axvspan_fn else None
+            _plot_model(results, title, lfooter, legend_stem, overlays, axvspan)
 
-    # Unanchored vs Trimmed Mean
-    ax = plot_posterior_timeseries(data=posterior_unanchored, legend_stem="Unanchored", finalise=False)
-    mg.line_plot(trimmed, ax=ax, color="darkorange", width=2, annotate=False, zorder=5)
-    mg.finalise_plot(
-        ax,
-        title="Unanchored Inflation Expectations",
-        lfooter="Australia. Model: market_1y + breakeven + business + market_yoy (no target anchor).",
-        rfooter=f"Sample: {results_unanchored.index[0]} to {results_unanchored.index[-1]}",
-        **plot_kwargs,
-    )
+    # Comparison plots (require all three: target, short, market)
+    if all(k in all_results for k in ("target", "short", "market")):
+        posterior_target = all_results["target"].expectations_posterior()
+        posterior_short = all_results["short"].expectations_posterior()
+        posterior_market = all_results["market"].expectations_posterior()
 
-    # Unanchored vs PIE_RBAQ
-    ax = plot_posterior_timeseries(data=posterior_unanchored, legend_stem="Unanchored", finalise=False)
-    mg.line_plot(pie_rbaq, ax=ax, color="darkorange", width=2, annotate=False, zorder=5)
-    mg.finalise_plot(
-        ax,
-        title="Unanchored Inflation Expectations vs RBA PIE_RBAQ",
-        lfooter="Australia. Model: market_1y + breakeven + business + market_yoy (no target anchor).",
-        rfooter=f"Sample: {results_unanchored.index[0]} to {results_unanchored.index[-1]}",
-        **plot_kwargs,
-    )
+        # Three distributions
+        ax = plot_posterior_timeseries(data=posterior_target, legend_stem="Target Anchored",
+                                       color="steelblue", finalise=False)
+        ax = plot_posterior_timeseries(data=posterior_short, legend_stem="Short Run (1yr)",
+                                       color="darkorange", ax=ax, finalise=False)
+        ax = plot_posterior_timeseries(data=posterior_market, legend_stem="Long Run (10yr)",
+                                       color="darkgreen", ax=ax, finalise=False)
+        mg.finalise_plot(
+            ax,
+            title="Inflation Expectations: Three Measures",
+            lfooter="Australia. Blue=target anchored, orange=short run (1yr), green=long run (10yr bond).",
+            rfooter=f"Sample: {all_results['target'].index[0]} to {all_results['target'].index[-1]}",
+            **PLOT_KWARGS,
+        )
 
-    # Chart 2: Short-run
-    ax = plot_posterior_timeseries(data=posterior_short, legend_stem="Short Run", finalise=False)
-    mg.line_plot(market_1y, ax=ax, color="darkorange", width=1.5, annotate=False, zorder=5)
-    mg.line_plot(trimmed, ax=ax, color="brown", width=1.5, annotate=False, zorder=4)
-    mg.finalise_plot(
-        ax,
-        title="Short Run Inflation Expectations (1 Year)",
-        lfooter="Australia. Bayesian signal extraction from recent inflation and market economist 1-year expectations.",
-        rfooter=f"Sample: {results_short.index[0]} to {results_short.index[-1]}",
-        axvspan={"xmin": results_short.index[0].ordinal, "xmax": market_1y.index[0].ordinal,
-                 "color": "goldenrod", "alpha": 0.2, "label": "Proxy period (headline CPI)"},
-        **plot_kwargs,
-    )
-
-    # Chart 3: Long-run (market)
-    ax = plot_posterior_timeseries(data=posterior_market, legend_stem="Long Run", finalise=False)
-    mg.line_plot(breakeven_series, ax=ax, color="darkorange", width=1.5, annotate=False, zorder=5)
-    mg.line_plot(trimmed, ax=ax, color="brown", width=1.5, annotate=False, zorder=4)
-    mg.finalise_plot(
-        ax,
-        title="Long Run Inflation Expectations (10-Year)",
-        lfooter="Australia. Bayesian signal extraction from breakeven inflation and nominal bonds (2yr overlap to anchor real rate).",
-        rfooter=f"Sample: {results_market.index[0]} to {results_market.index[-1]}",
-        axvspan={"xmin": results_market.index[0].ordinal, "xmax": breakeven_series.index[0].ordinal,
-                 "color": "goldenrod", "alpha": 0.2, "label": "Proxy period (nominal bonds)"},
-        **plot_kwargs,
-    )
-
-    # Chart 4: All three with distributions
-    ax = plot_posterior_timeseries(data=posterior_target, legend_stem="Target Anchored",
-                                   color="steelblue", finalise=False)
-    ax = plot_posterior_timeseries(data=posterior_short, legend_stem="Short Run (1yr)",
-                                   color="darkorange", ax=ax, finalise=False)
-    ax = plot_posterior_timeseries(data=posterior_market, legend_stem="Long Run (10yr)",
-                                   color="darkgreen", ax=ax, finalise=False)
-    mg.finalise_plot(
-        ax,
-        title="Inflation Expectations: Three Measures",
-        lfooter="Australia. Blue=target anchored, orange=short run (1yr), green=long run (10yr bond).",
-        rfooter=f"Sample: {results_target.index[0]} to {results_target.index[-1]}",
-        **plot_kwargs,
-    )
-
-    # Chart 5: Medians comparison
-    median_target = posterior_target.median(axis=1)
-    median_target.name = "Target Anchored"
-    median_short = posterior_short.median(axis=1)
-    median_short.name = "Short Run (1yr)"
-    median_market = posterior_market.median(axis=1)
-    median_market.name = "Long Run (10yr)"
-
-    ax = mg.line_plot(median_target, color="steelblue", width=2, annotate=False)
-    mg.line_plot(median_short, ax=ax, color="darkorange", width=2, annotate=False)
-    mg.line_plot(median_market, ax=ax, color="darkgreen", width=2, annotate=False)
-    mg.finalise_plot(
-        ax,
-        title="Inflation Expectations: Median Comparison",
-        lfooter="Australia. Blue=target anchored, orange=short run (1yr), green=long run (10yr bond).",
-        rfooter=f"Sample: {results_target.index[0]} to {results_target.index[-1]}",
-        **plot_kwargs,
-    )
+        # Medians comparison
+        medians = [
+            (posterior_target.median(axis=1), "Target Anchored", "steelblue"),
+            (posterior_short.median(axis=1), "Short Run (1yr)", "darkorange"),
+            (posterior_market.median(axis=1), "Long Run (10yr)", "darkgreen"),
+        ]
+        ax = None
+        for series, name, color in medians:
+            series.name = name
+            ax = mg.line_plot(series, ax=ax, color=color, width=2, annotate=False)
+        mg.finalise_plot(
+            ax,
+            title="Inflation Expectations: Median Comparison",
+            lfooter="Australia. Blue=target anchored, orange=short run (1yr), green=long run (10yr bond).",
+            rfooter=f"Sample: {all_results['target'].index[0]} to {all_results['target'].index[-1]}",
+            **PLOT_KWARGS,
+        )
 
     print(f"\nCharts saved to: {chart_dir}")
 
