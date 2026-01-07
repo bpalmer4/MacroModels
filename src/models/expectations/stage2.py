@@ -17,6 +17,7 @@ import mgplot as mg
 import pandas as pd
 
 from src.data.inflation import get_trimmed_mean_annual
+from src.data.rba_loader import get_inflation_expectations
 from src.models.common.diagnostics import check_model_diagnostics
 from src.models.common.timeseries import plot_posterior_timeseries
 from src.models.expectations.common import CHART_DIR, MODEL_NAMES, MODEL_TYPES, OUTPUT_DIR
@@ -157,13 +158,29 @@ def generate_plots(
     posterior_short = results_short.expectations_posterior()
     posterior_market = results_market.expectations_posterior()
 
-    # Chart 1: Target-anchored
+    # Load PIE_RBAQ for comparison
+    pie_rbaq = get_inflation_expectations().data
+    pie_rbaq = pie_rbaq[pie_rbaq.index >= results_target.index[0]]
+    pie_rbaq.name = "RBA PIE_RBAQ"
+
+    # Chart 1: Target-anchored vs Trimmed Mean
     ax = plot_posterior_timeseries(data=posterior_target, legend_stem="Target Anchored", finalise=False)
     mg.line_plot(trimmed, ax=ax, color="darkorange", width=2, annotate=False, zorder=5)
     mg.finalise_plot(
         ax,
         title="Target Anchored Inflation Expectations",
-        lfooter="Australia. Model: market_1y + breakeven + anchor.",
+        lfooter="Australia. Model: market_1y + breakeven + business + market_yoy + anchor.",
+        rfooter=f"Sample: {results_target.index[0]} to {results_target.index[-1]}",
+        **plot_kwargs,
+    )
+
+    # Chart 1b: Target-anchored vs PIE_RBAQ
+    ax = plot_posterior_timeseries(data=posterior_target, legend_stem="Target Anchored", finalise=False)
+    mg.line_plot(pie_rbaq, ax=ax, color="darkorange", width=2, annotate=False, zorder=5)
+    mg.finalise_plot(
+        ax,
+        title="Target Anchored Inflation Expectations vs RBA PIE_RBAQ",
+        lfooter="Australia. Model: market_1y + breakeven + business + market_yoy + anchor.",
         rfooter=f"Sample: {results_target.index[0]} to {results_target.index[-1]}",
         **plot_kwargs,
     )
@@ -175,8 +192,10 @@ def generate_plots(
     mg.finalise_plot(
         ax,
         title="Short Run Inflation Expectations (1 Year)",
-        lfooter="Australia. Model: market_1y only, no anchor.",
+        lfooter="Australia. Bayesian signal extraction from recent inflation and market economist 1-year expectations.",
         rfooter=f"Sample: {results_short.index[0]} to {results_short.index[-1]}",
+        axvspan={"xmin": results_short.index[0].ordinal, "xmax": market_1y.index[0].ordinal,
+                 "color": "goldenrod", "alpha": 0.2, "label": "Proxy period (headline CPI)"},
         **plot_kwargs,
     )
 
@@ -186,9 +205,11 @@ def generate_plots(
     mg.line_plot(trimmed, ax=ax, color="brown", width=1.5, annotate=False, zorder=4)
     mg.finalise_plot(
         ax,
-        title="Long Run Inflation Expectations (10-Year Bond Informed)",
-        lfooter="Australia. Model: breakeven only, no anchor.",
+        title="Long Run Inflation Expectations (10-Year)",
+        lfooter="Australia. Bayesian signal extraction from breakeven inflation and nominal bonds (2yr overlap to anchor real rate).",
         rfooter=f"Sample: {results_market.index[0]} to {results_market.index[-1]}",
+        axvspan={"xmin": results_market.index[0].ordinal, "xmax": breakeven_series.index[0].ordinal,
+                 "color": "goldenrod", "alpha": 0.2, "label": "Proxy period (nominal bonds)"},
         **plot_kwargs,
     )
 

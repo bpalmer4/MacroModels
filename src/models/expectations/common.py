@@ -16,7 +16,7 @@ DEFAULT_CHAINS = 4
 # --- Target Anchoring ---
 
 ANCHOR_TARGET = 2.5  # Inflation target (%)
-ANCHOR_SIGMA = 0.3   # Observation noise for target anchoring
+ANCHOR_SIGMA = 0.35  # Observation noise for target anchoring
 
 # --- Model Names ---
 

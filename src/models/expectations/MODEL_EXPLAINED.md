@@ -7,9 +7,9 @@ This directory contains a Bayesian signal extraction model for estimating latent
 | Component | Method | Key Feature |
 |-----------|--------|-------------|
 | Sample | 1983Q1 to present | Extended early period using bonds, headline CPI, and HCOE |
-| Latent State | Regime-switching Student-t random walk | σ_early=0.12 (pre-1994), σ_late=0.075 (post-1994) |
+| Latent State | Regime-switching Student-t random walk | Innovation variance estimated (Target, Short) or fixed (Long Run) |
 | Model Types | Target Anchored, Short Run (1yr), Long Run (10yr) | Different observation equations per type |
-| Measures | market_1y, breakeven, inflation, HCOE, headline CPI (pre-1993), nominal bonds (pre-1993Q3) | Series-specific effects (α) and backward-looking bias (λ) for target/market models |
+| Measures | market_1y, breakeven, business, market_yoy, inflation, HCOE, headline CPI (pre-1993), nominal bonds | Series-specific effects (α) and backward-looking bias (λ) for Target model only |
 
 ## Reference
 
@@ -23,15 +23,9 @@ The model estimates three separate latent expectations series:
 
 | Model | Code | Survey Series | Anchor | Use Case |
 |-------|------|---------------|--------|----------|
-| **Target Anchored** | `target` | market_1y + breakeven | Yes (2.5% post-1998Q4) | Policy analysis - assumes credible anchoring |
+| **Target Anchored** | `target` | market_1y + breakeven + business + market_yoy (with α, λ) | Yes (2.5% post-1998Q4) | Policy analysis - assumes credible anchoring |
 | **Short Run (1 Year)** | `short` | market_1y only (no α, λ) | No | Wage-relevant expectations for Phillips curve |
-| **Long Run (10-Year Bond)** | `market` | breakeven only | No | What markets actually believe |
-
-### Excluded Series
-
-The following series are excluded from all models:
-- **business**: 3-month own-price expectations (not general CPI inflation)
-- **market_yoy**: Year-on-year nowcast (not forward-looking)
+| **Long Run (10-Year Bond)** | `market` | breakeven only (no α, λ) | No | What markets actually believe |
 
 ---
 
@@ -65,14 +59,14 @@ analysis/
 | Series | Start | Description | Used In |
 |--------|-------|-------------|---------|
 | market_1y | 1993Q3 | Market economists 1-year ahead | Target Anchored, Short Run |
-| business | 1989Q3 | NAB Business Survey inflation expectations | Excluded (own-price, not CPI) |
-| market_yoy | 1994Q3 | Market economists year-on-year | Excluded (nowcast, not forward-looking) |
+| business | 1989Q3 | NAB Business Survey inflation expectations | Target Anchored |
+| market_yoy | 1994Q3 | Market economists year-on-year | Target Anchored |
 
 ### Market Measures (RBA Table F2)
 | Series | Start | Description | Used In |
 |--------|-------|-------------|---------|
 | breakeven | 1993Q3 | 10-year nominal yield minus indexed bond yield | Target Anchored, Long Run |
-| nominal_10y | 1969 | Nominal 10-year government bond yield | Target Anchored, Long Run (pre-1993Q3 only) |
+| nominal_10y | 1969 | Nominal 10-year government bond yield | Target Anchored (pre-1993Q3), Long Run (pre-1995Q3 for 2yr overlap) |
 
 ### Inflation Measures (ABS 6401.0)
 | Series | Start | Description | Used In |
@@ -93,24 +87,26 @@ analysis/
 
 ### 1. Regime-Switching Student-t Innovations
 
-The innovation variance switches at 1994Q1 (inflation targeting bedded down):
+The innovation variance switches at 1994Q1 (inflation targeting bedded down). For Target Anchored and Short Run models, the variance is estimated; for Long Run it remains fixed.
 
-| Period | σ | Rationale |
-|--------|---|-----------|
-| Pre-1994 (early) | 0.12 | Volatile pre-targeting era, expectations unanchored |
-| Post-1994 (late) | 0.075 | Anchored post-targeting era, inflation targeting established |
+| Period | Target/Short (estimated) | Long Run (fixed) |
+|--------|--------------------------|------------------|
+| Pre-1994 (early) | σ_early ~ HalfNormal(0.15), typical ~0.30 | σ = 0.12 |
+| Post-1994 (late) | σ_late ~ HalfNormal(0.1), typical ~0.07 | σ = 0.075 |
 
 Student-t with ν=4 allows occasional larger jumps (e.g., 1988-92 disinflation) while remaining smooth otherwise. The larger early variance reflects that expectations genuinely were more volatile before inflation targeting. The 1994 switchpoint (rather than 1993) gives a year for inflation targeting to bed down.
 
-### 2. Series Effects (α)
+### 2. Series Effects (α) — Target Anchored Only
 
-Each measure has its own systematic level effect:
-- **market_1y**: α ≈ -0.4 (reads below latent)
-- **breakeven**: α ≈ -0.6 (includes liquidity/term premium)
+Each measure has its own systematic level effect (Target Anchored model only):
+- **market_1y**: α ≈ -0.44 (reads below latent)
+- **breakeven**: α ≈ -0.46 (includes liquidity/term premium)
+- **business**: α ≈ -0.60 (own-price vs CPI)
+- **market_yoy**: α ≈ 0.04 (essentially unbiased)
 
 ### 3. GST Adjustment
 
-Market economists' 1-year ahead expectations in 1999Q3-2000Q3 were distorted by GST anticipation. These are interpolated through to avoid spurious expectations jump:
+Market economists' expectations in 1999Q3-2000Q3 were distorted by GST anticipation. Both market_1y and market_yoy are interpolated through to avoid spurious expectations jump:
 - 1999Q3: 2.6%
 - 1999Q4-2000Q3: 2.5%
 
@@ -118,17 +114,19 @@ Market economists' 1-year ahead expectations in 1999Q3-2000Q3 were distorted by 
 
 Pre-survey period (1983-1993) is anchored using:
 - **Headline CPI** (pre-1993): Informative when expectations were adaptive (Target Anchored, Short Run)
-- **Nominal 10y bonds** (pre-1993Q3): Using multiplicative Fisher equation (all models)
+- **Nominal 10y bonds**: Using multiplicative Fisher equation
+  - Target Anchored: pre-1993Q3
+  - Long Run: pre-1995Q3 (2yr overlap with breakeven to anchor r*)
 - **Lagged inflation** observation equation throughout (Target Anchored, Short Run)
 
 ### 5. Post-1998 Target Anchoring (Target Anchored model only)
 
 Once RBA credibility was established, expectations should be tightly anchored to target:
-- **Inflation target** (post-1998Q4): Expectations observed as 2.5% with σ=0.3
+- **Inflation target** (post-1998Q4): Expectations observed as 2.5% with σ=0.35
 - This tightens the posterior variance in the anchored period
 - Only applies to the Target Anchored model
 
-### 6. HCOE Growth Observation (Target Anchored, Short Run)
+### 6. HCOE Growth Observation (Target Anchored only)
 
 Hourly compensation of employees growth provides wage-based information about inflation expectations throughout the sample:
 - **HCOE growth** ≈ inflation expectations + MFP growth + adjustment
@@ -190,24 +188,24 @@ hcoe_adjustment ~ N(0, 0.5)  # Estimated ≈ 0
 
 **Inflation target** (post-1998Q4, Target Anchored only):
 ```
-2.5 ~ N(πᵉ_t, 0.3)
+2.5 ~ N(πᵉ_t, 0.35)
 ```
 
 ### Priors
 
 | Parameter | Prior | Typical Estimate | Models |
 |-----------|-------|------------------|--------|
-| α (series effects) | N(0, 0.5) | -0.4 to -0.6 | Target, Long Run |
-| λ (backward-looking bias) | N(0.1, 0.15) | -0.1 to 0.2 | Target, Long Run |
+| α (series effects) | N(0, 0.5) | -0.4 to -0.6 | Target only |
+| λ (backward-looking bias) | N(0.1, 0.15) | -0.1 to 0.2 | Target only |
 | σ_obs | HalfNormal(1.0) | 0.1 to 0.9 | All |
-| σ_inflation | HalfNormal(1.5) | ~1.0 | Target only |
-| σ_headline | HalfNormal(2.0) | ~1.9 | Target, Short Run |
+| σ_inflation | HalfNormal(1.5) | ~0.95 | Target only |
+| σ_headline | HalfNormal(2.0) | ~1.7 | Target, Short Run |
 | σ_nominal | HalfNormal(2.0) | ~0.7 | Target, Long Run |
 | σ_hcoe | HalfNormal(2.0) | ~2.0 | Target only |
-| σ_early (innovation) | HalfNormal(0.15) | ~0.4 | Short Run only |
-| σ_late (innovation) | HalfNormal(0.1) | ~0.14 | Short Run only |
+| σ_early (innovation) | HalfNormal(0.15) | ~0.30 | Target, Short Run |
+| σ_late (innovation) | HalfNormal(0.1) | ~0.07 | Target, Short Run |
 | hcoe_adjustment | N(0, 0.5) | ~0 | Target only |
-| real_rate | N(5.0, 1.5) | ~5-6% | Target, Long Run |
+| real_rate | N(5.0, 1.5) | Target ~5.5%, Long Run ~4.5% | Target, Long Run |
 
 ---
 
@@ -215,12 +213,12 @@ hcoe_adjustment ~ N(0, 0.5)  # Estimated ≈ 0
 
 | Feature | Target Anchored | Short Run (1yr) | Long Run (10yr) |
 |---------|-----------------|-----------------|-----------------|
-| Survey series | market_1y, breakeven | market_1y | breakeven |
-| Survey bias (α, λ) | ✓ | ✗ | ✓ |
-| Innovation variance | Fixed (0.12/0.075) | Estimated | Fixed (0.12/0.075) |
-| Target anchor (post-1998Q4) | ✓ | ✗ | ✗ |
+| Survey series | market_1y, breakeven, business, market_yoy | market_1y | breakeven |
+| Survey bias (α, λ) | ✓ | ✗ | ✗ |
+| Innovation variance | Estimated | Estimated | Fixed (0.12/0.075) |
+| Target anchor (post-1998Q4) | ✓ (σ=0.35) | ✗ | ✗ |
 | Headline CPI (pre-1993) | ✓ | ✓ | ✗ |
-| Nominal bonds (pre-1993Q3) | ✓ | ✗ | ✓ |
+| Nominal bonds | ✓ (pre-1993Q3) | ✗ | ✓ (pre-1995Q3, 2yr overlap) |
 | HCOE growth | ✓ | ✗ | ✗ |
 | Inflation observation | ✓ | ✓ (shared σ) | ✗ |
 
@@ -230,7 +228,7 @@ hcoe_adjustment ~ N(0, 0.5)  # Estimated ≈ 0
 
 ### Long Run (10-Year Bond) — `market`
 
-The simplest model. Uses only breakeven inflation and nominal bonds (pre-breakeven).
+The simplest model. Uses only breakeven inflation (no α, λ) and nominal bonds with 2-year overlap to anchor r*.
 
 **State equation:**
 ```
@@ -245,11 +243,12 @@ Initial: πᵉ_0 ~ N(inflation_1983Q1, 2.0)
 
 **Observation equations:**
 ```
-breakeven_t = πᵉ_t + α_breakeven + λ_breakeven × π_{t-1} + ε_t
+breakeven_t = πᵉ_t + ε_t                                         [no α, no λ]
   ε_t ~ N(0, σ_obs)
 
-nominal_t = πᵉ_t + real_rate + (πᵉ_t × real_rate / 100) + ε_t   [pre-1993Q3 only]
+nominal_t = πᵉ_t + real_rate + (πᵉ_t × real_rate / 100) + ε_t   [pre-1995Q3, 2yr overlap]
   ε_t ~ N(0, σ_nominal)
+  real_rate ~ N(5.0, 1.5)                                        [estimated ~4.5%]
 ```
 
 ### Short Run (1 Year) — `short`
@@ -282,9 +281,21 @@ headline_{t-1} ~ N(πᵉ_t, σ_headline)                            [pre-1993 on
 
 ### Target Anchored — `target`
 
-The full model. Uses market_1y, breakeven, inflation, headline CPI, nominal bonds, HCOE, and the 2.5% target anchor.
+The full model. Uses market_1y, breakeven, business, market_yoy (all with α, λ), plus inflation, headline CPI, nominal bonds, HCOE, and the 2.5% target anchor. Innovation variance is estimated.
 
-**State equation:** Same as Long Run.
+**State equation:** Estimated innovation variance.
+```
+πᵉ_t = πᵉ_{t-1} + ε_t
+
+where:
+  ε_t ~ StudentT(ν=4, μ=0, σ_early)   for t < 1994Q1
+  ε_t ~ StudentT(ν=4, μ=0, σ_late)    for t ≥ 1994Q1
+
+  σ_early ~ HalfNormal(0.15)          [estimated, typical ~0.30]
+  σ_late ~ HalfNormal(0.1)            [estimated, typical ~0.07]
+
+Initial: πᵉ_0 ~ N(inflation_1983Q1, 2.0)
+```
 
 **Observation equations:**
 ```
@@ -294,17 +305,24 @@ market_1y_t = πᵉ_t + α_market_1y + λ_market_1y × π_{t-1} + ε_t
 breakeven_t = πᵉ_t + α_breakeven + λ_breakeven × π_{t-1} + ε_t
   ε_t ~ N(0, σ_obs_breakeven)
 
+business_t = πᵉ_t + α_business + λ_business × π_{t-1} + ε_t
+  ε_t ~ N(0, σ_obs_business)
+
+market_yoy_t = πᵉ_t + α_market_yoy + λ_market_yoy × π_{t-1} + ε_t
+  ε_t ~ N(0, σ_obs_market_yoy)
+
 π_{t-1} ~ N(πᵉ_t, σ_inflation)
 
 headline_{t-1} ~ N(πᵉ_t, σ_headline)                            [pre-1993 only]
 
 nominal_t = πᵉ_t + real_rate + (πᵉ_t × real_rate / 100) + ε_t   [pre-1993Q3 only]
   ε_t ~ N(0, σ_nominal)
+  real_rate ~ N(5.0, 1.5)                                        [estimated ~5.5%]
 
 hcoe_t = πᵉ_t + mfp_t + hcoe_adjustment + ε_t
   ε_t ~ N(0, σ_hcoe)
 
-2.5 ~ N(πᵉ_t, 0.3)                                              [post-1998Q4 only]
+2.5 ~ N(πᵉ_t, 0.35)                                             [post-1998Q4 only]
 ```
 
 ---
@@ -313,18 +331,19 @@ hcoe_t = πᵉ_t + mfp_t + hcoe_adjustment + ε_t
 
 ### Comparison with RBA PIE_RBAQ
 
-The model is validated against the RBA's inflation expectations series (PIE_RBAQ) from the MacroDave database, which runs from 1983Q1 to 2017Q2.
+The model is validated against the RBA's inflation expectations series (PIE_RBAQ) from the MacroDave database, which runs from 1983Q1 to 2019Q1.
 
-| Metric | Value | Period |
-|--------|-------|--------|
-| Correlation | 0.99 | 1993Q1-2017Q2 |
-| RMSE | 0.51pp | 1993Q1-2017Q2 |
+| Period | Correlation | Mean Diff | RMSE |
+|--------|-------------|-----------|------|
+| Post-1993 (survey data) | 0.94 | -0.04pp | 0.12pp |
+| Post-1998 (anchor established) | 0.92 | -0.03pp | 0.06pp |
+| 2009-2019 (last 10 years overlap) | 0.95 | -0.01pp | 0.06pp |
 
-**Post-inflation targeting period (1993-2017)**: Excellent fit. The model tracks the RBA series closely once survey data becomes available.
+**Post-inflation targeting period (1993-2019)**: Excellent fit. RMSE of 6 basis points post-1998. The model tracks the RBA series very closely once the inflation target anchor is established.
 
 **Pre-inflation targeting period (1983-1993)**: The RBA series shows a sawtooth pattern that doesn't match headline inflation or other indicators. Our model produces a smoother decline informed by HCOE growth, which is more consistent with wage-setting behaviour during the disinflation.
 
-**Post-2017**: The RBA series ends in 2017Q2. Our model continues to present, anchored by surveys, breakevens, HCOE, trimmed mean/weighted median inflation, and the 2.5% target observation.
+**Post-2019**: The RBA series ends in 2019Q1. Our model continues to present, anchored by surveys, breakevens, HCOE, trimmed mean/weighted median inflation, and the 2.5% target observation.
 
 ### Testing for De-anchoring
 

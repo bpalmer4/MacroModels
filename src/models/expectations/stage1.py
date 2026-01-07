@@ -50,7 +50,7 @@ def load_data(
     # Load survey expectations
     surveys = get_expectations_surveys()
     measures = pd.DataFrame(
-        {name: surveys[name].data for name in ["market_1y"] if name in surveys}
+        {name: surveys[name].data for name in ["market_1y", "business", "market_yoy"] if name in surveys}
     )
 
     # Add breakeven from bonds
@@ -64,6 +64,12 @@ def load_data(
         measures.loc[pd.Period("2000Q1"), "market_1y"] = 2.5
         measures.loc[pd.Period("2000Q2"), "market_1y"] = 2.5
         measures.loc[pd.Period("2000Q3"), "market_1y"] = 2.5
+    if "market_yoy" in measures.columns:
+        measures.loc[pd.Period("1999Q3"), "market_yoy"] = 2.6
+        measures.loc[pd.Period("1999Q4"), "market_yoy"] = 2.5
+        measures.loc[pd.Period("2000Q1"), "market_yoy"] = 2.5
+        measures.loc[pd.Period("2000Q2"), "market_yoy"] = 2.5
+        measures.loc[pd.Period("2000Q3"), "market_yoy"] = 2.5
 
     # Load actual inflation (average of trimmed mean and weighted median)
     trimmed = get_trimmed_mean_annual().data
@@ -110,7 +116,7 @@ def build_model(
     fix_inflation_sigma = None
     use_survey_bias = True  # Default: include α and λ in survey equation
     if model_type == "target":
-        survey_series = ["market_1y", "breakeven"]
+        survey_series = ["market_1y", "breakeven", "business", "market_yoy"]
         use_anchor = True
         use_headline = True
         use_nominal = True
@@ -118,6 +124,7 @@ def build_model(
         use_inflation = True
         inflation_sigma_prior = 1.5
         tie_inflation_sigma = False
+        estimate_innovation = True  # Let model determine smoothness
     elif model_type == "short":
         survey_series = ["market_1y"]
         use_anchor = False
@@ -136,6 +143,7 @@ def build_model(
         use_nominal = True
         use_hcoe = False
         use_inflation = False
+        use_survey_bias = False  # No α or λ - take breakeven at face value
         inflation_sigma_prior = 2.0
         tie_inflation_sigma = False
 
@@ -215,7 +223,7 @@ def build_model(
         # --- Nominal 10y Bonds (pre-breakeven) ---
         if use_nominal:
             nominal = get_nominal_10y().data.reindex(index)
-            pre_breakeven = index < pd.Period("1993Q3")
+            pre_breakeven = index < pd.Period("1995Q3")  # 2yr overlap with breakeven to anchor r*
             nominal_mask = ~np.isnan(nominal.values) & pre_breakeven
             if nominal_mask.sum() > 0:
                 real_rate = pm.Normal("real_rate", mu=5.0, sigma=1.5)
