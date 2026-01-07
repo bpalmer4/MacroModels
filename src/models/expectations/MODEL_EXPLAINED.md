@@ -7,9 +7,9 @@ This directory contains a Bayesian signal extraction model for estimating latent
 | Component | Method | Key Feature |
 |-----------|--------|-------------|
 | Sample | 1983Q1 to present | Extended early period using bonds, headline CPI, and HCOE |
-| Latent State | Regime-switching Student-t random walk | Innovation variance estimated (Target, Short) or fixed (Long Run) |
-| Model Types | Target Anchored, Short Run (1yr), Long Run (10yr) | Different observation equations per type |
-| Measures | market_1y, breakeven, business, market_yoy, inflation, HCOE, headline CPI (pre-1993), nominal bonds | Series-specific effects (α) and backward-looking bias (λ) for Target model only |
+| Latent State | Regime-switching Student-t random walk | Innovation variance estimated (Target, Short) or fixed (Unanchored, Long Run) |
+| Model Types | Target Anchored, Unanchored, Short Run (1yr), Long Run (10yr) | Different observation equations per type |
+| Measures | market_1y, breakeven, business, market_yoy, inflation, HCOE, headline CPI (pre-1993), nominal bonds | Series-specific effects (α) and backward-looking bias (λ) for Target/Unanchored only |
 
 ## Reference
 
@@ -17,13 +17,14 @@ Cusbert T (2017), "Estimating the NAIRU and the Unemployment Gap", RBA Bulletin,
 
 ---
 
-## Three Model Types
+## Four Model Types
 
-The model estimates three separate latent expectations series:
+The model estimates four separate latent expectations series:
 
 | Model | Code | Survey Series | Anchor | Use Case |
 |-------|------|---------------|--------|----------|
 | **Target Anchored** | `target` | market_1y + breakeven + business + market_yoy (with α, λ) | Yes (2.5% post-1998Q4) | Policy analysis - assumes credible anchoring |
+| **Unanchored** | `unanchored` | market_1y + breakeven + business + market_yoy (with α, λ) | No | Test de-anchoring - same as target but without 2.5% constraint |
 | **Short Run (1 Year)** | `short` | market_1y only (no α, λ) | No | Wage-relevant expectations for Phillips curve |
 | **Long Run (10-Year Bond)** | `market` | breakeven only (no α, λ) | No | What markets actually believe |
 
@@ -36,7 +37,7 @@ Results are saved to `output/expectations/` with model type suffixes:
 - `expectations_{code}_hdi.parquet` - Point estimates with HDI bounds
 - `expectations_{code}_hdi.csv` - Same in CSV format
 
-Where `{code}` is `target`, `short`, or `market`.
+Where `{code}` is `target`, `unanchored`, `short`, or `market`.
 
 Charts are saved to `charts/expectations/`.
 
@@ -211,16 +212,16 @@ hcoe_adjustment ~ N(0, 0.5)  # Estimated ≈ 0
 
 ## Model Configuration Summary
 
-| Feature | Target Anchored | Short Run (1yr) | Long Run (10yr) |
-|---------|-----------------|-----------------|-----------------|
-| Survey series | market_1y, breakeven, business, market_yoy | market_1y | breakeven |
-| Survey bias (α, λ) | ✓ | ✗ | ✗ |
-| Innovation variance | Estimated | Estimated | Fixed (0.12/0.075) |
-| Target anchor (post-1998Q4) | ✓ (σ=0.35) | ✗ | ✗ |
-| Headline CPI (pre-1993) | ✓ | ✓ | ✗ |
-| Nominal bonds | ✓ (pre-1993Q3) | ✗ | ✓ (pre-1995Q3, 2yr overlap) |
-| HCOE growth | ✓ | ✗ | ✗ |
-| Inflation observation | ✓ | ✓ (shared σ) | ✗ |
+| Feature | Target Anchored | Unanchored | Short Run (1yr) | Long Run (10yr) |
+|---------|-----------------|------------|-----------------|-----------------|
+| Survey series | market_1y, breakeven, business, market_yoy | market_1y, breakeven, business, market_yoy | market_1y | breakeven |
+| Survey bias (α, λ) | ✓ | ✓ | ✗ | ✗ |
+| Innovation variance | Estimated | Fixed (0.30/0.07) | Estimated | Fixed (0.12/0.075) |
+| Target anchor (post-1998Q4) | ✓ (σ=0.35) | ✗ | ✗ | ✗ |
+| Headline CPI (pre-1993) | ✓ | ✓ | ✓ | ✗ |
+| Nominal bonds | ✓ (pre-1993Q3) | ✓ (pre-1993Q3) | ✗ | ✓ (pre-1995Q3, 2yr overlap) |
+| HCOE growth | ✓ | ✓ | ✗ | ✗ |
+| Inflation observation | ✓ | ✓ | ✓ (shared σ) | ✗ |
 
 ---
 
@@ -325,6 +326,39 @@ hcoe_t = πᵉ_t + mfp_t + hcoe_adjustment + ε_t
 2.5 ~ N(πᵉ_t, 0.35)                                             [post-1998Q4 only]
 ```
 
+### Unanchored — `unanchored`
+
+Same as Target Anchored but **without the 2.5% target anchor**. Uses fixed innovation variance (matching Target estimates) to avoid funnel geometry in the posterior. This model answers: "What do expectations look like if we don't impose credibility?"
+
+**State equation:** Fixed innovation variance (σ_early=0.30, σ_late=0.07).
+```
+πᵉ_t = πᵉ_{t-1} + ε_t
+
+where:
+  ε_t ~ StudentT(ν=4, μ=0, σ=0.30)   for t < 1994Q1
+  ε_t ~ StudentT(ν=4, μ=0, σ=0.07)   for t ≥ 1994Q1
+
+Initial: πᵉ_0 ~ N(inflation_1983Q1, 2.0)
+```
+
+**Observation equations:** Same as Target Anchored, minus the target anchor:
+```
+market_1y_t = πᵉ_t + α_market_1y + λ_market_1y × π_{t-1} + ε_t
+breakeven_t = πᵉ_t + α_breakeven + λ_breakeven × π_{t-1} + ε_t
+business_t = πᵉ_t + α_business + λ_business × π_{t-1} + ε_t
+market_yoy_t = πᵉ_t + α_market_yoy + λ_market_yoy × π_{t-1} + ε_t
+π_{t-1} ~ N(πᵉ_t, σ_inflation)
+headline_{t-1} ~ N(πᵉ_t, σ_headline)                            [pre-1993 only]
+nominal_t = πᵉ_t + real_rate + (πᵉ_t × real_rate / 100) + ε_t   [pre-1993Q3 only]
+hcoe_t = πᵉ_t + mfp_t + hcoe_adjustment + ε_t
+
+# NO target anchor observation
+```
+
+**Key difference from Target:** Without the anchor, the bias parameters (α, λ) shift to absorb the difference. Typical estimates:
+- `λ` for market_1y: ~0 (vs 0.18 in Target) — backward-looking component disappears
+- `α` for market_yoy: ~+0.48 (vs +0.04 in Target) — larger positive bias
+
 ---
 
 ## Validation
@@ -347,22 +381,39 @@ The model is validated against the RBA's inflation expectations series (PIE_RBAQ
 
 ### Testing for De-anchoring
 
-The three model types provide a natural way to test for de-anchoring:
+The four model types provide a natural way to test for de-anchoring:
 
 1. **Target Anchored**: Assumes expectations are anchored at 2.5% post-1998
-2. **Short Run** and **Long Run**: No anchoring assumption
+2. **Unanchored**: Same observations as Target but without the anchor constraint
+3. **Short Run** and **Long Run**: Different observation sets, no anchoring assumption
+
+**Key comparison: Target vs Unanchored**
+
+The gap between Target Anchored and Unanchored directly measures how much the 2.5% anchor is pulling expectations down:
+
+| Scenario | Target - Unanchored Gap | Interpretation |
+|----------|-------------------------|----------------|
+| Gap ≈ 0 | Anchor has no effect | Expectations naturally at target |
+| Gap < 0 (Unanchored higher) | Anchor pulling down | Surveys showing elevated expectations |
+| Gap > 0 (Target higher) | Anchor pulling up | Would indicate deflationary expectations |
+
+**Current estimates (2025Q3):**
+- Target Anchored: 2.58%
+- Unanchored: 2.75%
+- Gap: -17bp (anchor pulling down modestly)
 
 **Interpretation:**
-- If expectations are truly anchored, all three models should produce similar estimates (~2.5%)
-- If the Short Run/Long Run models show expectations significantly above 2.5% while the Target Anchored model is pulled down to target, this suggests de-anchoring
-- Compare current period estimates across models
+- If expectations are truly anchored, all four models should produce similar estimates (~2.5%)
+- If the Unanchored/Short Run/Long Run models show expectations above Target Anchored, this suggests the anchor is doing work to pull expectations toward target
+- The Unanchored model is the cleanest comparison since it uses identical observations to Target
 
 **Signs of de-anchoring:**
-1. Short Run/Long Run estimates persistently above Target Anchored estimates
-2. Survey alphas shifting upward over time
-3. Breakeven inflation rising
-4. HCOE growth exceeding π_exp + MFP
-5. Wider credible intervals in Target Anchored model as it struggles to reconcile observations with anchor
+1. Growing gap between Unanchored and Target Anchored estimates
+2. Short Run/Long Run estimates persistently above Target Anchored
+3. Survey alphas shifting upward over time
+4. Breakeven inflation rising
+5. HCOE growth exceeding π_exp + MFP
+6. Wider credible intervals in Target Anchored model as it struggles to reconcile observations with anchor
 
 ---
 
@@ -371,7 +422,7 @@ The three model types provide a natural way to test for de-anchoring:
 ### Command Line
 
 ```bash
-# Run all three models (default: 1983Q1 start, 20000 draws, 4 chains)
+# Run all four models (default: 1983Q1 start, 10000 draws, 4 chains)
 uv run python -m src.models.expectations.model
 
 # Quick run for testing
@@ -386,10 +437,10 @@ uv run python -m src.models.expectations.model -q
 ```python
 from src.models.expectations import run_model, run_all_models
 
-# Run single model (use code: "target", "short", or "market")
+# Run single model (use code: "target", "unanchored", "short", or "market")
 results = run_model(model_type="target", start="1984Q1", verbose=True)
 
-# Run all three models
+# Run all four models
 all_results = run_all_models(start="1984Q1", verbose=True)
 
 # Access results

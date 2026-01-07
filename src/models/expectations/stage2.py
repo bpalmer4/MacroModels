@@ -134,6 +134,7 @@ def generate_plots(
     mg.clear_chart_dir()
 
     results_target = all_results["target"]
+    results_unanchored = all_results["unanchored"]
     results_short = all_results["short"]
     results_market = all_results["market"]
 
@@ -155,6 +156,7 @@ def generate_plots(
 
     # Get posteriors
     posterior_target = results_target.expectations_posterior()
+    posterior_unanchored = results_unanchored.expectations_posterior()
     posterior_short = results_short.expectations_posterior()
     posterior_market = results_market.expectations_posterior()
 
@@ -182,6 +184,28 @@ def generate_plots(
         title="Target Anchored Inflation Expectations vs RBA PIE_RBAQ",
         lfooter="Australia. Model: market_1y + breakeven + business + market_yoy + anchor.",
         rfooter=f"Sample: {results_target.index[0]} to {results_target.index[-1]}",
+        **plot_kwargs,
+    )
+
+    # Unanchored vs Trimmed Mean
+    ax = plot_posterior_timeseries(data=posterior_unanchored, legend_stem="Unanchored", finalise=False)
+    mg.line_plot(trimmed, ax=ax, color="darkorange", width=2, annotate=False, zorder=5)
+    mg.finalise_plot(
+        ax,
+        title="Unanchored Inflation Expectations",
+        lfooter="Australia. Model: market_1y + breakeven + business + market_yoy (no target anchor).",
+        rfooter=f"Sample: {results_unanchored.index[0]} to {results_unanchored.index[-1]}",
+        **plot_kwargs,
+    )
+
+    # Unanchored vs PIE_RBAQ
+    ax = plot_posterior_timeseries(data=posterior_unanchored, legend_stem="Unanchored", finalise=False)
+    mg.line_plot(pie_rbaq, ax=ax, color="darkorange", width=2, annotate=False, zorder=5)
+    mg.finalise_plot(
+        ax,
+        title="Unanchored Inflation Expectations vs RBA PIE_RBAQ",
+        lfooter="Australia. Model: market_1y + breakeven + business + market_yoy (no target anchor).",
+        rfooter=f"Sample: {results_unanchored.index[0]} to {results_unanchored.index[-1]}",
         **plot_kwargs,
     )
 

@@ -125,6 +125,19 @@ def build_model(
         inflation_sigma_prior = 1.5
         tie_inflation_sigma = False
         estimate_innovation = True  # Let model determine smoothness
+    elif model_type == "unanchored":
+        # Same as target but without the 2.5% anchor
+        survey_series = ["market_1y", "breakeven", "business", "market_yoy"]
+        use_anchor = False
+        use_headline = True
+        use_nominal = True
+        use_hcoe = True
+        use_inflation = True
+        inflation_sigma_prior = 1.5
+        tie_inflation_sigma = False
+        estimate_innovation = False  # Fixed innovation to avoid funnel geometry
+        sigma_early = 0.30
+        sigma_late = 0.07
     elif model_type == "short":
         survey_series = ["market_1y"]
         use_anchor = False
@@ -272,7 +285,8 @@ def run_model(
 ) -> tuple[az.InferenceData, pd.DataFrame, pd.Series, pd.PeriodIndex]:
     """Run model and return trace + data."""
     model_desc = {
-        "target": "Target-anchored (market_1y + breakeven + anchor)",
+        "target": "Target-anchored (all surveys + anchor)",
+        "unanchored": "Unanchored (all surveys, no anchor)",
         "short": "Short-run (market_1y, no anchor)",
         "market": "Market (breakeven only, no anchor)",
     }

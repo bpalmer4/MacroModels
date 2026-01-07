@@ -22,8 +22,9 @@ ANCHOR_SIGMA = 0.35  # Observation noise for target anchoring
 
 MODEL_NAMES = {
     "target": "TARGET ANCHORED",
+    "unanchored": "UNANCHORED (All Surveys)",
     "short": "SHORT RUN (1 Year)",
     "market": "LONG RUN (10-Year Bond)",
 }
 
-MODEL_TYPES = ["target", "short", "market"]
+MODEL_TYPES = ["target", "unanchored", "short", "market"]
