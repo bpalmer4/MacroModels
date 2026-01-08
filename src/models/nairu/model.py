@@ -104,7 +104,7 @@ __all__ = [
 def run_model(
     start: str | None = "1980Q1",
     end: str | None = None,
-    anchor_mode: AnchorMode = "target",
+    anchor_mode: AnchorMode = "rba",
     config: SamplerConfig | None = None,
     verbose: bool = False,
 ) -> NAIRUResults:
@@ -120,6 +120,7 @@ def run_model(
         anchor_mode: How to anchor expectations
             - "expectations": Use full estimated expectations series
             - "target": Phase from expectations to 2.5% target (1993-1998)
+            - "rba": Use RBA PIE_RBAQ with same phase-in to target
         config: Sampler configuration
         verbose: Print progress messages
 
@@ -152,7 +153,7 @@ def run_model(
 
 
 def main(
-    anchor_mode: AnchorMode = "target",
+    anchor_mode: AnchorMode = "rba",
     verbose: bool = False,
     skip_forecast: bool = False,
 ) -> None:
@@ -167,6 +168,7 @@ def main(
         anchor_mode: How to anchor expectations
             - "expectations": Use full estimated expectations series
             - "target": Phase from expectations to 2.5% target (1993-1998)
+            - "rba": Use RBA PIE_RBAQ with same phase-in to target
         verbose: Print detailed output
         skip_forecast: Skip Stage 3 (scenario analysis)
     """
@@ -216,9 +218,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--anchor",
         type=str,
-        choices=["expectations", "target"],
-        default="target",
-        help="Expectations anchor mode: 'target' (phase to 2.5%%, default) or 'expectations' (full series)",
+        choices=["expectations", "target", "rba"],
+        default="rba",
+        help="Expectations anchor mode: 'rba' (default), 'target' (model series phased), or 'expectations' (full model series)",
     )
     args = parser.parse_args()
     main(anchor_mode=args.anchor, verbose=args.verbose, skip_forecast=args.skip_forecast)

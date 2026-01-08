@@ -3,12 +3,25 @@
 import mgplot as mg
 import pandas as pd
 
+from src.data.observations import PHASE_END
 from src.models.nairu.analysis.extraction import get_vector_var
 from src.models.nairu.analysis.plot_posterior_timeseries import plot_posterior_timeseries
 
 # Plotting constants
 START = pd.Period("1985Q1", freq="Q")
 RFOOTER = "Joint NAIRU + Output Gap Model"
+
+# Pre-policy-relevant period (before full target anchor)
+PRE_POLICY_PERIOD = {
+    "axvspan": {
+        "xmin": START.ordinal,
+        "xmax": PHASE_END.ordinal,
+        "color": "goldenrod",
+        "alpha": 0.2,
+        "label": "Pre-policy-relevant NAIRU",
+        "zorder": -2,
+    }
+}
 
 ANNUAL_RANGE = {
     "axhspan": {
@@ -57,7 +70,7 @@ def plot_nairu(
     for color, width, label in zip(["white", ""], [back, front], ["_", ""]):
         U.name = "Unemployment Rate" if not label else label
         mg.line_plot(U, ax=ax, color=color if color else "brown", width=width, zorder=4)
-        π4.name = "Inflation rate" if not label else label
+        π4.name = "Inflation rate (trimmed mean, annual)" if not label else label
         mg.line_plot(π4, ax=ax, color=color if color else "darkorange", width=width, zorder=4)
 
     if ax is not None:
@@ -70,6 +83,7 @@ def plot_nairu(
             lfooter=lfooter,
             rfooter=RFOOTER,
             axisbelow=True,
+            **PRE_POLICY_PERIOD,
             **ANNUAL_RANGE,
             **ANNUAL_TARGET,
             show=show,
@@ -104,4 +118,5 @@ def plot_unemployment_gap(
         axisbelow=True,
         y0=True,
         show=show,
+        **PRE_POLICY_PERIOD,
     )

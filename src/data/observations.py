@@ -11,7 +11,7 @@ import pandas as pd
 
 # --- Anchor Mode ---
 
-AnchorMode = Literal["expectations", "target"]
+AnchorMode = Literal["expectations", "target", "rba"]
 
 # Inflation target (RBA's 2-3% band midpoint)
 INFLATION_TARGET = 2.5
@@ -24,6 +24,7 @@ PHASE_END = pd.Period("1998Q4")    # First quarter using pure target
 ANCHOR_LABELS = {
     "expectations": "Anchor: Estimated expectations",
     "target": "Anchor: Expectations → 1993 → phased → 1998 → Target",
+    "rba": "Anchor: RBA PIE_RBAQ → 1993 → phased → 1998 → Target",
 }
 
 from src.data import (
@@ -64,6 +65,7 @@ from src.data import (
     hma,
 )
 from src.data.expectations_model import get_model_expectations
+from src.data.expectations_rba import get_rba_expectations
 from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
 
 # --- Constants ---
@@ -158,7 +160,7 @@ def build_observations(
     start: str | None = None,
     end: str | None = None,
     hma_term: int = HMA_TERM,
-    anchor_mode: AnchorMode = "target",
+    anchor_mode: AnchorMode = "rba",
     verbose: bool = False,
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, str]:
     """Build observation dictionary for model.
@@ -176,6 +178,7 @@ def build_observations(
         anchor_mode: How to anchor expectations
             - "expectations": Use full estimated expectations series
             - "target": Phase from expectations to 2.5% target (1993-1998)
+            - "rba": Use RBA PIE_RBAQ with same phase-in to target
         verbose: Print sample info
 
     Returns:
@@ -208,9 +211,14 @@ def build_observations(
     π = get_trimmed_mean_qrtly().data
     π4 = get_trimmed_mean_annual().data
 
-    # Inflation expectations from signal extraction model
-    π_exp_raw = get_model_expectations().data
-    π_exp = apply_anchor_mode(π_exp_raw, anchor_mode)
+    # Inflation expectations
+    if anchor_mode == "rba":
+        # Use RBA PIE_RBAQ with target phase-in
+        π_exp = get_rba_expectations().data
+    else:
+        # Use model expectations (with optional target phase-in)
+        π_exp_raw = get_model_expectations().data
+        π_exp = apply_anchor_mode(π_exp_raw, anchor_mode)
 
     # Interest rates
     cash_rate = get_cash_rate_qrtly().data

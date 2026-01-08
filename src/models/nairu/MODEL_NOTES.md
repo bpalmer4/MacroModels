@@ -965,33 +965,38 @@ See `src/models/expectations/MODEL_NOTES.md` for full details on the four expect
 
 ### Expectations Series
 
-The NAIRU model uses the **Target Anchored** expectations series from the signal extraction model. This series combines multiple survey measures (NAB business, market economists), market-based measures (breakeven inflation), and early-period proxies (headline CPI, nominal bonds) with bias corrections (α, λ parameters).
+The NAIRU model supports multiple sources for inflation expectations in the Phillips curve. The default uses RBA's PIE_RBAQ series; alternatives use the signal extraction model output.
 
-**Implementation**: The expectations are loaded via `src/data/expectations_model.py` from `output/expectations/expectations_target_hdi.parquet`.
+**Implementation**:
+- RBA expectations: `src/data/expectations_rba.py` loads from `input_data/PIE_RBAQ.CSV`
+- Model expectations: `src/data/expectations_model.py` loads from `output/expectations/expectations_target_hdi.parquet`
 
-### Why Two Anchor Modes for Expectations?
+### Anchor Modes for Expectations
 
-After loading the Target Anchored expectations series, the model supports two anchor modes:
+The model supports three anchor modes via the `--anchor` CLI argument:
 
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| `target` (default) | Use expectations to 1992Q4, phase to 2.5% by 1998Q4, then target | Policy analysis |
-| `expectations` | Use full Target Anchored series as-is | Historical analysis |
+| Mode | Source | Description | Use Case |
+|------|--------|-------------|----------|
+| `rba` (default) | RBA PIE_RBAQ | Use RBA series to 1992Q4, phase to 2.5% by 1998Q4, then target | Policy analysis |
+| `target` | Signal extraction model | Use model expectations to 1992Q4, phase to 2.5% by 1998Q4, then target | Policy analysis (model-based) |
+| `expectations` | Signal extraction model | Use full Target Anchored series as-is | Historical analysis |
 
-**`target` mode (default)**: The full expectations path is:
+**`rba` mode (default)**: Uses RBA's official inflation expectations series (PIE_RBAQ), which is derived from surveys and market measures. The expectations path is:
 
 ```
-1983Q1 – 1992Q4:  Target Anchored model (survey-informed)
-1993Q1 – 1998Q4:  Linear phase from Target Anchored → 2.5% target
+1970Q1 – 1992Q4:  RBA PIE_RBAQ (survey/market-based)
+1993Q1 – 1998Q4:  Linear phase from PIE_RBAQ → 2.5% target
 1999Q1 onwards:   2.5% inflation target
 ```
 
-This delivers a **policy-relevant NAIRU**: the unemployment rate consistent with hitting the 2.5% inflation target. The key policy question is "what interest rate path gets inflation to target?" — not "what rate achieves whatever expectations happen to be."
+This is the default because it uses the RBA's own expectations measure, providing consistency with official analysis.
 
-**`expectations` mode**: Uses the full Target Anchored series without phasing to the target. NAIRU is defined relative to actual estimated expectations. This is useful for historical analysis — understanding what NAIRU was at the time given prevailing expectations — but less relevant for forward-looking policy.
+**`target` mode**: Same phase-in structure as `rba`, but uses the signal extraction model's Target Anchored series instead of PIE_RBAQ. The model series combines multiple survey measures (NAB business, market economists), market-based measures (breakeven inflation), and early-period proxies with bias corrections.
+
+**`expectations` mode**: Uses the full Target Anchored series from the signal extraction model without phasing to the target. NAIRU is defined relative to actual estimated expectations. This is useful for historical analysis — understanding what NAIRU was at the time given prevailing expectations — but less relevant for forward-looking policy.
 
 The phasing period (1993-1998) reflects the RBA's gradual establishment of inflation targeting credibility. By 1998Q4, expectations were effectively anchored at the 2-3% band midpoint.
 
 **NAIRU interpretation**:
-- With `target` anchor: NAIRU is the unemployment rate where inflation equals the 2.5% target
+- With `rba` or `target` anchor: NAIRU is the unemployment rate where inflation equals the 2.5% target
 - With `expectations` anchor: NAIRU is the unemployment rate where inflation equals estimated expectations at that time
