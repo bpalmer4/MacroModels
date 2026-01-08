@@ -497,28 +497,4 @@ samples = results.expectations_posterior()
 
 ## Integration with NAIRU Model
 
-The expectations series feeds into the NAIRU model's Phillips curves:
-
-1. Run expectations model to extract πᵉ
-2. Save results with `results.save()`
-3. NAIRU model loads median expectations from `output/expectations/expectations_target_hdi.parquet` via `src/data/expectations_model.py`
-4. Phillips curves use `π_exp` as the baseline around which demand/supply effects operate
-
-### Anchor Modes
-
-The NAIRU model supports two modes for anchoring expectations:
-
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| `target` (default) | Use estimated expectations to 1992Q4, phase linearly to 2.5% by 1998Q4, then 2.5% target thereafter | Policy analysis |
-| `expectations` | Use full estimated expectations series as-is | Historical analysis |
-
-**Why `target` is the default**: The key policy question is "what interest rate path gets inflation to target?" Using the 2.5% target post-1998 makes NAIRU directly interpretable as the unemployment rate consistent with hitting the inflation target. This is more policy-relevant than asking what rate achieves whatever expectations happen to be.
-
-The phasing period (1993-1998) reflects the RBA's gradual establishment of inflation targeting credibility. By 1998, expectations were effectively anchored at the 2-3% band midpoint.
-
-**NAIRU interpretation**:
-- With `target` anchor: NAIRU is the unemployment rate where inflation equals the 2.5% target
-- With `expectations` anchor: NAIRU is the unemployment rate where inflation equals current expectations
-
-See `src/models/nairu/` for NAIRU model implementation.
+The Target Anchored expectations series is used by the NAIRU model in its Phillips curve equations. See `src/models/nairu/MODEL_NOTES.md` for details.

@@ -954,32 +954,44 @@ Output gap affects unemployment mechanically. The 1.6 demand multiplier applied 
 
 ### Why Use a Signal Extraction Model for Expectations?
 
-Rather than imposing a mechanical transition from backward-looking expectations to the 2.5% target, we estimate expectations directly using a Bayesian signal extraction model. This approach:
+Rather than imposing a mechanical transition from backward-looking expectations to the 2.5% target, we estimate expectations directly using Bayesian signal extraction models. This approach:
 
 - **Lets the data speak**: The transition from high/volatile expectations (1980s) to anchored expectations (~2.5% post-1998) emerges from the estimation rather than being imposed
 - **Captures uncertainty**: The signal extraction model provides credible intervals on expectations, which propagate through to NAIRU uncertainty
 - **Uses multiple measures**: Combines surveys (NAB business, market economists), market-based measures (breakeven inflation), and early-period proxies (headline CPI, nominal bonds)
 - **Handles regime changes**: Student-t innovations allow the model to capture sharp shifts during the 1988-1992 disinflation while remaining smooth in the targeting era
 
-The estimated expectations show gradual convergence to ~2.5% through the mid-1990s, consistent with the RBA's inflation targeting credibility building over time. See `src/models/expectations/MODEL_EXPLAINED.md` for full details.
+See `src/models/expectations/MODEL_NOTES.md` for full details on the four expectations models (Target Anchored, Unanchored, Short Run, Long Run).
+
+### Expectations Series
+
+The NAIRU model uses the **Target Anchored** expectations series from the signal extraction model. This series combines multiple survey measures (NAB business, market economists), market-based measures (breakeven inflation), and early-period proxies (headline CPI, nominal bonds) with bias corrections (α, λ parameters).
+
+**Implementation**: The expectations are loaded via `src/data/expectations_model.py` from `output/expectations/expectations_target_hdi.parquet`.
 
 ### Why Two Anchor Modes for Expectations?
 
-The model supports two anchor modes for expectations in the Phillips curves:
+After loading the Target Anchored expectations series, the model supports two anchor modes:
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
 | `target` (default) | Use expectations to 1992Q4, phase to 2.5% by 1998Q4, then target | Policy analysis |
-| `expectations` | Use full estimated expectations series | Standard economics |
+| `expectations` | Use full Target Anchored series as-is | Historical analysis |
 
-Both have utility:
+**`target` mode (default)**: The full expectations path is:
 
-**`target` mode**: The key policy question is "what interest rate path gets inflation to target?" Using the 2.5% target post-1998 makes NAIRU directly interpretable as the unemployment rate consistent with hitting the inflation target.
+```
+1983Q1 – 1992Q4:  Target Anchored model (survey-informed)
+1993Q1 – 1998Q4:  Linear phase from Target Anchored → 2.5% target
+1999Q1 onwards:   2.5% inflation target
+```
 
-**`expectations` mode**: The standard economics approach. NAIRU is defined relative to actual expectations, not a policy target. This is critical when expectations are unanchored — if expectations drift above 2.5%, the `expectations` anchor shows the unemployment rate needed to stabilise inflation at that elevated level, while `target` shows what's needed to get back to 2.5%.
+This delivers a **policy-relevant NAIRU**: the unemployment rate consistent with hitting the 2.5% inflation target. The key policy question is "what interest rate path gets inflation to target?" — not "what rate achieves whatever expectations happen to be."
 
-The phasing period (1993-1998) reflects the RBA's gradual establishment of inflation targeting credibility.
+**`expectations` mode**: Uses the full Target Anchored series without phasing to the target. NAIRU is defined relative to actual estimated expectations. This is useful for historical analysis — understanding what NAIRU was at the time given prevailing expectations — but less relevant for forward-looking policy.
+
+The phasing period (1993-1998) reflects the RBA's gradual establishment of inflation targeting credibility. By 1998Q4, expectations were effectively anchored at the 2-3% band midpoint.
 
 **NAIRU interpretation**:
 - With `target` anchor: NAIRU is the unemployment rate where inflation equals the 2.5% target
-- With `expectations` anchor: NAIRU is the unemployment rate where inflation equals current expectations
+- With `expectations` anchor: NAIRU is the unemployment rate where inflation equals estimated expectations at that time
