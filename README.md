@@ -31,24 +31,37 @@ uv sync
 # Full estimation: data → sample → analyse → charts (~3 min)
 ./run-nairu.sh -v
 
-# Re-run analysis only (uses saved trace, ~1 min)
+# Re-run analysis and scenario forecasts (uses saved trace)
 ./run-nairu-stage2.sh -v
 
+# Scenario analysis only (deterministic + Monte Carlo forward sampling)
+./run-nairu-stage3.sh
+
+# Model variants: simple (core equations) or complex (all features)
+./run-nairu.sh -v --variant simple
+./run-nairu.sh -v --variant complex
+./run-nairu.sh -v --variant both      # Run both and generate comparison chart
+
 # Or via Python directly
-uv run python -m src.models.nairu.model -v
-uv run python -m src.models.nairu.stage2 -v
+uv run python -m src.models.nairu.model -v          # Stage 1: estimation
+uv run python -m src.models.nairu.stage2 -v          # Stage 2: analysis
+uv run python -m src.models.nairu.stage3             # Stage 3a: deterministic scenarios
+uv run python -m src.models.nairu.stage3_forward_sampling  # Stage 3b: Monte Carlo forecasts
 ```
 
 ### Inflation Expectations (Bayesian)
 
 ```bash
 # Run all four expectation models (~10 min)
-uv run python -m src.models.expectations.stage1
+./run-expectations.sh
+
+# Or via Python directly
+uv run python -m src.models.expectations.model
 
 # Run single model (target, unanchored, short, or market)
 uv run python -m src.models.expectations.stage1 --model target
 
-# Generate diagnostics and plots
+# Generate diagnostics and plots only
 uv run python -m src.models.expectations.stage2
 ```
 
@@ -74,9 +87,9 @@ uv run python -m src.models.cobb_douglas.model -v
 
 | Directory | Contents |
 |-----------|----------|
-| `model_outputs/` | NAIRU saved traces (`.nc`) and observations (`.pkl`) |
-| `output/expectations/` | Expectations traces (`.nc`), HDI estimates (`.parquet`, `.csv`) |
-| `charts/nairu_output_gap/` | NAIRU, output gap, Phillips curves, Taylor rule, decompositions |
+| `model_outputs/` | NAIRU saved traces (`.nc`) and observations (`.pkl`) for multiple model variants |
+| `output/expectations/` | Expectations traces (`.nc`), HDI estimates (`.parquet`, `.csv`), metadata (`.pkl`) |
+| `charts/nairu_output_gap/` | NAIRU, output gap, Phillips curves, equations, decompositions |
 | `charts/expectations/` | Expectations comparison, diagnostics, model fits |
 | `charts/cobb_douglas/` | MFP trends, productivity growth, potential output |
 
@@ -92,10 +105,12 @@ uv run python -m src.models.cobb_douglas.model -v
 ```
 src/
 ├── data/               # Data fetching (ABS, RBA) and preparation
-├── utilities/          # Shared utilities
+├── utilities/          # Shared utilities (rate conversion, etc.)
 └── models/
+    ├── common/         # Shared model utilities (diagnostics, extraction, timeseries)
     ├── expectations/   # Inflation expectations signal extraction
-    ├── nairu/          # NAIRU + Output Gap model
+    ├── nairu/          # NAIRU + Output Gap model (stages 1–3)
+    │   └── analysis/   # Plotting and diagnostics modules
     ├── cobb_douglas/   # Cobb-Douglas MFP decomposition
     └── dsge/           # DSGE model (in development)
 ```

@@ -6,8 +6,8 @@ This directory contains a Bayesian state-space model for jointly estimating NAIR
 
 | Component | Method | Key Feature |
 |-----------|--------|-------------|
-| NAIRU | Student-t random walk | No drift, ν=4, scale≈0.15 (fat tails for occasional large shifts) |
-| Potential Output | Cobb-Douglas + asymmetric innovations | Mean-zero SkewNormal (asymmetric: small positives common, large negatives rare) |
+| NAIRU | Gaussian random walk (default) | No drift, scale≈0.15; Student-t(ν=4) variant available for fat tails |
+| Potential Output | Cobb-Douglas + Gaussian innovations (default) | SkewNormal variant available (asymmetric: small positives common, large negatives rare) |
 | Phillips Curves | Regime-switching (3 regimes) | Pre-GFC, GFC-COVID, post-COVID |
 | Identification | 2 state + 10 observation equations | Joint estimation with proper uncertainty |
 | Scenario Analysis | Model-consistent projection | 4-quarter horizon with policy scenarios |
@@ -162,16 +162,23 @@ The model stages have different data dependencies:
 
 ### NAIRU (state_space.py)
 
-Student-t random walk without drift:
+Gaussian random walk without drift (default):
+
+```
+NAIRU_t = NAIRU_{t-1} + ε_t,  ε_t ~ N(0, σ)
+```
+
+- **σ (nairu_innovation)**: Typically fixed at 0.15 (RBA-consistent, ~0.15pp per quarter)
+- **Initial distribution**: N(6, 2) — centered on Australian historical NAIRU average (~5-7%) with moderate uncertainty
+
+**Student-t variant** (`student_t_nairu=True`, used by `complex` model variant):
 
 ```
 NAIRU_t = NAIRU_{t-1} + ε_t,  ε_t ~ StudentT(ν=4, 0, σ)
 ```
 
 - **ν (degrees of freedom)**: Fixed at 4 — fat tails with finite variance (many small moves, occasional large moves)
-- **σ (nairu_innovation)**: Typically fixed at 0.15 (RBA-consistent, ~0.15pp per quarter)
-- **Initial distribution**: N(6, 2) — centered on Australian historical NAIRU average (~5-7%) with moderate uncertainty
-- **Why Student-t?**: Most quarter-to-quarter changes are small, but the model allows occasional large shifts (e.g., GFC, COVID) via fat tails without requiring extreme probability draws. RBA research suggests NAIRU innovation SD around 0.15pp per quarter.
+- Most quarter-to-quarter changes are small, but the model allows occasional large shifts (e.g., GFC, COVID) via fat tails without requiring extreme probability draws.
 
 ### Potential Output (production.py)
 
@@ -203,7 +210,9 @@ This provides a wage-consistent productivity measure that aligns with the model'
 ```
 Where GOS = Gross Operating Surplus and COE = Compensation of Employees. This captures the secular rise in capital's share from ~0.25 in the 1970s to ~0.35 today.
 
-**Key feature**: Zero-mean SkewNormal innovations with positive skew (α=1). The location is shifted negative so E[ε]=0 while ~75% of draws remain positive. This makes downward revisions to potential rarer than upward ones, reflecting that capital accumulation and productivity gains are hard to reverse.
+**Default**: Gaussian innovations (ε_t ~ N(0, σ)).
+
+**SkewNormal variant** (`skewnormal_potential=True`): Zero-mean SkewNormal innovations with positive skew (α=1). The location is shifted negative so E[ε]=0 while ~75% of draws remain positive. This makes downward revisions to potential rarer than upward ones, reflecting that capital accumulation and productivity gains are hard to reverse.
 
 ---
 
@@ -760,6 +769,34 @@ Note: The ~0.30pp inflation difference between +50bp and hold (3.22% vs 3.52%) r
 python -m src.models.nairu.model -v
 ```
 
+### Model Variants
+
+The `--variant` flag selects between model configurations:
+
+```bash
+python -m src.models.nairu.model -v --variant simple    # Core equations only
+python -m src.models.nairu.model -v --variant complex   # All features enabled
+python -m src.models.nairu.model -v --variant both      # Run both + comparison chart
+python -m src.models.nairu.model -v                     # Default configuration
+```
+
+| Variant | NAIRU Innovations | Regime Switching | Extra Equations | Import Price Control |
+|---------|-------------------|------------------|-----------------|---------------------|
+| `simple` | Gaussian | No | — | No |
+| `complex` | Student-t(ν=4) | Yes (3 regimes) | Exchange rate, import price, participation, employment, net exports | Yes |
+| `default` | Gaussian | No | — | No |
+
+The `simple` variant uses core equations only (Phillips curves, Okun, IS curve, hourly COE). The `complex` variant enables all optional features. Running `both` produces individual outputs plus a NAIRU comparison chart.
+
+### CLI Arguments
+
+| Flag | Choices | Default | Description |
+|------|---------|---------|-------------|
+| `-v, --verbose` | — | off | Print detailed output |
+| `--variant` | `default`, `simple`, `complex`, `both` | `default` | Model variant |
+| `--anchor` | `expectations`, `target`, `rba` | `rba` | Expectations anchor mode |
+| `--skip-forecast` | — | off | Skip Stage 3 (scenario analysis) |
+
 ### Stage 1 Only (Sampling)
 ```bash
 python -m src.models.nairu.stage1 --start 1980Q1 -v
@@ -773,11 +810,15 @@ python -m src.models.nairu.stage2 --show -v
 ### Stage 3a Only (Deterministic)
 ```bash
 python -m src.models.nairu.stage3
+python -m src.models.nairu.stage3 --no-scenarios    # Skip scenario table
+python -m src.models.nairu.stage3 --no-plots        # Skip chart generation
 ```
 
 ### Stage 3b Only (Monte Carlo Forward Sampling)
 ```bash
 python -m src.models.nairu.stage3_forward_sampling
+python -m src.models.nairu.stage3_forward_sampling --n-samples 10000
+python -m src.models.nairu.stage3_forward_sampling --no-plots
 ```
 
 ### From Python
@@ -812,12 +853,14 @@ Post-GFC flattening of the Phillips curve is well-documented. A single time-inva
 - **GFC era**: Anchored expectations, flat curve
 - **Post-COVID**: Reawakened inflation sensitivity
 
-### Why SkewNormal for Potential?
+### Why SkewNormal for Potential? (Optional Variant)
 
-Potential output innovations should be asymmetric (small positives common, large negatives rare):
+The SkewNormal variant (`skewnormal_potential=True`) makes potential output innovations asymmetric (small positives common, large negatives rare):
 - Capital doesn't disappear in recessions
 - Productivity gains are hard to reverse
 - Labour force grows over time
+
+The default model uses Gaussian innovations. The SkewNormal variant is available for sensitivity analysis.
 
 **Implementation**: Zero-mean SkewNormal with positive skew (α=1).
 

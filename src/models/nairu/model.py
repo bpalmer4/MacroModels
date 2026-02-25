@@ -304,7 +304,7 @@ def main(
             - "rba": Use RBA PIE_RBAQ with same phase-in to target
         verbose: Print detailed output
         skip_forecast: Skip Stage 3 (scenario analysis)
-        variant: Model variant to run ("default", "upper", "lower", or "both")
+        variant: Model variant to run ("default", "simple", "complex", or "both")
     """
     output_dir = Path(__file__).parent.parent.parent.parent / "model_outputs"
 
