@@ -229,21 +229,33 @@ def bayesian_forward_sample(
             arr = arr[idx]
         return arr
 
-    rho_is = get_coef("rho_is")
-    beta_is = get_coef("beta_is")
-    delta_dsr = get_coef("delta_dsr")
-    eta_hw = get_coef("eta_hw")
-    beta_okun = get_coef("beta_okun")
-    gamma_pi_covid = get_coef("gamma_pi_covid")
+    has_okun_gap = "tau1_okun" in trace.posterior
+    if has_okun_gap:
+        tau1_okun = get_coef("tau1_okun")
+        tau2_okun = get_coef("tau2_okun")
+    else:
+        beta_okun = get_coef("beta_okun")
+    has_is_curve = "rho_is" in trace.posterior
+    if has_is_curve:
+        rho_is = get_coef("rho_is")
+        beta_is = get_coef("beta_is")
+        gamma_fi = get_coef("gamma_fi") if "gamma_fi" in trace.posterior else 0.0
+        delta_dsr = get_coef("delta_dsr") if "delta_dsr" in trace.posterior else 0.0
+        eta_hw = get_coef("eta_hw") if "eta_hw" in trace.posterior else 0.0
+    gamma_var = "gamma_pi_covid" if "gamma_pi_covid" in trace.posterior else "gamma_pi"
+    gamma_pi_covid = get_coef(gamma_var)
 
     # Innovation scales (observation equation residuals)
-    sigma_is = get_coef("epsilon_is")
+    sigma_is = get_coef("epsilon_is") if has_is_curve else np.zeros(n_samples)
     sigma_okun = get_coef("epsilon_okun")
     sigma_pi = get_coef("epsilon_pi")
 
     # State innovation scales (fixed in estimation, but we use them for sampling)
     # From model constants
-    sigma_nairu = 0.15  # Fixed in estimation (Student-t scale, not Normal sigma)
+    # NAIRU innovation scale from estimation constants
+    sigma_nairu = results.constants.get("nairu_innovation", 0.25)
+    # Student-t(nu=4) uses smaller scale (~0.15); Gaussian uses larger (~0.25)
+    has_student_t_nairu = sigma_nairu < 0.2
     sigma_potential = 0.30  # Fixed in estimation
 
     # --- Historical values needed ---
@@ -252,30 +264,32 @@ def bayesian_forward_sample(
     log_gdp_T = obs["log_gdp"][-1]
     U_T = obs["U"][-1]
     output_gap_T = log_gdp_T - potential_T
+    u_gap_T = U_T - nairu_T
 
-    # Rate gaps
-    real_rate = obs["cash_rate"] - obs["π_exp"]
-    rate_gap = real_rate - obs["det_r_star"]
-    rate_gap_Tm1 = rate_gap[-2]
+    # IS curve historical values (only if present)
+    if has_is_curve:
+        real_rate = obs["cash_rate"] - obs["π_exp"]
+        rate_gap = real_rate - obs["det_r_star"]
+        rate_gap_Tm1 = rate_gap[-2]
 
     # Current/scenario cash rate
     cash_rate_T = obs["cash_rate"][-1]
     if cash_rate_override is not None:
         cash_rate_T = cash_rate_override
 
-    # Rate gap under scenario
-    pi_exp_T = obs["π_exp"][-1]
-    r_star_T = obs["det_r_star"][-1]
-    real_rate_hold = cash_rate_T - pi_exp_T
-    rate_gap_hold = real_rate_hold - r_star_T
+    if has_is_curve:
+        pi_exp_T = obs["π_exp"][-1]
+        r_star_T = obs["det_r_star"][-1]
+        real_rate_hold = cash_rate_T - pi_exp_T
+        rate_gap_hold = real_rate_hold - r_star_T
 
-    # DSR and housing wealth changes (historical)
+    # DSR and housing wealth changes (historical, retained for future use)
     delta_dsr_hist = obs["Δdsr_1"][-1]
     delta_hw_hist = obs["Δhw_1"][-1]
 
     # Historical import price change (for t=0 inflation)
     delta_import_price = obs["Δ4ρm_1"][-1]
-    rho_pi = get_coef("rho_pi")  # import price pass-through coefficient
+    rho_pi = get_coef("rho_pi") if "rho_pi" in trace.posterior else 0.0
 
     # Rate change for transmission
     rate_change = cash_rate_T - obs["cash_rate"][-1]
@@ -291,16 +305,15 @@ def bayesian_forward_sample(
     g_MFP = float(obs["mfp_growth"][-1])     # Last Q MFP growth
     potential_growth = alpha * g_K + (1 - alpha) * g_L + g_MFP
 
-    # SkewNormal parameters for potential output innovations
-    # From production.py: alpha=1, sigma=0.3, zero-mean adjusted
-    skew_alpha = 1.0
-    skew_sigma = sigma_potential
-    # Zero-mean adjustment: shift location so E[X] = 0
-    # E[SkewNormal(mu, sigma, alpha)] = mu + sigma * delta * sqrt(2/pi)
-    # where delta = alpha / sqrt(1 + alpha^2)
-    delta = skew_alpha / np.sqrt(1 + skew_alpha**2)
-    mean_shift = skew_sigma * delta * np.sqrt(2 / np.pi)
-    skew_loc = -mean_shift  # Shift so mean is zero
+    # Detect potential output innovation type from trace
+    # SkewNormal version has tighter prior (0.05) vs Normal (0.1)
+    has_skewnormal_potential = sigma_potential < 0.08
+    if has_skewnormal_potential:
+        skew_alpha = 1.0
+        skew_sigma = sigma_potential
+        delta = skew_alpha / np.sqrt(1 + skew_alpha**2)
+        mean_shift = skew_sigma * delta * np.sqrt(2 / np.pi)
+        skew_loc = -mean_shift
 
     # --- Create forecast index ---
     last_period = obs_index[-1]
@@ -321,14 +334,21 @@ def bayesian_forward_sample(
     nairu_prev = nairu_T.copy()
     potential_prev = potential_T.copy()
     output_gap_prev = output_gap_T.copy()
-    U_prev = np.full(n_samples, U_T)
+    u_gap_prev = u_gap_T.copy()
+    unemployment_prev = np.full(n_samples, U_T)
 
     for t in range(h):
         # Sample innovations
-        # NAIRU uses Student-t(nu=4) for fat tails during occasional large shifts
-        eps_nairu = rng.standard_t(df=NAIRU_NU, size=n_samples) * sigma_nairu
-        eps_potential = sample_skewnormal(skew_loc, skew_sigma, skew_alpha, n_samples, rng=rng)
-        eps_is = rng.normal(0, sigma_is)
+        # NAIRU innovation: Student-t(nu=4) for fat tails, or Gaussian
+        if has_student_t_nairu:
+            eps_nairu = rng.standard_t(df=NAIRU_NU, size=n_samples) * sigma_nairu
+        else:
+            eps_nairu = rng.normal(0, sigma_nairu, size=n_samples)
+        if has_skewnormal_potential:
+            eps_potential = sample_skewnormal(skew_loc, skew_sigma, skew_alpha, n_samples, rng=rng)
+        else:
+            eps_potential = rng.normal(0, sigma_potential, size=n_samples)
+        eps_is = rng.normal(0, sigma_is) if has_is_curve else 0.0
         eps_okun = rng.normal(0, sigma_okun)
         eps_pi = rng.normal(0, sigma_pi)
 
@@ -340,42 +360,58 @@ def bayesian_forward_sample(
         potential_fcst[t] = potential_prev + potential_growth + eps_potential
         potential_prev = potential_fcst[t]
 
-        # IS curve
-        if t == 0:
-            rate_gap_lag2 = rate_gap_Tm1
-            delta_dsr_lag1 = delta_dsr_hist
-            delta_hw_lag1 = delta_hw_hist
-            import_price_effect = rho_pi * delta_import_price  # Historical import prices
-        else:
-            rate_gap_lag2 = rate_gap_hold
-            # DSR pass-through (RBA calibration)
-            delta_dsr_lag1 = rate_change * DSR_PASSTHROUGH_PER_100BP
-            # Housing wealth pass-through (RBA calibration)
-            delta_hw_lag1 = delta_hw_hist + rate_change * HOUSING_WEALTH_PASSTHROUGH_PER_100BP
-            # FX channel effect on inflation (RBA calibration)
-            import_price_effect = -rate_change * FX_PASSTHROUGH_PER_100BP
+        # Output gap projection
+        if has_is_curve:
+            if t == 0:
+                rate_gap_lag2 = rate_gap_Tm1
+                fiscal_lag1 = obs["fiscal_impulse_1"][-1]
+                delta_dsr_lag1 = delta_dsr_hist
+                delta_hw_lag1 = delta_hw_hist
+                import_price_effect = rho_pi * delta_import_price
+            else:
+                rate_gap_lag2 = rate_gap_hold
+                fiscal_lag1 = 0.0
+                delta_dsr_lag1 = rate_change * DSR_PASSTHROUGH_PER_100BP
+                delta_hw_lag1 = delta_hw_hist + rate_change * HOUSING_WEALTH_PASSTHROUGH_PER_100BP
+                import_price_effect = -rate_change * FX_PASSTHROUGH_PER_100BP
 
-        output_gap_fcst[t] = (
-            rho_is * output_gap_prev
-            - beta_is * rate_gap_lag2
-            - delta_dsr * delta_dsr_lag1
-            + eta_hw * delta_hw_lag1
-            + eps_is
-        )
+            output_gap_fcst[t] = (
+                rho_is * output_gap_prev
+                - beta_is * rate_gap_lag2
+                + gamma_fi * fiscal_lag1
+                - delta_dsr * delta_dsr_lag1
+                + eta_hw * delta_hw_lag1
+                + eps_is
+            )
+        else:
+            # Without IS curve: output gap decays as AR(1)
+            if has_okun_gap:
+                output_gap_fcst[t] = tau2_okun * output_gap_prev
+            else:
+                output_gap_fcst[t] = 0.85 * output_gap_prev  # simple AR(1) decay
+            if t == 0:
+                import_price_effect = rho_pi * delta_import_price
+            else:
+                import_price_effect = -rate_change * FX_PASSTHROUGH_PER_100BP
         output_gap_prev = output_gap_fcst[t]
 
-        # Okun's Law (simple form for "hold rates" scenarios):
-        # ΔU = β × OG
-        # Note: Error correction term removed. The drift toward NAIRU observed in
-        # historical data is probably an artefact of CB inflation targeting policy,
-        # not natural dynamics. For "hold rates" scenarios, we shouldn't assume self-correction.
-        delta_U = beta_okun * output_gap_fcst[t] * DEMAND_MULTIPLIER + eps_okun
-        unemployment_fcst[t] = U_prev + delta_U
-        U_prev = unemployment_fcst[t]
+        # Okun's Law: map output gap to unemployment
+        if has_okun_gap:
+            # Gap-to-gap: u_gap = tau2 * u_gap_prev + tau1 * y_gap + eps
+            u_gap_fcst = tau2_okun * u_gap_prev + tau1_okun * output_gap_fcst[t] + eps_okun
+            unemployment_fcst[t] = nairu_fcst[t] + u_gap_fcst
+            u_gap_prev = u_gap_fcst
+        else:
+            # Simple change form: ΔU = beta * y_gap + eps
+            delta_u = beta_okun * output_gap_fcst[t] + eps_okun
+            unemployment_fcst[t] = unemployment_prev + delta_u
+            u_gap_fcst = unemployment_fcst[t] - nairu_fcst[t]
+            u_gap_prev = u_gap_fcst
+            unemployment_prev = unemployment_fcst[t]
 
         # Phillips curve (model estimates + import price effect)
-        u_gap = (unemployment_fcst[t] - nairu_fcst[t]) / unemployment_fcst[t]
-        inflation_fcst[t] = pi_exp_qtr + gamma_pi_covid * u_gap + import_price_effect + eps_pi
+        u_gap_ratio = u_gap_fcst / unemployment_fcst[t]
+        inflation_fcst[t] = pi_exp_qtr + gamma_pi_covid * u_gap_ratio + import_price_effect + eps_pi
 
     # --- Package results ---
     cols = [f"sample_{i}" for i in range(n_samples)]
@@ -838,16 +874,17 @@ def run_stage3_bayesian(
     print("Loading model results...")
 
     # Load results
-    trace, obs, obs_index, constants, anchor_label = load_results(output_dir=output_dir, prefix=prefix)
+    trace, obs, obs_index, constants, anchor_label, chart_obs, model_kwargs = load_results(output_dir=output_dir, prefix=prefix)
 
     # Rebuild model and create results container
-    model = build_model(obs)
+    model = build_model(obs, **model_kwargs)
     results = NAIRUResults(
         trace=trace,
         obs=obs,
         obs_index=obs_index,
         model=model,
         anchor_label=anchor_label,
+        chart_obs=chart_obs,
     )
 
     current_rate = obs["cash_rate"][-1]

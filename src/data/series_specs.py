@@ -18,9 +18,7 @@ from pathlib import Path
 from src.data.abs_loader import ReqsTuple
 
 # --- Local data files ---
-# TODO: Remove once ABS publishes new quarterly CPI series (late Jan 2026)
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
-CPI_ZIP_FILE = str(_PROJECT_ROOT / "input_data" / "Qrtly-CPI-Time-series-spreadsheets-all.zip")
 HISTORICAL_RATE_FILE = str(_PROJECT_ROOT / "input_data" / "interbank_overnight_rate_historical.parquet")
 
 # --- Labour Force (6202.0) ---
@@ -70,75 +68,75 @@ HOURS_WORKED = ReqsTuple(
 )
 
 # --- Consumer Price Index (6401.0) ---
-# Using local zip file until ABS publishes new quarterly series (late Jan 2026)
+# Quarterly series from Appendix 1a (legacy quarterly measures)
 
 CPI_ALL_GROUPS = ReqsTuple(
-    cat="",
-    table="640101",
-    did="All groups CPI ;  Australia ;",
-    stype="O",
+    cat="6401.0",
+    table="64010Appendix1a",
+    did="All groups CPI, seasonally adjusted ;  Australia ;",
+    stype="SA",
     unit="Index Numbers",
     seek_yr_growth=False,
     calc_growth=False,
-    zip_file=CPI_ZIP_FILE,
+    zip_file="",
 )
 
 CPI_HEADLINE_ANNUAL = ReqsTuple(
-    cat="",
-    table="640101",
-    did="All groups CPI ;  Australia ;",
-    stype="O",
+    cat="6401.0",
+    table="64010Appendix1a",
+    did="All groups CPI, seasonally adjusted ;  Australia ;",
+    stype="SA",
     unit="",
     seek_yr_growth=True,
     calc_growth=False,
-    zip_file=CPI_ZIP_FILE,
+    zip_file="",
 )
 
 # Quarterly trimmed mean - percentage change from previous period
 CPI_TRIMMED_MEAN_QUARTERLY = ReqsTuple(
-    cat="",
-    table="640106",
+    cat="6401.0",
+    table="64010Appendix1a",
     did="Percentage Change from Previous Period ;  Trimmed Mean ;  Australia ;",
     stype="S",
     unit="",
     seek_yr_growth=False,
     calc_growth=False,
-    zip_file=CPI_ZIP_FILE,
+    zip_file="",
 )
 
 # Annual trimmed mean - percentage change from corresponding quarter previous year
 CPI_TRIMMED_MEAN_ANNUAL = ReqsTuple(
-    cat="",
-    table="640106",
+    cat="6401.0",
+    table="64010Appendix1a",
     did="Percentage Change from Corresponding Quarter of Previous Year ;  Trimmed Mean ;  Australia ;",
     stype="S",
     unit="",
     seek_yr_growth=False,
     calc_growth=False,
-    zip_file=CPI_ZIP_FILE,
+    zip_file="",
 )
 
 # Legacy alias (returns annual via seek_yr_growth - deprecated)
 CPI_TRIMMED_MEAN = ReqsTuple(
-    cat="",
-    table="640106",
+    cat="6401.0",
+    table="64010Appendix1a",
     did="Trimmed Mean ;  Australia ;",
     stype="SA",
     unit="",
     seek_yr_growth=True,
     calc_growth=False,
-    zip_file=CPI_ZIP_FILE,
+    zip_file="",
 )
 
 CPI_WEIGHTED_MEDIAN = ReqsTuple(
-    cat="",
-    table="640106",
+    cat="6401.0",
+    table="64010Appendix1a",
     did="Weighted Median ;  Australia ;",
     stype="SA",
     unit="",
     seek_yr_growth=True,
     calc_growth=False,
-    zip_file=CPI_ZIP_FILE,
+    zip_file="",
 )
 
 # --- National Accounts (5206.0) ---

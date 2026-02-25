@@ -7,7 +7,7 @@ This module handles:
 """
 
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +26,7 @@ from src.models.nairu.analysis import (
     decompose_wage_inflation,
     get_scalar_var,
     get_vector_var,
+    plot_equations,
     plot_equilibrium_rates,
     plot_gdp_vs_potential,
     plot_hcoe_decomposition,
@@ -75,6 +76,8 @@ class NAIRUResults:
     obs_index: pd.PeriodIndex
     model: pm.Model
     anchor_label: str
+    constants: dict[str, Any] = field(default_factory=dict)
+    chart_obs: pd.DataFrame | None = None  # Extended obs for charting (may go beyond sampling period)
 
     def nairu_posterior(self) -> pd.DataFrame:
         """Extract NAIRU posterior as DataFrame."""
@@ -113,7 +116,7 @@ class NAIRUResults:
 def load_results(
     output_dir: Path | str | None = None,
     prefix: str = "nairu_output_gap",
-) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex, dict[str, Any], str]:
+) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex, dict[str, Any], str, pd.DataFrame | None, dict[str, Any]]:
     """Load model results from disk.
 
     Args:
@@ -121,7 +124,7 @@ def load_results(
         prefix: Filename prefix used when saving
 
     Returns:
-        Tuple of (trace, obs, obs_index, constants, anchor_label)
+        Tuple of (trace, obs, obs_index, constants, anchor_label, chart_obs, model_kwargs)
 
     """
     if output_dir is None:
@@ -141,13 +144,15 @@ def load_results(
     obs_index = data["obs_index"]
     constants = data.get("constants", {})  # backwards compatible
     anchor_label = data.get("anchor_label", "Anchor: Estimated expectations")  # backwards compatible
+    chart_obs = data.get("chart_obs")  # backwards compatible (None if missing)
+    model_kwargs = data.get("model_kwargs", {})  # backwards compatible
     print(f"Loaded observations from: {obs_path}")
     print(f"  Period: {obs_index.min()} to {obs_index.max()} ({len(obs_index)} periods)")
     print(f"  {anchor_label}")
     if constants:
         print(f"  Fixed constants: {constants}")
 
-    return trace, obs, obs_index, constants, anchor_label
+    return trace, obs, obs_index, constants, anchor_label, chart_obs, model_kwargs
 
 
 # --- Analysis Functions ---
@@ -170,19 +175,24 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
     # Note: Parameters with truncated priors use "nonzero" test (HDI excludes 0)
     # since sign is guaranteed by prior. Untruncated params test for sign.
     tests = [
-        # Okun's Law (truncated upper=0)
-        ("beta_okun", "nonzero", "Okun coefficient ≠ 0"),
+        # Okun's Law gap-to-gap (truncated)
+        ("tau1_okun", "nonzero", "Okun output gap effect ≠ 0"),
+        ("tau2_okun", "between_0_1", "Okun persistence ∈ (0,1)"),
         # Price Phillips curve slopes (NOT truncated - test sign)
         ("gamma_pi_pre_gfc", "negative", "Price Phillips (pre-GFC) < 0"),
         ("gamma_pi_gfc", "negative", "Price Phillips (post-GFC) < 0"),
         ("gamma_pi_covid", "negative", "Price Phillips (post-COVID) < 0"),
-        # Wage Phillips curve (truncated upper=0)
+        # Wage Phillips curve - single slope (truncated upper=0)
+        ("gamma_wg", "nonzero", "Wage Phillips slope ≠ 0"),
+        # Wage Phillips curve - regime-switching (truncated upper=0)
         ("gamma_wg_pre_gfc", "nonzero", "Wage Phillips (pre-GFC) ≠ 0"),
         ("gamma_wg_gfc", "nonzero", "Wage Phillips (post-GFC) ≠ 0"),
         ("gamma_wg_covid", "nonzero", "Wage Phillips (post-COVID) ≠ 0"),
         ("phi_wg", "positive", "Demand deflator → wages > 0"),
         ("theta_wg", "nonzero", "Trend expectations → wages ≠ 0"),
-        # Hourly COE Phillips curve (truncated)
+        # Hourly COE Phillips curve - single slope (truncated)
+        ("gamma_hcoe", "nonzero", "Hourly COE Phillips slope ≠ 0"),
+        # Hourly COE Phillips curve - regime-switching (truncated)
         ("gamma_hcoe_pre_gfc", "nonzero", "Hourly COE Phillips (pre-GFC) ≠ 0"),
         ("gamma_hcoe_gfc", "nonzero", "Hourly COE Phillips (post-GFC) ≠ 0"),
         ("gamma_hcoe_covid", "nonzero", "Hourly COE Phillips (post-COVID) ≠ 0"),
@@ -317,6 +327,11 @@ def plot_all(
     show: bool = False,
 ) -> None:
     """Generate all standard plots."""
+    plot_equations(
+        equations=getattr(results.model, "_equations", None),
+        constants=getattr(results.model, "_fixed_constants", None),
+        show=show,
+    )
     plot_nairu(results, show=show)
     plot_unemployment_gap(results, show=show)
     plot_output_gap(results, show=show)
@@ -361,10 +376,10 @@ def run_stage2(
     print("Running NAIRU + Output Gap analysis (Stage 2)...\n")
 
     # Load results
-    trace, obs, obs_index, constants, anchor_label = load_results(output_dir=output_dir, prefix=prefix)
+    trace, obs, obs_index, constants, anchor_label, chart_obs, model_kwargs = load_results(output_dir=output_dir, prefix=prefix)
 
     # Rebuild model (needed for posterior predictive checks)
-    model = build_model(obs)
+    model = build_model(obs, **model_kwargs)
 
     # Create results container
     results = NAIRUResults(
@@ -373,6 +388,8 @@ def run_stage2(
         obs_index=obs_index,
         model=model,
         anchor_label=anchor_label,
+        constants=constants,
+        chart_obs=chart_obs,
     )
 
     # Plot observation grid
@@ -382,16 +399,40 @@ def run_stage2(
     check_model_diagnostics(results.trace)
 
     # Check for zero coefficients
+    # Build critical params list (only include params that exist in trace)
+    # Detect which optional equations/modes are present
+    has_regime_switching = "gamma_pi_pre_gfc" in results.trace.posterior
+    has_okun_gap = "tau1_okun" in results.trace.posterior
+    critical_params = [
+        *(["gamma_pi_pre_gfc", "gamma_pi_gfc", "gamma_pi_covid"] if has_regime_switching else ["gamma_pi"]),
+        *(["tau1_okun", "tau2_okun"] if has_okun_gap else ["beta_okun"]),
+    ]
+    has_wage_regime = "gamma_wg_pre_gfc" in results.trace.posterior
+    has_wage = has_wage_regime or "gamma_wg" in results.trace.posterior
+    has_hcoe_regime = "gamma_hcoe_pre_gfc" in results.trace.posterior
+    has_hcoe = has_hcoe_regime or "gamma_hcoe" in results.trace.posterior
+    has_employment = "beta_emp_ygap" in results.trace.posterior
+    has_exchange_rate = "beta_er_r" in results.trace.posterior
+    has_import_price = "beta_pt" in results.trace.posterior
+    has_net_exports = "beta_nx_ygap" in results.trace.posterior
+    has_participation = "beta_pr" in results.trace.posterior
+    # Add critical params for included equations
+    if has_wage_regime:
+        critical_params += ["gamma_wg_pre_gfc", "gamma_wg_gfc", "gamma_wg_covid"]
+    elif has_wage:
+        critical_params += ["gamma_wg"]
+    if has_hcoe_regime:
+        critical_params += ["gamma_hcoe_pre_gfc", "gamma_hcoe_gfc", "gamma_hcoe_covid"]
+    elif has_hcoe:
+        critical_params += ["gamma_hcoe"]
+    if has_employment:
+        critical_params += ["beta_emp_ygap", "beta_emp_wage"]
+    if has_net_exports:
+        critical_params += ["beta_nx_ygap", "beta_nx_twi"]
+
     zero_check = check_for_zero_coeffs(
         results.trace,
-        critical_params=[
-            "gamma_pi_pre_gfc", "gamma_pi_gfc", "gamma_pi_covid",
-            "gamma_wg_pre_gfc", "gamma_wg_gfc", "gamma_wg_covid",
-            "gamma_hcoe_pre_gfc", "gamma_hcoe_gfc", "gamma_hcoe_covid",
-            "beta_okun",
-            "beta_emp_ygap", "beta_emp_wage",
-            "beta_nx_ygap", "beta_nx_twi",
-        ]
+        critical_params=critical_params,
     )
     if verbose:
         print(zero_check.T)
@@ -409,26 +450,39 @@ def run_stage2(
     )
 
     # Posterior predictive checks and residual analysis
-    obs_vars = {
-        "okun": obs["ΔU"],
+    obs_vars: dict[str, np.ndarray] = {
         "observed_price_inflation": obs["π"],
-        "observed_wage_growth": obs["Δulc"],
-        "observed_hourly_coe": obs["Δhcoe"],
-        "observed_employment": obs["emp_growth"],
-        "observed_twi_change": obs["Δtwi"],
-        "observed_import_price": obs["Δ4ρm"],
-        "observed_net_exports": obs["Δnx_ratio"],
     }
-    var_labels = {
-        "okun": "Change in Unemployment (pp)",
+    var_labels: dict[str, str] = {
         "observed_price_inflation": "Quarterly Inflation (%)",
-        "observed_wage_growth": "Unit Labour Cost Growth (%)",
-        "observed_hourly_coe": "Hourly COE Growth (%)",
-        "observed_employment": "Employment Growth (%)",
-        "observed_twi_change": "TWI Change (%)",
-        "observed_import_price": "Import Price Growth (%)",
-        "observed_net_exports": "Change in NX/GDP (pp)",
     }
+    if has_okun_gap:
+        # Gap form: observed is U, approximate U_gap for labelling
+        nairu_median = results.nairu_posterior().median(axis=1).to_numpy()
+        obs_vars["okun"] = obs["U"] - nairu_median
+        var_labels["okun"] = "Unemployment Gap (pp)"
+    else:
+        # Simple form: observed is ΔU
+        obs_vars["okun_law"] = obs["ΔU"]
+        var_labels["okun_law"] = "Change in Unemployment (pp)"
+    if has_employment:
+        obs_vars["observed_employment"] = obs["emp_growth"]
+        var_labels["observed_employment"] = "Employment Growth (%)"
+    if has_exchange_rate:
+        obs_vars["observed_twi_change"] = obs["Δtwi"]
+        var_labels["observed_twi_change"] = "TWI Change (%)"
+    if has_import_price:
+        obs_vars["observed_import_price"] = obs["Δ4ρm"]
+        var_labels["observed_import_price"] = "Import Price Growth (%)"
+    if has_net_exports:
+        obs_vars["observed_net_exports"] = obs["Δnx_ratio"]
+        var_labels["observed_net_exports"] = "Change in NX/GDP (pp)"
+    if has_hcoe:
+        obs_vars["observed_hourly_coe"] = obs["Δhcoe"]
+        var_labels["observed_hourly_coe"] = "Hourly COE Growth (%)"
+    if has_wage:
+        obs_vars["observed_wage_growth"] = obs["Δulc"]
+        var_labels["observed_wage_growth"] = "Unit Labour Cost Growth (%)"
 
     ppc_data = posterior_predictive_checks(
         trace=results.trace,
@@ -493,39 +547,44 @@ def run_stage2(
         model_name=MODEL_NAME,
         show=show_plots,
     )
-    plot_phillips_curve_slope(
-        results.trace,
-        results.obs_index,
-        curve_type="price",
-        model_name=MODEL_NAME,
-        show=show_plots,
-    )
-    plot_phillips_curve_slope(
-        results.trace,
-        results.obs_index,
-        curve_type="wage",
-        model_name=MODEL_NAME,
-        show=show_plots,
-    )
-    plot_phillips_curve_slope(
-        results.trace,
-        results.obs_index,
-        curve_type="hcoe",
-        model_name=MODEL_NAME,
-        show=show_plots,
-    )
+    if has_regime_switching:
+        plot_phillips_curve_slope(
+            results.trace,
+            results.obs_index,
+            curve_type="price",
+            model_name=MODEL_NAME,
+            show=show_plots,
+        )
+    if has_wage_regime:
+        plot_phillips_curve_slope(
+            results.trace,
+            results.obs_index,
+            curve_type="wage",
+            model_name=MODEL_NAME,
+            show=show_plots,
+        )
+    if has_hcoe_regime:
+        plot_phillips_curve_slope(
+            results.trace,
+            results.obs_index,
+            curve_type="hcoe",
+            model_name=MODEL_NAME,
+            show=show_plots,
+        )
 
     # Price inflation decomposition (demand vs supply)
     decomp = decompose_inflation(results.trace, results.obs, results.obs_index)
     plot_inflation_decomposition(decomp, rfooter=RFOOTER_OUTPUT)
 
     # Wage-ULC inflation decomposition (demand vs price pass-through)
-    wage_decomp = decompose_wage_inflation(results.trace, results.obs, results.obs_index)
-    plot_wage_decomposition(wage_decomp, rfooter=RFOOTER_OUTPUT)
+    if has_wage:
+        wage_decomp = decompose_wage_inflation(results.trace, results.obs, results.obs_index)
+        plot_wage_decomposition(wage_decomp, rfooter=RFOOTER_OUTPUT)
 
     # Wage-HCOE inflation decomposition (demand component)
-    hcoe_decomp = decompose_hcoe_inflation(results.trace, results.obs, results.obs_index)
-    plot_hcoe_decomposition(hcoe_decomp, rfooter=RFOOTER_OUTPUT)
+    if has_hcoe:
+        hcoe_decomp = decompose_hcoe_inflation(results.trace, results.obs, results.obs_index)
+        plot_hcoe_decomposition(hcoe_decomp, rfooter=RFOOTER_OUTPUT)
 
     # Derived productivity plots (LP and MFP from wage data)
     ulc_growth = pd.Series(results.obs["Δulc"], index=results.obs_index)

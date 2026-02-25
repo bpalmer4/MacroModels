@@ -35,6 +35,7 @@ from src.models.nairu.analysis.inflation_decomposition import (
     plot_wage_drivers,
     plot_wage_drivers_unscaled,
 )
+from src.models.nairu.analysis.plot_equations import plot_equations
 from src.models.nairu.analysis.observations_plot import plot_obs_grid
 from src.models.nairu.analysis.plot_capital_deepening import plot_capital_deepening
 from src.models.nairu.analysis.plot_nairu_output import (
@@ -71,6 +72,7 @@ __all__ = [
     "inflation_policy_summary",
     "is_scalar_var",
     "plot_capital_deepening",
+    "plot_equations",
     "plot_demand_contribution",
     "plot_equilibrium_rates",
     "plot_gdp_vs_potential",

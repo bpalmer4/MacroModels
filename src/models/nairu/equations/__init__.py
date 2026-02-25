@@ -19,15 +19,18 @@ from src.models.nairu.equations.exchange_rate import exchange_rate_equation
 from src.models.nairu.equations.import_price import import_price_equation
 from src.models.nairu.equations.is_curve import is_equation
 from src.models.nairu.equations.net_exports import net_exports_equation
-from src.models.nairu.equations.okun import okun_equation
+from src.models.nairu.equations.okun import okun_equation, okun_gap_equation
 from src.models.nairu.equations.participation import participation_equation
 from src.models.nairu.equations.phillips import (
     hourly_coe_equation,
+    hourly_coe_regime_equation,
     price_inflation_equation,
+    price_inflation_regime_equation,
     wage_growth_equation,
+    wage_growth_regime_equation,
 )
-from src.models.nairu.equations.production import potential_output_equation
-from src.models.nairu.equations.state_space import nairu_equation
+from src.models.nairu.equations.production import potential_output_equation, potential_output_skewnormal_equation
+from src.models.nairu.equations.state_space import nairu_equation, nairu_student_t_equation
 
 __all__ = [
     # Regime constants
@@ -37,13 +40,19 @@ __all__ = [
     "employment_equation",
     "exchange_rate_equation",
     "hourly_coe_equation",
+    "hourly_coe_regime_equation",
     "import_price_equation",
     "is_equation",
     "nairu_equation",
+    "nairu_student_t_equation",
     "net_exports_equation",
     "okun_equation",
+    "okun_gap_equation",
     "participation_equation",
     "potential_output_equation",
+    "potential_output_skewnormal_equation",
     "price_inflation_equation",
+    "price_inflation_regime_equation",
     "wage_growth_equation",
+    "wage_growth_regime_equation",
 ]

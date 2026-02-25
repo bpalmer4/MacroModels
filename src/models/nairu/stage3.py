@@ -214,17 +214,23 @@ class ForecastResults:
         print("=" * 70)
 
         print("\nModel coefficients (posterior median):")
-        print(f"  rho_is (output gap persistence): {self.coefficients['rho_is']:.3f}")
-        print(f"  beta_is (interest rate sensitivity): {self.coefficients['beta_is']:.3f}")
-        print(f"  delta_dsr (debt servicing sensitivity): {self.coefficients['delta_dsr']:.3f}")
-        print(f"  eta_hw (housing wealth sensitivity): {self.coefficients['eta_hw']:.3f}")
-        print(f"  beta_okun (Okun coefficient): {self.coefficients['beta_okun']:.3f}")
-        print(f"  gamma_pi_covid (Phillips slope): {self.coefficients['gamma_pi_covid']:.3f}")
+        if "tau1_okun" in self.coefficients:
+            print(f"  tau1_okun (Okun output gap effect): {self.coefficients['tau1_okun']:.3f}")
+            print(f"  tau2_okun (Okun persistence): {self.coefficients['tau2_okun']:.3f}")
+        else:
+            print(f"  beta_okun (Okun coefficient): {self.coefficients['beta_okun']:.3f}")
+        if "rho_is" in self.coefficients:
+            print(f"  rho_is (output gap persistence): {self.coefficients['rho_is']:.3f}")
+            print(f"  beta_is (interest rate sensitivity): {self.coefficients['beta_is']:.3f}")
+            if "gamma_fi" in self.coefficients:
+                print(f"  gamma_fi (fiscal impulse effect): {self.coefficients['gamma_fi']:.3f}")
+            if "delta_dsr" in self.coefficients:
+                print(f"  delta_dsr (debt servicing sensitivity): {self.coefficients['delta_dsr']:.3f}")
+            if "eta_hw" in self.coefficients:
+                print(f"  eta_hw (housing wealth sensitivity): {self.coefficients['eta_hw']:.3f}")
+        gamma_key = "gamma_pi_covid" if "gamma_pi_covid" in self.coefficients else "gamma_pi"
+        print(f"  {gamma_key} (Phillips slope): {self.coefficients[gamma_key]:.3f}")
         print(f"  Potential growth: {self.potential_growth:.3f}%/qtr ({self.potential_growth * 4:.2f}% ann.)")
-        print(f"  Rate→DSR pass-through: {RATE_TO_DSR_PASSTHROUGH:.2f}pp per 100bp")
-        print(f"  Rate→Housing wealth: {RATE_TO_HOUSING_WEALTH:.1f}% growth per 100bp")
-        print(f"  Rate→Inflation (FX): {RATE_TO_INFLATION_FX * 4:.2f}pp per 100bp (RBA calibration)")
-        print(f"  Demand multiplier: {DEMAND_TRANSMISSION_MULTIPLIER:.1f}x (RBA demand channel)")
 
         print(f"\nStarting point ({self.obs_index[-1]}):")
         print(f"  Output gap: {self.output_gap_final:+.4f}")
@@ -296,29 +302,53 @@ def forecast(
     n_samples = nairu_posterior.shape[1]
 
     # Coefficient posteriors (full distributions)
-    rho_is = get_scalar_var("rho_is", trace).to_numpy()
-    beta_is = get_scalar_var("beta_is", trace).to_numpy()
-    delta_dsr = get_scalar_var("delta_dsr", trace).to_numpy()
-    eta_hw = get_scalar_var("eta_hw", trace).to_numpy()
-    beta_okun = get_scalar_var("beta_okun", trace).to_numpy()
-    gamma_pi_covid = get_scalar_var("gamma_pi_covid", trace).to_numpy()
-    # FX channel coefficients
-    beta_pt = get_scalar_var("beta_pt", trace).to_numpy()  # TWI → import prices
-    rho_pi = get_scalar_var("rho_pi", trace).to_numpy()    # import prices → inflation
+    has_okun_gap = "tau1_okun" in trace.posterior
+    if has_okun_gap:
+        tau1_okun = get_scalar_var("tau1_okun", trace).to_numpy()
+        tau2_okun = get_scalar_var("tau2_okun", trace).to_numpy()
+    else:
+        beta_okun = get_scalar_var("beta_okun", trace).to_numpy()
+    # IS curve (optional)
+    has_is_curve = "rho_is" in trace.posterior
+    if has_is_curve:
+        rho_is = get_scalar_var("rho_is", trace).to_numpy()
+        beta_is = get_scalar_var("beta_is", trace).to_numpy()
+        gamma_fi = get_scalar_var("gamma_fi", trace).to_numpy() if "gamma_fi" in trace.posterior else 0.0
+        delta_dsr = get_scalar_var("delta_dsr", trace).to_numpy() if "delta_dsr" in trace.posterior else 0.0
+        eta_hw = get_scalar_var("eta_hw", trace).to_numpy() if "eta_hw" in trace.posterior else 0.0
+    # Phillips slope: regime-switching uses covid regime, single-slope uses gamma_pi
+    gamma_var = "gamma_pi_covid" if "gamma_pi_covid" in trace.posterior else "gamma_pi"
+    gamma_pi_covid = get_scalar_var(gamma_var, trace).to_numpy()
+    # FX channel coefficients (import price equation may be excluded)
+    has_import_price = "beta_pt" in trace.posterior
+    beta_pt = get_scalar_var("beta_pt", trace).to_numpy() if has_import_price else None
+    has_rho_pi = "rho_pi" in trace.posterior
+    rho_pi = get_scalar_var("rho_pi", trace).to_numpy() if has_rho_pi else 0.0
 
     # Align sample sizes (trace may have different number of samples)
-    n_coef_samples = len(rho_is)
+    n_coef_samples = len(tau1_okun if has_okun_gap else beta_okun)
     if n_coef_samples != n_samples:
         # Resample coefficients to match state variable samples
         idx = rng.choice(n_coef_samples, size=n_samples, replace=True)
-        rho_is = rho_is[idx]
-        beta_is = beta_is[idx]
-        delta_dsr = delta_dsr[idx]
-        eta_hw = eta_hw[idx]
-        beta_okun = beta_okun[idx]
+        if has_okun_gap:
+            tau1_okun = tau1_okun[idx]
+            tau2_okun = tau2_okun[idx]
+        else:
+            beta_okun = beta_okun[idx]
+        if has_is_curve:
+            rho_is = rho_is[idx]
+            beta_is = beta_is[idx]
+            if not np.isscalar(gamma_fi):
+                gamma_fi = gamma_fi[idx]
+            if not np.isscalar(delta_dsr):
+                delta_dsr = delta_dsr[idx]
+            if not np.isscalar(eta_hw):
+                eta_hw = eta_hw[idx]
         gamma_pi_covid = gamma_pi_covid[idx]
-        beta_pt = beta_pt[idx]
-        rho_pi = rho_pi[idx]
+        if beta_pt is not None:
+            beta_pt = beta_pt[idx]
+        if not np.isscalar(rho_pi):
+            rho_pi = rho_pi[idx]
 
     # --- Historical values needed for forecasting ---
     # Final period states
@@ -330,32 +360,27 @@ def forecast(
     # Output gap at T (for each posterior sample)
     output_gap_T = log_gdp_T - potential_T
 
-    # Rate gaps for IS curve (lagged 2 periods)
-    # rate_gap = (cash_rate - pi_exp) - r_star
-    real_rate = obs["cash_rate"] - obs["π_exp"]
-    rate_gap = real_rate - obs["det_r_star"]
+    # Unemployment gap at T
+    u_gap_T = U_T - nairu_T
 
-    # Rate gaps for IS curve (lagged 2 periods)
-    # T+1: uses rate_gap at T-1 (historical)
-    # T+2: uses rate_gap at T (policy decision)
-    # T+3: uses rate_gap at T+1 (hold assumption)
-    # T+4: uses rate_gap at T+2 (hold assumption)
-    rate_gap_Tm1 = rate_gap[-2]  # T-1 (historical)
+    # IS curve historical values (only if IS curve is in the model)
+    if has_is_curve:
+        real_rate = obs["cash_rate"] - obs["π_exp"]
+        rate_gap = real_rate - obs["det_r_star"]
+        rate_gap_Tm1 = rate_gap[-2]
 
     # Rate gap at T onwards - can be overridden for policy scenarios
-    # Under "move and hold", rate stays at new level
     cash_rate_T = obs["cash_rate"][-1]
     if cash_rate_override is not None:
         cash_rate_T = cash_rate_override
 
-    # Compute rate gap assuming rate holds at cash_rate_T
-    pi_exp_T = obs["π_exp"][-1]
-    r_star_T = obs["det_r_star"][-1]
-    real_rate_hold = cash_rate_T - pi_exp_T
-    rate_gap_hold = real_rate_hold - r_star_T  # used for T, T+1, T+2, ...
+    if has_is_curve:
+        pi_exp_T = obs["π_exp"][-1]
+        r_star_T = obs["det_r_star"][-1]
+        real_rate_hold = cash_rate_T - pi_exp_T
+        rate_gap_hold = real_rate_hold - r_star_T
 
-    # Rate change for DSR transmission
-    # If policy changes rate, this feeds through to DSR at lag 1
+    # Rate change for FX transmission
     rate_change = cash_rate_T - obs["cash_rate"][-1]  # 0 if no override
 
     # Inflation expectations (hold at final observed value from signal extraction model)
@@ -388,7 +413,8 @@ def forecast(
 
     # Initial conditions
     output_gap_prev = output_gap_T
-    U_prev = U_T
+    u_gap_prev = u_gap_T
+    unemployment_prev = np.full(n_samples, U_T)
 
     for t in range(h):
         # NAIRU: random walk, stays at current level
@@ -397,62 +423,57 @@ def forecast(
         # Potential: grows at Cobb-Douglas drift
         potential_fcst[t] = potential_T + (t + 1) * potential_growth
 
-        # IS curve: y_gap_t = rho * y_gap_{t-1} - beta * rate_gap_{t-2} - delta * Δdsr_{t-1} + eta * Δhw_{t-1}
-        # Rate gap timing:
-        #   t=0 (T+1): uses rate_gap at T-1 (historical)
-        #   t=1 (T+2): uses rate_gap at T (policy decision)
-        #   t=2+ (T+3, T+4): uses rate_gap_hold (move and hold)
-        # DSR timing:
-        #   t=0 (T+1): uses Δdsr at T (historical, from obs)
-        #   t=1+ (T+2, ...): rate change feeds through to DSR at lag 1
-        # Housing wealth timing:
-        #   t=0 (T+1): uses Δhw at T (historical, from obs)
-        #   t=1+ (T+2, ...): rate change feeds through to housing wealth at lag 1
-        if t == 0:
-            rate_gap_lag2 = rate_gap_Tm1
-            # Use last observed DSR change (already lagged in obs)
-            delta_dsr_lag1 = obs["Δdsr_1"][-1]
-            # Use last observed housing wealth change (already lagged in obs)
-            delta_hw_lag1 = obs["Δhw_1"][-1]
-            # Use last observed import price change (already lagged in obs)
-            delta_import_price = obs["Δ4ρm_1"][-1]
+        # Output gap projection
+        if has_is_curve:
+            if t == 0:
+                rate_gap_lag2 = rate_gap_Tm1
+                fiscal_lag1 = obs["fiscal_impulse_1"][-1]
+                delta_dsr_lag1 = obs["Δdsr_1"][-1]
+                delta_hw_lag1 = obs["Δhw_1"][-1]
+                delta_import_price = obs["Δ4ρm_1"][-1]
+            else:
+                rate_gap_lag2 = rate_gap_hold
+                fiscal_lag1 = 0.0
+                delta_dsr_lag1 = rate_change * RATE_TO_DSR_PASSTHROUGH
+                delta_hw_lag1 = obs["Δhw_1"][-1] + rate_change * RATE_TO_HOUSING_WEALTH
+
+            output_gap_fcst[t] = (
+                rho_is * output_gap_prev
+                - beta_is * rate_gap_lag2
+                + gamma_fi * fiscal_lag1
+                - delta_dsr * delta_dsr_lag1
+                + eta_hw * delta_hw_lag1
+            )
         else:
-            rate_gap_lag2 = rate_gap_hold
-            # Rate change → DSR change at lag 1
-            # For t>=1, the rate change from period T feeds through
-            delta_dsr_lag1 = rate_change * RATE_TO_DSR_PASSTHROUGH
-            # Rate change → Housing wealth change at lag 1
-            # rate_change is in pp (e.g., 0.5 for 50bp), RATE_TO_HOUSING_WEALTH is per 100bp
-            delta_hw_lag1 = obs["Δhw_1"][-1] + rate_change * RATE_TO_HOUSING_WEALTH
-            # FX channel: use RBA-calibrated passthrough (model estimates too small)
-            # rate_change is in pp (e.g., 0.5 for 50bp)
-            fx_inflation_effect = -rate_change * RATE_TO_INFLATION_FX  # negative: rate up → inflation down
+            # Without IS curve: output gap decays as AR(1)
+            if has_okun_gap:
+                output_gap_fcst[t] = tau2_okun * output_gap_prev
+            else:
+                output_gap_fcst[t] = 0.85 * output_gap_prev
+            if t == 0:
+                delta_import_price = obs["Δ4ρm_1"][-1]
 
-        output_gap_fcst[t] = (
-            rho_is * output_gap_prev
-            - beta_is * rate_gap_lag2
-            - delta_dsr * delta_dsr_lag1
-            + eta_hw * delta_hw_lag1
-        )
-
-        # Okun's Law: delta_U = beta_okun * output_gap
-        # Apply calibration factor to match RBA total transmission estimate
-        delta_U = beta_okun * output_gap_fcst[t] * DEMAND_TRANSMISSION_MULTIPLIER
-        unemployment_fcst[t] = U_prev + delta_U
-
-        # Phillips curve: π = π_exp + γ × u_gap + FX effect
-        # u_gap = (U - NAIRU) / U
-        # FX channel: at t=0 use model's ρ_pi × historical import prices
-        #             at t>=1 use RBA-calibrated rate→inflation passthrough
-        u_gap = (unemployment_fcst[t] - nairu_fcst[t]) / unemployment_fcst[t]
-        if t == 0:
-            inflation_fcst[t] = pi_exp_qtr + gamma_pi_covid * u_gap + rho_pi * delta_import_price
+        # Okun's Law: map output gap to unemployment
+        if has_okun_gap:
+            u_gap_fcst = tau2_okun * u_gap_prev + tau1_okun * output_gap_fcst[t]
+            unemployment_fcst[t] = nairu_fcst[t] + u_gap_fcst
         else:
-            inflation_fcst[t] = pi_exp_qtr + gamma_pi_covid * u_gap + fx_inflation_effect
+            delta_u = beta_okun * output_gap_fcst[t]
+            unemployment_fcst[t] = unemployment_prev + delta_u
+            u_gap_fcst = unemployment_fcst[t] - nairu_fcst[t]
+            unemployment_prev = unemployment_fcst[t]
+
+        # Phillips curve: π = π_exp + γ × u_gap/U + FX effect
+        u_gap_ratio = u_gap_fcst / unemployment_fcst[t]
+        fx_inflation_effect = -rate_change * RATE_TO_INFLATION_FX if t > 0 else 0.0
+        if t == 0:
+            inflation_fcst[t] = pi_exp_qtr + gamma_pi_covid * u_gap_ratio + rho_pi * delta_import_price
+        else:
+            inflation_fcst[t] = pi_exp_qtr + gamma_pi_covid * u_gap_ratio + fx_inflation_effect
 
         # Update for next iteration
         output_gap_prev = output_gap_fcst[t]
-        U_prev = unemployment_fcst[t]
+        u_gap_prev = u_gap_fcst
 
     # --- Package results ---
     cols = nairu_posterior.columns
@@ -466,13 +487,16 @@ def forecast(
         unemployment_forecast=pd.DataFrame(unemployment_fcst, index=forecast_index, columns=cols),
         inflation_forecast=pd.DataFrame(inflation_fcst, index=forecast_index, columns=cols),
         coefficients={
-            "rho_is": float(np.median(rho_is)),
-            "beta_is": float(np.median(beta_is)),
-            "delta_dsr": float(np.median(delta_dsr)),
-            "eta_hw": float(np.median(eta_hw)),
-            "beta_okun": float(np.median(beta_okun)),
-            "gamma_pi_covid": float(np.median(gamma_pi_covid)),
-            # Note: beta_pt and rho_pi not used in forecasts (RBA calibration used instead)
+            **({"tau1_okun": float(np.median(tau1_okun)),
+                "tau2_okun": float(np.median(tau2_okun))} if has_okun_gap else
+               {"beta_okun": float(np.median(beta_okun))}),
+            **({"rho_is": float(np.median(rho_is)),
+                "beta_is": float(np.median(beta_is)),
+                **({} if np.isscalar(gamma_fi) else {"gamma_fi": float(np.median(gamma_fi))}),
+                **({} if np.isscalar(delta_dsr) else {"delta_dsr": float(np.median(delta_dsr))}),
+                **({} if np.isscalar(eta_hw) else {"eta_hw": float(np.median(eta_hw))}),
+                } if has_is_curve else {}),
+            gamma_var: float(np.median(gamma_pi_covid)),
         },
         potential_growth=potential_growth,
         nairu_final=float(np.median(nairu_T)),
@@ -558,6 +582,7 @@ def print_scenario_comparison(
 
 def plot_scenario_inflation(
     scenario_results: dict[str, ForecastResults],
+    chart_obs: pd.DataFrame | None = None,
     anchor_label: str = "",
     n_history: int = 4,
     chart_dir: Path | str | None = None,
@@ -567,6 +592,7 @@ def plot_scenario_inflation(
 
     Args:
         scenario_results: Dict of {scenario_name: ForecastResults} from run_scenarios
+        chart_obs: Extended observations DataFrame for charting (may extend beyond model sample)
         anchor_label: Label describing expectations anchor mode (for chart footer)
         n_history: Number of historical periods to show before forecast
         chart_dir: Directory to save charts. If None, uses DEFAULT_CHART_DIR.
@@ -603,9 +629,12 @@ def plot_scenario_inflation(
 
     df = pd.DataFrame(inflation_data)
 
-    # Plot historical actuals (fetch fresh CPI - may have more recent than model)
-    cpi = annualize(get_trimmed_mean_qrtly().data)
+    # Plot historical actuals — use chart_obs if available (extends beyond model sample)
     model_end = scenario_results["hold"].obs_index[-1]
+    if chart_obs is not None and "π" in chart_obs.columns:
+        cpi = annualize(chart_obs["π"].dropna())
+    else:
+        cpi = annualize(get_trimmed_mean_qrtly().data)
     hist_actual = cpi.loc[cpi.index >= model_end - n_history + 1]
     hist_actual.name = "Actual"
     ax = mg.line_plot(hist_actual, color="black", width=2)
@@ -672,6 +701,7 @@ def plot_scenario_gdp_growth(
     scenario_results: dict[str, ForecastResults],
     obs: dict | None = None,
     obs_index: pd.PeriodIndex | None = None,
+    chart_obs: pd.DataFrame | None = None,
     anchor_label: str = "",
     n_history: int = 4,
     chart_dir: Path | str | None = None,
@@ -683,6 +713,7 @@ def plot_scenario_gdp_growth(
         scenario_results: Dict of {scenario_name: ForecastResults} from run_scenarios
         obs: Observations dict containing historical data
         obs_index: PeriodIndex for observations
+        chart_obs: Extended observations DataFrame for charting (may extend beyond model sample)
         anchor_label: Label describing expectations anchor mode (for chart footer)
         n_history: Number of historical periods to show before forecast
         chart_dir: Directory to save charts. If None, uses DEFAULT_CHART_DIR.
@@ -719,11 +750,19 @@ def plot_scenario_gdp_growth(
 
     df = pd.DataFrame(gdp_data)
 
-    # Plot historical actuals first (if provided)
+    # Plot historical actuals — use chart_obs if available (extends beyond model sample)
     ax = None
-    if obs is not None and obs_index is not None:
+    if chart_obs is not None and "log_gdp" in chart_obs.columns:
+        log_gdp = chart_obs["log_gdp"].dropna()
+        gdp_growth_qtr = log_gdp.diff()
+        gdp_growth_annual = annualize(gdp_growth_qtr)
+        model_end = scenario_results["hold"].obs_index[-1]
+        hist_recent = gdp_growth_annual.loc[gdp_growth_annual.index >= model_end - n_history + 1]
+        hist_recent.name = "Actual"
+        ax = mg.line_plot(hist_recent, color="black", width=2)
+    elif obs is not None and obs_index is not None:
         log_gdp = pd.Series(obs["log_gdp"], index=obs_index)
-        gdp_growth_qtr = log_gdp.diff()  # already in % (log_gdp is 100*log)
+        gdp_growth_qtr = log_gdp.diff()
         gdp_growth_annual = annualize(gdp_growth_qtr)
         hist_recent = gdp_growth_annual.iloc[-n_history:]
         hist_recent.name = "Actual"
@@ -800,6 +839,7 @@ def plot_scenario_unemployment(
     scenario_results: dict[str, ForecastResults],
     obs: dict | None = None,
     obs_index: pd.PeriodIndex | None = None,
+    chart_obs: pd.DataFrame | None = None,
     anchor_label: str = "",
     n_history: int = 4,
     chart_dir: Path | str | None = None,
@@ -811,6 +851,7 @@ def plot_scenario_unemployment(
         scenario_results: Dict of {scenario_name: ForecastResults} from run_scenarios
         obs: Observations dict containing historical data
         obs_index: PeriodIndex for observations
+        chart_obs: Extended observations DataFrame for charting (may extend beyond model sample)
         anchor_label: Label describing expectations anchor mode (for chart footer)
         n_history: Number of historical periods to show before scenario
         chart_dir: Directory to save charts. If None, uses DEFAULT_CHART_DIR.
@@ -846,9 +887,15 @@ def plot_scenario_unemployment(
 
     df = pd.DataFrame(unemployment_data)
 
-    # Plot historical actuals first (if provided)
+    # Plot historical actuals — use chart_obs if available (extends beyond model sample)
     ax = None
-    if obs is not None and obs_index is not None:
+    if chart_obs is not None and "U" in chart_obs.columns:
+        unemployment_hist = chart_obs["U"].dropna()
+        model_end = scenario_results["hold"].obs_index[-1]
+        hist_recent = unemployment_hist.loc[unemployment_hist.index >= model_end - n_history + 1]
+        hist_recent.name = "Actual"
+        ax = mg.line_plot(hist_recent, color="black", width=2)
+    elif obs is not None and obs_index is not None:
         unemployment_hist = pd.Series(obs["U"], index=obs_index)
         hist_recent = unemployment_hist.iloc[-n_history:]
         hist_recent.name = "Actual"
@@ -943,16 +990,17 @@ def run_stage3(
     print("Loading model results...")
 
     # Load results
-    trace, obs, obs_index, constants, anchor_label = load_results(output_dir=output_dir, prefix=prefix)
+    trace, obs, obs_index, constants, anchor_label, chart_obs, model_kwargs = load_results(output_dir=output_dir, prefix=prefix)
 
     # Rebuild model and create results container
-    model = build_model(obs)
+    model = build_model(obs, **model_kwargs)
     results = NAIRUResults(
         trace=trace,
         obs=obs,
         obs_index=obs_index,
         model=model,
         anchor_label=anchor_label,
+        chart_obs=chart_obs,
     )
 
     current_rate = obs["cash_rate"][-1]
@@ -970,12 +1018,12 @@ def run_stage3(
 
         # Plot scenario comparisons
         if plot_scenarios:
-            plot_scenario_inflation(scenario_results, anchor_label=anchor_label, chart_dir=chart_dir, show=False)
+            plot_scenario_inflation(scenario_results, chart_obs=chart_obs, anchor_label=anchor_label, chart_dir=chart_dir, show=False)
             plot_scenario_gdp_growth(
-                scenario_results, obs=obs, obs_index=obs_index, anchor_label=anchor_label, chart_dir=chart_dir, show=False
+                scenario_results, obs=obs, obs_index=obs_index, chart_obs=chart_obs, anchor_label=anchor_label, chart_dir=chart_dir, show=False
             )
             plot_scenario_unemployment(
-                scenario_results, obs=obs, obs_index=obs_index, anchor_label=anchor_label, chart_dir=chart_dir, show=False
+                scenario_results, obs=obs, obs_index=obs_index, chart_obs=chart_obs, anchor_label=anchor_label, chart_dir=chart_dir, show=False
             )
 
         return scenario_results

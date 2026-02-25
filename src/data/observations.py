@@ -28,7 +28,7 @@ ANCHOR_LABELS = {
 }
 
 from src.data import (
-    compute_mfp_trend_floored,
+    compute_mfp_trend_hma,
     compute_r_star,
     get_capital_growth_qrtly,
     get_capital_share,
@@ -162,7 +162,7 @@ def build_observations(
     hma_term: int = HMA_TERM,
     anchor_mode: AnchorMode = "rba",
     verbose: bool = False,
-) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, str]:
+) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, str, pd.DataFrame]:
     """Build observation dictionary for model.
 
     Loads all data from library, applies model-specific transformations,
@@ -182,7 +182,9 @@ def build_observations(
         verbose: Print sample info
 
     Returns:
-        Tuple of (observations dict, period index, anchor label)
+        Tuple of (observations dict, period index, anchor label, chart DataFrame).
+        The chart DataFrame has the same start date but extends to the latest
+        available data for each series (no row-wise dropna).
 
     """
     # --- Load data from library ---
@@ -231,8 +233,8 @@ def build_observations(
     Δhcoe = get_hourly_coe_growth_qrtly().data
     Δhcoe_1 = get_hourly_coe_growth_lagged_qrtly().data
 
-    # Derive MFP from wage data (replaces external ABS 5204 MFP)
-    mfp_growth = compute_mfp_trend_floored(
+    # Derive MFP from wage data, HMA(101) smoothed (no floor, no HP end-point bias)
+    mfp_growth = compute_mfp_trend_hma(
         ulc_growth=Δulc,
         hcoe_growth=Δhcoe,
         capital_growth=capital_growth,
@@ -362,10 +364,18 @@ def build_observations(
     # This must be done before dropna() to avoid truncating the sample
     observed["ξ_2"] = observed["ξ_2"].fillna(0.0)
 
-    # Drop missing
+    # Charting version: same start date, extends to latest available per series
+    chart_obs = observed.copy()
+
+    # Drop missing (sampling version: complete cases only)
     observed = observed.dropna()
 
     print(f"Observations: {observed.index.min()} to {observed.index.max()} ({len(observed)} periods)")
+
+    # Report chart data extent (latest period with any data)
+    chart_last = chart_obs.apply(lambda s: s.last_valid_index()).max()
+    if chart_last > observed.index.max():
+        print(f"Chart data extends to: {chart_last}")
 
     # Warn if any NaNs remain (shouldn't happen after dropna)
     if observed.isna().any().any():
@@ -397,4 +407,4 @@ def build_observations(
     # Get anchor label for chart annotations
     anchor_label = ANCHOR_LABELS[anchor_mode]
 
-    return obs_dict, obs_index, anchor_label
+    return obs_dict, obs_index, anchor_label, chart_obs

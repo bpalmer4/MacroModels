@@ -16,6 +16,8 @@ def net_exports_equation(
 ) -> None:
     """Net exports equation - trade balance dynamics.
 
+    Model: Δ(NX/Y) = β₁ × output_gap + β₂ × Δtwi + ε
+
     Models the trade balance response to:
     - Domestic demand (output gap) - imports rise when economy is strong
     - Exchange rate - appreciation worsens trade balance

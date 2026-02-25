@@ -268,19 +268,22 @@ def decompose_inflation(
 
     """
     # Extract parameters (posterior median)
-    # Regime-specific price Phillips curve slopes
-    gamma_pi_pre_gfc = get_scalar_var("gamma_pi_pre_gfc", trace).median()
-    gamma_pi_gfc = get_scalar_var("gamma_pi_gfc", trace).median()
-    gamma_pi_covid = get_scalar_var("gamma_pi_covid", trace).median()
+    # Price Phillips curve slope(s) — regime-switching or single
+    has_regime_switching = "gamma_pi_pre_gfc" in trace.posterior
+    if has_regime_switching:
+        gamma_pi_pre_gfc = get_scalar_var("gamma_pi_pre_gfc", trace).median()
+        gamma_pi_gfc = get_scalar_var("gamma_pi_gfc", trace).median()
+        gamma_pi_covid = get_scalar_var("gamma_pi_covid", trace).median()
+        gamma_pi = pd.Series(index=obs_index, dtype=float)
+        gamma_pi.loc[obs_index < REGIME_GFC_START] = gamma_pi_pre_gfc
+        gamma_pi.loc[(obs_index >= REGIME_GFC_START) & (obs_index < REGIME_COVID_START)] = gamma_pi_gfc
+        gamma_pi.loc[obs_index >= REGIME_COVID_START] = gamma_pi_covid
+    else:
+        gamma_pi_single = get_scalar_var("gamma_pi", trace).median()
+        gamma_pi = pd.Series(gamma_pi_single, index=obs_index)
 
-    rho_pi = get_scalar_var("rho_pi", trace).median()
-    xi_gscpi = get_scalar_var("xi_gscpi", trace).median()
-
-    # Build regime-specific gamma series
-    gamma_pi = pd.Series(index=obs_index, dtype=float)
-    gamma_pi.loc[obs_index < REGIME_GFC_START] = gamma_pi_pre_gfc
-    gamma_pi.loc[(obs_index >= REGIME_GFC_START) & (obs_index < REGIME_COVID_START)] = gamma_pi_gfc
-    gamma_pi.loc[obs_index >= REGIME_COVID_START] = gamma_pi_covid
+    rho_pi = get_scalar_var("rho_pi", trace).median() if "rho_pi" in trace.posterior else 0.0
+    xi_gscpi = get_scalar_var("xi_gscpi", trace).median() if "xi_gscpi" in trace.posterior else 0.0
 
     # Extract NAIRU (vector, use median across samples) as Series
     # Note: .values needed to extract numpy array from xarray DataArray
@@ -703,17 +706,23 @@ def decompose_wage_inflation(
     # Extract parameters (posterior median)
     alpha_wg = get_scalar_var("alpha_wg", trace).median()
     lambda_wg = get_scalar_var("lambda_wg", trace).median()
-    phi_wg = get_scalar_var("phi_wg", trace).median()
-    theta_wg = get_scalar_var("theta_wg", trace).median()
+    has_phi_wg = "phi_wg" in trace.posterior
+    phi_wg = get_scalar_var("phi_wg", trace).median() if has_phi_wg else 0.0
+    has_theta_wg = "theta_wg" in trace.posterior
+    theta_wg = get_scalar_var("theta_wg", trace).median() if has_theta_wg else 0.0
 
-    # Regime-specific wage Phillips curve slopes
-    gamma_wg_pre_gfc = get_scalar_var("gamma_wg_pre_gfc", trace).median()
-    gamma_wg_gfc = get_scalar_var("gamma_wg_gfc", trace).median()
-    gamma_wg_covid = get_scalar_var("gamma_wg_covid", trace).median()
-    gamma_wg = pd.Series(index=obs_index, dtype=float)
-    gamma_wg.loc[obs_index < REGIME_GFC_START] = gamma_wg_pre_gfc
-    gamma_wg.loc[(obs_index >= REGIME_GFC_START) & (obs_index < REGIME_COVID_START)] = gamma_wg_gfc
-    gamma_wg.loc[obs_index >= REGIME_COVID_START] = gamma_wg_covid
+    # Wage Phillips curve slopes: regime-switching or single
+    if "gamma_wg_pre_gfc" in trace.posterior:
+        gamma_wg_pre_gfc = get_scalar_var("gamma_wg_pre_gfc", trace).median()
+        gamma_wg_gfc = get_scalar_var("gamma_wg_gfc", trace).median()
+        gamma_wg_covid = get_scalar_var("gamma_wg_covid", trace).median()
+        gamma_wg = pd.Series(index=obs_index, dtype=float)
+        gamma_wg.loc[obs_index < REGIME_GFC_START] = gamma_wg_pre_gfc
+        gamma_wg.loc[(obs_index >= REGIME_GFC_START) & (obs_index < REGIME_COVID_START)] = gamma_wg_gfc
+        gamma_wg.loc[obs_index >= REGIME_COVID_START] = gamma_wg_covid
+    else:
+        gamma_wg_val = get_scalar_var("gamma_wg", trace).median()
+        gamma_wg = pd.Series(gamma_wg_val, index=obs_index)
 
     nairu = pd.Series(
         get_vector_var("nairu", trace).median(axis=1).values, index=obs_index
@@ -898,18 +907,24 @@ def decompose_hcoe_inflation(
     # Extract parameters (posterior median)
     alpha_hcoe = get_scalar_var("alpha_hcoe", trace).median()
     lambda_hcoe = get_scalar_var("lambda_hcoe", trace).median()
-    phi_hcoe = get_scalar_var("phi_hcoe", trace).median()
-    theta_hcoe = get_scalar_var("theta_hcoe", trace).median()
+    has_phi_hcoe = "phi_hcoe" in trace.posterior
+    phi_hcoe = get_scalar_var("phi_hcoe", trace).median() if has_phi_hcoe else 0.0
+    has_theta_hcoe = "theta_hcoe" in trace.posterior
+    theta_hcoe = get_scalar_var("theta_hcoe", trace).median() if has_theta_hcoe else 0.0
     psi_hcoe = get_scalar_var("psi_hcoe", trace).median()
 
-    # Regime-specific hourly COE Phillips curve slopes
-    gamma_hcoe_pre_gfc = get_scalar_var("gamma_hcoe_pre_gfc", trace).median()
-    gamma_hcoe_gfc = get_scalar_var("gamma_hcoe_gfc", trace).median()
-    gamma_hcoe_covid = get_scalar_var("gamma_hcoe_covid", trace).median()
-    gamma_hcoe = pd.Series(index=obs_index, dtype=float)
-    gamma_hcoe.loc[obs_index < REGIME_GFC_START] = gamma_hcoe_pre_gfc
-    gamma_hcoe.loc[(obs_index >= REGIME_GFC_START) & (obs_index < REGIME_COVID_START)] = gamma_hcoe_gfc
-    gamma_hcoe.loc[obs_index >= REGIME_COVID_START] = gamma_hcoe_covid
+    # Hourly COE Phillips curve slopes: regime-switching or single
+    if "gamma_hcoe_pre_gfc" in trace.posterior:
+        gamma_hcoe_pre_gfc = get_scalar_var("gamma_hcoe_pre_gfc", trace).median()
+        gamma_hcoe_gfc = get_scalar_var("gamma_hcoe_gfc", trace).median()
+        gamma_hcoe_covid = get_scalar_var("gamma_hcoe_covid", trace).median()
+        gamma_hcoe = pd.Series(index=obs_index, dtype=float)
+        gamma_hcoe.loc[obs_index < REGIME_GFC_START] = gamma_hcoe_pre_gfc
+        gamma_hcoe.loc[(obs_index >= REGIME_GFC_START) & (obs_index < REGIME_COVID_START)] = gamma_hcoe_gfc
+        gamma_hcoe.loc[obs_index >= REGIME_COVID_START] = gamma_hcoe_covid
+    else:
+        gamma_hcoe_val = get_scalar_var("gamma_hcoe", trace).median()
+        gamma_hcoe = pd.Series(gamma_hcoe_val, index=obs_index)
 
     nairu = pd.Series(
         get_vector_var("nairu", trace).median(axis=1).values, index=obs_index

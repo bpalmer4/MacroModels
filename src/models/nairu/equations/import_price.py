@@ -71,6 +71,8 @@ def import_price_equation(
 ) -> None:
     """Import price pass-through equation.
 
+    Model: Δ4ρm = β_pt × Δ4twi_{-1} + β_oil × Δ4oil_{-1} + ρ × Δ4ρm_{-1} + ε
+
     Exchange rate pass-through equation with oil prices:
         Δ4ρm_t = β_pt·Δ4twi_{t-1} + β_oil·Δ4oil_{t-1} + ρ·Δ4ρm_{t-1} + ε
 

@@ -96,6 +96,7 @@ from src.data.net_exports import (
 )
 from src.data.productivity import (
     compute_mfp_trend_floored,
+    compute_mfp_trend_hma,
     get_labour_productivity_growth,
     get_mfp_growth,
     get_real_wage_gap,

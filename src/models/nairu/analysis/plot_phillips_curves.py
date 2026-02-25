@@ -58,10 +58,13 @@ def plot_phillips_curves(
     and 90% credible intervals, following the RBA's presentation style.
     Uses current (post-COVID) regime gammas.
     """
-    # Extract posteriors - use current regime (covid) gammas
-    gamma_pi = get_scalar_var("gamma_pi_covid", trace).to_numpy()
-    gamma_wg = get_scalar_var("gamma_wg_covid", trace).to_numpy()
-    gamma_hcoe = get_scalar_var("gamma_hcoe_covid", trace).to_numpy()
+    # Extract posteriors - use current regime gamma (or single slope)
+    gamma_pi_var = "gamma_pi_covid" if "gamma_pi_covid" in trace.posterior else "gamma_pi"
+    gamma_pi = get_scalar_var(gamma_pi_var, trace).to_numpy()
+    has_wage = "gamma_wg_covid" in trace.posterior
+    gamma_wg = get_scalar_var("gamma_wg_covid", trace).to_numpy() if has_wage else None
+    has_hcoe = "gamma_hcoe_covid" in trace.posterior
+    gamma_hcoe = get_scalar_var("gamma_hcoe_covid", trace).to_numpy() if has_hcoe else None
     nairu_samples = get_vector_var("nairu", trace).to_numpy()  # shape: (time, samples)
 
     # Use recent NAIRU (last quarter median across all samples)
@@ -84,14 +87,16 @@ def plot_phillips_curves(
         annualize(_compute_phillips_curve(u_range, nairu_samples[-1, i], gamma_pi[i]))
         for i in idx
     ])
-    curves_wg = np.array([
-        annualize(_compute_phillips_curve(u_range, nairu_samples[-1, i], gamma_wg[i]))
-        for i in idx
-    ])
-    curves_hcoe = np.array([
-        annualize(_compute_phillips_curve(u_range, nairu_samples[-1, i], gamma_hcoe[i]))
-        for i in idx
-    ])
+    if has_wage:
+        curves_wg = np.array([
+            annualize(_compute_phillips_curve(u_range, nairu_samples[-1, i], gamma_wg[i]))
+            for i in idx
+        ])
+    if has_hcoe:
+        curves_hcoe = np.array([
+            annualize(_compute_phillips_curve(u_range, nairu_samples[-1, i], gamma_hcoe[i]))
+            for i in idx
+        ])
 
     # Create figure
     _, ax = plt.subplots(figsize=(9, 6))
@@ -104,21 +109,23 @@ def plot_phillips_curves(
     ax.fill_between(u_range, lower_pi, upper_pi, alpha=0.2, color="steelblue")
     ax.plot(u_range, median_pi, color="steelblue", linewidth=2, label="Price Phillips Curve")
 
-    # Wage-ULC Phillips curve
-    lower_wg = np.percentile(curves_wg, 5, axis=0)
-    upper_wg = np.percentile(curves_wg, 95, axis=0)
-    median_wg = np.percentile(curves_wg, 50, axis=0)
+    # Wage-ULC Phillips curve (if included)
+    if has_wage:
+        lower_wg = np.percentile(curves_wg, 5, axis=0)
+        upper_wg = np.percentile(curves_wg, 95, axis=0)
+        median_wg = np.percentile(curves_wg, 50, axis=0)
 
-    ax.fill_between(u_range, lower_wg, upper_wg, alpha=0.2, color="darkorange")
-    ax.plot(u_range, median_wg, color="darkorange", linewidth=2, label="Wage-ULC Phillips Curve")
+        ax.fill_between(u_range, lower_wg, upper_wg, alpha=0.2, color="darkorange")
+        ax.plot(u_range, median_wg, color="darkorange", linewidth=2, label="Wage-ULC Phillips Curve")
 
-    # Wage-HCOE Phillips curve
-    lower_hcoe = np.percentile(curves_hcoe, 5, axis=0)
-    upper_hcoe = np.percentile(curves_hcoe, 95, axis=0)
-    median_hcoe = np.percentile(curves_hcoe, 50, axis=0)
+    # Wage-HCOE Phillips curve (if included)
+    if has_hcoe:
+        lower_hcoe = np.percentile(curves_hcoe, 5, axis=0)
+        upper_hcoe = np.percentile(curves_hcoe, 95, axis=0)
+        median_hcoe = np.percentile(curves_hcoe, 50, axis=0)
 
-    ax.fill_between(u_range, lower_hcoe, upper_hcoe, alpha=0.2, color="green")
-    ax.plot(u_range, median_hcoe, color="green", linewidth=2, label="Wage-HCOE Phillips Curve")
+        ax.fill_between(u_range, lower_hcoe, upper_hcoe, alpha=0.2, color="green")
+        ax.plot(u_range, median_hcoe, color="green", linewidth=2, label="Wage-HCOE Phillips Curve")
 
     # Reference lines
     ax.axhline(0, color="black", linewidth=0.5)
@@ -133,39 +140,57 @@ def plot_phillips_curves(
     # Numerical slope: rise/run using adjacent points
     if u_idx > 0:
         slope_pi = (median_pi[u_idx] - median_pi[u_idx - 1]) / (u_range[u_idx] - u_range[u_idx - 1])
-        slope_wg = (median_wg[u_idx] - median_wg[u_idx - 1]) / (u_range[u_idx] - u_range[u_idx - 1])
-        slope_hcoe = (median_hcoe[u_idx] - median_hcoe[u_idx - 1]) / (u_range[u_idx] - u_range[u_idx - 1])
     else:
         slope_pi = (median_pi[1] - median_pi[0]) / (u_range[1] - u_range[0])
-        slope_wg = (median_wg[1] - median_wg[0]) / (u_range[1] - u_range[0])
-        slope_hcoe = (median_hcoe[1] - median_hcoe[0]) / (u_range[1] - u_range[0])
 
     # Get deviations at current unemployment
     dev_pi = median_pi[u_idx]
-    dev_wg = median_wg[u_idx]
-    dev_hcoe = median_hcoe[u_idx]
+
+    # Build annotation text
+    pressure_lines = f"  Price: {dev_pi:+.2f}pp\n"
+    slope_lines = f"  Price: {slope_pi:.2f}\n"
+    if has_wage:
+        if u_idx > 0:
+            slope_wg = (median_wg[u_idx] - median_wg[u_idx - 1]) / (u_range[u_idx] - u_range[u_idx - 1])
+        else:
+            slope_wg = (median_wg[1] - median_wg[0]) / (u_range[1] - u_range[0])
+        dev_wg = median_wg[u_idx]
+        pressure_lines += f"  ULC: {dev_wg:+.2f}pp\n"
+        slope_lines += f"  ULC: {slope_wg:.2f}\n"
+    if has_hcoe:
+        if u_idx > 0:
+            slope_hcoe = (median_hcoe[u_idx] - median_hcoe[u_idx - 1]) / (u_range[u_idx] - u_range[u_idx - 1])
+        else:
+            slope_hcoe = (median_hcoe[1] - median_hcoe[0]) / (u_range[1] - u_range[0])
+        dev_hcoe = median_hcoe[u_idx]
+        pressure_lines += f"  HCOE: {dev_hcoe:+.2f}pp\n"
+        slope_lines += f"  HCOE: {slope_hcoe:.2f}\n"
+    # Strip trailing newlines
+    pressure_lines = pressure_lines.rstrip("\n")
+    slope_lines = slope_lines.rstrip("\n")
 
     ax.annotate(
         f"At U={u_current:.1f}%:\n"
-        f"Demand pressures:\n"
-        f"  Price: {dev_pi:+.2f}pp\n"
-        f"  ULC: {dev_wg:+.2f}pp\n"
-        f"  HCOE: {dev_hcoe:+.2f}pp\n"
-        f"Slopes:\n"
-        f"  Price: {slope_pi:.2f}\n"
-        f"  ULC: {slope_wg:.2f}\n"
-        f"  HCOE: {slope_hcoe:.2f}",
+        f"Demand pressures:\n{pressure_lines}\n"
+        f"Slopes:\n{slope_lines}",
         xy=(0.97, 0.97), xycoords="axes fraction",
         ha="right", va="top", fontsize=9,
         bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.8}
     )
+
+    lheader = ""
+    if has_wage:
+        lheader += "ULC = Unit Labour Costs. "
+    if has_hcoe:
+        lheader += "HCOE = Hourly Compensation of Employees."
+    lheader = lheader.strip()
 
     defaults = {
         "title": "Phillips Curve Demand Pressures - Post-COVID Regime",
         "xlabel": "Unemployment Rate (%)",
         "ylabel": "Demand pressures (pp, annualised)",
         "legend": {"loc": "best", "fontsize": "x-small"},
-        "lheader": "ULC = Unit Labour Costs; HCOE = Hourly Compensation of Employees.",
+        "lheader": lheader,
         "lfooter": f"Chart for {obs_index[-1]}. Convex form: γ(U-U*)/U. Slope = γU*/U². 90% CI.",
         "rfooter": model_name,
     }

@@ -16,6 +16,8 @@ def employment_equation(
 ) -> None:
     """Employment equation - labour demand based on output and real wages.
 
+    Model: Δemp = α + β_ygap × output_gap + β_wage × real_wage_gap + ε
+
     Firms hire based on output and real labour costs relative to productivity.
     This provides a structural explanation for labour market dynamics, complementing
     Okun's Law with a wage channel.

@@ -73,6 +73,8 @@ def exchange_rate_equation(
 ) -> None:
     """Exchange rate equation linking TWI changes to fundamentals.
 
+    Model: Δe = ρ × Δe_{-1} + β_r × r_gap_{-1} + ε
+
     UIP-style equation with persistence:
         Δe_t = ρ·Δe_{t-1} + β_r·(r_{t-1} - r*) + ε
 

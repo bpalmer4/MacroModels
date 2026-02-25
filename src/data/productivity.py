@@ -133,6 +133,54 @@ def compute_mfp_trend_floored(
     )
 
 
+def compute_mfp_trend_hma(
+    ulc_growth: pd.Series,
+    hcoe_growth: pd.Series,
+    capital_growth: pd.Series,
+    hours_growth: pd.Series,
+    alpha: float | pd.Series = 0.3,
+    hma_term: int = 101,
+) -> DataSeries:
+    """Derive MFP trend growth using Henderson moving average.
+
+    HMA(101) on quarterly data is comparable to HMA(25) on annual data,
+    stripping out cyclical noise while avoiding HP filter end-point bias.
+    No zero floor — negative readings are smoothed out by the heavy averaging.
+
+    Args:
+        ulc_growth: Unit labour cost growth (quarterly)
+        hcoe_growth: Hourly COE growth (quarterly)
+        capital_growth: Capital stock growth (quarterly, smoothed)
+        hours_growth: Hours worked growth (quarterly)
+        alpha: Capital share (default 0.3), can be time-varying Series
+        hma_term: Henderson MA term (default 101, must be odd)
+
+    Returns:
+        DataSeries with HMA-smoothed MFP trend growth
+
+    """
+    from src.data.henderson import hma
+
+    # Get raw MFP
+    mfp_raw = get_mfp_growth(
+        ulc_growth, hcoe_growth, capital_growth, hours_growth, alpha
+    ).data
+
+    # HMA smooth (no floor)
+    mfp_clean = mfp_raw.dropna()
+    mfp_trend = hma(mfp_clean, hma_term)
+    mfp_smoothed = mfp_trend.reindex(mfp_raw.index)
+
+    alpha_desc = "time-varying" if isinstance(alpha, pd.Series) else f"{alpha}"
+    return DataSeries(
+        data=mfp_smoothed,
+        source="Derived",
+        units="% per quarter",
+        description=f"MFP trend growth (HMA {hma_term}, α={alpha_desc})",
+        cat="Derived from ABS 5206.0",
+    )
+
+
 def get_real_wage_gap(
     ulc_growth: pd.Series,
     mfp_growth: pd.Series,

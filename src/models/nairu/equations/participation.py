@@ -71,6 +71,8 @@ def participation_equation(
 ) -> None:
     """Participation rate equation.
 
+    Model: Δpr = β_pr × (U_{-1} - NAIRU_{-1}) + ε
+
     Cyclical participation response (discouraged worker effect):
         Δpr_t = β_pr·(U_{t-1} - NAIRU_{t-1}) + ε
 
