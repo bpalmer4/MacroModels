@@ -74,7 +74,7 @@ def print_model_equations(equations: list[Callable]) -> None:
 
 
 # Default fixed constants for model building
-# NAIRU uses Student-t(nu=4) innovations for robustness to occasional large shifts
+# Default fixed constants for state equations (Gaussian by default; Student-t via complex variant)
 DEFAULT_NAIRU_CONST: dict[str, Any] = {"nairu_innovation": 0.15}
 DEFAULT_POTENTIAL_CONST: dict[str, Any] = {"potential_innovation": 0.3}
 

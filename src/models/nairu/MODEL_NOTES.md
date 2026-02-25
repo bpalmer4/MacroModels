@@ -8,7 +8,7 @@ This directory contains a Bayesian state-space model for jointly estimating NAIR
 |-----------|--------|-------------|
 | NAIRU | Gaussian random walk (default) | No drift, scale≈0.15; Student-t(ν=4) variant available for fat tails |
 | Potential Output | Cobb-Douglas + Gaussian innovations (default) | SkewNormal variant available (asymmetric: small positives common, large negatives rare) |
-| Phillips Curves | Regime-switching (3 regimes) | Pre-GFC, GFC-COVID, post-COVID |
+| Phillips Curves | Single slope (default) | Regime-switching variant available (3 regimes: pre-GFC, GFC-COVID, post-COVID) |
 | Identification | 2 state + 10 observation equations | Joint estimation with proper uncertainty |
 | Scenario Analysis | Model-consistent projection | 4-quarter horizon with policy scenarios |
 
@@ -220,7 +220,7 @@ Where GOS = Gross Operating Surplus and COE = Compensation of Employees. This ca
 
 ### Phillips Curves (phillips.py)
 
-All three Phillips curves use **regime-switching slopes** with three regimes:
+By default, the Phillips curves use a **single time-invariant slope**. The `complex` variant (`regime_switching=True`) enables **regime-switching slopes** with three regimes:
 
 | Regime | Period | Characteristic |
 |--------|--------|----------------|
@@ -782,11 +782,15 @@ python -m src.models.nairu.model -v                     # Default configuration
 
 | Variant | NAIRU Innovations | Regime Switching | Extra Equations | Import Price Control |
 |---------|-------------------|------------------|-----------------|---------------------|
+| `default` | Gaussian | No | — | No |
 | `simple` | Gaussian | No | — | No |
 | `complex` | Student-t(ν=4) | Yes (3 regimes) | Exchange rate, import price, participation, employment, net exports | Yes |
-| `default` | Gaussian | No | — | No |
 
-The `simple` variant uses core equations only (Phillips curves, Okun, IS curve, hourly COE). The `complex` variant enables all optional features. Running `both` produces individual outputs plus a NAIRU comparison chart.
+`default` and `simple` have the same model configuration — `simple` only differs in using a separate output prefix (`nairu_simple`) and chart directory. The `complex` variant enables all optional features. Running `both` runs `simple` and `complex` then produces a NAIRU comparison chart.
+
+**Default equations** (used by `default` and `simple`): Phillips curves (price + ULC), hourly COE Phillips curve, Okun's Law, IS curve, with GSCPI as an import price control variable.
+
+**Additional equations** enabled by `complex`: exchange rate (UIP-style TWI), import price pass-through, participation (discouraged worker), employment (labour demand), net exports.
 
 ### CLI Arguments
 
@@ -845,13 +849,15 @@ Estimating NAIRU, potential output, and gaps jointly (rather than sequentially) 
 2. **Better identification**: Multiple observation equations (10 total) constrain the latent states
 3. **Consistent estimates**: All equations share the same latent states
 
-### Why Regime-Switching Phillips Curves?
+### Why Regime-Switching Phillips Curves? (Complex Variant)
 
-Post-GFC flattening of the Phillips curve is well-documented. A single time-invariant slope would be misspecified. Three regimes capture:
+The `complex` variant enables regime-switching Phillips curves. Post-GFC flattening of the Phillips curve is well-documented. Three regimes capture:
 
 - **Pre-GFC**: Traditional Phillips curve relationship
 - **GFC era**: Anchored expectations, flat curve
 - **Post-COVID**: Reawakened inflation sensitivity
+
+The default and `simple` variants use a single time-invariant slope.
 
 ### Why SkewNormal for Potential? (Optional Variant)
 
