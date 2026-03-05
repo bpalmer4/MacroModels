@@ -19,7 +19,6 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
-from src.data.henderson import hma
 from src.data.observations import ANCHOR_LABELS, AnchorMode, build_observations
 from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
 from src.models.nairu.equations import (
@@ -346,10 +345,6 @@ def run_stage1(
     obs, obs_index, anchor_label, chart_obs = build_observations(
         start=start, end=end, anchor_mode=anchor_mode, verbose=verbose
     )
-
-    # Apply HMA(13) smoothing to labour force growth for potential calculation
-    lf_raw = pd.Series(obs["lf_growth"], index=obs_index)
-    obs["lf_growth"] = hma(lf_raw, 13).to_numpy()
 
     # Build model
     print("Building model...")

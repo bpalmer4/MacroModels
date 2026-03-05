@@ -76,18 +76,72 @@ RATE_TO_INFLATION_FX = 0.35 / 4  # pp inflation per 100bp per quarter (annualize
 # We use -1% per quarter per 100bp as the passthrough
 RATE_TO_HOUSING_WEALTH = -1.0  # % change in housing wealth growth per 100bp
 
-# Demand transmission scaling factor
-# The model estimates β_okun ≈ -0.16, which combined with estimated Phillips curve
-# gives a demand channel of ~0.18pp inflation per 100bp rate change.
-# RBA estimates total transmission of ~0.64pp, with FX accounting for ~0.35pp,
-# implying demand channel should be ~0.29pp.
-# Scaling factor: 0.29 / 0.18 ≈ 1.6
+# RBA demand channel benchmark (from RBA Bulletin, ex-FX)
+# Total transmission: ~0.64pp inflation per 100bp over 2 years
+# FX channel: ~0.35pp (calibrated separately via RATE_TO_INFLATION_FX)
+# Demand channel: ~0.29pp (residual)
 #
-# Why the gap? Model's demand channel may understate transmission because:
-# 1. Expectations channel not explicitly modeled (credible policy amplifies effects)
+# The model's estimated demand chain (IS → Okun → Phillips) typically
+# understates this because it cannot capture:
+# 1. Expectations channel (credible policy amplifies effects)
 # 2. Credit/lending channel (banks tighten standards when rates rise)
 # 3. Sample period includes low-rate era where transmission was weaker
-DEMAND_TRANSMISSION_MULTIPLIER = 1.6  # scales unemployment response to match RBA demand channel
+#
+# We compute the multiplier dynamically from the posterior each run,
+# scaling beta_is so the model's demand channel matches the RBA benchmark.
+RBA_DEMAND_CHANNEL_PP = 0.29  # pp inflation per 100bp, ex-FX
+
+
+def _compute_demand_multiplier(
+    beta_is: np.ndarray,
+    rho_is: np.ndarray,
+    tau1_okun: np.ndarray,
+    tau2_okun: np.ndarray,
+    gamma_pi: np.ndarray,
+    u_level: float,
+    h: int = FORECAST_HORIZON,
+) -> float:
+    """Compute demand transmission multiplier from posterior medians.
+
+    Simulates a 100bp shock through the estimated demand chain:
+        rate gap → output gap (IS) → unemployment gap (Okun) → inflation (Phillips)
+    and compares the cumulative inflation effect to the RBA benchmark.
+
+    Returns:
+        Multiplier to apply to beta_is (floored at 1.0 — never weaken transmission).
+
+    """
+    # Use posterior medians for a stable point estimate
+    b_is = float(np.median(beta_is))
+    r_is = float(np.median(rho_is))
+    t1 = float(np.median(tau1_okun))
+    t2 = float(np.median(tau2_okun))
+    g_pi = float(np.median(gamma_pi))
+
+    # Simulate 100bp shock (rate_gap = 1.0) over forecast horizon
+    og = 0.0  # output gap
+    ug = 0.0  # unemployment gap
+    cumulative_inflation = 0.0
+
+    for t in range(h):
+        # IS curve: rate gap hits with 2Q lag, so only from t >= 2
+        rate_effect = 1.0 if t >= 2 else 0.0
+        og = r_is * og - b_is * rate_effect
+        # Okun's law
+        ug = t2 * ug + t1 * og
+        # Phillips curve (quarterly inflation effect)
+        u_gap_ratio = ug / u_level
+        cumulative_inflation += g_pi * u_gap_ratio
+
+    model_demand_pp = abs(cumulative_inflation)
+
+    if model_demand_pp < 1e-6:
+        # Model estimates near-zero transmission; use a conservative cap
+        return 2.0
+
+    multiplier = RBA_DEMAND_CHANNEL_PP / model_demand_pp
+    # Floor at 1.0: never weaken the model's own estimates
+    return max(1.0, multiplier)
 
 
 @dataclass
@@ -357,6 +411,16 @@ def forecast(
     log_gdp_T = obs["log_gdp"][-1]
     U_T = obs["U"][-1]
 
+    # --- Demand transmission multiplier (dynamic calibration) ---
+    # Scale beta_is so the model's demand chain matches the RBA benchmark.
+    # Computed from posterior medians; applied to all samples.
+    if has_is_curve and has_okun_gap:
+        demand_multiplier = _compute_demand_multiplier(
+            beta_is, rho_is, tau1_okun, tau2_okun, gamma_pi_covid, U_T,
+        )
+        if demand_multiplier > 1.0:
+            beta_is = beta_is * demand_multiplier
+
     # Output gap at T (for each posterior sample)
     output_gap_T = log_gdp_T - potential_T
 
@@ -492,6 +556,7 @@ def forecast(
                {"beta_okun": float(np.median(beta_okun))}),
             **({"rho_is": float(np.median(rho_is)),
                 "beta_is": float(np.median(beta_is)),
+                **({"demand_multiplier": demand_multiplier} if has_okun_gap else {}),
                 **({} if np.isscalar(gamma_fi) else {"gamma_fi": float(np.median(gamma_fi))}),
                 **({} if np.isscalar(delta_dsr) else {"delta_dsr": float(np.median(delta_dsr))}),
                 **({} if np.isscalar(eta_hw) else {"eta_hw": float(np.median(eta_hw))}),
@@ -1004,6 +1069,24 @@ def run_stage3(
     )
 
     current_rate = obs["cash_rate"][-1]
+
+    # Check if model has full transmission channels for credible scenarios.
+    # Each channel can be toggled independently; all are needed for the
+    # rate → output gap → unemployment → inflation pass-through to be realistic.
+    _required_channels = {
+        "gamma_pi_covid": "regime-switching Phillips curve",
+        "beta_is": "IS curve (rate → output gap)",
+        "beta_er_r": "exchange rate (UIP)",
+        "beta_pt": "import price pass-through",
+        "beta_pr": "participation (discouraged worker)",
+    }
+    _missing = {v for k, v in _required_channels.items() if k not in trace.posterior}
+    if run_scenarios_flag and _missing:
+        print(
+            "Skipping policy scenarios: model missing channels needed for "
+            f"credible transmission: {', '.join(sorted(_missing))}."
+        )
+        run_scenarios_flag = False
 
     if run_scenarios_flag:
         # Run all policy scenarios

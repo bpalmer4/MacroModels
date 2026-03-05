@@ -79,10 +79,10 @@ def plot_taylor_rule(
     if r_star_trend_weight > 0:
         r_star = r_star.multiply(1 - w).add(trend * w, axis=0)
 
-    # Output gap: (Y - Y*)/Y* * 100
+    # Output gap: log Y - log Y* (already in log points × 100 ≈ per cent)
     log_gdp = pd.Series(results.obs["log_gdp"], index=results.obs_index)
     actual_gdp = log_gdp.reindex(results.obs_index).to_numpy()
-    output_gap = (actual_gdp[:, np.newaxis] - potential.to_numpy()) / potential.to_numpy() * 100
+    output_gap = actual_gdp[:, np.newaxis] - potential.to_numpy()
     output_gap = pd.DataFrame(output_gap, index=results.obs_index, columns=potential.columns)
     output_gap = output_gap.reindex(r_star.index)
 

@@ -139,13 +139,14 @@ def compute_mfp_trend_hma(
     capital_growth: pd.Series,
     hours_growth: pd.Series,
     alpha: float | pd.Series = 0.3,
-    hma_term: int = 101,
+    hma_term: int = 51,
 ) -> DataSeries:
     """Derive MFP trend growth using Henderson moving average.
 
-    HMA(101) on quarterly data is comparable to HMA(25) on annual data,
+    HMA(51) on quarterly data is comparable to HMA(13) on annual data,
     stripping out cyclical noise while avoiding HP filter end-point bias.
-    No zero floor — negative readings are smoothed out by the heavy averaging.
+    Zero floor applied: negative trend MFP is implausible and arises from
+    endpoint asymmetry when the sample is short relative to the filter.
 
     Args:
         ulc_growth: Unit labour cost growth (quarterly)
@@ -153,10 +154,10 @@ def compute_mfp_trend_hma(
         capital_growth: Capital stock growth (quarterly, smoothed)
         hours_growth: Hours worked growth (quarterly)
         alpha: Capital share (default 0.3), can be time-varying Series
-        hma_term: Henderson MA term (default 101, must be odd)
+        hma_term: Henderson MA term (default 51, must be odd)
 
     Returns:
-        DataSeries with HMA-smoothed MFP trend growth
+        DataSeries with HMA-smoothed MFP trend growth (floored at zero)
 
     """
     from src.data.henderson import hma
@@ -166,9 +167,10 @@ def compute_mfp_trend_hma(
         ulc_growth, hcoe_growth, capital_growth, hours_growth, alpha
     ).data
 
-    # HMA smooth (no floor)
+    # HMA smooth then floor at zero
     mfp_clean = mfp_raw.dropna()
     mfp_trend = hma(mfp_clean, hma_term)
+    mfp_trend = mfp_trend.clip(lower=0.0)
     mfp_smoothed = mfp_trend.reindex(mfp_raw.index)
 
     alpha_desc = "time-varying" if isinstance(alpha, pd.Series) else f"{alpha}"
@@ -176,7 +178,7 @@ def compute_mfp_trend_hma(
         data=mfp_smoothed,
         source="Derived",
         units="% per quarter",
-        description=f"MFP trend growth (HMA {hma_term}, α={alpha_desc})",
+        description=f"MFP trend growth (HMA {hma_term}, floored at zero, α={alpha_desc})",
         cat="Derived from ABS 5206.0",
     )
 

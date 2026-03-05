@@ -10,7 +10,7 @@ Key differences from stage3.py (deterministic):
 
 Calibrations applied (RBA-based, defensible):
 - FX channel: 0.35pp inflation per 100bp (RBA Bulletin April 2025)
-- Demand multiplier: 1.6x on Okun coefficient (aligns with RBA demand channel)
+- Demand multiplier: dynamically calibrated from posterior to match RBA demand channel
 - DSR pass-through: 1.0pp per 100bp
 - Housing wealth: -1.0% per 100bp
 
@@ -28,6 +28,7 @@ from scipy import stats
 from src.data.inflation import get_trimmed_mean_qrtly
 from src.models.nairu.analysis import get_scalar_var
 from src.models.nairu.stage2 import NAIRUResults, build_model, load_results
+from src.models.nairu.stage3 import _compute_demand_multiplier
 from src.utilities.rate_conversion import annualize, quarterly
 
 # Default paths
@@ -66,13 +67,10 @@ DEFAULT_POLICY_SCENARIOS = {
 # Note: Assumes RBA moves unilaterally (Fed holds steady)
 FX_PASSTHROUGH_PER_100BP = 0.35 / 4  # pp inflation per quarter per 100bp
 
-# Demand transmission multiplier (RBA research alignment)
-# Model's Okun coefficient underestimates total demand channel because:
-# - Expectations channel not explicitly modeled
-# - Credit/lending channel not modeled
-# - Business cash flow effects not modeled
-# RBA estimates demand channel ~0.29pp vs model's ~0.18pp → multiplier ~1.6
-DEMAND_MULTIPLIER = 1.6
+# Demand transmission multiplier: computed dynamically from the posterior each run.
+# Scales beta_is so the model's demand chain (IS → Okun → Phillips) matches the
+# RBA benchmark of ~0.29pp inflation per 100bp (ex-FX).
+# See _compute_demand_multiplier() in stage3.py for details.
 
 # DSR pass-through: ~1.0pp DSR increase per 100bp rate rise
 # Derivation: $2.2T housing debt × 70% variable × 1% / $1.6T disposable income
@@ -263,6 +261,15 @@ def bayesian_forward_sample(
     potential_T = potential_posterior.iloc[-1].to_numpy()
     log_gdp_T = obs["log_gdp"][-1]
     U_T = obs["U"][-1]
+
+    # --- Demand transmission multiplier (dynamic calibration) ---
+    if has_is_curve and has_okun_gap:
+        demand_multiplier = _compute_demand_multiplier(
+            beta_is, rho_is, tau1_okun, tau2_okun, gamma_pi_covid, U_T,
+        )
+        if demand_multiplier > 1.0:
+            beta_is = beta_is * demand_multiplier
+
     output_gap_T = log_gdp_T - potential_T
     u_gap_T = U_T - nairu_T
 
@@ -888,6 +895,24 @@ def run_stage3_bayesian(
     )
 
     current_rate = obs["cash_rate"][-1]
+
+    # Check if model has full transmission channels for credible scenarios.
+    # Each channel can be toggled independently; all are needed for the
+    # rate → output gap → unemployment → inflation pass-through to be realistic.
+    _required_channels = {
+        "gamma_pi_covid": "regime-switching Phillips curve",
+        "beta_is": "IS curve (rate → output gap)",
+        "beta_er_r": "exchange rate (UIP)",
+        "beta_pt": "import price pass-through",
+        "beta_pr": "participation (discouraged worker)",
+    }
+    _missing = {v for k, v in _required_channels.items() if k not in trace.posterior}
+    if _missing:
+        print(
+            "Skipping Bayesian scenarios: model missing channels needed for "
+            f"credible transmission: {', '.join(sorted(_missing))}."
+        )
+        return {}
 
     print(f"Running Bayesian forward sampling with {n_samples} samples...")
     scenario_results = run_bayesian_scenarios(results, n_samples=n_samples)

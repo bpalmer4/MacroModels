@@ -5,3 +5,5 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 # Run NAIRU + Output Gap joint estimation model
 cd "$ROOT"
 uv run python -m src.models.nairu.model "$@"
+
+# Typical usage: ./run-nairu.sh --variant both

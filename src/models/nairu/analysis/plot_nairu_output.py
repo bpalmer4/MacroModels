@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from src.data.henderson import hma
 from src.models.nairu.analysis.extraction import get_vector_var
 from src.models.nairu.analysis.plot_posterior_timeseries import plot_posterior_timeseries
 
@@ -22,9 +23,9 @@ def plot_output_gap(
     potential = get_vector_var("potential_output", results.trace)
     potential.index = results.obs_index
 
-    # Calculate output gap: (Y - Y*)/Y* * 100
+    # Calculate output gap: log Y - log Y* (already in log points × 100 ≈ per cent)
     actual_gdp = results.obs["log_gdp"]
-    output_gap = (actual_gdp[:, np.newaxis] - potential.to_numpy()) / potential.to_numpy() * 100
+    output_gap = actual_gdp[:, np.newaxis] - potential.to_numpy()
     output_gap = pd.DataFrame(output_gap, index=results.obs_index)
 
     plot_posterior_timeseries(
@@ -35,7 +36,7 @@ def plot_output_gap(
         title="Output Gap Estimate for Australia",
         ylabel="Per cent of potential GDP",
         legend={"loc": "best", "fontsize": "x-small"},
-        lfooter="Australia. (log Y - log Y*) / log Y* × 100. Positive = overheating/inflationary.",
+        lfooter="Australia. log Y − log Y* (log points × 100 ≈ per cent). Positive = overheating.",
         rfooter=RFOOTER,
         axisbelow=True,
         y0=True,
@@ -91,20 +92,16 @@ def plot_potential_growth(
     show: bool = False,
     verbose: bool = False,
 ) -> None:
-    """Plot annual potential GDP growth (4Q difference of log potential).
-
-    This serves as a proxy for r* (the natural rate of interest), based on
-    the theoretical relationship r* ≈ trend real GDP growth.
-    """
+    """Plot annual potential GDP growth (4Q difference of log potential)."""
     potential = get_vector_var("potential_output", results.trace)
     potential.index = results.obs_index
 
-    # r* = annual potential growth
-    r_star = potential.diff(4).dropna()
+    # Annual potential growth
+    potential_growth = potential.diff(4).dropna()
 
     # Plot 1: Potential growth with credible intervals
     ax = plot_posterior_timeseries(
-        data=r_star,
+        data=potential_growth,
         legend_stem="Potential Growth",
         color="purple",
         start=START,
@@ -112,7 +109,7 @@ def plot_potential_growth(
     )
 
     # Add trend line
-    median = r_star.quantile(0.5, axis=1)
+    median = potential_growth.quantile(0.5, axis=1)
     x = np.arange(len(median))
     slope, intercept, *_ = stats.linregress(x, median.to_numpy())
     trend = pd.Series(intercept + slope * x, index=median.index)
@@ -120,17 +117,17 @@ def plot_potential_growth(
     mg.line_plot(trend, ax=ax, color="darkred", width=1.5, style="--")
 
     if verbose:
-        print("Chart 1 - Potential Growth:")
+        print("Potential Growth:")
         print(f"  Median endpoint: {median.iloc[-1]:.3f}% at {median.index[-1]}")
         print(f"  Trend endpoint: {trend.iloc[-1]:.3f}%")
 
     if ax is not None:
         mg.finalise_plot(
             ax,
-            title="Potential GDP Growth Rate (proxy for $r^*$)",
+            title="Potential GDP Growth Rate",
             ylabel="Per cent per annum",
             legend={"loc": "upper right", "fontsize": "x-small"},
-            lfooter="Australia. 4-quarter change in log potential GDP. r* ≈ trend growth.",
+            lfooter="Australia. 4-quarter change in log potential GDP (Cobb-Douglas production function).",
             rfooter=RFOOTER,
             axisbelow=True,
             y0=True,
@@ -142,14 +139,14 @@ def plot_potential_growth(
     hybrid = (1 - w) * median + w * trend
 
     if verbose:
-        print("\nChart 2 - r* Comparison:")
+        print("\nPotential Growth Smoothing Comparison:")
         print(f"  Median (raw) endpoint: {median.iloc[-1]:.3f}%")
         print(f"  Trend endpoint: {trend.iloc[-1]:.3f}%")
         print(f"  Hybrid ({int(w*100)}% trend, {int((1-w)*100)}% raw) endpoint: {hybrid.iloc[-1]:.3f}%")
         check_val = (1-w)*median.iloc[-1] + w*trend.iloc[-1]
         print(f"  Check: {(1-w):.2f}×{median.iloc[-1]:.3f} + {w:.2f}×{trend.iloc[-1]:.3f} = {check_val:.3f}%")
 
-    median.name = "$r^*$ raw median (no smoothing)"
+    median.name = "Potential growth (raw median)"
     trend.name = "Trend only"
     hybrid.name = f"Hybrid ({int(w*100)}% trend, {int((1-w)*100)}% raw)"
 
@@ -160,10 +157,10 @@ def plot_potential_growth(
     if ax is not None:
         mg.finalise_plot(
             ax,
-            title="Natural Rate of Interest (r*) - Comparison",
+            title="Potential GDP Growth - Smoothing Comparison",
             ylabel="Per cent per annum",
             legend={"loc": "upper right", "fontsize": "x-small"},
-            lfooter="Australia. Raw model median vs linear trend vs hybrid.",
+            lfooter="Australia. Raw posterior median potential growth vs linear trend vs hybrid.",
             rfooter=RFOOTER,
             axisbelow=True,
             y0=True,
@@ -175,7 +172,7 @@ def plot_r_star_input_vs_output(
     results,  # NAIRUResults - avoid circular import
     show: bool = False,
 ) -> None:
-    """Compare deterministic r* (input) vs modeled potential growth (output)."""
+    """Compare deterministic r* (input) vs modeled potential growth."""
     # Modeled potential growth (output)
     potential = get_vector_var("potential_output", results.trace)
     potential.index = results.obs_index
@@ -189,25 +186,33 @@ def plot_r_star_input_vs_output(
     common_idx = modeled_median.index.intersection(det_r_star.index)
     common_idx = common_idx[common_idx >= START]
 
+    # HMA(13) smoothed modeled potential growth
+    modeled_smoothed = hma(modeled_median.dropna(), 13)
+    modeled_smoothed = modeled_smoothed.reindex(common_idx)
+
     plot_data = pd.DataFrame({
-        "Deterministic r* (input)": det_r_star.loc[common_idx],
-        "Modeled Potential Growth (output)": modeled_median.loc[common_idx],
+        "Deterministic r* (Cobb-Douglas)": det_r_star.loc[common_idx],
+        "Modeled Potential Growth": modeled_median.loc[common_idx],
+        "Modeled Potential Growth (HMA 13)": modeled_smoothed,
     })
 
     ax = mg.line_plot(
         plot_data,
-        width=[2, 2],
-        color=["darkgreen", "purple"],
-        style=["--", "-"],
+        width=[2, 1, 2],
+        color=["darkgreen", "purple", "darkorange"],
+        style=["--", "-", "-"],
         annotate=True,
     )
 
+    lfooter = "Australia. Cobb-Douglas potential growth (input), posterior median potential growth (output), and HMA(13) smoothed."
+    title = "Potential Growth: Input vs Modeled Output"
+
     mg.finalise_plot(
         ax,
-        title="r* Input vs Modeled Output",
+        title=title,
         ylabel="Per cent per annum",
         legend={"loc": "upper right", "fontsize": "small"},
-        lfooter="Australia. Deterministic r* from Cobb-Douglas vs posterior median potential growth.",
+        lfooter=lfooter,
         rfooter=RFOOTER,
         y0=True,
         show=show,

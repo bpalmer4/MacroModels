@@ -27,13 +27,17 @@ This module provides a unified interface to the three-stage pipeline:
 """
 
 import argparse
+import pickle
 from pathlib import Path
 
 import arviz as az
 import mgplot as mg
+import numpy as np
 import pandas as pd
+import pymc as pm
 
 from src.data import compute_r_star
+from src.models.common.extraction import get_vector_var
 
 # Re-export key components for backwards compatibility
 from src.data.observations import ANCHOR_LABELS, AnchorMode, HMA_TERM, build_observations
@@ -165,10 +169,6 @@ def _plot_nairu_comparison(
     chart_dir: str = "charts/nairu_comparison",
 ) -> None:
     """Plot NAIRU comparison chart with upper/lower medians and fill_between."""
-    import pickle
-
-    from src.models.common.extraction import get_vector_var
-
     start = pd.Period("2000Q1", freq="Q")
     colors = {"simple": "darkblue", "complex": "darkred"}
     labels = {"simple": "Simple Model", "complex": "Complex Model"}
@@ -231,6 +231,155 @@ def _plot_nairu_comparison(
             axisbelow=True,
         )
         print(f"\nComparison chart saved to: {chart_path}")
+
+
+SENSITIVITY_SIGMAS = [0.15, 0.20, 0.30, 0.40]
+SENSITIVITY_COLORS = {0.15: "darkblue", 0.20: "steelblue", 0.30: "black", 0.40: "darkred"}
+
+
+def _load_sensitivity_data(
+    output_dir: Path,
+    sigmas: list[float],
+) -> dict[float, tuple[az.InferenceData, dict, pd.PeriodIndex]]:
+    """Load saved traces and observations for each sigma value."""
+    results = {}
+    for sigma in sigmas:
+        prefix = f"nairu_sigma{int(sigma * 100):03d}"
+        trace_path = output_dir / f"{prefix}_trace.nc"
+        obs_path = output_dir / f"{prefix}_obs.pkl"
+        if not trace_path.exists():
+            print(f"  Skipping σ={sigma:.2f} (no saved results)")
+            continue
+        trace = az.from_netcdf(str(trace_path))
+        with open(obs_path, "rb") as f:
+            data = pickle.load(f)
+        results[sigma] = (trace, data["obs"], data["obs_index"])
+    return results
+
+
+def _plot_sensitivity_comparison(
+    output_dir: Path,
+    sigmas: list[float] | None = None,
+    chart_dir: str = "charts/nairu_sensitivity",
+) -> None:
+    """Plot sensitivity comparison charts for different σ_potential values."""
+    if sigmas is None:
+        sigmas = SENSITIVITY_SIGMAS
+
+    chart_path = Path(chart_dir)
+    chart_path.mkdir(parents=True, exist_ok=True)
+    mg.set_chart_dir(str(chart_path))
+
+    start = pd.Period("2000Q1", freq="Q")
+    loaded = _load_sensitivity_data(output_dir, sigmas)
+    if len(loaded) < 2:
+        print("Need at least 2 completed runs for comparison.")
+        return
+
+    # --- Chart 1: Output Gap Comparison ---
+    og_medians: dict[float, pd.Series] = {}
+    for sigma, (trace, obs, obs_index) in loaded.items():
+        potential = get_vector_var("potential_output", trace)
+        potential.index = obs_index
+        log_gdp = obs["log_gdp"]
+        output_gap = log_gdp[:, np.newaxis] - potential.to_numpy()
+        og_median = pd.Series(np.median(output_gap, axis=1), index=obs_index)
+        og_median = og_median[og_median.index >= start]
+        og_medians[sigma] = og_median
+
+    ax = None
+    for sigma in sorted(og_medians):
+        s = og_medians[sigma]
+        s.name = f"σ = {sigma:.2f}"
+        ax = mg.line_plot(
+            s, ax=ax, color=SENSITIVITY_COLORS[sigma],
+            width=2.0 if sigma == 0.30 else 1.2,
+        )
+    if ax is not None:
+        ax.axhline(y=0, color="grey", linestyle="--", linewidth=0.8, alpha=0.5)
+        # Envelope
+        all_og = pd.DataFrame(og_medians)
+        idx = all_og.dropna().index
+        band = pd.DataFrame(
+            {"lower": all_og.loc[idx].min(axis=1), "upper": all_og.loc[idx].max(axis=1)},
+            index=idx,
+        )
+        mg.fill_between_plot(band, ax=ax, color="purple", alpha=0.10, label="Sensitivity range")
+        mg.finalise_plot(
+            ax,
+            title="Output Gap Sensitivity to σ_potential",
+            ylabel="Log points (GDP − Potential)",
+            legend={"loc": "best", "fontsize": "x-small"},
+            lfooter="Australia. Posterior median output gap for each σ_potential.",
+            rfooter="Joint NAIRU + Output Gap Model. σ=0.30 is baseline.",
+            axisbelow=True,
+        )
+    print(f"  Output gap comparison saved to: {chart_path}")
+
+    # --- Chart 2: NAIRU Comparison ---
+    nairu_medians: dict[float, pd.Series] = {}
+    for sigma, (trace, obs, obs_index) in loaded.items():
+        samples = get_vector_var("nairu", trace)
+        samples.index = obs_index
+        median = samples.quantile(q=0.5, axis=1)
+        median = median[median.index >= start]
+        nairu_medians[sigma] = median
+
+    ax = None
+    for sigma in sorted(nairu_medians):
+        s = nairu_medians[sigma]
+        s.name = f"σ = {sigma:.2f}"
+        ax = mg.line_plot(
+            s, ax=ax, color=SENSITIVITY_COLORS[sigma],
+            width=2.0 if sigma == 0.30 else 1.2,
+        )
+    if ax is not None:
+        # Unemployment overlay from first available run
+        first_sigma = next(iter(loaded))
+        _, obs0, obs_index0 = loaded[first_sigma]
+        U = pd.Series(obs0["U"], index=obs_index0)
+        U = U[U.index >= start]
+        U.name = "Unemployment Rate"
+        mg.line_plot(U, ax=ax, color="brown", width=1.0, zorder=3)
+        mg.finalise_plot(
+            ax,
+            title="NAIRU Sensitivity to σ_potential",
+            ylabel="Per cent",
+            legend={"loc": "best", "fontsize": "x-small"},
+            lfooter="Australia. Posterior median NAIRU for each σ_potential.",
+            rfooter="Joint NAIRU + Output Gap Model. σ=0.30 is baseline.",
+            axisbelow=True,
+        )
+    print(f"  NAIRU comparison saved to: {chart_path}")
+
+    # --- Chart 3: Phillips Curve RMSE ---
+    print("\n  Phillips Curve Fit (RMSE of posterior predictive vs observed inflation):")
+    print(f"  {'σ_potential':>12} {'RMSE (qtr, pp)':>15} {'RMSE (ann, pp)':>15}")
+    print("  " + "-" * 45)
+
+    for sigma in sorted(loaded):
+        trace, obs, obs_index = loaded[sigma]
+        prefix = f"nairu_sigma{int(sigma * 100):03d}"
+        model_kwargs = {}
+        model_kwargs_path = output_dir / f"{prefix}_obs.pkl"
+        with open(model_kwargs_path, "rb") as f:
+            saved = pickle.load(f)
+        if "model_kwargs" in saved:
+            model_kwargs = saved["model_kwargs"]
+
+        model = build_model(obs, **model_kwargs)
+        with model:
+            ppc = pm.sample_posterior_predictive(trace, random_seed=42)
+
+        ppc_samples = ppc.posterior_predictive["observed_price_inflation"].to_numpy()
+        ppc_mean = ppc_samples.reshape(-1, ppc_samples.shape[-1]).mean(axis=0)
+        residuals = ppc_mean - obs["π"]
+        rmse_qtr = float(np.sqrt(np.mean(residuals**2)))
+        rmse_ann = rmse_qtr * 4  # approximate annualisation for quarterly rate
+        print(f"  {sigma:>12.2f} {rmse_qtr:>15.4f} {rmse_ann:>15.4f}")
+
+    print()
+    print(f"  Phillips curve RMSE comparison complete.")
 
 
 def _run_pipeline(
@@ -304,9 +453,32 @@ def main(
             - "rba": Use RBA PIE_RBAQ with same phase-in to target
         verbose: Print detailed output
         skip_forecast: Skip Stage 3 (scenario analysis)
-        variant: Model variant to run ("default", "simple", "complex", or "both")
+        variant: Model variant to run ("default", "simple", "complex", "both", or "sensitivity")
     """
     output_dir = Path(__file__).parent.parent.parent.parent / "model_outputs"
+
+    if variant == "sensitivity":
+        for sigma in SENSITIVITY_SIGMAS:
+            prefix = f"nairu_sigma{int(sigma * 100):03d}"
+            print("\n" + "#" * 60)
+            print(f"# SENSITIVITY: σ_potential = {sigma:.2f}")
+            print("#" * 60 + "\n")
+            _run_pipeline(
+                anchor_mode=anchor_mode,
+                verbose=verbose,
+                skip_forecast=True,  # forecasting not needed for sensitivity
+                output_dir=output_dir,
+                prefix=prefix,
+                chart_dir=f"charts/nairu_sigma{int(sigma * 100):03d}",
+                model_kwargs={"potential_const": {"potential_innovation": sigma}},
+                label=f"σ={sigma:.2f}",
+            )
+
+        print("\n" + "#" * 60)
+        print("# SENSITIVITY COMPARISON")
+        print("#" * 60 + "\n")
+        _plot_sensitivity_comparison(output_dir)
+        return
 
     if variant == "both":
         variants = ["simple", "complex"]
@@ -363,9 +535,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--variant",
         type=str,
-        choices=["default", "simple", "complex", "both"],
+        choices=["default", "simple", "complex", "both", "sensitivity"],
         default="default",
-        help="Model variant: 'simple' (core equations), 'complex' (all features), 'both', or 'default'",
+        help="Model variant: 'simple', 'complex', 'both', 'sensitivity' (σ_potential sweep), or 'default'",
     )
     args = parser.parse_args()
     main(
