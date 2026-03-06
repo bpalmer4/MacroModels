@@ -457,10 +457,9 @@ def run_stage2(
         "observed_price_inflation": "Quarterly Inflation (%)",
     }
     if has_okun_gap:
-        # Gap form: observed is U, approximate U_gap for labelling
-        nairu_median = results.nairu_posterior().median(axis=1).to_numpy()
-        obs_vars["okun"] = obs["U"] - nairu_median
-        var_labels["okun"] = "Unemployment Gap (pp)"
+        # Gap form: model observes U level
+        obs_vars["okun"] = obs["U"]
+        var_labels["okun"] = "Unemployment Rate (%)"
     else:
         # Simple form: observed is ΔU
         obs_vars["okun_law"] = obs["ΔU"]

@@ -93,6 +93,8 @@ MODEL_VARIANTS: dict[str, dict[str, Any]] = {
         "include_participation": True,
         "include_employment": True,
         "include_net_exports": True,
+        "okun_gap_form": True,
+        "nairu_const": {"nairu_innovation": 0.10},
     },
 }
 

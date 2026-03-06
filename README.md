@@ -11,7 +11,7 @@ Three approaches to estimating Australia's supply side:
 - **Cobb-Douglas MFP**: Deterministic growth accounting decomposing output into capital, labour, and productivity
 - **DSGE**: Dynamic stochastic general equilibrium model *(in development)*
 
-The NAIRU model uses expectations output as an input. Run the expectations model first if updating from scratch.
+The NAIRU model uses expectations output as an input. Run the expectations model first if updating from scratch. The NAIRU model derives r\* deterministically from the Cobb-Douglas production function (r\* ≈ potential growth).
 
 ## Quickstart
 

@@ -364,6 +364,10 @@ def build_observations(
     # This must be done before dropna() to avoid truncating the sample
     observed["ξ_2"] = observed["ξ_2"].fillna(0.0)
 
+    # Forward-fill housing wealth growth (5232.0 lags other releases)
+    # Δhw_1 is only used in stage3 forward sampling, not in estimation
+    observed["Δhw_1"] = observed["Δhw_1"].ffill()
+
     # Charting version: same start date, extends to latest available per series
     chart_obs = observed.copy()
 

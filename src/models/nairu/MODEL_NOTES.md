@@ -9,7 +9,7 @@ This directory contains a Bayesian state-space model for jointly estimating NAIR
 | NAIRU | Gaussian random walk (default) | No drift, scale≈0.15; Student-t(ν=4) variant available for fat tails |
 | Potential Output | Cobb-Douglas + Gaussian innovations (default) | SkewNormal variant available (asymmetric: small positives common, large negatives rare) |
 | Phillips Curves | Single slope (default) | Regime-switching variant available (3 regimes: pre-GFC, GFC-COVID, post-COVID) |
-| Identification | 2 state + 10 observation equations | Joint estimation with proper uncertainty |
+| Identification | 2 state + 5 observation (default) / 10 observation (complex) | Joint estimation with proper uncertainty |
 | Scenario Analysis | Model-consistent projection | 4-quarter horizon with policy scenarios |
 
 The Bayesian approach with multiple observation equations provides good identification. MCMC diagnostics show convergence (R-hat < 1.01, ESS > 400), theoretical sign constraints are satisfied (Phillips slopes negative, Okun coefficient negative), and estimates align with RBA research on transmission magnitudes.
@@ -30,17 +30,17 @@ base.py                     # Sampler config, coefficient utilities
 
 ### Equations (src/models/nairu/equations/)
 ```
-__init__.py            # Exports + regime boundary constants
-state_space.py         # NAIRU random walk (state equation)
-production.py          # Potential output via Cobb-Douglas (state equation)
-okun.py                # Okun's Law: error correction form
-phillips.py            # Price, wage (ULC), and hourly COE Phillips curves
+__init__.py            # Exports + regime boundary constants (REGIME_GFC_START, REGIME_COVID_START)
+state_space.py         # nairu_equation (Gaussian RW), nairu_student_t_equation (fat tails)
+production.py          # potential_output_equation (Gaussian), potential_output_skewnormal_equation
+okun.py                # okun_equation (simple ΔU), okun_gap_equation (gap form)
+phillips.py            # price/wage/hourly_coe equations + regime-switching variants
 is_curve.py            # IS curve: output gap ↔ real rate gap
-participation.py       # Discouraged worker effect
-employment.py          # Labour demand equation
-exchange_rate.py       # UIP-style TWI equation
-import_price.py        # Import price pass-through
-net_exports.py         # Net exports equation
+participation.py       # Discouraged worker effect (complex only)
+employment.py          # Labour demand equation (complex only)
+exchange_rate.py       # UIP-style TWI equation (complex only)
+import_price.py        # Import price pass-through (complex only)
+net_exports.py         # Net exports equation (complex only)
 ```
 
 ### Analysis (src/models/nairu/analysis/)
@@ -126,7 +126,8 @@ inflation_decomposition.py      # Demand vs supply decomposition
 
 3. **Sampling** (`base.sample_model()`):
    - Runs NUTS via NumPyro backend
-   - Default: 10k draws, 3.5k tune, 5 chains
+   - `run_stage1()` defaults: 10k draws, 3.5k tune, 5 chains, target_accept=0.90
+   - `SamplerConfig` class defaults: 100k draws, 5k tune, 6 chains, target_accept=0.95
    - Returns `az.InferenceData`
 
 4. **Analysis** (`stage2.run_stage2()`):

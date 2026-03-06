@@ -99,16 +99,19 @@ def _compute_demand_multiplier(
     tau2_okun: np.ndarray,
     gamma_pi: np.ndarray,
     u_level: float,
-    h: int = FORECAST_HORIZON,
+    h: int = 8,
 ) -> float:
     """Compute demand transmission multiplier from posterior medians.
 
     Simulates a 100bp shock through the estimated demand chain:
         rate gap → output gap (IS) → unemployment gap (Okun) → inflation (Phillips)
-    and compares the cumulative inflation effect to the RBA benchmark.
+    over 8 quarters (RBA benchmark horizon) and compares the cumulative
+    inflation effect to the RBA demand channel benchmark (0.29pp per 100bp).
 
     Returns:
-        Multiplier to apply to beta_is (floored at 1.0 — never weaken transmission).
+        Multiplier to apply to beta_is. Can be > 1.0 (model understates
+        transmission, e.g. simple Okun) or < 1.0 (model overstates, e.g.
+        gap-to-gap Okun with persistent dynamics and steep Phillips curve).
 
     """
     # Use posterior medians for a stable point estimate
@@ -139,9 +142,7 @@ def _compute_demand_multiplier(
         # Model estimates near-zero transmission; use a conservative cap
         return 2.0
 
-    multiplier = RBA_DEMAND_CHANNEL_PP / model_demand_pp
-    # Floor at 1.0: never weaken the model's own estimates
-    return max(1.0, multiplier)
+    return RBA_DEMAND_CHANNEL_PP / model_demand_pp
 
 
 @dataclass
@@ -418,8 +419,7 @@ def forecast(
         demand_multiplier = _compute_demand_multiplier(
             beta_is, rho_is, tau1_okun, tau2_okun, gamma_pi_covid, U_T,
         )
-        if demand_multiplier > 1.0:
-            beta_is = beta_is * demand_multiplier
+        beta_is = beta_is * demand_multiplier
 
     # Output gap at T (for each posterior sample)
     output_gap_T = log_gdp_T - potential_T
