@@ -44,7 +44,11 @@ from src.models.nairu.analysis.plot_nairu_output import (
     plot_potential_growth,
     plot_r_star_input_vs_output,
 )
-from src.models.nairu.analysis.plot_nairu_rates import plot_equilibrium_rates, plot_taylor_rule
+from src.models.nairu.analysis.plot_nairu_rates import (
+    plot_equilibrium_rates,
+    plot_taylor_rule,
+    plot_taylor_rule_comparison,
+)
 from src.models.nairu.analysis.plot_nairu_unemployment import plot_nairu, plot_unemployment_gap
 from src.models.nairu.analysis.plot_phillips_curves import (
     plot_phillips_curve_slope,
@@ -94,6 +98,7 @@ __all__ = [
     "plot_r_star_input_vs_output",
     "plot_supply_contribution",
     "plot_taylor_rule",
+    "plot_taylor_rule_comparison",
     "plot_unemployment_gap",
     "plot_wage_decomposition",
     "plot_wage_drivers",

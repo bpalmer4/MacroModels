@@ -57,13 +57,20 @@ def _get_model_line(func: Callable) -> str | None:
     return m.group(1).strip() if m else None
 
 
-def print_model_equations(equations: list[Callable]) -> None:
-    """Print model equations extracted from function docstrings."""
+def print_model_equations(equations: list[Callable | tuple[Callable, str]]) -> None:
+    """Print model equations extracted from function docstrings.
+
+    Each entry can be a function (equation extracted from docstring) or a
+    (function, model_line) tuple to override the Model: line at runtime.
+    """
     print("\nModel equations:")
-    for func in equations:
-        line = _get_model_line(func)
+    for entry in equations:
+        if isinstance(entry, tuple):
+            func, override = entry
+        else:
+            func, override = entry, None
+        line = override or _get_model_line(func)
         if line:
-            # Use the first line of the docstring as the equation name
             name = (inspect.getdoc(func) or "").split("\n")[0].rstrip(".")
             print(f"  {name}")
             print(f"    {line}")
@@ -82,7 +89,7 @@ MODEL_VARIANTS: dict[str, dict[str, Any]] = {
     "simple": {
         "student_t_nairu": False,
         "regime_switching": False,
-        "include_import_price_control": False,
+        "include_import_price_control": True,
     },
     "complex": {
         "student_t_nairu": True,
@@ -94,6 +101,7 @@ MODEL_VARIANTS: dict[str, dict[str, Any]] = {
         "include_employment": True,
         "include_net_exports": True,
         "okun_gap_form": True,
+        "wage_expectations": True,
         "nairu_const": {"nairu_innovation": 0.10},
     },
 }
@@ -126,6 +134,8 @@ def build_model(
     skewnormal_potential: bool = False,
     include_import_price_control: bool = False,
     include_gscpi_control: bool = True,
+    wage_expectations: bool = True,
+    wage_price_passthrough: bool = False,
 ) -> pm.Model:
     """Build the joint NAIRU + Output Gap model.
 
@@ -180,31 +190,80 @@ def build_model(
     okun_func = okun_gap_equation if okun_gap_form else okun_equation
     okun_func(obs, model, nairu, potential)
     equations.append(okun_func)
+    # Build price Phillips curve equation override based on active controls
+    pi_parts = ["π = quarterly(π_exp)"]
+    pi_parts.append("{gamma} × u_gap")
+    if "Δ4ρm_1" in obs:
+        pi_parts.append("ρ × Δ4ρm")
+    if "ξ_2" in obs:
+        pi_parts.append("ξ × GSCPI²")
+    pi_parts.append("ε")
+    pi_override = " + ".join(pi_parts)
+
     if regime_switching:
         price_inflation_regime_equation(obs, model, nairu, constant=price_inflation_const)
-        equations.append(price_inflation_regime_equation)
+        pi_line = pi_override.format(gamma="γ_regime")
+        equations.append((price_inflation_regime_equation, pi_line))
     else:
         price_inflation_equation(obs, model, nairu, constant=price_inflation_const)
-        equations.append(price_inflation_equation)
+        pi_line = pi_override.format(gamma="γ")
+        equations.append((price_inflation_equation, pi_line))
+    wexp = wage_expectations
+    wpp = wage_price_passthrough
     if include_wage_growth:
+        # Build model line override based on active terms
+        wg_parts = ["Δulc = α"]
+        if wexp:
+            wg_parts.append("π_exp")
+        wg_parts.append("{gamma} × u_gap + λ × ΔU/U")
+        if wpp:
+            wg_parts.append("φ×Δ4dfd")
+        wg_parts.append("ε")
+        wg_override = " + ".join(wg_parts) if (wexp or wpp) else None
+
         if regime_switching:
-            wage_growth_regime_equation(obs, model, nairu, constant=wage_growth_const)
-            equations.append(wage_growth_regime_equation)
+            wage_growth_regime_equation(
+                obs, model, nairu, constant=wage_growth_const,
+                wage_expectations=wexp, wage_price_passthrough=wpp,
+            )
+            line = wg_override.format(gamma="γ_regime") if wg_override else None
+            equations.append((wage_growth_regime_equation, line) if line else wage_growth_regime_equation)
         else:
-            wage_growth_equation(obs, model, nairu, constant=wage_growth_const)
-            equations.append(wage_growth_equation)
+            wage_growth_equation(
+                obs, model, nairu, constant=wage_growth_const,
+                wage_expectations=wexp, wage_price_passthrough=wpp,
+            )
+            line = wg_override.format(gamma="γ") if wg_override else None
+            equations.append((wage_growth_equation, line) if line else wage_growth_equation)
     if include_is_curve:
         is_equation(obs, model, potential, constant=is_curve_const)
         equations.append(is_equation)
 
     # Hourly COE wage equation (optional, default on)
     if include_hourly_coe:
+        hcoe_parts = ["Δhcoe = α"]
+        if wexp:
+            hcoe_parts.append("π_exp")
+        hcoe_parts.append("{gamma} × u_gap + λ × ΔU/U")
+        if wpp:
+            hcoe_parts.append("φ×Δ4dfd")
+        hcoe_parts.append("ψ × MFP + ε")
+        hcoe_override = " + ".join(hcoe_parts) if (wexp or wpp) else None
+
         if regime_switching:
-            hourly_coe_regime_equation(obs, model, nairu, constant=hourly_coe_const)
-            equations.append(hourly_coe_regime_equation)
+            hourly_coe_regime_equation(
+                obs, model, nairu, constant=hourly_coe_const,
+                wage_expectations=wexp, wage_price_passthrough=wpp,
+            )
+            line = hcoe_override.format(gamma="γ_regime") if hcoe_override else None
+            equations.append((hourly_coe_regime_equation, line) if line else hourly_coe_regime_equation)
         else:
-            hourly_coe_equation(obs, model, nairu, constant=hourly_coe_const)
-            equations.append(hourly_coe_equation)
+            hourly_coe_equation(
+                obs, model, nairu, constant=hourly_coe_const,
+                wage_expectations=wexp, wage_price_passthrough=wpp,
+            )
+            line = hcoe_override.format(gamma="γ") if hcoe_override else None
+            equations.append((hourly_coe_equation, line) if line else hourly_coe_equation)
 
     # Labour supply equation (optional)
     if include_participation:

@@ -48,7 +48,7 @@ def price_inflation_equation(
 ) -> None:
     """Anchor-augmented Phillips Curve for price inflation (single slope).
 
-    Model: π = quarterly(π_exp) + γ × u_gap + controls + ε
+    Model: π = quarterly(π_exp) + γ × u_gap + ε
 
     Uses a single Phillips curve slope across all periods.
 
@@ -92,7 +92,7 @@ def price_inflation_regime_equation(
 ) -> None:
     """Anchor-augmented Phillips Curve for price inflation (regime-switching).
 
-    Model: π = quarterly(π_exp) + γ_regime × u_gap + controls + ε
+    Model: π = quarterly(π_exp) + γ_regime × u_gap + ε
 
     Uses regime-specific Phillips curve slopes (3 regimes):
     - gamma_pi_pre_gfc: Pre-GFC (up to 2007Q4) - moderate slope
@@ -144,23 +144,31 @@ def wage_growth_equation(
     model: pm.Model,
     nairu: pm.Distribution,
     constant: dict[str, Any] | None = None,
+    wage_expectations: bool = True,
+    wage_price_passthrough: bool = False,
 ) -> None:
     """Wage Phillips curve equation (single slope).
 
-    Model: Δulc = α + γ × u_gap + λ × ΔU/U + ε
+    Model: Δulc = α [+ θ×π_exp] + γ × u_gap + λ × ΔU/U [+ φ×Δ4dfd] + ε
 
     Models wage growth as a function of:
     - Unemployment gap (level effect, single slope across all periods)
     - Change in unemployment (speed limit effect)
+    - Inflation expectations anchoring (θ×π_exp, default on)
+    - Price pass-through via demand deflator (φ×Δ4dfd, default off)
 
     Args:
         inputs: Must contain:
             - "U": Unemployment rate
             - "Δulc": Unit labor cost growth (observed wage variable)
             - "ΔU_1_over_U": Lagged unemployment change over unemployment level
+            - "π_exp": Annual inflation expectations (if wage_expectations)
+            - "Δ4dfd": GDP final demand deflator growth (if wage_price_passthrough)
         model: PyMC model context
         nairu: NAIRU latent variable
         constant: Optional fixed values for coefficients
+        wage_expectations: If True, include θ×π_exp expectations anchor
+        wage_price_passthrough: If True, include φ×Δ4dfd price pass-through
 
     """
     if constant is None:
@@ -173,17 +181,21 @@ def wage_growth_equation(
             "lambda_wg": {"mu": -4.0, "sigma": 2.0},
             "epsilon_wg": {"sigma": 1.0},
         }
+        if wage_price_passthrough:
+            settings["phi_wg"] = {"mu": 0.0, "sigma": 0.2}
         mc = set_model_coefficients(model, settings, constant)
 
         u_gap = (inputs["U"] - nairu) / inputs["U"]
 
+        mu = mc["alpha_wg"] + mc["gamma_wg"] * u_gap + mc["lambda_wg"] * inputs["ΔU_1_over_U"]
+        if wage_expectations:
+            mu = mu + quarterly(inputs["π_exp"])
+        if wage_price_passthrough:
+            mu = mu + mc["phi_wg"] * inputs["Δ4dfd"]
+
         pm.Normal(
             "observed_wage_growth",
-            mu=(
-                mc["alpha_wg"]
-                + mc["gamma_wg"] * u_gap
-                + mc["lambda_wg"] * inputs["ΔU_1_over_U"]
-            ),
+            mu=mu,
             sigma=mc["epsilon_wg"],
             observed=inputs["Δulc"],
         )
@@ -194,14 +206,18 @@ def wage_growth_regime_equation(
     model: pm.Model,
     nairu: pm.Distribution,
     constant: dict[str, Any] | None = None,
+    wage_expectations: bool = True,
+    wage_price_passthrough: bool = False,
 ) -> None:
     """Wage Phillips curve equation with regime-switching.
 
-    Model: Δulc = α + γ_regime × u_gap + λ × ΔU/U + ε
+    Model: Δulc = α [+ θ×π_exp] + γ_regime × u_gap + λ × ΔU/U [+ φ×Δ4dfd] + ε
 
     Models wage growth as a function of:
     - Unemployment gap (level effect) with regime-specific slopes
     - Change in unemployment (speed limit effect)
+    - Inflation expectations anchoring (θ×π_exp, default on)
+    - Price pass-through via demand deflator (φ×Δ4dfd, default off)
 
     Uses regime-specific Phillips curve slopes (3 regimes, parallel to price equation):
     - gamma_wg_pre_gfc: Pre-GFC (up to 2007Q4) - moderate slope
@@ -214,9 +230,13 @@ def wage_growth_regime_equation(
             - "Δulc": Unit labor cost growth (observed wage variable)
             - "ΔU_1_over_U": Lagged unemployment change over unemployment level
             - "regime_pre_gfc", "regime_gfc", "regime_covid": Regime indicators
+            - "π_exp": Annual inflation expectations (if wage_expectations)
+            - "Δ4dfd": GDP final demand deflator growth (if wage_price_passthrough)
         model: PyMC model context
         nairu: NAIRU latent variable
         constant: Optional fixed values for coefficients
+        wage_expectations: If True, include θ×π_exp expectations anchor
+        wage_price_passthrough: If True, include φ×Δ4dfd price pass-through
 
     """
     if constant is None:
@@ -231,6 +251,8 @@ def wage_growth_regime_equation(
             "lambda_wg": {"mu": -4.0, "sigma": 2.0},
             "epsilon_wg": {"sigma": 1.0},
         }
+        if wage_price_passthrough:
+            settings["phi_wg"] = {"mu": 0.0, "sigma": 0.2}
         mc = set_model_coefficients(model, settings, constant)
 
         u_gap = (inputs["U"] - nairu) / inputs["U"]
@@ -241,13 +263,15 @@ def wage_growth_regime_equation(
             + mc["gamma_wg_covid"] * inputs["regime_covid"]
         )
 
+        mu = mc["alpha_wg"] + gamma_effective * u_gap + mc["lambda_wg"] * inputs["ΔU_1_over_U"]
+        if wage_expectations:
+            mu = mu + quarterly(inputs["π_exp"])
+        if wage_price_passthrough:
+            mu = mu + mc["phi_wg"] * inputs["Δ4dfd"]
+
         pm.Normal(
             "observed_wage_growth",
-            mu=(
-                mc["alpha_wg"]
-                + gamma_effective * u_gap
-                + mc["lambda_wg"] * inputs["ΔU_1_over_U"]
-            ),
+            mu=mu,
             sigma=mc["epsilon_wg"],
             observed=inputs["Δulc"],
         )
@@ -258,15 +282,19 @@ def hourly_coe_equation(
     model: pm.Model,
     nairu: pm.Distribution,
     constant: dict[str, Any] | None = None,
+    wage_expectations: bool = True,
+    wage_price_passthrough: bool = False,
 ) -> None:
     """Hourly compensation Phillips curve equation (single slope).
 
-    Model: Δhcoe = α + γ × u_gap + λ × ΔU/U + ψ × MFP + ε
+    Model: Δhcoe = α [+ θ×π_exp] + γ × u_gap + λ × ΔU/U [+ φ×Δ4dfd] + ψ × MFP + ε
 
     Models hourly compensation growth (COE/hours) as a function of:
     - Unemployment gap (level effect, single slope across all periods)
     - Change in unemployment (speed limit effect)
     - MFP growth (productivity → wage channel)
+    - Inflation expectations anchoring (θ×π_exp, default on)
+    - Price pass-through via demand deflator (φ×Δ4dfd, default off)
 
     Args:
         inputs: Must contain:
@@ -274,9 +302,13 @@ def hourly_coe_equation(
             - "Δhcoe": Hourly COE growth (observed wage variable)
             - "ΔU_1_over_U": Lagged unemployment change over unemployment level
             - "mfp_growth": MFP trend growth
+            - "π_exp": Annual inflation expectations (if wage_expectations)
+            - "Δ4dfd": GDP final demand deflator growth (if wage_price_passthrough)
         model: PyMC model context
         nairu: NAIRU latent variable
         constant: Optional fixed values for coefficients
+        wage_expectations: If True, include θ×π_exp expectations anchor
+        wage_price_passthrough: If True, include φ×Δ4dfd price pass-through
 
     """
     if constant is None:
@@ -290,18 +322,26 @@ def hourly_coe_equation(
             "psi_hcoe": {"mu": 1.0, "sigma": 0.5, "lower": 0},
             "epsilon_hcoe": {"sigma": 0.75},
         }
+        if wage_price_passthrough:
+            settings["phi_hcoe"] = {"mu": 0.0, "sigma": 0.2}
         mc = set_model_coefficients(model, settings, constant)
 
         u_gap = (inputs["U"] - nairu) / inputs["U"]
 
+        mu = (
+            mc["alpha_hcoe"]
+            + mc["gamma_hcoe"] * u_gap
+            + mc["lambda_hcoe"] * inputs["ΔU_1_over_U"]
+            + mc["psi_hcoe"] * inputs["mfp_growth"]
+        )
+        if wage_expectations:
+            mu = mu + quarterly(inputs["π_exp"])
+        if wage_price_passthrough:
+            mu = mu + mc["phi_hcoe"] * inputs["Δ4dfd"]
+
         pm.Normal(
             "observed_hourly_coe",
-            mu=(
-                mc["alpha_hcoe"]
-                + mc["gamma_hcoe"] * u_gap
-                + mc["lambda_hcoe"] * inputs["ΔU_1_over_U"]
-                + mc["psi_hcoe"] * inputs["mfp_growth"]
-            ),
+            mu=mu,
             sigma=mc["epsilon_hcoe"],
             observed=inputs["Δhcoe"],
         )
@@ -312,15 +352,19 @@ def hourly_coe_regime_equation(
     model: pm.Model,
     nairu: pm.Distribution,
     constant: dict[str, Any] | None = None,
+    wage_expectations: bool = True,
+    wage_price_passthrough: bool = False,
 ) -> None:
     """Hourly compensation Phillips curve equation with regime-switching.
 
-    Model: Δhcoe = α + γ_regime × u_gap + λ × ΔU/U + ψ × MFP + ε
+    Model: Δhcoe = α [+ θ×π_exp] + γ_regime × u_gap + λ × ΔU/U [+ φ×Δ4dfd] + ψ × MFP + ε
 
     Models hourly compensation growth (COE/hours) as a function of:
     - Unemployment gap (level effect) with regime-specific slopes
     - Change in unemployment (speed limit effect)
     - MFP growth (productivity → wage channel)
+    - Inflation expectations anchoring (θ×π_exp, default on)
+    - Price pass-through via demand deflator (φ×Δ4dfd, default off)
 
     Uses regime-specific Phillips curve slopes (3 regimes, parallel to ULC equation):
     - gamma_hcoe_pre_gfc: Pre-GFC (up to 2007Q4) - moderate slope
@@ -334,9 +378,13 @@ def hourly_coe_regime_equation(
             - "ΔU_1_over_U": Lagged unemployment change over unemployment level
             - "mfp_growth": MFP trend growth
             - "regime_pre_gfc", "regime_gfc", "regime_covid": Regime indicators
+            - "π_exp": Annual inflation expectations (if wage_expectations)
+            - "Δ4dfd": GDP final demand deflator growth (if wage_price_passthrough)
         model: PyMC model context
         nairu: NAIRU latent variable
         constant: Optional fixed values for coefficients
+        wage_expectations: If True, include θ×π_exp expectations anchor
+        wage_price_passthrough: If True, include φ×Δ4dfd price pass-through
 
     """
     if constant is None:
@@ -352,6 +400,8 @@ def hourly_coe_regime_equation(
             "psi_hcoe": {"mu": 1.0, "sigma": 0.5, "lower": 0},
             "epsilon_hcoe": {"sigma": 0.75},
         }
+        if wage_price_passthrough:
+            settings["phi_hcoe"] = {"mu": 0.0, "sigma": 0.2}
         mc = set_model_coefficients(model, settings, constant)
 
         u_gap = (inputs["U"] - nairu) / inputs["U"]
@@ -362,14 +412,20 @@ def hourly_coe_regime_equation(
             + mc["gamma_hcoe_covid"] * inputs["regime_covid"]
         )
 
+        mu = (
+            mc["alpha_hcoe"]
+            + gamma_effective * u_gap
+            + mc["lambda_hcoe"] * inputs["ΔU_1_over_U"]
+            + mc["psi_hcoe"] * inputs["mfp_growth"]
+        )
+        if wage_expectations:
+            mu = mu + quarterly(inputs["π_exp"])
+        if wage_price_passthrough:
+            mu = mu + mc["phi_hcoe"] * inputs["Δ4dfd"]
+
         pm.Normal(
             "observed_hourly_coe",
-            mu=(
-                mc["alpha_hcoe"]
-                + gamma_effective * u_gap
-                + mc["lambda_hcoe"] * inputs["ΔU_1_over_U"]
-                + mc["psi_hcoe"] * inputs["mfp_growth"]
-            ),
+            mu=mu,
             sigma=mc["epsilon_hcoe"],
             observed=inputs["Δhcoe"],
         )

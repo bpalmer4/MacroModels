@@ -240,18 +240,26 @@ Where `u_gap = (U - NAIRU) / U` (percentage deviation from NAIRU)
 
 **Wage Phillips Curve (ULC):**
 ```
-Δulc = α + γ_regime × u_gap + λ × (ΔU/U) + φ × Δ4dfd + θ × π_exp + ε
+Δulc = α + π_exp + γ_regime × u_gap + λ × (ΔU/U) [+ φ × Δ4dfd] + ε
 ```
 
 Includes:
+- Inflation expectations anchor (fixed coefficient = 1.0, via `wage_expectations` flag)
 - Speed limit effect (λ × ΔU/U)
-- Price-to-wage pass-through (φ × demand deflator)
-- Trend expectations anchoring (θ)
+- Optional: Price-to-wage pass-through (φ × demand deflator, via `wage_price_passthrough` flag)
+
+Note: Both φ (demand deflator pass-through) and θ (estimated expectations coefficient)
+were tested but posteriors were not statistically different from zero. The deflator term
+showed only 67% correct sign probability. Expectations are instead included with a fixed
+unit coefficient, paralleling the price Phillips curve structure. The intercept α is
+retained but estimates indistinguishable from zero in both simple and complex models,
+confirming that the unitary expectations pass-through is sufficient — wages track
+inflation expectations one-for-one with no additional drift.
 
 **Hourly COE Phillips Curve:**
 Same as ULC but adds productivity channel:
 ```
-Δhcoe = ... + ψ × mfp_growth + ε
+Δhcoe = α + π_exp + γ_regime × u_gap + λ × (ΔU/U) [+ φ × Δ4dfd] + ψ × mfp_growth + ε
 ```
 
 The ψ coefficient captures how productivity gains flow to wages.

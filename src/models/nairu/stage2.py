@@ -19,6 +19,7 @@ import pymc as pm
 
 from src.data import get_cash_rate_monthly
 from src.models.nairu.analysis import (
+    InflationDecomposition,
     check_for_zero_coeffs,
     check_model_diagnostics,
     decompose_hcoe_inflation,
@@ -41,6 +42,7 @@ from src.models.nairu.analysis import (
     plot_potential_growth,
     plot_r_star_input_vs_output,
     plot_taylor_rule,
+    plot_taylor_rule_comparison,
     plot_unemployment_gap,
     plot_wage_decomposition,
     posterior_predictive_checks,
@@ -189,7 +191,6 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
         ("gamma_wg_gfc", "nonzero", "Wage Phillips (post-GFC) ≠ 0"),
         ("gamma_wg_covid", "nonzero", "Wage Phillips (post-COVID) ≠ 0"),
         ("phi_wg", "positive", "Demand deflator → wages > 0"),
-        ("theta_wg", "nonzero", "Trend expectations → wages ≠ 0"),
         # Hourly COE Phillips curve - single slope (truncated)
         ("gamma_hcoe", "nonzero", "Hourly COE Phillips slope ≠ 0"),
         # Hourly COE Phillips curve - regime-switching (truncated)
@@ -197,7 +198,6 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
         ("gamma_hcoe_gfc", "nonzero", "Hourly COE Phillips (post-GFC) ≠ 0"),
         ("gamma_hcoe_covid", "nonzero", "Hourly COE Phillips (post-COVID) ≠ 0"),
         ("phi_hcoe", "nonzero", "Hourly COE demand deflator ≠ 0"),
-        ("theta_hcoe", "nonzero", "Hourly COE trend expectations ≠ 0"),
         ("psi_hcoe", "nonzero", "Productivity → hourly wages ≠ 0"),
         # IS curve (truncated lower=0)
         ("beta_is", "nonzero", "IS interest rate effect ≠ 0"),
@@ -324,6 +324,7 @@ def plot_all(
     results: NAIRUResults,
     inflation_annual: pd.Series | None = None,
     cash_rate_monthly: pd.Series | None = None,
+    decomp: InflationDecomposition | None = None,
     show: bool = False,
 ) -> None:
     """Generate all standard plots."""
@@ -340,6 +341,10 @@ def plot_all(
     plot_r_star_input_vs_output(results, show=show)
     if cash_rate_monthly is not None and inflation_annual is not None:
         plot_taylor_rule(results, inflation_annual, cash_rate_monthly, show=show)
+        if decomp is not None:
+            plot_taylor_rule_comparison(
+                results, inflation_annual, cash_rate_monthly, decomp, show=show,
+            )
         plot_equilibrium_rates(results, cash_rate_monthly, show=show)
 
 
@@ -530,11 +535,15 @@ def run_stage2(
     cash_rate_monthly = get_cash_rate_monthly().data
     π4 = pd.Series(results.obs["π4"], index=results.obs_index)
 
+    # Price inflation decomposition (demand vs supply) — needed for Taylor Rule comparison
+    decomp = decompose_inflation(results.trace, results.obs, results.obs_index)
+
     # Generate all plots
     plot_all(
         results,
         inflation_annual=π4,
         cash_rate_monthly=cash_rate_monthly,
+        decomp=decomp,
         show=show_plots,
     )
 
@@ -570,19 +579,21 @@ def run_stage2(
             model_name=MODEL_NAME,
             show=show_plots,
         )
-
-    # Price inflation decomposition (demand vs supply)
-    decomp = decompose_inflation(results.trace, results.obs, results.obs_index)
     plot_inflation_decomposition(decomp, rfooter=RFOOTER_OUTPUT)
 
     # Wage-ULC inflation decomposition (demand vs price pass-through)
+    wexp = model_kwargs.get("wage_expectations", False)
     if has_wage:
-        wage_decomp = decompose_wage_inflation(results.trace, results.obs, results.obs_index)
+        wage_decomp = decompose_wage_inflation(
+            results.trace, results.obs, results.obs_index, wage_expectations=wexp,
+        )
         plot_wage_decomposition(wage_decomp, rfooter=RFOOTER_OUTPUT)
 
     # Wage-HCOE inflation decomposition (demand component)
     if has_hcoe:
-        hcoe_decomp = decompose_hcoe_inflation(results.trace, results.obs, results.obs_index)
+        hcoe_decomp = decompose_hcoe_inflation(
+            results.trace, results.obs, results.obs_index, wage_expectations=wexp,
+        )
         plot_hcoe_decomposition(hcoe_decomp, rfooter=RFOOTER_OUTPUT)
 
     # Derived productivity plots (LP and MFP from wage data)

@@ -50,25 +50,44 @@ from src.models.nairu.analysis.extraction import get_scalar_var, get_vector_var
 from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
 from src.utilities.rate_conversion import annualize, quarterly
 
-# LaTeX equation strings for each chart type
-# Full Phillips curve: π_t = π^e_t + γ((U_t - U*_t)/U_t) + λΔρ^m_t + ξ·GSCPI² + ε_t
-EQ_DEMAND_SUPPLY = (
-    r"$\pi_t = \pi^e_t + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
-    r" + \underbrace{\lambda\Delta\rho^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}"
-    r" + \varepsilon_t$"
-)
-EQ_PROPORTIONAL = (
-    r"$\pi_t = \underbrace{\pi^e_t}_{\mathrm{grey}}"
-    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
-    r" + \underbrace{\lambda\Delta\rho^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}"
-    r" + \varepsilon_t$"
-)
-EQ_UNSCALED = (
-    r"$\pi_t = \underbrace{\pi^e_t}_{\mathrm{grey}}"
-    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
-    r" + \underbrace{\lambda\Delta\rho^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}"
-    r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
-)
+# LaTeX equation builders for price Phillips curve charts
+# Supply terms are conditional on whether import price / GSCPI controls are present
+
+
+def _supply_underbrace(has_import: bool, has_gscpi: bool) -> str:
+    """Build the supply underbrace term for price Phillips curve equations."""
+    parts = []
+    if has_import:
+        parts.append(r"\lambda\Delta\rho^m_t")
+    if has_gscpi:
+        parts.append(r"\xi\cdot GSCPI^2")
+    if not parts:
+        return ""
+    inner = " + ".join(parts)
+    return rf" + \underbrace{{{inner}}}_{{\\mathrm{{blue}}}}"
+
+
+def _eq_demand_supply(has_import: bool, has_gscpi: bool) -> str:
+    eq = r"$\pi_t = \pi^e_t + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
+    eq += _supply_underbrace(has_import, has_gscpi)
+    eq += r" + \varepsilon_t$"
+    return eq
+
+
+def _eq_proportional(has_import: bool, has_gscpi: bool) -> str:
+    eq = r"$\pi_t = \underbrace{\pi^e_t}_{\mathrm{grey}}"
+    eq += r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
+    eq += _supply_underbrace(has_import, has_gscpi)
+    eq += r" + \varepsilon_t$"
+    return eq
+
+
+def _eq_unscaled(has_import: bool, has_gscpi: bool) -> str:
+    eq = r"$\pi_t = \underbrace{\pi^e_t}_{\mathrm{grey}}"
+    eq += r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
+    eq += _supply_underbrace(has_import, has_gscpi)
+    eq += r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
+    return eq
 
 
 def add_equation_box(ax, equation: str, x: float = 0.5, y: float = 0.02) -> None:
@@ -188,6 +207,8 @@ class InflationDecomposition:
     residual: pd.Series
     fitted: pd.Series
     index: pd.PeriodIndex
+    has_import_price: bool = True
+    has_gscpi: bool = True
 
     @property
     def supply_total(self) -> pd.Series:
@@ -341,6 +362,8 @@ def decompose_inflation(
         residual=residual,
         fitted=fitted,
         index=obs_index,
+        has_import_price="rho_pi" in trace.posterior,
+        has_gscpi="xi_gscpi" in trace.posterior,
     )
 
 
@@ -457,17 +480,20 @@ def plot_inflation_drivers(
         df = df[df.index <= pd.Period(end)]
     df = annualize(df)
 
-    bar_data = pd.DataFrame(
-        {"Demand": df["demand"], "Supply": df["supply_total"]},
-        index=df.index,
-    )
+    has_supply = decomp.has_import_price or decomp.has_gscpi
+    cols = {"Demand": df["demand"]}
+    colors = ["orange"]
+    if has_supply:
+        cols["Supply"] = df["supply_total"]
+        colors.append("darkblue")
+    bar_data = pd.DataFrame(cols, index=df.index)
 
     _plot_decomposition_bars(
         bar_data=bar_data,
         observed=df["observed"],
-        colors=["orange", "darkblue"],
+        colors=colors,
         title="Price Inflation Decomposition: Demand vs Supply",
-        equation=EQ_DEMAND_SUPPLY,
+        equation=_eq_demand_supply(decomp.has_import_price, decomp.has_gscpi),
         observed_label="Observed Inflation (quarterly annualised)",
         rfooter=rfooter,
         eq_x=0.5,
@@ -543,21 +569,16 @@ def plot_inflation_drivers_proportional(
 
     # Create DataFrame for stacked bar plot
     # Anchor as baseline, then demand and supply stack on top
-    bar_data = pd.DataFrame(
-        {
-            "Inflation expectations": anchor,
-            "Demand": demand_prop,
-            "Supply": supply_prop,
-        },
-        index=df.index,
-    )
+    has_supply = decomp.has_import_price or decomp.has_gscpi
+    cols = {"Inflation expectations": anchor, "Demand": demand_prop}
+    colors = ["#cccccc", "orange"]
+    if has_supply:
+        cols["Supply"] = supply_prop
+        colors.append("darkblue")
+    bar_data = pd.DataFrame(cols, index=df.index)
 
     # Plot stacked bars (mgplot requires string colors)
-    ax = mg.bar_plot(
-        bar_data,
-        stacked=True,
-        color=["#cccccc", "orange", "darkblue"],  # gray anchor, orange demand, darkblue supply
-    )
+    ax = mg.bar_plot(bar_data, stacked=True, color=colors)
 
     # Add observed inflation line on top
     observed_line = observed.copy()
@@ -565,7 +586,7 @@ def plot_inflation_drivers_proportional(
     mg.line_plot(observed_line, ax=ax, color="indigo", width=1.5, zorder=10)
 
     # Add equation text box
-    add_equation_box(ax, EQ_PROPORTIONAL)
+    add_equation_box(ax, _eq_proportional(decomp.has_import_price, decomp.has_gscpi))
 
     mg.finalise_plot(
         ax,
@@ -595,22 +616,22 @@ def plot_inflation_drivers_unscaled(
         df = df[df.index <= pd.Period(end)]
     df = annualize(df)
 
-    bar_data = pd.DataFrame(
-        {
-            "Inflation expectations": df["anchor"],
-            "Demand": df["demand"],
-            "Supply": df["supply_total"],
-            "Noise": df["residual"],
-        },
-        index=df.index,
-    )
+    has_supply = decomp.has_import_price or decomp.has_gscpi
+    cols = {"Inflation expectations": df["anchor"], "Demand": df["demand"]}
+    colors = ["#cccccc", "orange"]
+    if has_supply:
+        cols["Supply"] = df["supply_total"]
+        colors.append("darkblue")
+    cols["Noise"] = df["residual"]
+    colors.append("lightblue")
+    bar_data = pd.DataFrame(cols, index=df.index)
 
     _plot_decomposition_bars(
         bar_data=bar_data,
         observed=df["observed"],
-        colors=["#cccccc", "orange", "darkblue", "lightblue"],
+        colors=colors,
         title="Price Inflation Decomposition: Components (Unscaled)",
-        equation=EQ_UNSCALED,
+        equation=_eq_unscaled(decomp.has_import_price, decomp.has_gscpi),
         observed_label="Observed Inflation (quarterly annualised)",
         eq_x=0.5,
         eq_y=0.02,
@@ -652,18 +673,27 @@ def plot_inflation_decomposition(
 
 # --- Wage Inflation Decomposition ---
 
-EQ_WAGE_DEMAND_SUPPLY = (
-    r"$\Delta ulc_t = \alpha"
-    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
-    r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
-    r" + \theta\pi^e_t + \varepsilon_t$"
-)
-EQ_WAGE_UNSCALED = (
-    r"$\Delta ulc_t = \underbrace{\alpha + \theta\pi^e_t}_{\mathrm{grey}}"
-    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
-    r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
-    r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
-)
+def _wage_eq_demand_supply(has_phi: bool, has_expectations: bool) -> str:
+    eq = r"$\Delta ulc_t = \alpha"
+    if has_expectations:
+        eq += r" + \pi^e_t"
+    eq += r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
+    if has_phi:
+        eq += r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
+    eq += r" + \varepsilon_t$"
+    return eq
+
+
+def _wage_eq_unscaled(has_phi: bool, has_expectations: bool) -> str:
+    if has_expectations:
+        eq = r"$\Delta ulc_t = \underbrace{\alpha + \pi^e_t}_{\mathrm{grey}}"
+    else:
+        eq = r"$\Delta ulc_t = \underbrace{\alpha}_{\mathrm{grey}}"
+    eq += r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
+    if has_phi:
+        eq += r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
+    eq += r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
+    return eq
 
 
 @dataclass
@@ -675,12 +705,14 @@ class WageInflationDecomposition:
     """
 
     observed: pd.Series
-    anchor: pd.Series          # α + θ×π_exp
+    anchor: pd.Series          # α (+ θ×π_exp if present)
     demand: pd.Series          # γ×u_gap + λ×ΔU/U
-    price_passthrough: pd.Series  # φ×Δ4dfd
+    price_passthrough: pd.Series  # φ×Δ4dfd (zero if not in model)
     residual: pd.Series
     fitted: pd.Series
     index: pd.PeriodIndex
+    has_price_passthrough: bool = False
+    has_expectations: bool = False
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert to DataFrame with all components."""
@@ -701,6 +733,7 @@ def decompose_wage_inflation(
     trace: az.InferenceData,
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
+    wage_expectations: bool = False,
 ) -> WageInflationDecomposition:
     """Decompose wage inflation (ULC growth) into demand and price components."""
     # Extract parameters (posterior median)
@@ -708,8 +741,14 @@ def decompose_wage_inflation(
     lambda_wg = get_scalar_var("lambda_wg", trace).median()
     has_phi_wg = "phi_wg" in trace.posterior
     phi_wg = get_scalar_var("phi_wg", trace).median() if has_phi_wg else 0.0
-    has_theta_wg = "theta_wg" in trace.posterior
-    theta_wg = get_scalar_var("theta_wg", trace).median() if has_theta_wg else 0.0
+    # theta_wg: if estimated, use posterior; if fixed at 1.0 via wage_expectations flag, use 1.0
+    has_expectations_wg = "theta_wg" in trace.posterior or wage_expectations
+    if "theta_wg" in trace.posterior:
+        theta_wg = get_scalar_var("theta_wg", trace).median()
+    elif wage_expectations:
+        theta_wg = 1.0
+    else:
+        theta_wg = 0.0
 
     # Wage Phillips curve slopes: regime-switching or single
     if "gamma_wg_pre_gfc" in trace.posterior:
@@ -751,6 +790,8 @@ def decompose_wage_inflation(
         residual=residual,
         fitted=fitted,
         index=obs_index,
+        has_price_passthrough=has_phi_wg,
+        has_expectations=has_expectations_wg,
     )
 
 
@@ -769,17 +810,20 @@ def plot_wage_drivers(
         df = df[df.index <= pd.Period(end)]
     df = annualize(df)
 
-    bar_data = pd.DataFrame(
-        {"Demand (labor market)": df["demand"], "Price pass-through": df["price_passthrough"]},
-        index=df.index,
-    )
+    has_phi = decomp.has_price_passthrough
+    bar_dict = {"Demand (labor market)": df["demand"]}
+    colors = ["orange"]
+    if has_phi:
+        bar_dict["Price pass-through"] = df["price_passthrough"]
+        colors.append("darkblue")
+    bar_data = pd.DataFrame(bar_dict, index=df.index)
 
     _plot_decomposition_bars(
         bar_data=bar_data,
         observed=df["observed"],
-        colors=["orange", "darkblue"],
+        colors=colors,
         title="Wage-ULC Inflation Decomposition: Demand vs Price Pressure",
-        equation=EQ_WAGE_DEMAND_SUPPLY,
+        equation=_wage_eq_demand_supply(has_phi, decomp.has_expectations),
         observed_color="darkorange",
         observed_label="Observed ULC Growth (quarterly annualised)",
         target_line=None,
@@ -807,22 +851,27 @@ def plot_wage_drivers_unscaled(
         df = df[df.index <= pd.Period(end)]
     df = annualize(df)
 
-    bar_data = pd.DataFrame(
-        {
-            "Baseline (α + θ×expectations)": df["anchor"],
-            "Demand (labor market)": df["demand"],
-            "Price pass-through": df["price_passthrough"],
-            "Noise": df["residual"],
-        },
-        index=df.index,
-    )
+    has_phi = decomp.has_price_passthrough
+    has_expectations = decomp.has_expectations
+    anchor_label = "Baseline (α + expectations)" if has_expectations else "Baseline (α)"
+    bar_dict: dict[str, pd.Series] = {
+        anchor_label: df["anchor"],
+        "Demand (labor market)": df["demand"],
+    }
+    colors = ["#cccccc", "orange"]
+    if has_phi:
+        bar_dict["Price pass-through"] = df["price_passthrough"]
+        colors.append("darkblue")
+    bar_dict["Noise"] = df["residual"]
+    colors.append("lightblue")
+    bar_data = pd.DataFrame(bar_dict, index=df.index)
 
     _plot_decomposition_bars(
         bar_data=bar_data,
         observed=df["observed"],
-        colors=["#cccccc", "orange", "darkblue", "lightblue"],
+        colors=colors,
         title="Wage-ULC Inflation Decomposition: Components (Unscaled)",
-        equation=EQ_WAGE_UNSCALED,
+        equation=_wage_eq_unscaled(has_phi, has_expectations),
         observed_color="darkorange",
         observed_label="Observed ULC Growth (quarterly annualised)",
         target_line=None,
@@ -849,20 +898,29 @@ def plot_wage_decomposition(
 
 # --- Hourly COE Wage Inflation Decomposition ---
 
-EQ_HCOE_DEMAND_SUPPLY = (
-    r"$\Delta hcoe_t = \alpha"
-    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
-    r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
-    r" + \underbrace{\psi \cdot mfp_t}_{\mathrm{green}}"
-    r" + \theta\pi^e_t + \varepsilon_t$"
-)
-EQ_HCOE_UNSCALED = (
-    r"$\Delta hcoe_t = \underbrace{\alpha + \theta\pi^e_t}_{\mathrm{grey}}"
-    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
-    r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
-    r" + \underbrace{\psi \cdot mfp_t}_{\mathrm{green}}"
-    r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
-)
+def _hcoe_eq_demand_supply(has_phi: bool, has_expectations: bool) -> str:
+    eq = r"$\Delta hcoe_t = \alpha"
+    if has_expectations:
+        eq += r" + \pi^e_t"
+    eq += r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
+    if has_phi:
+        eq += r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
+    eq += r" + \underbrace{\psi \cdot mfp_t}_{\mathrm{green}}"
+    eq += r" + \varepsilon_t$"
+    return eq
+
+
+def _hcoe_eq_unscaled(has_phi: bool, has_expectations: bool) -> str:
+    if has_expectations:
+        eq = r"$\Delta hcoe_t = \underbrace{\alpha + \pi^e_t}_{\mathrm{grey}}"
+    else:
+        eq = r"$\Delta hcoe_t = \underbrace{\alpha}_{\mathrm{grey}}"
+    eq += r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
+    if has_phi:
+        eq += r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
+    eq += r" + \underbrace{\psi \cdot mfp_t}_{\mathrm{green}}"
+    eq += r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
+    return eq
 
 
 @dataclass
@@ -874,13 +932,15 @@ class HCOEInflationDecomposition:
     """
 
     observed: pd.Series
-    anchor: pd.Series          # α + θ×π_exp
+    anchor: pd.Series          # α (+ θ×π_exp if present)
     demand: pd.Series          # γ×u_gap + λ×ΔU/U
-    price_passthrough: pd.Series  # φ×Δ4dfd
+    price_passthrough: pd.Series  # φ×Δ4dfd (zero if not in model)
     productivity: pd.Series    # ψ×mfp_growth
     residual: pd.Series
     fitted: pd.Series
     index: pd.PeriodIndex
+    has_price_passthrough: bool = False
+    has_expectations: bool = False
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert to DataFrame with all components."""
@@ -902,6 +962,7 @@ def decompose_hcoe_inflation(
     trace: az.InferenceData,
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
+    wage_expectations: bool = False,
 ) -> HCOEInflationDecomposition:
     """Decompose hourly COE growth into demand, price, and productivity components."""
     # Extract parameters (posterior median)
@@ -909,8 +970,14 @@ def decompose_hcoe_inflation(
     lambda_hcoe = get_scalar_var("lambda_hcoe", trace).median()
     has_phi_hcoe = "phi_hcoe" in trace.posterior
     phi_hcoe = get_scalar_var("phi_hcoe", trace).median() if has_phi_hcoe else 0.0
-    has_theta_hcoe = "theta_hcoe" in trace.posterior
-    theta_hcoe = get_scalar_var("theta_hcoe", trace).median() if has_theta_hcoe else 0.0
+    # theta_hcoe: if estimated, use posterior; if fixed at 1.0 via wage_expectations flag, use 1.0
+    has_expectations_hcoe = "theta_hcoe" in trace.posterior or wage_expectations
+    if "theta_hcoe" in trace.posterior:
+        theta_hcoe = get_scalar_var("theta_hcoe", trace).median()
+    elif wage_expectations:
+        theta_hcoe = 1.0
+    else:
+        theta_hcoe = 0.0
     psi_hcoe = get_scalar_var("psi_hcoe", trace).median()
 
     # Hourly COE Phillips curve slopes: regime-switching or single
@@ -956,6 +1023,8 @@ def decompose_hcoe_inflation(
         residual=residual,
         fitted=fitted,
         index=obs_index,
+        has_price_passthrough=has_phi_hcoe,
+        has_expectations=has_expectations_hcoe,
     )
 
 
@@ -974,21 +1043,22 @@ def plot_hcoe_drivers(
         df = df[df.index <= pd.Period(end)]
     df = annualize(df)
 
-    bar_data = pd.DataFrame(
-        {
-            "Demand (labor market)": df["demand"],
-            "Price pass-through": df["price_passthrough"],
-            "Productivity": df["productivity"],
-        },
-        index=df.index,
-    )
+    has_phi = decomp.has_price_passthrough
+    bar_dict: dict[str, pd.Series] = {"Demand (labor market)": df["demand"]}
+    colors = ["orange"]
+    if has_phi:
+        bar_dict["Price pass-through"] = df["price_passthrough"]
+        colors.append("darkblue")
+    bar_dict["Productivity"] = df["productivity"]
+    colors.append("limegreen")
+    bar_data = pd.DataFrame(bar_dict, index=df.index)
 
     _plot_decomposition_bars(
         bar_data=bar_data,
         observed=df["observed"],
-        colors=["orange", "darkblue", "limegreen"],
+        colors=colors,
         title="Wage-HCOE Inflation Decomposition: Demand, Price & Productivity",
-        equation=EQ_HCOE_DEMAND_SUPPLY,
+        equation=_hcoe_eq_demand_supply(has_phi, decomp.has_expectations),
         observed_color="darkorange",
         observed_label="Observed Hourly COE Growth (quarterly annualised)",
         target_line=None,
@@ -1016,23 +1086,29 @@ def plot_hcoe_drivers_unscaled(
         df = df[df.index <= pd.Period(end)]
     df = annualize(df)
 
-    bar_data = pd.DataFrame(
-        {
-            "Baseline (α + θ×expectations)": df["anchor"],
-            "Demand (labor market)": df["demand"],
-            "Price pass-through": df["price_passthrough"],
-            "Productivity": df["productivity"],
-            "Noise": df["residual"],
-        },
-        index=df.index,
-    )
+    has_phi = decomp.has_price_passthrough
+    has_expectations = decomp.has_expectations
+    anchor_label = "Baseline (α + expectations)" if has_expectations else "Baseline (α)"
+    bar_dict: dict[str, pd.Series] = {
+        anchor_label: df["anchor"],
+        "Demand (labor market)": df["demand"],
+    }
+    colors = ["#cccccc", "orange"]
+    if has_phi:
+        bar_dict["Price pass-through"] = df["price_passthrough"]
+        colors.append("darkblue")
+    bar_dict["Productivity"] = df["productivity"]
+    colors.append("limegreen")
+    bar_dict["Noise"] = df["residual"]
+    colors.append("lightblue")
+    bar_data = pd.DataFrame(bar_dict, index=df.index)
 
     _plot_decomposition_bars(
         bar_data=bar_data,
         observed=df["observed"],
-        colors=["#cccccc", "orange", "darkblue", "limegreen", "lightblue"],
+        colors=colors,
         title="Wage-HCOE Inflation Decomposition: Components (Unscaled)",
-        equation=EQ_HCOE_UNSCALED,
+        equation=_hcoe_eq_unscaled(has_phi, has_expectations),
         observed_color="darkorange",
         observed_label="Observed Hourly COE Growth (quarterly annualised)",
         target_line=None,

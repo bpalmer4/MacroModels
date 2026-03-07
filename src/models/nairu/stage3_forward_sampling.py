@@ -900,7 +900,6 @@ def run_stage3_bayesian(
     # Each channel can be toggled independently; all are needed for the
     # rate → output gap → unemployment → inflation pass-through to be realistic.
     _required_channels = {
-        "gamma_pi_covid": "regime-switching Phillips curve",
         "beta_is": "IS curve (rate → output gap)",
         "beta_er_r": "exchange rate (UIP)",
         "beta_pt": "import price pass-through",
