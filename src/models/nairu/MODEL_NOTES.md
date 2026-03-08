@@ -23,9 +23,13 @@ nairu/
 ├── config.py                 # ModelConfig dataclass — single source of truth
 ├── base.py                   # SamplerConfig, coefficient utilities
 ├── estimate.py               # Build model, sample posterior, save results
+├── results.py                # Result loading and management
+├── run.py                    # Model run entry point
+├── validate.py               # Model validation checks
 ├── analyse.py                # Load results, diagnostics, plotting
 ├── forecast.py               # Deterministic scenario analysis
 ├── forecast_bayesian.py      # Monte Carlo scenario analysis
+├── forecast_plots.py         # Forecast visualisation
 ├── pipeline.py               # CLI entry point and orchestration
 ├── MODEL_NOTES.md            # This file
 │
@@ -45,7 +49,32 @@ nairu/
 │   └── net_exports.py        # Net exports
 │
 └── analysis/                 # Plotting and diagnostics modules
-    └── __init__.py
+    ├── __init__.py
+    ├── decomposition_types.py          # Decomposition data structures
+    ├── _decomposition_helpers.py       # Shared decomposition utilities
+    ├── decompose_inflation.py          # Price inflation decomposition
+    ├── decompose_wage_inflation.py     # Wage inflation decomposition
+    ├── decompose_hcoe_inflation.py     # Hourly COE inflation decomposition
+    ├── plot_decomposition.py           # Decomposition charts
+    ├── plot_equations.py               # Equation fit charts
+    ├── plot_equilibrium_rates.py       # r* and equilibrium rate charts
+    ├── plot_gdp_vs_potential.py        # GDP vs potential output
+    ├── plot_nairu.py                   # NAIRU estimate charts
+    ├── plot_nairu_comparison.py        # Cross-variant NAIRU comparison
+    ├── plot_obs_grid.py                # Observation data grid
+    ├── plot_output_gap.py              # Output gap charts
+    ├── plot_output_gap_comparison.py   # Cross-variant output gap comparison
+    ├── plot_phillips_curves.py         # Phillips curve scatter plots
+    ├── plot_phillips_slope.py          # Time-varying Phillips slope
+    ├── plot_posteriors_bar.py          # Posterior bar charts
+    ├── plot_posteriors_kde.py          # Posterior KDE plots
+    ├── plot_potential_growth.py        # Potential growth charts
+    ├── plot_potential_growth_comparison.py  # Cross-variant growth comparison
+    ├── plot_potential_growth_smoothing.py   # Growth smoothing charts
+    ├── plot_taylor_rule.py             # Taylor rule charts
+    ├── plot_unemployment_gap.py        # Unemployment gap charts
+    ├── posterior_predictive.py         # Posterior predictive checks
+    └── residual_autocorrelation.py     # Residual autocorrelation diagnostics
 ```
 
 ### Pipeline Flow
@@ -62,7 +91,8 @@ nairu/
          ▼                 ▼                     ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌────────────────────────┐
 │  estimate.py    │ │  analyse.py     │ │  forecast.py           │
-│                 │ │                 │ │  forecast_bayesian.py  │
+│  results.py     │ │                 │ │  forecast_bayesian.py  │
+│                 │ │                 │ │  forecast_plots.py     │
 │ build_model()   │ │ load_results()  │ │                        │
 │ sample_model()  │ │ diagnostics     │ │ deterministic +        │
 │ save_results()  │ │ all plots       │ │ Monte Carlo scenarios  │
