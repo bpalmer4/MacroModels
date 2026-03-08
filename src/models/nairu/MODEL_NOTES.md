@@ -45,7 +45,7 @@ nairu/
 │   └── net_exports.py        # Net exports
 │
 └── analysis/                 # Plotting and diagnostics modules
-    └── __init__.py           # (migrated incrementally from nairu/)
+    └── __init__.py
 ```
 
 ### Pipeline Flow

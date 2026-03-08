@@ -2,6 +2,4 @@
 
 Runs the full estimation pipeline:
   estimate -> analyse -> forecast
-
-TODO: Migrate from src/models/nairu/model.py
 """

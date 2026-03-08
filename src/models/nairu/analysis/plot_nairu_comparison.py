@@ -6,7 +6,7 @@ import pandas as pd
 from src.models.common.extraction import get_vector_var
 
 START = pd.Period("2000Q1", freq="Q")
-COLORS = ["darkblue", "darkred", "darkgreen", "darkorange"]
+COLORS = ["darkblue", "darkorange", "darkgreen", "darkred"]
 
 
 def plot_nairu_comparison(
