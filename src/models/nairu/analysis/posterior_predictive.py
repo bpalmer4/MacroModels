@@ -1,4 +1,4 @@
-"""Posterior predictive check plots."""
+"""Posterior predictive checks."""
 
 import arviz as az
 import mgplot as mg
@@ -7,22 +7,15 @@ import pandas as pd
 import pymc as pm
 
 
-def _place_model_name(model_name: str, kwargs: dict) -> dict:
-    """Place model_name in first available footer/header slot."""
-    for slot in ["rfooter", "rheader", "lheader"]:
-        if slot not in kwargs:
-            return {slot: model_name}
-    return {}
-
-
 def posterior_predictive_checks(
     trace: az.InferenceData,
     model,
     obs_vars: dict[str, np.ndarray],
     obs_index: pd.Index,
+    *,
     var_labels: dict[str, str] | None = None,
-    model_name: str = "Model",
-    **kwargs,
+    rfooter: str = "",
+    show: bool = False,
 ) -> az.InferenceData:
     """Generate and plot posterior predictive samples."""
     with model:
@@ -45,9 +38,7 @@ def posterior_predictive_checks(
         ax = mg.fill_between_plot(band_90, color="steelblue", alpha=0.15, label="90% CI")
 
         band_68 = pd.DataFrame({"lower": ppc_16, "upper": ppc_84}, index=obs_index)
-        ax = mg.fill_between_plot(
-            band_68, ax=ax, color="steelblue", alpha=0.25, label="68% CI"
-        )
+        mg.fill_between_plot(band_68, ax=ax, color="steelblue", alpha=0.25, label="68% CI")
 
         predicted = pd.Series(ppc_mean, index=obs_index, name="Predicted mean")
         mg.line_plot(predicted, ax=ax, color="steelblue", width=1.5)
@@ -56,18 +47,15 @@ def posterior_predictive_checks(
         mg.line_plot(observed, ax=ax, color="darkred", width=1)
 
         label = var_labels.get(var_name, var_name)
-        defaults = {
-            "title": f"Posterior Predictive Check - {label}",
-            "ylabel": label,
-            "legend": {"loc": "upper right", "fontsize": "x-small"},
-            "lfooter": "Blue: model prediction with credible intervals. Red: observed.",
-            "y0": True,
-            **_place_model_name(model_name, kwargs),
-        }
-        for key in list(defaults.keys()):
-            if key in kwargs:
-                defaults.pop(key)
-
-        mg.finalise_plot(ax, **defaults, **kwargs)
+        mg.finalise_plot(
+            ax,
+            title=f"Posterior Predictive Check - {label}",
+            ylabel=label,
+            legend={"loc": "upper right", "fontsize": "x-small"},
+            lfooter="Blue: model prediction with credible intervals. Red: observed.",
+            rfooter=rfooter,
+            y0=True,
+            show=show,
+        )
 
     return ppc

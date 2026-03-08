@@ -148,7 +148,6 @@ def _classify_equation(func: Callable) -> str:
 
 def _build_sections(equations: list[Callable]) -> list[tuple[str, list[tuple[str, str]]]]:
     """Group equations into sections with (label, latex) pairs."""
-    # Group by section
     section_eqs: dict[str, list[tuple[str, str]]] = {}
     for func in equations:
         model_line = _get_model_line(func)
@@ -161,7 +160,6 @@ def _build_sections(equations: list[Callable]) -> list[tuple[str, list[tuple[str
             section_eqs[section] = []
         section_eqs[section].append((label, latex))
 
-    # Return in canonical order, skipping empty sections
     return [
         (section, section_eqs[section])
         for section in _SECTION_ORDER
@@ -175,18 +173,7 @@ def plot_equations(
     dpi: int = 200,
     show: bool = False,
 ) -> None:
-    """Render model equations as a publication-quality image.
-
-    Dynamically generates from the equation functions used in the model.
-    Saves to the current mgplot chart directory (set by mg.set_chart_dir).
-
-    Args:
-        equations: List of equation functions (from model._equations).
-                   If None, uses a default minimal set.
-        constants: Fixed constants dict (from model._fixed_constants).
-        dpi: Resolution for the output image
-        show: Whether to display the plot interactively
-    """
+    """Render model equations as a publication-quality image."""
     if equations is None:
         return
 
@@ -194,7 +181,6 @@ def plot_equations(
     n_equations = sum(len(eqs) for _, eqs in sections)
     has_constants = bool(constants)
 
-    # Layout parameters
     fontsize_eq = 13
     fontsize_label = 11
     fontsize_section = 12
@@ -204,10 +190,9 @@ def plot_equations(
     section_gap = 0.025
     eq_indent = 0.04
 
-    # Calculate figure height
     n_lines = n_equations + len(sections)
     if has_constants:
-        n_lines += 1 + len(constants)  # section header + one line per constant
+        n_lines += 1 + len(constants)
     total_height = n_lines * line_height + (len(sections) + has_constants) * section_gap + 0.15
     fig_width = 14
     fig_height = max(total_height * 20, 7.0)
@@ -217,7 +202,6 @@ def plot_equations(
     ax.set_ylim(0, 1)
     ax.axis("off")
 
-    # Title
     y = 0.96
     ax.text(
         0.5, y, "NAIRU + Output Gap Model \u2014 Equations",
@@ -228,7 +212,6 @@ def plot_equations(
 
     eq_num = 1
     for section_title, eqs in sections:
-        # Section header
         ax.text(
             0.02, y, section_title,
             fontsize=fontsize_section, fontweight="bold", va="top",
@@ -237,7 +220,6 @@ def plot_equations(
         y -= line_height * 0.7
 
         for label, latex in eqs:
-            # Equation number and label
             ax.text(
                 eq_indent, y, f"{eq_num}. {label}",
                 fontsize=fontsize_label, va="top",
@@ -245,7 +227,6 @@ def plot_equations(
             )
             y -= line_height * 0.85
 
-            # LaTeX equation
             ax.text(
                 eq_indent + 0.04, y, f"${latex}$",
                 fontsize=fontsize_eq, va="top",
@@ -257,7 +238,6 @@ def plot_equations(
 
         y -= section_gap
 
-    # Fixed constants section
     if has_constants:
         ax.text(
             0.02, y, "Fixed constants",
@@ -276,7 +256,6 @@ def plot_equations(
             )
             y -= line_height * 0.9
 
-    # Save to mgplot chart directory
     chart_dir = Path(mg.get_setting("chart_dir"))
     chart_dir.mkdir(parents=True, exist_ok=True)
     output_path = chart_dir / "plot-model-equations.png"

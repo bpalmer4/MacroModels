@@ -1,17 +1,13 @@
-"""NAIRU and unemployment gap plotting functions."""
+"""NAIRU estimate plot."""
 
 import mgplot as mg
 import pandas as pd
 
 from src.data.observations import PHASE_END
-from src.models.nairu.analysis.extraction import get_vector_var
-from src.models.nairu.analysis.plot_posterior_timeseries import plot_posterior_timeseries
+from src.models.common.timeseries import plot_posterior_timeseries
 
-# Plotting constants
 START = pd.Period("1985Q1", freq="Q")
-RFOOTER = "Joint NAIRU + Output Gap Model"
 
-# Pre-policy-relevant period (before full target anchor)
 PRE_POLICY_PERIOD = {
     "axvspan": {
         "xmin": START.ordinal,
@@ -45,11 +41,12 @@ ANNUAL_TARGET = {
 
 
 def plot_nairu(
-    results,  # NAIRUResults - avoid circular import
+    results,
+    *,
+    rfooter: str = "",
     show: bool = False,
 ) -> None:
     """Plot the NAIRU with unemployment and inflation overlay."""
-    # NAIRU with credible intervals
     ax = plot_posterior_timeseries(
         trace=results.trace,
         var="nairu",
@@ -60,7 +57,6 @@ def plot_nairu(
         finalise=False,
     )
 
-    # Unemployment and inflation overlay with white background trick
     U = pd.Series(results.obs["U"], index=results.obs_index)
     U = U[U.index >= START]
     π4 = pd.Series(results.obs["π4"], index=results.obs_index)
@@ -81,42 +77,10 @@ def plot_nairu(
             ylabel="Per cent",
             legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
             lfooter=lfooter,
-            rfooter=RFOOTER,
+            rfooter=rfooter,
             axisbelow=True,
             **PRE_POLICY_PERIOD,
             **ANNUAL_RANGE,
             **ANNUAL_TARGET,
             show=show,
         )
-
-
-def plot_unemployment_gap(
-    results,  # NAIRUResults - avoid circular import
-    show: bool = False,
-    verbose: bool = False,
-) -> None:
-    """Plot the unemployment gap (U - U*)."""
-    # Get NAIRU samples and calculate unemployment gap for each sample
-    nairu = get_vector_var("nairu", results.trace)
-    nairu.index = results.obs_index
-    U = pd.Series(results.obs["U"], index=results.obs_index)
-    u_gap = nairu.apply(lambda col: U - col)
-    if verbose:
-        print("Last data point:", u_gap.index[-1])
-
-    lfooter = rf"Australia. $U\text{{-}}gap = U - U^*$. {results.anchor_label}."
-    plot_posterior_timeseries(
-        data=u_gap,
-        legend_stem="Unemployment Gap",
-        color="darkred",
-        start=START,
-        title="Unemployment Gap Estimate for Australia",
-        ylabel="Percentage points (U - U*)",
-        lfooter=lfooter,
-        rfooter=RFOOTER,
-        legend={"loc": "best", "fontsize": "x-small"},
-        axisbelow=True,
-        y0=True,
-        show=show,
-        **PRE_POLICY_PERIOD,
-    )

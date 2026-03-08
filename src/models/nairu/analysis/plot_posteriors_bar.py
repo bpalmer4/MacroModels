@@ -1,4 +1,4 @@
-"""Bar chart plots for scalar posterior distributions."""
+"""Bar chart for scalar posterior distributions."""
 
 import math
 
@@ -8,15 +8,7 @@ import matplotlib.pyplot as plt
 import mgplot as mg
 import pandas as pd
 
-from src.models.nairu.analysis.extraction import get_scalar_var, get_scalar_var_names
-
-
-def _place_model_name(model_name: str, kwargs: dict) -> dict:
-    """Place model_name in first available footer/header slot."""
-    for slot in ["rfooter", "rheader", "lheader"]:
-        if slot not in kwargs:
-            return {slot: model_name}
-    return {}
+from src.models.common.extraction import get_scalar_var, get_scalar_var_names
 
 
 def _auto_scale(samples: pd.Series, median: float) -> tuple[pd.Series, int]:
@@ -30,8 +22,9 @@ def _auto_scale(samples: pd.Series, median: float) -> tuple[pd.Series, int]:
 
 def plot_posteriors_bar(
     trace: az.InferenceData,
-    model_name: str = "Model",
-    **kwargs,
+    *,
+    rfooter: str = "",
+    show: bool = False,
 ) -> None:
     """Plot horizontal bar chart of coefficient posteriors."""
     scalar_vars = get_scalar_var_names(trace)
@@ -65,14 +58,12 @@ def plot_posteriors_bar(
             labels[var] = var
 
     cuts = [2.5, 16]
-    palette = "Blues"
-    cmap = plt.get_cmap(palette)
+    cmap = plt.get_cmap("Blues")
     color_fracs = [0.4, 0.7]
 
     figsize = (9.0, len(scalar_vars) * 0.25 + 1.0)
     _, ax = plt.subplots(figsize=figsize)
 
-    y_positions = range(len(scalar_vars))
     bar_height = 0.7
 
     sorted_vars = sorted(scalar_vars)
@@ -120,7 +111,7 @@ def plot_posteriors_bar(
         )
 
     ax.axvline(x=0, color="darkred", linestyle="-", linewidth=1.5, zorder=15)
-    ax.set_yticks(list(y_positions))
+    ax.set_yticks(list(range(len(scalar_vars))))
     ax.set_yticklabels([labels[var] for var in sorted_vars])
     ax.invert_yaxis()
 
@@ -130,15 +121,13 @@ def plot_posteriors_bar(
     elif all_significant_95:
         lfooter += " All coefficients are different from zero (>95% probability)."
 
-    defaults = {
-        "title": "Coefficient Posteriors",
-        "xlabel": "Coefficient value",
-        "legend": {"loc": "best", "fontsize": "x-small"},
-        "lfooter": lfooter,
-        **_place_model_name(model_name, kwargs),
-    }
-    for key in list(defaults.keys()):
-        if key in kwargs:
-            defaults.pop(key)
-
-    mg.finalise_plot(ax, figsize=figsize, **defaults, **kwargs)
+    mg.finalise_plot(
+        ax,
+        title="Coefficient Posteriors",
+        xlabel="Coefficient value",
+        legend={"loc": "best", "fontsize": "x-small"},
+        lfooter=lfooter,
+        rfooter=rfooter,
+        figsize=figsize,
+        show=show,
+    )

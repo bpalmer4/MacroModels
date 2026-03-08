@@ -1,9 +1,4 @@
-"""Okun's Law equations linking output gap to unemployment.
-
-Two forms available:
-- Simple change form: ΔU = β × output_gap + ε
-- Gap-to-gap with persistence: U_gap = τ₂ × U_gap_{-1} + τ₁ × Y_gap + ε
-"""
+"""Okun's Law equations linking output gap to unemployment."""
 
 from typing import Any
 
@@ -15,33 +10,20 @@ from src.models.nairu.base import set_model_coefficients
 
 
 def okun_equation(
-    inputs: dict[str, np.ndarray],
+    obs: dict[str, np.ndarray],
     model: pm.Model,
-    nairu: pm.Distribution,
-    potential_output: pm.Distribution,
+    latents: dict[str, Any],
     constant: dict[str, Any] | None = None,
-) -> None:
+) -> str:
     """Okun's Law (simple change form).
 
-    Model: ΔU = β × output_gap + ε
-
-    Where:
-        - ΔU is the observed quarterly change in unemployment rate (pp)
-        - output_gap = (log_gdp - potential_output)
-        - β is negative: when Y > Y* (positive gap), unemployment falls
-
-    Args:
-        inputs: Must contain:
-            - "log_gdp": Log of real GDP
-            - "ΔU": Change in unemployment rate
-        model: PyMC model context
-        nairu: NAIRU latent variable (not directly used, keeps interface consistent)
-        potential_output: Potential output latent variable
-        constant: Optional fixed values for coefficients
-
+    Model: dU = beta x output_gap + e
     """
     if constant is None:
         constant = {}
+
+    nairu = latents["nairu"]
+    potential_output = latents["potential_output"]
 
     with model:
         settings = {
@@ -50,53 +32,33 @@ def okun_equation(
         }
         mc = set_model_coefficients(model, settings, constant)
 
-        # Output gap: (Y - Y*) in log terms
-        output_gap = inputs["log_gdp"] - potential_output
+        output_gap = obs["log_gdp"] - potential_output
 
-        # Okun's Law: ΔU = β × output_gap
         pm.Normal(
             "okun_law",
             mu=mc["beta_okun"] * output_gap,
             sigma=mc["epsilon_okun"],
-            observed=inputs["ΔU"],
+            observed=obs["ΔU"],
         )
+
+    return "dU = beta x output_gap + e"
 
 
 def okun_gap_equation(
-    inputs: dict[str, np.ndarray],
+    obs: dict[str, np.ndarray],
     model: pm.Model,
-    nairu: pm.Distribution,
-    potential_output: pm.Distribution,
+    latents: dict[str, Any],
     constant: dict[str, Any] | None = None,
-) -> None:
+) -> str:
     """Okun's Law (gap-to-gap with persistence).
 
-    Model: U_gap = τ₂ × U_gap_{-1} + τ₁ × Y_gap + ε
-
-    Where:
-        - U_gap = U - NAIRU (unemployment gap, pp)
-        - Y_gap = log_gdp - potential_output (output gap, log %)
-        - τ₁ < 0: positive output gap → negative unemployment gap (tight labour market)
-        - τ₂ ∈ (0,1): persistence in unemployment gap
-
-    This ties the unemployment gap level to the output gap level,
-    providing stronger identification of NAIRU than the simple ΔU form.
-
-    Implemented on observed U[t] (since U_gap involves latent NAIRU):
-        U[t] = NAIRU[t] + τ₂ × (U[t-1] - NAIRU[t-1]) + τ₁ × Y_gap[t] + ε
-
-    Args:
-        inputs: Must contain:
-            - "log_gdp": Log of real GDP
-            - "U": Unemployment rate
-        model: PyMC model context
-        nairu: NAIRU latent variable
-        potential_output: Potential output latent variable
-        constant: Optional fixed values for coefficients
-
+    Model: U_gap = tau2 x U_gap_{-1} + tau1 x Y_gap + e
     """
     if constant is None:
         constant = {}
+
+    nairu = latents["nairu"]
+    potential_output = latents["potential_output"]
 
     with model:
         settings = {
@@ -106,22 +68,19 @@ def okun_gap_equation(
         }
         mc = set_model_coefficients(model, settings, constant)
 
-        # Output gap: (Y - Y*) in log terms
-        output_gap = inputs["log_gdp"] - potential_output
-
-        # Lagged NAIRU (pad first value)
+        output_gap = obs["log_gdp"] - potential_output
         nairu_lag1 = pt.concatenate([[nairu[0]], nairu[:-1]])
 
-        # Lagged unemployment gap: U[t-1] - NAIRU[t-1]
-        U_lag1 = np.concatenate([[inputs["U"][0]], inputs["U"][:-1]])
+        U_lag1 = np.concatenate([[obs["U"][0]], obs["U"][:-1]])
         u_gap_lag1 = U_lag1 - nairu_lag1
 
-        # Predicted U[t] = NAIRU[t] + τ₂ × u_gap[t-1] + τ₁ × y_gap[t]
         predicted_U = nairu + mc["tau2_okun"] * u_gap_lag1 + mc["tau1_okun"] * output_gap
 
         pm.Normal(
             "okun",
             mu=predicted_U,
             sigma=mc["epsilon_okun"],
-            observed=inputs["U"],
+            observed=obs["U"],
         )
+
+    return "U_gap = tau2 x U_gap_{-1} + tau1 x Y_gap + e"

@@ -66,7 +66,7 @@ from src.data import (
 )
 from src.data.expectations_model import get_model_expectations
 from src.data.expectations_rba import get_rba_expectations
-from src.models.nairu.equations import REGIME_COVID_START, REGIME_GFC_START
+from src.models.nairu.config import REGIME_COVID_START, REGIME_GFC_START
 
 # --- Constants ---
 

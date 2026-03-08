@@ -7,32 +7,18 @@ import pandas as pd
 from statsmodels.stats.diagnostic import acorr_ljungbox
 
 
-def _place_model_name(model_name: str, kwargs: dict) -> dict:
-    """Place model_name in first available footer/header slot."""
-    for slot in ["rfooter", "rheader", "lheader"]:
-        if slot not in kwargs:
-            return {slot: model_name}
-    return {}
-
-
 def residual_autocorrelation_analysis(
     ppc: az.InferenceData,
     obs_vars: dict[str, np.ndarray],
     obs_index: pd.Index,
+    *,
     var_labels: dict[str, str] | None = None,
     max_lags: int = 20,
-    model_name: str = "Model",
+    rfooter: str = "",
+    show: bool = False,
     skip_autocorr_warning: list[str] | None = None,
-    **kwargs,
 ) -> None:
-    """Analyze residual autocorrelation for model validation.
-
-    Args:
-        skip_autocorr_warning: Variable names to exclude from autocorrelation warnings.
-            Useful for variables using overlapping differences (e.g., Δ4 terms) where
-            autocorrelation is mechanical rather than a model deficiency.
-
-    """
+    """Analyze residual autocorrelation for model validation."""
     if var_labels is None:
         var_labels = {k: k for k in obs_vars}
 
@@ -59,27 +45,24 @@ def residual_autocorrelation_analysis(
         status = "OK" if p_value > 0.05 else "AUTOCORRELATED"
 
         label = var_labels.get(var_name, var_name)
-        defaults = {
-            "title": f"Residuals - {label}",
-            "ylabel": "Residual",
-            "lfooter": f"Ljung-Box test (lag 10): p={p_value:.4f} ({status})",
-            "y0": True,
-            **_place_model_name(model_name, kwargs),
-        }
-        for key in list(defaults.keys()):
-            if key in kwargs:
-                defaults.pop(key)
-
-        mg.finalise_plot(ax, **defaults, **kwargs)
+        mg.finalise_plot(
+            ax,
+            title=f"Residuals - {label}",
+            ylabel="Residual",
+            lfooter=f"Ljung-Box test (lag 10): p={p_value:.4f} ({status})",
+            rfooter=rfooter,
+            y0=True,
+            show=show,
+        )
 
         # ACF plot
         n = len(residuals)
         acf_vals = np.correlate(
             residuals - residuals.mean(), residuals - residuals.mean(), mode="full"
         )
-        acf_vals = acf_vals[n - 1 :] / acf_vals[n - 1]
+        acf_vals = acf_vals[n - 1:] / acf_vals[n - 1]
         acf_series = pd.Series(
-            acf_vals[: max_lags + 1], index=range(max_lags + 1), name="ACF"
+            acf_vals[:max_lags + 1], index=range(max_lags + 1), name="ACF"
         )
 
         conf_bound = 1.96 / np.sqrt(n)
@@ -94,21 +77,18 @@ def residual_autocorrelation_analysis(
         ax = mg.fill_between_plot(conf_band, color="red", alpha=0.1, label="95% CI")
         mg.line_plot(acf_series, ax=ax, color="steelblue", width=1.5)
 
-        acf_defaults = {
-            "title": f"Autocorrelation Function - {label}",
-            "ylabel": "ACF",
-            "xlabel": "Lag",
-            "lfooter": "Red band: 95% confidence bounds for white noise.",
-            "y0": True,
-            **_place_model_name(model_name, kwargs),
-        }
-        for key in list(acf_defaults.keys()):
-            if key in kwargs:
-                acf_defaults.pop(key)
+        mg.finalise_plot(
+            ax,
+            title=f"Autocorrelation Function - {label}",
+            ylabel="ACF",
+            xlabel="Lag",
+            lfooter="Red band: 95% confidence bounds for white noise.",
+            rfooter=rfooter,
+            y0=True,
+            show=show,
+        )
 
-        mg.finalise_plot(ax, **acf_defaults, **kwargs)
-
-    # Only print warnings for autocorrelated residuals (skip specified variables)
+    # Warnings for autocorrelated residuals
     skip_set = set(skip_autocorr_warning or [])
     for var_name, observed_data in obs_vars.items():
         if var_name in skip_set:

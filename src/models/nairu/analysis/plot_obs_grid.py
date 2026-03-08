@@ -11,18 +11,11 @@ import pandas as pd
 def plot_obs_grid(
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
+    *,
     title: str = "Model Input Variables",
     show: bool = False,
 ) -> None:
-    """Plot all observation variables in a grid for quick visual inspection.
-
-    Args:
-        obs: Dictionary of observation variable names to numpy arrays
-        obs_index: PeriodIndex for the time series
-        title: Title for the combined figure (used as suptitle and filename)
-        show: Whether to display the plot interactively
-
-    """
+    """Plot all observation variables in a grid for quick visual inspection."""
     n_vars = len(obs)
     n_cols = 4
     n_rows = math.ceil(n_vars / n_cols)
@@ -35,16 +28,13 @@ def plot_obs_grid(
         ax = axes[i]
         series = pd.Series(values, index=obs_index, name=name)
         mg.line_plot(series, ax=ax, width=1, max_ticks=5)
-        # Set title and y0 directly (avoid calling finalise_plot per subplot)
         ax.set_title(name, fontsize=10)
         ax.axhline(y=0, color="grey", linewidth=0.5, linestyle="-")
         last_used = i
 
-    # Hide unused subplots
     for j in range(last_used + 1, len(axes)):
         axes[j].set_visible(False)
 
-    # Finalise once at the end
     mg.finalise_plot(
         axes[last_used],
         suptitle=title,

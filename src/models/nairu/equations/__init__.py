@@ -1,58 +1,28 @@
-"""Reusable equation building blocks for Bayesian state-space models.
+"""Equation building blocks for the NAIRU + Output Gap model.
 
-Each equation function takes:
-- inputs: Dict of observed data arrays
-- model: PyMC model context
-- constant: Optional dict of fixed parameter values
+Each equation function follows a standard API:
 
-And adds distributions to the model, returning key latent variables.
+    def equation_name(
+        obs: dict[str, np.ndarray],
+        model: pm.Model,
+        latents: dict[str, Any],
+        constant: dict[str, Any] | None = None,
+    ) -> str:
+        '''One-line description.'''
+        ...
+        return "Model: mathematical specification"
+
+- obs: Observed data arrays (from build_observations)
+- model: PyMC model context (equations add distributions to it)
+- latents: Dict of latent variables built so far. State equations
+  (NAIRU, potential) ADD their latent to this dict. Observation
+  equations READ from it.
+- constant: Optional fixed values for coefficients
+- Returns: Self-describing model string for reporting
+
+State equations return a string AND populate latents:
+    latents["nairu"] = ...
+    latents["potential_output"] = ...
+
+Observation equations return a string only.
 """
-
-import pandas as pd
-
-# Regime boundary periods (Phillips curve slope regimes)
-REGIME_GFC_START = pd.Period("2008Q4")  # Start of post-GFC (flat) regime - Lehman Sep 2008
-REGIME_COVID_START = pd.Period("2021Q1")  # Start of post-COVID (steep) regime
-
-from src.models.nairu.equations.employment import employment_equation
-from src.models.nairu.equations.exchange_rate import exchange_rate_equation
-from src.models.nairu.equations.import_price import import_price_equation
-from src.models.nairu.equations.is_curve import is_equation
-from src.models.nairu.equations.net_exports import net_exports_equation
-from src.models.nairu.equations.okun import okun_equation, okun_gap_equation
-from src.models.nairu.equations.participation import participation_equation
-from src.models.nairu.equations.phillips import (
-    hourly_coe_equation,
-    hourly_coe_regime_equation,
-    price_inflation_equation,
-    price_inflation_regime_equation,
-    wage_growth_equation,
-    wage_growth_regime_equation,
-)
-from src.models.nairu.equations.production import potential_output_equation, potential_output_skewnormal_equation
-from src.models.nairu.equations.state_space import nairu_equation, nairu_student_t_equation
-
-__all__ = [
-    # Regime constants
-    "REGIME_GFC_START",
-    "REGIME_COVID_START",
-    # Equations
-    "employment_equation",
-    "exchange_rate_equation",
-    "hourly_coe_equation",
-    "hourly_coe_regime_equation",
-    "import_price_equation",
-    "is_equation",
-    "nairu_equation",
-    "nairu_student_t_equation",
-    "net_exports_equation",
-    "okun_equation",
-    "okun_gap_equation",
-    "participation_equation",
-    "potential_output_equation",
-    "potential_output_skewnormal_equation",
-    "price_inflation_equation",
-    "price_inflation_regime_equation",
-    "wage_growth_equation",
-    "wage_growth_regime_equation",
-]

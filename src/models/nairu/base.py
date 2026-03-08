@@ -23,12 +23,12 @@ class SamplerConfig:
 
     """
 
-    draws: int = 100_000
-    tune: int = 5_000
-    chains: int = 6
-    cores: int = 6
+    draws: int = 10_000
+    tune: int = 3_500
+    chains: int = 5
+    cores: int = 5
     sampler: str = "numpyro"
-    target_accept: float = 0.95
+    target_accept: float = 0.90
     random_seed: int = 42
 
 
@@ -72,35 +72,25 @@ def set_model_coefficients(
 
     For each coefficient in settings:
     - If the coefficient name is in `constant`, use that fixed value
-    - Otherwise, create a Normal prior with the specified mu and sigma
+    - Otherwise, create a prior based on the settings:
+      - sigma only (no mu): HalfNormal
+      - lower or upper specified: TruncatedNormal
+      - otherwise: Normal
 
     Fixed constants are accumulated on model._fixed_constants for later retrieval.
 
     Args:
         model: PyMC model context
-        settings: Dict of {coef_name: {"mu": float, "sigma": float}}
+        settings: Dict of {coef_name: {"mu": float, "sigma": float, ...}}
         constant: Dict of {coef_name: fixed_value} for parameters to fix
 
     Returns:
         Dict of {coef_name: pm.Distribution or fixed value}
 
-    Example:
-        settings = {
-            "beta": {"mu": 0.5, "sigma": 0.1},
-            "gamma": {"mu": -0.3, "sigma": 0.2},
-        }
-        constant = {"beta": 0.5}  # Fix beta at 0.5
-
-        mc = set_model_coefficients(model, settings, constant)
-        # mc["beta"] = 0.5 (fixed)
-        # mc["gamma"] = pm.Normal("gamma", mu=-0.3, sigma=0.2)
-        # model._fixed_constants = {"beta": 0.5}
-
     """
     if constant is None:
         constant = {}
 
-    # Initialize fixed constants storage on model if needed
     if not hasattr(model, "_fixed_constants"):
         model._fixed_constants = {}
 
@@ -112,10 +102,8 @@ def set_model_coefficients(
                 coefficients[name] = constant[name]
                 model._fixed_constants[name] = constant[name]
             elif "sigma" in params and "mu" not in params:
-                # HalfNormal for scale parameters (sigma only, no mu)
                 coefficients[name] = pm.HalfNormal(name, sigma=params["sigma"])
             elif "lower" in params or "upper" in params:
-                # TruncatedNormal when bounds are specified
                 coefficients[name] = pm.TruncatedNormal(
                     name,
                     mu=params.get("mu", 0),
@@ -134,37 +122,15 @@ def set_model_coefficients(
 
 
 def get_fixed_constants(model: pm.Model) -> dict[str, Any]:
-    """Get all fixed constants from a model.
-
-    Args:
-        model: PyMC model with fixed constants
-
-    Returns:
-        Dict of {param_name: fixed_value}
-
-    """
+    """Get all fixed constants from a model."""
     return getattr(model, "_fixed_constants", {})
 
 
 def save_trace(trace: az.InferenceData, path: str | Path) -> None:
-    """Save trace to NetCDF file.
-
-    Args:
-        trace: ArviZ InferenceData to save
-        path: Output file path (.nc extension recommended)
-
-    """
+    """Save trace to NetCDF file."""
     trace.to_netcdf(str(path))
 
 
 def load_trace(path: str | Path) -> az.InferenceData:
-    """Load trace from NetCDF file.
-
-    Args:
-        path: Path to NetCDF file
-
-    Returns:
-        ArviZ InferenceData
-
-    """
+    """Load trace from NetCDF file."""
     return az.from_netcdf(str(path))

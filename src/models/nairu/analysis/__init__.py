@@ -1,108 +1,59 @@
-"""Post-sampling analysis utilities for PyMC models.
+"""Analysis and plotting modules for NAIRU + Output Gap model."""
 
-Includes:
-- Diagnostics: MCMC convergence checks
-- Extraction: Get variables from traces
-- Plotting: Posterior visualization
-- Decomposition: Inflation demand/supply attribution
-"""
-
-from src.models.nairu.analysis.diagnostics import check_for_zero_coeffs, check_model_diagnostics
-from src.models.nairu.analysis.extraction import (
-    get_scalar_var,
-    get_scalar_var_names,
-    get_vector_var,
-    is_scalar_var,
-)
-from src.models.nairu.analysis.inflation_decomposition import (
+from src.models.nairu.analysis.decompose_hcoe_inflation import decompose_hcoe_inflation
+from src.models.nairu.analysis.decompose_inflation import decompose_inflation
+from src.models.nairu.analysis.decompose_wage_inflation import decompose_wage_inflation
+from src.models.nairu.analysis.decomposition_types import (
     HCOEInflationDecomposition,
     InflationDecomposition,
     WageInflationDecomposition,
-    decompose_hcoe_inflation,
-    decompose_inflation,
-    decompose_wage_inflation,
-    get_policy_diagnosis,
-    inflation_policy_summary,
-    plot_demand_contribution,
-    plot_hcoe_decomposition,
-    plot_hcoe_drivers,
-    plot_hcoe_drivers_unscaled,
-    plot_inflation_decomposition,
-    plot_inflation_drivers,
-    plot_inflation_drivers_proportional,
-    plot_supply_contribution,
-    plot_wage_decomposition,
-    plot_wage_drivers,
-    plot_wage_drivers_unscaled,
 )
+from src.models.nairu.analysis.plot_decomposition import plot_decomposition
 from src.models.nairu.analysis.plot_equations import plot_equations
-from src.models.nairu.analysis.observations_plot import plot_obs_grid
-from src.models.nairu.analysis.plot_capital_deepening import plot_capital_deepening
-from src.models.nairu.analysis.plot_nairu_output import (
-    plot_gdp_vs_potential,
-    plot_output_gap,
-    plot_potential_growth,
-    plot_r_star_input_vs_output,
-)
-from src.models.nairu.analysis.plot_nairu_rates import (
-    plot_equilibrium_rates,
-    plot_taylor_rule,
-    plot_taylor_rule_comparison,
-)
-from src.models.nairu.analysis.plot_nairu_unemployment import plot_nairu, plot_unemployment_gap
-from src.models.nairu.analysis.plot_phillips_curves import (
-    plot_phillips_curve_slope,
-    plot_phillips_curves,
-)
-from src.models.nairu.analysis.plot_posterior_timeseries import plot_posterior_timeseries
+from src.models.nairu.analysis.plot_equilibrium_rates import plot_equilibrium_rates
+from src.models.nairu.analysis.plot_gdp_vs_potential import plot_gdp_vs_potential
+from src.models.nairu.analysis.plot_nairu import plot_nairu
+from src.models.nairu.analysis.plot_nairu_comparison import plot_nairu_comparison
+from src.models.nairu.analysis.plot_obs_grid import plot_obs_grid
+from src.models.nairu.analysis.plot_output_gap import plot_output_gap
+from src.models.nairu.analysis.plot_output_gap_comparison import plot_output_gap_comparison
+from src.models.nairu.analysis.plot_phillips_curves import plot_phillips_curves
+from src.models.nairu.analysis.plot_phillips_slope import plot_phillips_slope
 from src.models.nairu.analysis.plot_posteriors_bar import plot_posteriors_bar
 from src.models.nairu.analysis.plot_posteriors_kde import plot_posteriors_kde
-from src.models.nairu.analysis.posterior_predictive_checks import posterior_predictive_checks
+from src.models.nairu.analysis.plot_potential_growth import plot_potential_growth
+from src.models.nairu.analysis.plot_potential_growth_comparison import plot_potential_growth_comparison
+from src.models.nairu.analysis.plot_potential_growth_smoothing import plot_potential_growth_smoothing
+from src.models.nairu.analysis.plot_taylor_rule import plot_taylor_rule
+from src.models.nairu.analysis.plot_unemployment_gap import plot_unemployment_gap
+from src.models.nairu.analysis.posterior_predictive import posterior_predictive_checks
 from src.models.nairu.analysis.residual_autocorrelation import residual_autocorrelation_analysis
 
 __all__ = [
-    "HCOEInflationDecomposition",
-    "InflationDecomposition",
-    "WageInflationDecomposition",
-    "check_for_zero_coeffs",
-    "check_model_diagnostics",
     "decompose_hcoe_inflation",
     "decompose_inflation",
     "decompose_wage_inflation",
-    "get_policy_diagnosis",
-    "get_scalar_var",
-    "get_scalar_var_names",
-    "get_vector_var",
-    "inflation_policy_summary",
-    "is_scalar_var",
-    "plot_capital_deepening",
+    "HCOEInflationDecomposition",
+    "InflationDecomposition",
+    "WageInflationDecomposition",
+    "plot_decomposition",
     "plot_equations",
-    "plot_demand_contribution",
     "plot_equilibrium_rates",
     "plot_gdp_vs_potential",
-    "plot_hcoe_decomposition",
-    "plot_hcoe_drivers",
-    "plot_hcoe_drivers_unscaled",
-    "plot_inflation_decomposition",
-    "plot_inflation_drivers",
-    "plot_inflation_drivers_proportional",
     "plot_nairu",
+    "plot_nairu_comparison",
     "plot_obs_grid",
     "plot_output_gap",
-    "plot_phillips_curve_slope",
+    "plot_output_gap_comparison",
     "plot_phillips_curves",
-    "plot_posterior_timeseries",
+    "plot_phillips_slope",
     "plot_posteriors_bar",
     "plot_posteriors_kde",
     "plot_potential_growth",
-    "plot_r_star_input_vs_output",
-    "plot_supply_contribution",
+    "plot_potential_growth_comparison",
+    "plot_potential_growth_smoothing",
     "plot_taylor_rule",
-    "plot_taylor_rule_comparison",
     "plot_unemployment_gap",
-    "plot_wage_decomposition",
-    "plot_wage_drivers",
-    "plot_wage_drivers_unscaled",
     "posterior_predictive_checks",
     "residual_autocorrelation_analysis",
 ]
