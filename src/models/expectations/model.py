@@ -91,7 +91,7 @@ if __name__ == "__main__":
 
     all_results = load_all_results()
 
-    for model_type, results in all_results.items():
+    for results in all_results.values():
         run_diagnostics(results)
 
     if not args.no_plots:

@@ -10,11 +10,14 @@ Run with: uv run python -m src.models.expectations.stage1
 """
 
 import pickle
+from pathlib import Path  # noqa: TC003 — used in annotations
+from typing import TypedDict
 
 import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pytensor.tensor as pt
 
 from src.data.bonds import get_breakeven_inflation, get_nominal_10y
 from src.data.capital import get_capital_growth_qrtly
@@ -39,7 +42,27 @@ from src.utilities.rate_conversion import annualize
 
 # --- Model Configurations ---
 
-MODEL_CONFIGS = {
+
+class ModelConfigDict(TypedDict, total=False):
+    """Configuration options for expectation model variants."""
+
+    survey_series: list[str]
+    use_anchor: bool
+    use_headline: bool
+    use_nominal: bool
+    nominal_cutoff: str
+    use_hcoe: bool
+    use_inflation: bool
+    use_survey_bias: bool
+    inflation_sigma_prior: float
+    tie_inflation_sigma: bool
+    estimate_innovation: bool
+    sigma_early: float
+    sigma_late: float
+    fixed_real_rate: float
+
+
+MODEL_CONFIGS: dict[str, ModelConfigDict] = {
     "target": {
         "survey_series": ["market_1y", "breakeven", "business", "market_yoy"],
         "use_anchor": True,
@@ -146,10 +169,12 @@ def load_data(
 # --- Observation Equations ---
 
 
-def _add_survey_obs(pi_exp, measures: pd.DataFrame, inflation_lag: np.ndarray, **kwargs) -> None:
+def _add_survey_obs(
+    pi_exp: pt.TensorVariable, measures: pd.DataFrame, inflation_lag: np.ndarray, config: ModelConfigDict,
+) -> None:
     """Add survey/market expectation observations."""
-    survey_series = kwargs.get("survey_series", [])
-    use_bias = kwargs.get("use_survey_bias", False)
+    survey_series = config.get("survey_series", [])
+    use_bias = config.get("use_survey_bias", False)
 
     n_series = len(survey_series)
     if n_series == 0:
@@ -164,63 +189,65 @@ def _add_survey_obs(pi_exp, measures: pd.DataFrame, inflation_lag: np.ndarray, *
     for i, col in enumerate(survey_series):
         if col not in measures.columns:
             continue
-        obs_data = measures[col].values
+        obs_data = measures[col].to_numpy()
         mask = ~np.isnan(obs_data)
         if mask.sum() > 0:
             mu = pi_exp[mask] + alpha[i] + lambda_bias[i] * inflation_lag[mask] if use_bias else pi_exp[mask]
             pm.Normal(f"obs_{col}", mu=mu, sigma=sigma_obs[i], observed=obs_data[mask])
 
 
-def _add_inflation_obs(pi_exp, inflation_mask: np.ndarray, inflation_lagged: np.ndarray, **kwargs) -> None:
+def _add_inflation_obs(
+    pi_exp: pt.TensorVariable, inflation_mask: np.ndarray, inflation_lagged: np.ndarray, config: ModelConfigDict,
+) -> None:
     """Add actual inflation observation."""
-    if not kwargs.get("use_inflation", False):
+    if not config.get("use_inflation", False):
         return
 
-    if kwargs.get("tie_inflation_sigma", False):
+    if config.get("tie_inflation_sigma", False):
         # Use sigma_obs[0] from survey - must be called after _add_survey_obs
         sigma = pm.modelcontext(None)["sigma_obs"][0]
     else:
-        sigma = pm.HalfNormal("sigma_inflation", sigma=kwargs.get("inflation_sigma_prior", 1.5))
+        sigma = pm.HalfNormal("sigma_inflation", sigma=config.get("inflation_sigma_prior", 1.5))
 
     pm.Normal("obs_inflation", mu=pi_exp[inflation_mask], sigma=sigma, observed=inflation_lagged[inflation_mask])
 
 
-def _add_headline_obs(pi_exp, index: pd.PeriodIndex, **kwargs) -> None:
+def _add_headline_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: ModelConfigDict) -> None:
     """Add pre-1993 headline CPI observation."""
-    if not kwargs.get("use_headline", False):
+    if not config.get("use_headline", False):
         return
 
     headline = get_headline_annual().data.reindex(index).shift(1)
     pre_targeting = index < pd.Period("1993Q1")
-    mask = ~np.isnan(headline.values) & pre_targeting
+    mask = ~np.isnan(headline.to_numpy()) & pre_targeting
 
     if mask.sum() > 0:
         sigma = pm.HalfNormal("sigma_headline", sigma=2.0)
-        pm.Normal("obs_headline", mu=pi_exp[mask], sigma=sigma, observed=headline.values[mask])
+        pm.Normal("obs_headline", mu=pi_exp[mask], sigma=sigma, observed=headline.to_numpy()[mask])
 
 
-def _add_nominal_obs(pi_exp, index: pd.PeriodIndex, **kwargs) -> None:
+def _add_nominal_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: ModelConfigDict) -> None:
     """Add nominal bond observation for pre-breakeven period."""
-    if not kwargs.get("use_nominal", False):
+    if not config.get("use_nominal", False):
         return
 
     nominal = get_nominal_10y().data.reindex(index)
-    cutoff = kwargs.get("nominal_cutoff", "1988Q3")  # 2yr overlap with breakeven (starts 1986Q3)
+    cutoff = config.get("nominal_cutoff", "1988Q3")  # 2yr overlap with breakeven (starts 1986Q3)
     pre_breakeven = index < pd.Period(cutoff)
-    mask = ~np.isnan(nominal.values) & pre_breakeven
+    mask = ~np.isnan(nominal.to_numpy()) & pre_breakeven
 
     if mask.sum() > 0:
-        fixed_rate = kwargs.get("fixed_real_rate")
+        fixed_rate = config.get("fixed_real_rate")
         real_rate = fixed_rate if fixed_rate is not None else pm.Normal("real_rate", mu=5.0, sigma=1.5)
         sigma = pm.HalfNormal("sigma_nominal", sigma=2.0)
         pi_masked = pi_exp[mask]
         mu = pi_masked + real_rate + (pi_masked * real_rate / 100)
-        pm.Normal("obs_nominal", mu=mu, sigma=sigma, observed=nominal.values[mask])
+        pm.Normal("obs_nominal", mu=mu, sigma=sigma, observed=nominal.to_numpy()[mask])
 
 
-def _add_hcoe_obs(pi_exp, index: pd.PeriodIndex, **kwargs) -> None:
+def _add_hcoe_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: ModelConfigDict) -> None:
     """Add hourly compensation observation."""
-    if not kwargs.get("use_hcoe", False):
+    if not config.get("use_hcoe", False):
         return
 
     hcoe = get_hourly_coe_growth_annual().data.reindex(index)
@@ -230,18 +257,18 @@ def _add_hcoe_obs(pi_exp, index: pd.PeriodIndex, **kwargs) -> None:
     hours_q = get_hours_growth_qrtly().data
     mfp_trend_q = compute_mfp_trend_floored(ulc_q, hcoe_q, capital_q, hours_q, alpha=0.3).data
     mfp = annualize(mfp_trend_q).reindex(index)
-    mask = ~np.isnan(hcoe.values) & ~np.isnan(mfp.values)
+    mask = ~np.isnan(hcoe.to_numpy()) & ~np.isnan(mfp.to_numpy())
 
     if mask.sum() > 0:
         adjustment = pm.Normal("hcoe_adjustment", mu=0.0, sigma=0.5)
         sigma = pm.HalfNormal("sigma_hcoe", sigma=2.0)
-        pm.Normal("obs_hcoe", mu=pi_exp[mask] + mfp.values[mask] + adjustment, sigma=sigma,
-                  observed=hcoe.values[mask])
+        pm.Normal("obs_hcoe", mu=pi_exp[mask] + mfp.to_numpy()[mask] + adjustment, sigma=sigma,
+                  observed=hcoe.to_numpy()[mask])
 
 
-def _add_target_anchor(pi_exp, index: pd.PeriodIndex, **kwargs) -> None:
+def _add_target_anchor(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: ModelConfigDict) -> None:
     """Add target anchor observation post-1998."""
-    if not kwargs.get("use_anchor", False):
+    if not config.get("use_anchor", False):
         return
 
     post_anchored = index >= pd.Period("1998Q4")
@@ -253,11 +280,13 @@ def _add_target_anchor(pi_exp, index: pd.PeriodIndex, **kwargs) -> None:
 # --- Model Building ---
 
 
-def _build_pymc_model(measures: pd.DataFrame, inflation: pd.Series, index: pd.PeriodIndex, **kwargs) -> pm.Model:
+def _build_pymc_model(
+    measures: pd.DataFrame, inflation: pd.Series, index: pd.PeriodIndex, config: ModelConfigDict,
+) -> pm.Model:
     """Build the PyMC model with the given configuration."""
     # Prepare data
-    inflation_lag = inflation.shift(1).bfill().values
-    inflation_lagged = inflation.shift(1).values
+    inflation_lag = inflation.shift(1).bfill().to_numpy()
+    inflation_lagged = inflation.shift(1).to_numpy()
     inflation_mask = ~np.isnan(inflation_lagged)
 
     # Regime break for innovation variance
@@ -268,9 +297,9 @@ def _build_pymc_model(measures: pd.DataFrame, inflation: pd.Series, index: pd.Pe
     init_inflation = inflation.iloc[0] if not np.isnan(inflation.iloc[0]) else 5.0
 
     # Innovation variance config
-    estimate_innovation = kwargs.get("estimate_innovation", False)
-    sigma_early = kwargs.get("sigma_early", 0.12)
-    sigma_late = kwargs.get("sigma_late", 0.075)
+    estimate_innovation = config.get("estimate_innovation", False)
+    sigma_early = config.get("sigma_early", 0.12)
+    sigma_late = config.get("sigma_late", 0.075)
 
     with pm.Model() as model:
         # --- State Equation ---
@@ -294,12 +323,12 @@ def _build_pymc_model(measures: pd.DataFrame, inflation: pd.Series, index: pd.Pe
         pi_exp = pm.Deterministic("pi_exp", pm.math.concatenate([pi_exp_early, pi_exp_late]))
 
         # --- Observation Equations ---
-        _add_survey_obs(pi_exp, measures, inflation_lag, **kwargs)
-        _add_inflation_obs(pi_exp, inflation_mask, inflation_lagged, **kwargs)
-        _add_headline_obs(pi_exp, index, **kwargs)
-        _add_nominal_obs(pi_exp, index, **kwargs)
-        _add_hcoe_obs(pi_exp, index, **kwargs)
-        _add_target_anchor(pi_exp, index, **kwargs)
+        _add_survey_obs(pi_exp, measures, inflation_lag, config)
+        _add_inflation_obs(pi_exp, inflation_mask, inflation_lagged, config)
+        _add_headline_obs(pi_exp, index, config)
+        _add_nominal_obs(pi_exp, index, config)
+        _add_hcoe_obs(pi_exp, index, config)
+        _add_target_anchor(pi_exp, index, config)
 
     return model
 
@@ -317,7 +346,7 @@ def build_model(
         case _:
             raise ValueError(f"Unknown model type: {model_type}")
 
-    return _build_pymc_model(measures, inflation, index, **config)
+    return _build_pymc_model(measures, inflation, index, config)
 
 
 # --- Estimation ---
@@ -388,11 +417,12 @@ def save_results(
         "index": index,
         "model_type": model_type,
     }
-    with open(output_dir / f"expectations_{model_type}_metadata.pkl", "wb") as f:
+    meta_path = output_dir / f"expectations_{model_type}_metadata.pkl"
+    with meta_path.open("wb") as f:
         pickle.dump(metadata, f)
 
     # Save HDI for quick access
-    samples = trace.posterior["pi_exp"].values
+    samples = trace.posterior["pi_exp"].to_numpy()
     n_chains, n_draws, n_time = samples.shape
     flat = samples.reshape(n_chains * n_draws, n_time).T
     post = pd.DataFrame(flat, index=index)

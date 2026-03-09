@@ -20,12 +20,13 @@ def get_pie_rbaq() -> pd.Series:
 
 
 def compare_to_rba(
-    results: "ExpectationsResults",
+    results: ExpectationsResults,
 ) -> pd.DataFrame:
     """Compare model output to RBA PIE_RBAQ series.
 
     Returns:
         DataFrame with model median, RBA series, and difference
+
     """
     pie_rbaq = get_pie_rbaq()
     model_median = results.expectations_median()
@@ -45,11 +46,12 @@ def compare_to_rba(
     return comparison
 
 
-def validation_statistics(results: "ExpectationsResults") -> dict[str, float]:
+def validation_statistics(results: ExpectationsResults) -> dict[str, float]:
     """Compute validation statistics comparing model to RBA series.
 
     Returns:
         Dict with RMSE, MAE, correlation, and mean bias
+
     """
     comparison = compare_to_rba(results)
 
@@ -64,7 +66,7 @@ def validation_statistics(results: "ExpectationsResults") -> dict[str, float]:
     }
 
 
-def print_validation_summary(results: "ExpectationsResults") -> None:
+def print_validation_summary(results: ExpectationsResults) -> None:
     """Print validation summary comparing model to RBA series."""
     stats = validation_statistics(results)
 
@@ -76,21 +78,23 @@ def print_validation_summary(results: "ExpectationsResults") -> None:
     print(f"Mean bias:    {stats['mean_bias']:+.3f} pp")
 
     # Interpret results
-    if stats["correlation"] > 0.9:
+    strong_threshold = 0.9
+    moderate_threshold = 0.7
+    if stats["correlation"] > strong_threshold:
         print("\nStrong alignment with RBA series.")
-    elif stats["correlation"] > 0.7:
+    elif stats["correlation"] > moderate_threshold:
         print("\nModerate alignment with RBA series.")
     else:
         print("\nWeak alignment - review model specification.")
 
 
 def plot_validation(
-    results: "ExpectationsResults",
+    results: ExpectationsResults,
     start: pd.Period | None = None,
     title: str = "Inflation Expectations: Model vs RBA",
     lfooter: str = "Cusbert (2017) signal extraction",
     rfooter: str | None = None,
-    **kwargs: Any,
+    **kwargs: Any,  # noqa: ANN401 — pass-through to mg.finalise_plot
 ) -> Axes | None:
     """Plot model estimates against RBA PIE_RBAQ series.
 
@@ -104,8 +108,9 @@ def plot_validation(
 
     Returns:
         Axes if finalise=False, None otherwise
+
     """
-    from src.models.common.timeseries import plot_posterior_timeseries
+    from src.models.common.timeseries import plot_posterior_timeseries  # noqa: PLC0415 — avoid circular import
 
     pie_rbaq = get_pie_rbaq()
     data = results.expectations_posterior()

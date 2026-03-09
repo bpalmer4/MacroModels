@@ -33,9 +33,9 @@ from src.data import (
     get_capital_stock_qrtly,
     get_hourly_coe_growth_qrtly,
     get_hours_worked_qrtly,
-    get_trimmed_mean_annual,
     get_labour_force_growth_qrtly,
     get_mfp_growth,
+    get_trimmed_mean_annual,
     get_ulc_growth_qrtly,
 )
 from src.data.gdp import get_gdp
@@ -421,7 +421,8 @@ def phillips_curve_crosscheck(
     common.attrs["corr_deviation"] = common["Output Gap"].corr(common["Inflation Deviation"])
 
     # Slope
-    if len(common) > 2:
+    min_points_for_fit = 2
+    if len(common) > min_points_for_fit:
         z = np.polyfit(common["Output Gap"], common["Inflation Deviation"], 1)
         common.attrs["slope"] = z[0]
     else:
@@ -563,7 +564,7 @@ def plot_raw_data(result: DecompositionResult, show: bool = True) -> None:
     """Plot the raw input data series."""
     data = result.data.aligned
 
-    fig, axes = plt.subplots(3, 1, figsize=(9.0, 9.0))
+    _fig, axes = plt.subplots(3, 1, figsize=(9.0, 9.0))
 
     # GDP
     gdp_data = pd.DataFrame({"GDP": data["GDP"].dropna()})
@@ -605,7 +606,7 @@ def plot_mfp_trend(result: DecompositionResult, show: bool = True) -> None:
     """Plot MFP: raw vs trend (2 panels)."""
     mfp = result.mfp[["MFP Raw", "MFP Trend"]].dropna()
 
-    fig, axes = plt.subplots(2, 1, figsize=(9.0, 9.0))
+    _fig, axes = plt.subplots(2, 1, figsize=(9.0, 9.0))
 
     # Panel 1: Full sample - quarterly
     panel1_data = pd.DataFrame({
@@ -664,7 +665,7 @@ def plot_potential_gdp(result: DecompositionResult, show: bool = True) -> None:
     pot = result.potential
     anchor_points = pot.attrs.get("anchor_points", [])
 
-    fig, axes = plt.subplots(3, 1, figsize=(9.0, 9.0))
+    _fig, axes = plt.subplots(3, 1, figsize=(9.0, 9.0))
 
     # Panel 1: GDP levels
     gdp_levels = pd.DataFrame({
@@ -776,7 +777,8 @@ def plot_growth_decomposition(result: DecompositionResult, show: bool = True) ->
 
     # Group by year and sum
     annual_sum = annual.groupby(annual.index.year).sum()
-    annual_sum = annual_sum.loc[annual_sum.index >= 1986]  # Full years only
+    series_start_year = 1986  # first full year of data
+    annual_sum = annual_sum.loc[annual_sum.index >= series_start_year]  # Full years only
     annual_sum = annual_sum.loc[annual_sum.index <= annual_sum.index[-1] - 1]  # Drop incomplete
 
     # Convert to annual PeriodIndex for mgplot
@@ -841,14 +843,14 @@ def plot_sensitivity(result: DecompositionResult, show: bool = True) -> None:
     )
 
 
-def plot_phillips_crosscheck(result: DecompositionResult, show: bool = True) -> None:
+def plot_phillips_crosscheck(result: DecompositionResult, show: bool = True) -> None:  # noqa: PLR0915 — multi-panel plot
     """Plot Phillips curve cross-check (4 panels)."""
     if result.phillips is None:
         return
 
     common = result.phillips
 
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    _fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
     # 1. Time series: Output gap and inflation (twin axes)
     ax = axes[0, 0]
@@ -1000,15 +1002,16 @@ def plot_labour_growth(result: DecompositionResult, show: bool = True) -> None:
         legend={"loc": "best", "fontsize": "small"},
         lfooter="Australia. Hours actually worked in all jobs.",
         rfooter="ABS 5206, 6202",
-        rheader=f"Plot constrained to -5% to +10%; COVID volatility ranged from {covid_min:.0f}% to +{covid_max:.0f}%.",
+        rheader=(f"Plot constrained to -5% to +10%; COVID volatility ranged"
+                 f" from {covid_min:.0f}% to +{covid_max:.0f}%."),
         show=show,
     )
 
 
 def plot_labour_force_growth(show: bool = True) -> None:
     """Plot labour force growth (through-the-year with HP and HMA trends)."""
-    from src.data import get_labour_force_qrtly
-    from src.data.henderson import hma
+    from src.data import get_labour_force_qrtly  # noqa: PLC0415 — optional plot dependency
+    from src.data.henderson import hma  # noqa: PLC0415
 
     # Get labour force levels and compute through-the-year growth
     lf = get_labour_force_qrtly().data.dropna()
@@ -1046,7 +1049,7 @@ def plot_labour_force_growth(show: bool = True) -> None:
 
 def plot_labour_force_growth_quarterly(show: bool = True) -> None:
     """Plot labour force Q/Q growth as used in NAIRU model."""
-    from src.data.henderson import hma
+    from src.data.henderson import hma  # noqa: PLC0415 — optional plot dependency
 
     # Q/Q growth (what the NAIRU model uses)
     lf_qq = get_labour_force_growth_qrtly().data.dropna()
@@ -1153,7 +1156,7 @@ def plot_hours_vs_labour_force(result: DecompositionResult, show: bool = True) -
     g_hours_trend, _ = apply_hp_filter(g_hours)
 
     # Employment growth (employed persons, not labour force)
-    from src.data import get_employment_growth_qrtly
+    from src.data import get_employment_growth_qrtly  # noqa: PLC0415 — optional plot dependency
     emp_growth = get_employment_growth_qrtly().data
     emp_growth_trend, _ = apply_hp_filter(emp_growth.dropna())
 
@@ -1167,7 +1170,6 @@ def plot_hours_vs_labour_force(result: DecompositionResult, show: bool = True) -
 
     # Annualize and align
     hours_annual = annualize(g_hours_trend.loc[common_idx])
-    emp_annual = annualize(emp_growth_trend.loc[common_idx])
     lf_annual = annualize(lf_growth_trend.loc[common_idx])
     avg_hours_annual = annualize(g_avg_hours_trend)
 
@@ -1378,7 +1380,7 @@ def print_summary(result: DecompositionResult, verbose: bool = False) -> None:
         reanchor_log = result.potential.attrs.get("reanchor_log", [])
         anchor_points = result.potential.attrs.get("anchor_points", [])
         if anchor_points:
-            print(f"\nPotential GDP Anchor Points: {['Start'] + anchor_points}")
+            print(f"\nPotential GDP Anchor Points: {['Start', *anchor_points]}")
             if reanchor_log:
                 print("  Re-anchoring adjustments (gap before reset):")
                 for period, gap in reanchor_log:
@@ -1401,7 +1403,8 @@ def print_summary(result: DecompositionResult, verbose: bool = False) -> None:
             print("  α     (Q mean)      (Q mean)       (2015+)")
             print("-" * 55)
             for _, row in result.sensitivity.iterrows():
-                print(f" {row['alpha']:.2f}    {row['mfp_raw_mean']:.3f}%        {row['mfp_trend_mean']:.3f}%        {row['mfp_recent']:.3f}%")
+                print(f" {row['alpha']:.2f}    {row['mfp_raw_mean']:.3f}%"
+                      f"        {row['mfp_trend_mean']:.3f}%        {row['mfp_recent']:.3f}%")
 
         # Phillips curve
         if result.phillips is not None:
@@ -1410,9 +1413,11 @@ def print_summary(result: DecompositionResult, verbose: bool = False) -> None:
             print("\nPhillips Curve Cross-Check:")
             print(f"  Correlation (gap vs inflation deviation): {corr:.3f}")
             print(f"  Slope (gap → inflation deviation):        {slope:.3f}")
-            if corr > 0.3:
+            positive_threshold = 0.3
+            negative_threshold = -0.1
+            if corr > positive_threshold:
                 print("  ✓ Positive relationship suggests some validity")
-            elif corr < -0.1:
+            elif corr < negative_threshold:
                 print("  ✗ Negative relationship - gap may be poorly identified")
             else:
                 print("  ~ Weak relationship - gap may not capture demand pressure well")

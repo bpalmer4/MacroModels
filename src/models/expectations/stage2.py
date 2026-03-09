@@ -10,7 +10,7 @@ Run with: uv run python -m src.models.expectations.stage2
 
 import pickle
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path  # noqa: TC003 — used in annotations
 
 import arviz as az
 import mgplot as mg
@@ -21,7 +21,6 @@ from src.data.rba_loader import get_inflation_expectations
 from src.models.common.diagnostics import check_model_diagnostics
 from src.models.common.timeseries import plot_posterior_timeseries
 from src.models.expectations.common import CHART_DIR, MODEL_NAMES, MODEL_TYPES, OUTPUT_DIR
-
 
 # --- Results Container ---
 
@@ -38,7 +37,7 @@ class ExpectationsResults:
 
     def expectations_posterior(self) -> pd.DataFrame:
         """Get full posterior samples."""
-        samples = self.trace.posterior["pi_exp"].values
+        samples = self.trace.posterior["pi_exp"].to_numpy()
         n_chains, n_draws, n_time = samples.shape
         flat = samples.reshape(n_chains * n_draws, n_time).T
         return pd.DataFrame(flat, index=self.index)
@@ -69,8 +68,9 @@ def load_results(model_type: str, output_dir: Path | None = None) -> Expectation
     trace = az.from_netcdf(output_dir / f"expectations_{model_type}_trace.nc")
 
     # Load metadata
-    with open(output_dir / f"expectations_{model_type}_metadata.pkl", "rb") as f:
-        metadata = pickle.load(f)
+    meta_path = output_dir / f"expectations_{model_type}_metadata.pkl"
+    with meta_path.open("rb") as f:
+        metadata = pickle.load(f)  # noqa: S301 — loading our own model outputs
 
     return ExpectationsResults(
         trace=trace,
@@ -106,21 +106,21 @@ def run_diagnostics(results: ExpectationsResults, verbose: bool = True) -> None:
 
         # Parameter estimates
         trace_vars = list(results.trace.posterior.data_vars)
-        summary_vars = []
-        for var in ["alpha", "lambda_bias", "sigma_obs", "sigma_inflation", "sigma_headline",
-                    "sigma_early", "sigma_late"]:
-            if var in trace_vars:
-                summary_vars.append(var)
+        summary_vars = [
+            var for var in ["alpha", "lambda_bias", "sigma_obs", "sigma_inflation", "sigma_headline",
+                            "sigma_early", "sigma_late"]
+            if var in trace_vars
+        ]
 
         if summary_vars:
-            print(f"\nParameter Estimates:")
+            print("\nParameter Estimates:")
             print(az.summary(results.trace, var_names=summary_vars))
         else:
-            print(f"\nNo sampled parameters (all fixed).")
+            print("\nNo sampled parameters (all fixed).")
 
         # Latest values
         hdi = results.expectations_hdi()
-        print(f"\nLatest Expectations (90% HDI):")
+        print("\nLatest Expectations (90% HDI):")
         print(hdi.tail(4))
 
 
@@ -279,7 +279,7 @@ if __name__ == "__main__":
     all_results = load_all_results()
 
     # Run diagnostics
-    for model_type, results in all_results.items():
+    for results in all_results.values():
         run_diagnostics(results)
 
     # Generate plots
