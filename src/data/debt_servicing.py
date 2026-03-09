@@ -9,15 +9,14 @@ Also loads RBA E13 data for mortgage buffers (excess payments) where available.
 
 import pandas as pd
 import readabs as ra
+from readabs import metacol as mc
 
 from src.data.dataseries import DataSeries
 
 # --- Constants ---
 
-# ABS 5206.0 Household Income Account series IDs (Seasonally Adjusted)
-INTEREST_DWELLINGS_ID = "A2302926A"  # Property income payable - Interest - Dwellings
-INTEREST_CONSUMER_ID = "A2302927C"  # Property income payable - Interest - Consumer debt
-GROSS_DISP_INCOME_ID = "A2302939L"  # Gross Disposable Income
+CAT = "5206.0"
+TABLE = "5206020_Household_Income"
 
 # RBA E13 series for buffers (only available from 2009Q1)
 E13_URL = "https://www.rba.gov.au/statistics/tables/xls/e13hist.xlsx"
@@ -27,17 +26,27 @@ EXCESS_PAYMENTS_ID = "LPHTEXRI"  # Excess payments / Household disposable income
 # --- Private Helpers ---
 
 
-def _load_household_income_data() -> pd.DataFrame:
+def _load_household_income_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load ABS 5206.0 Household Income Account table.
 
     Returns:
-        DataFrame with household income account series
+        Tuple of (data DataFrame, metadata DataFrame)
 
     """
-    dictionary, _meta = ra.read_abs_cat(
-        "5206.0", single_excel_only="5206020_Household_Income", verbose=False
+    dictionary, meta = ra.read_abs_cat(
+        CAT, single_excel_only=TABLE, verbose=False
     )
-    return dictionary["5206020_Household_Income"]
+    return dictionary[TABLE], meta
+
+
+def _find_series(meta: pd.DataFrame, data: pd.DataFrame, did: str) -> pd.Series:
+    """Find a series by description in the household income table."""
+    selector = {
+        did: mc.did,
+        "Seasonally Adjusted": mc.stype,
+    }
+    table, series_id, _units = ra.find_abs_id(meta, selector)
+    return data[series_id]
 
 
 def _load_rba_e13() -> pd.DataFrame:
@@ -65,11 +74,11 @@ def get_dsr_qrtly() -> DataSeries:
         DataSeries with quarterly DSR (%, seasonally adjusted)
 
     """
-    data = _load_household_income_data()
+    data, meta = _load_household_income_data()
 
-    interest_dwellings = data[INTEREST_DWELLINGS_ID]
-    interest_consumer = data[INTEREST_CONSUMER_ID]
-    gdi = data[GROSS_DISP_INCOME_ID]
+    interest_dwellings = _find_series(meta, data, "Interest - Dwellings")
+    interest_consumer = _find_series(meta, data, "Interest - Consumer debt")
+    gdi = _find_series(meta, data, "GROSS DISPOSABLE INCOME")
 
     # Total household interest payments
     total_interest = interest_dwellings + interest_consumer
@@ -82,8 +91,8 @@ def get_dsr_qrtly() -> DataSeries:
         source="ABS",
         units="%",
         description="Debt Servicing Ratio (Interest Payments / Disposable Income)",
-        cat="5206.0",
-        table="5206020_Household_Income",
+        cat=CAT,
+        table=TABLE,
         stype="Seasonally Adjusted",
     )
 

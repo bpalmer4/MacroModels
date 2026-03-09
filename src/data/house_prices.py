@@ -29,6 +29,7 @@ References:
 import numpy as np
 import pandas as pd
 import readabs as ra
+from readabs import metacol as mc
 from scipy import interpolate
 
 from src.data.dataseries import DataSeries
@@ -39,15 +40,9 @@ from src.data.dataseries import DataSeries
 WEALTH_CAT = "5232.0"
 WEALTH_TABLE = "5232035"
 
-# Series IDs from household balance sheet
-RESIDENTIAL_LAND_DWELLINGS_ID = "A83728305F"  # Residential land and dwellings (combined)
-DWELLINGS_ONLY_ID = "A83722686L"  # Dwellings (structures only)
-LAND_ONLY_ID = "A83722664X"  # Land (non-produced assets)
-
 # ABS 5204.0 National Accounts - Capital Stock (annual, back to 1960)
 CAPITAL_CAT = "5204.0"
-CAPITAL_TABLE = "5204056"
-DWELLING_CAPITAL_STOCK_ID = "A2422529T"  # Dwellings; End-year net capital stock
+CAPITAL_TABLE = "5204056_Capital_Stock_By_AssetType"
 
 # Ratio trend: Total housing wealth / Dwelling structures
 # Observed: 2.08 (1988) → 3.60 (2024), ~0.042/year growth
@@ -59,17 +54,17 @@ RATIO_ANNUAL_GROWTH = 0.042
 # --- Private Helpers ---
 
 
-def _load_household_balance_sheet() -> pd.DataFrame:
+def _load_household_balance_sheet() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load ABS 5232.0 Household Balance Sheet table.
 
     Returns:
-        DataFrame with household asset series
+        Tuple of (data DataFrame, metadata DataFrame)
 
     """
-    dictionary, _meta = ra.read_abs_cat(
+    dictionary, meta = ra.read_abs_cat(
         WEALTH_CAT, single_excel_only=WEALTH_TABLE, verbose=False
     )
-    return dictionary[WEALTH_TABLE]
+    return dictionary[WEALTH_TABLE], meta
 
 
 def _load_dwelling_capital_stock() -> pd.Series:
@@ -79,13 +74,16 @@ def _load_dwelling_capital_stock() -> pd.Series:
         Series with annual dwelling net capital stock ($ millions)
 
     """
-    dictionary, _meta = ra.read_abs_cat(
+    data, meta = ra.read_abs_cat(
         CAPITAL_CAT, single_excel_only=CAPITAL_TABLE, verbose=False
     )
-    dwelling_stock = dictionary[f"{CAPITAL_TABLE}_Capital_Stock_By_AssetType"][
-        DWELLING_CAPITAL_STOCK_ID
-    ]
-    return dwelling_stock
+    selector = {
+        "Dwellings": mc.did,
+        "End-year net capital stock": mc.did,
+        "Current prices": mc.did,
+    }
+    table, series_id, _units = ra.find_abs_id(meta, selector)
+    return data[table][series_id]
 
 
 def _interpolate_annual_to_quarterly(annual: pd.Series) -> pd.Series:
@@ -175,8 +173,13 @@ def get_housing_wealth_qrtly(include_backcast: bool = True) -> DataSeries:
         DataSeries with quarterly housing wealth ($ millions)
 
     """
-    data = _load_household_balance_sheet()
-    housing_wealth = data[RESIDENTIAL_LAND_DWELLINGS_ID]
+    data, meta = _load_household_balance_sheet()
+    selector = {
+        "Residential land and dwellings": mc.did,
+        "Original": mc.stype,
+    }
+    _table, series_id, _units = ra.find_abs_id(meta, selector)
+    housing_wealth = data[series_id]
 
     # Convert to quarterly PeriodIndex if needed
     if isinstance(housing_wealth.index, pd.DatetimeIndex):
@@ -201,7 +204,6 @@ def get_housing_wealth_qrtly(include_backcast: bool = True) -> DataSeries:
         description=description,
         cat=WEALTH_CAT,
         table=WEALTH_TABLE,
-        series_id=RESIDENTIAL_LAND_DWELLINGS_ID,
     )
 
 

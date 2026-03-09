@@ -22,6 +22,7 @@ Bayesian state-space model for jointly estimating NAIRU, potential output, and o
 nairu/
 ├── config.py                 # ModelConfig dataclass — single source of truth
 ├── base.py                   # SamplerConfig, coefficient utilities
+├── observations.py           # Observation matrix assembly (data → numpy arrays)
 ├── estimate.py               # Build model, sample posterior, save results
 ├── results.py                # Result loading and management
 ├── run.py                    # Model run entry point

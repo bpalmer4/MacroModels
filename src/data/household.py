@@ -4,14 +4,18 @@ Provides household saving ratio from ABS National Accounts (5206.0).
 """
 
 import readabs as ra
+from readabs import metacol as mc
 
 from src.data.dataseries import DataSeries
+
+CAT = "5206.0"
+TABLE = "5206001_Key_Aggregates"
 
 
 def get_saving_ratio_qrtly() -> DataSeries:
     """Get household saving ratio (SA).
 
-    From ABS 5206.0 Key Aggregates (series A2323382F).
+    From ABS 5206.0 Key Aggregates.
     Saving ratio = household saving / household disposable income.
 
     Higher values indicate households are saving more (less consumption).
@@ -21,21 +25,22 @@ def get_saving_ratio_qrtly() -> DataSeries:
         DataSeries with quarterly household saving ratio (proportion)
 
     """
-    cat = "5206.0"
-    data_dict, _meta = ra.read_abs_cat(cat, single_excel_only="1", verbose=False)
-
-    table = "5206001_Key_Aggregates"
-    series_id = "A2323382F"
-    series = data_dict[table][series_id]
+    data, meta = ra.read_abs_cat(CAT, single_excel_only=TABLE, verbose=False)
+    selector = {
+        "Household saving ratio": mc.did,
+        "Seasonally Adjusted": mc.stype,
+    }
+    table, series_id, units = ra.find_abs_id(meta, selector)
+    series = data[table][series_id]
+    description = meta[meta[mc.id] == series_id][mc.did].iloc[0]
 
     return DataSeries(
         data=series,
         source="ABS",
-        units="proportion",
-        description="Household saving ratio",
-        series_id=series_id,
+        units=units,
+        description=description,
         table=table,
-        cat=cat,
+        cat=CAT,
         stype="Seasonally Adjusted",
     )
 
@@ -58,6 +63,5 @@ def get_saving_ratio_change_qrtly() -> DataSeries:
         source="ABS",
         units="pp change",
         description="Change in household saving ratio",
-        series_id=f"{saving_ratio.series_id}_change",
-        cat="5206.0",
+        cat=CAT,
     )

@@ -178,7 +178,7 @@ def compute_mfp_trend_hma(
         data=mfp_smoothed,
         source="Derived",
         units="% per quarter",
-        description=f"MFP trend growth (HMA {hma_term}, floored at zero, α={alpha_desc})",
+        description=f"MFP trend growth (HMA {hma_term}, α={alpha_desc})",
         cat="Derived from ABS 5206.0",
     )
 

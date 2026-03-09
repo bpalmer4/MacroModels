@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
-from src.data.observations import ANCHOR_LABELS, AnchorMode, build_observations
+from src.models.nairu.observations import ANCHOR_LABELS, AnchorMode, build_observations
 from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
 from src.models.nairu.config import ModelConfig
 from src.models.nairu.equations.employment import employment_equation

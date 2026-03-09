@@ -3,7 +3,7 @@
 import mgplot as mg
 import pandas as pd
 
-from src.data.observations import PHASE_END
+from src.models.nairu.observations import PHASE_END
 from src.models.common.timeseries import plot_posterior_timeseries
 
 START = pd.Period("1985Q1", freq="Q")

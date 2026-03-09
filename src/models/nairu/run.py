@@ -9,7 +9,7 @@ Usage:
 import argparse
 from pathlib import Path
 
-from src.data.observations import AnchorMode
+from src.models.nairu.observations import AnchorMode
 from src.models.nairu.config import PRESETS, ModelConfig
 
 

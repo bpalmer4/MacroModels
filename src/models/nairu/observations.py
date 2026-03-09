@@ -71,6 +71,7 @@ from src.models.nairu.config import REGIME_COVID_START, REGIME_GFC_START
 # --- Constants ---
 
 HMA_TERM = 13  # Henderson MA smoothing term
+_NAME_WIDTH = 18  # Column width for variable names in loading output
 
 
 # --- Anchor Mode Helpers ---
@@ -188,105 +189,113 @@ def build_observations(
 
     """
     # --- Load data from library ---
+    print("Loading observation series:")
+
+    def _load(var_name, ds):
+        """Extract data from DataSeries, printing variable name and description."""
+        print(f"  {var_name:<{_NAME_WIDTH}s}{ds.description or '(no description)'}")
+        return ds.data
 
     # Unemployment
-    U = get_unemployment_rate_qrtly().data
-    U_1 = get_unemployment_rate_lagged_qrtly().data
-    ΔU = get_unemployment_change_qrtly().data
-    ΔU_1_over_U = get_unemployment_speed_limit_qrtly().data
+    U = _load("U", get_unemployment_rate_qrtly())
+    U_1 = _load("U_1", get_unemployment_rate_lagged_qrtly())
+    ΔU = _load("ΔU", get_unemployment_change_qrtly())
+    ΔU_1_over_U = _load("ΔU_1_over_U", get_unemployment_speed_limit_qrtly())
 
     # Participation rate
-    Δpr = get_participation_rate_change_qrtly().data
+    Δpr = _load("Δpr", get_participation_rate_change_qrtly())
 
     # GDP
-    log_gdp = get_log_gdp().data
+    log_gdp = _load("log_gdp", get_log_gdp())
 
     # Production inputs (with model-specific smoothing)
     capital_growth = _prepare_capital_growth()
+    print(f"  {'capital_growth':<{_NAME_WIDTH}s}Capital stock growth (quarterly)")
     lf_growth = _prepare_labour_force_growth()
+    print(f"  {'lf_growth':<{_NAME_WIDTH}s}Labour force growth (quarterly, COVID-smoothed)")
     hours_growth = _prepare_hours_growth()
+    print(f"  {'hours_growth':<{_NAME_WIDTH}s}Hours worked growth (quarterly, COVID-smoothed)")
 
     # Capital share from national accounts (time-varying)
-    alpha = get_capital_share().data
+    alpha = _load("alpha", get_capital_share())
 
     # Inflation
-    π = get_trimmed_mean_qrtly().data
-    π4 = get_trimmed_mean_annual().data
+    π = _load("π", get_trimmed_mean_qrtly())
+    π4 = _load("π4", get_trimmed_mean_annual())
 
     # Inflation expectations
     if anchor_mode == "rba":
-        # Use RBA PIE_RBAQ with target phase-in
-        π_exp = get_rba_expectations().data
+        π_exp = _load("π_exp", get_rba_expectations())
     else:
-        # Use model expectations (with optional target phase-in)
-        π_exp_raw = get_model_expectations().data
+        π_exp_raw = _load("π_exp", get_model_expectations())
         π_exp = apply_anchor_mode(π_exp_raw, anchor_mode)
 
     # Interest rates
-    cash_rate = get_cash_rate_qrtly().data
+    cash_rate = _load("cash_rate", get_cash_rate_qrtly())
 
     # Unit labour costs
-    Δulc = get_ulc_growth_qrtly().data
-    Δulc_1 = get_ulc_growth_lagged_qrtly().data
+    Δulc = _load("Δulc", get_ulc_growth_qrtly())
+    Δulc_1 = _load("Δulc_1", get_ulc_growth_lagged_qrtly())
 
-    # Hourly compensation of employees (COE/hours - cleaner wage signal)
-    Δhcoe = get_hourly_coe_growth_qrtly().data
-    Δhcoe_1 = get_hourly_coe_growth_lagged_qrtly().data
+    # Hourly compensation of employees
+    Δhcoe = _load("Δhcoe", get_hourly_coe_growth_qrtly())
+    Δhcoe_1 = _load("Δhcoe_1", get_hourly_coe_growth_lagged_qrtly())
 
-    # Derive MFP from wage data, HMA(101) smoothed (no floor, no HP end-point bias)
-    mfp_growth = compute_mfp_trend_hma(
+    # Derive MFP from wage data, HMA(101) smoothed
+    mfp_growth = _load("mfp_growth", compute_mfp_trend_hma(
         ulc_growth=Δulc,
         hcoe_growth=Δhcoe,
         capital_growth=capital_growth,
         hours_growth=hours_growth,
         alpha=alpha,
-    ).data
+    ))
 
-    # Domestic final demand deflator (demand channel for wages)
-    Δ4dfd = get_dfd_deflator_growth_annual().data
+    # Domestic final demand deflator
+    Δ4dfd = _load("Δ4dfd", get_dfd_deflator_growth_annual())
 
     # Import prices
-    Δ4ρm = get_import_price_growth_annual().data
-    Δ4ρm_1 = get_import_price_growth_lagged_annual().data
+    Δ4ρm = _load("Δ4ρm", get_import_price_growth_annual())
+    Δ4ρm_1 = _load("Δ4ρm_1", get_import_price_growth_lagged_annual())
 
-    # GSCPI (COVID supply chain pressure, masked and lagged)
-    ξ_2 = get_gscpi_covid_lagged_qrtly().data
+    # GSCPI
+    ξ_2 = _load("ξ_2", get_gscpi_covid_lagged_qrtly())
 
-    # TWI (Trade-Weighted Index)
-    Δtwi = get_twi_change_qrtly().data
-    Δtwi_1 = get_twi_change_lagged_qrtly().data
-    Δ4twi_1 = get_twi_change_lagged_annual().data
+    # TWI
+    Δtwi = _load("Δtwi", get_twi_change_qrtly())
+    Δtwi_1 = _load("Δtwi_1", get_twi_change_lagged_qrtly())
+    Δ4twi_1 = _load("Δ4twi_1", get_twi_change_lagged_annual())
 
     # Oil prices (AUD)
-    Δ4oil_1 = get_oil_change_lagged_annual().data
+    Δ4oil_1 = _load("Δ4oil_1", get_oil_change_lagged_annual())
 
-    # Fiscal impulse (lagged)
-    fiscal_impulse_1 = get_fiscal_impulse_lagged_qrtly().data
+    # Fiscal impulse
+    fiscal_impulse_1 = _load("fiscal_impulse_1", get_fiscal_impulse_lagged_qrtly())
 
-    # Debt servicing ratio change (lagged, for IS curve credit channel)
-    Δdsr_1 = get_dsr_change_lagged_qrtly().data
+    # Debt servicing ratio change
+    Δdsr_1 = _load("Δdsr_1", get_dsr_change_lagged_qrtly())
 
-    # Housing wealth growth (lagged, for IS curve wealth channel)
-    Δhw_1 = get_housing_wealth_growth_lagged_qrtly().data
+    # Housing wealth growth
+    Δhw_1 = _load("Δhw_1", get_housing_wealth_growth_lagged_qrtly())
 
-    # Employment growth (for employment equation)
-    emp_growth = get_employment_growth_qrtly().data
-    emp_growth_1 = get_employment_growth_lagged_qrtly().data
+    # Employment growth
+    emp_growth = _load("emp_growth", get_employment_growth_qrtly())
+    emp_growth_1 = _load("emp_growth_1", get_employment_growth_lagged_qrtly())
 
-    # Real wage gap: ULC growth minus MFP growth
-    real_wage_gap = get_real_wage_gap(Δulc, mfp_growth).data
+    # Real wage gap
+    real_wage_gap = _load("real_wage_gap", get_real_wage_gap(Δulc, mfp_growth))
 
-    # Net exports ratio change (for net exports equation)
-    Δnx_ratio = get_net_exports_ratio_change_qrtly().data
+    # Net exports ratio change
+    Δnx_ratio = _load("Δnx_ratio", get_net_exports_ratio_change_qrtly())
 
     # Compute r*
-    r_star = compute_r_star(
-        capital_growth, lf_growth, mfp_growth, alpha, hma_term
-    ).data
+    r_star = _load("r_star", compute_r_star(
+        capital_growth, lf_growth, mfp_growth, alpha, hma_term,
+    ))
 
-    # Real rate gap (for exchange rate equation)
+    # Real rate gap
     r_gap = cash_rate - π_exp - r_star
     r_gap_1 = r_gap.shift(1)
+    print(f"  {'r_gap_1':<{_NAME_WIDTH}s}Lagged real rate gap (cash_rate - π_exp - r*)")
 
     # Check expectations end date vs GDP
     gdp_end = log_gdp.last_valid_index()
