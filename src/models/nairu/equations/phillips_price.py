@@ -4,6 +4,7 @@ from typing import Any
 
 import numpy as np
 import pymc as pm
+import pytensor.tensor as pt
 
 from src.models.nairu.base import set_model_coefficients
 from src.utilities.rate_conversion import quarterly
@@ -11,9 +12,9 @@ from src.utilities.rate_conversion import quarterly
 
 def _price_phillips_likelihood(
     obs: dict[str, np.ndarray],
-    nairu: Any,
+    nairu: pt.TensorVariable,
     mc: dict[str, Any],
-    gamma_effective: Any,
+    gamma_effective: pt.TensorVariable,
 ) -> None:
     """Shared likelihood for price Phillips curve."""
     u_gap = (obs["U"] - nairu) / obs["U"]

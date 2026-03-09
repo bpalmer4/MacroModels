@@ -6,11 +6,9 @@ Provides quarterly bond yields and derived breakeven inflation:
 - Breakeven inflation = nominal - indexed (1986+)
 """
 
-import pandas as pd
 
 from src.data.dataseries import DataSeries
 from src.data.rba_loader import get_bond_yield_10y, get_indexed_bond_yield
-
 
 # --- Public API ---
 

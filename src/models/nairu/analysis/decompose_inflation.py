@@ -1,5 +1,6 @@
 """Price inflation decomposition into demand and supply components."""
 
+import arviz as az
 import numpy as np
 import pandas as pd
 
@@ -9,7 +10,11 @@ from src.models.nairu.analysis.decomposition_types import InflationDecomposition
 from src.utilities.rate_conversion import quarterly
 
 
-def decompose_inflation(trace, obs, obs_index):
+def decompose_inflation(
+    trace: az.InferenceData,
+    obs: dict[str, np.ndarray],
+    obs_index: pd.PeriodIndex,
+) -> InflationDecomposition:
     """Decompose price inflation into demand and supply components."""
     gamma_pi = get_regime_gamma(trace, obs_index, "gamma_pi")
     rho_pi = get_scalar_var("rho_pi", trace).median() if "rho_pi" in trace.posterior else 0.0

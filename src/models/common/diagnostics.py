@@ -150,7 +150,8 @@ def check_for_zero_coeffs(
     for param in df.index:
         if param in problem_intensity:
             stars = problem_intensity[param]
-            if (stars > 0 if param in critical_params else stars > 2):
+            non_critical_threshold = 2  # non-critical params only warn at 3+ stars
+            if (stars > 0 if param in critical_params else stars > non_critical_threshold):
                 print(
                     f"*** WARNING: Parameter '{param}' may be indistinguishable from zero "
                     f"({stars} stars). Check model specification! ***"

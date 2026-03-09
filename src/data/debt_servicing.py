@@ -45,7 +45,7 @@ def _find_series(meta: pd.DataFrame, data: pd.DataFrame, did: str) -> pd.Series:
         did: mc.did,
         "Seasonally Adjusted": mc.stype,
     }
-    table, series_id, _units = ra.find_abs_id(meta, selector)
+    _table, series_id, _units = ra.find_abs_id(meta, selector)
     return data[series_id]
 
 

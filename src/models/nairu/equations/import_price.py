@@ -11,7 +11,7 @@ from src.models.nairu.base import set_model_coefficients
 def import_price_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    latents: dict[str, Any],
+    latents: dict[str, Any],  # noqa: ARG001 — common equation interface
     constant: dict[str, Any] | None = None,
 ) -> str:
     """Import price pass-through from TWI and oil prices.

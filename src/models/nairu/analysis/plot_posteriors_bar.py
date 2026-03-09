@@ -20,15 +20,10 @@ def _auto_scale(samples: pd.Series, median: float) -> tuple[pd.Series, int]:
     return samples / scale, max(int(scale), 1)
 
 
-def plot_posteriors_bar(
-    trace: az.InferenceData,
-    *,
-    rfooter: str = "",
-    show: bool = False,
-) -> None:
-    """Plot horizontal bar chart of coefficient posteriors."""
-    scalar_vars = get_scalar_var_names(trace)
-
+def _check_significance(
+    scalar_vars: list[str], trace: az.InferenceData,
+) -> tuple[dict[str, pd.Series], dict[str, str], bool, bool]:
+    """Compute scaled posteriors and check if all coefficients differ from zero."""
     posteriors = {}
     labels = {}
     all_significant_99 = True
@@ -56,6 +51,21 @@ def plot_posteriors_bar(
         else:
             posteriors[var] = samples
             labels[var] = var
+
+    return posteriors, labels, all_significant_99, all_significant_95
+
+
+def plot_posteriors_bar(
+    trace: az.InferenceData,
+    *,
+    rfooter: str = "",
+    show: bool = False,
+) -> None:
+    """Plot horizontal bar chart of coefficient posteriors."""
+    scalar_vars = get_scalar_var_names(trace)
+    posteriors, labels, all_significant_99, all_significant_95 = _check_significance(
+        scalar_vars, trace,
+    )
 
     cuts = [2.5, 16]
     cmap = plt.get_cmap("Blues")

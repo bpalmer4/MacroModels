@@ -6,12 +6,13 @@ import pandas as pd
 from scipy import stats
 
 from src.models.common.extraction import get_vector_var
+from src.models.nairu.results import NAIRUResults
 
 START = pd.Period("1985Q1", freq="Q")
 
 
 def plot_potential_growth_smoothing(
-    results,
+    results: NAIRUResults,
     *,
     r_star_trend_weight: float = 0.75,
     rfooter: str = "",

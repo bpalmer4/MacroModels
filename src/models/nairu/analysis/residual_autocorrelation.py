@@ -19,6 +19,7 @@ def residual_autocorrelation_analysis(
     skip_autocorr_warning: list[str] | None = None,
 ) -> None:
     """Analyze residual autocorrelation for model validation."""
+    significance_level = 0.05
     if var_labels is None:
         var_labels = {k: k for k in obs_vars}
 
@@ -42,7 +43,7 @@ def residual_autocorrelation_analysis(
 
         lb_test = acorr_ljungbox(residuals, lags=[10], return_df=True)
         p_value = lb_test["lb_pvalue"].to_numpy()[0]
-        status = "OK" if p_value > 0.05 else "AUTOCORRELATED"
+        status = "OK" if p_value > significance_level else "AUTOCORRELATED"
 
         label = var_labels.get(var_name, var_name)
         mg.finalise_plot(
@@ -98,6 +99,6 @@ def residual_autocorrelation_analysis(
         residuals = observed_data - ppc_mean
         lb_test = acorr_ljungbox(residuals, lags=[10], return_df=True)
         p_value = lb_test["lb_pvalue"].to_numpy()[0]
-        if p_value <= 0.05:
+        if p_value <= significance_level:
             label = var_labels.get(var_name, var_name)
             print(f"*** WARNING: {label} residuals are autocorrelated (Ljung-Box p={p_value:.4f}) ***")

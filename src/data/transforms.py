@@ -105,9 +105,9 @@ def splice_series(primary: pd.Series, secondary: pd.Series) -> pd.Series:
     """
     # Check both have PeriodIndex
     if not isinstance(primary.index, pd.PeriodIndex):
-        raise ValueError("Primary series must have PeriodIndex")
+        raise TypeError("Primary series must have PeriodIndex")
     if not isinstance(secondary.index, pd.PeriodIndex):
-        raise ValueError("Secondary series must have PeriodIndex")
+        raise TypeError("Secondary series must have PeriodIndex")
 
     # Check same frequency
     if primary.index.freq != secondary.index.freq:

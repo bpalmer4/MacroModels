@@ -28,6 +28,7 @@ ANCHOR_LABELS = {
 }
 
 from src.data import (
+    DataSeries,
     compute_mfp_trend_hma,
     compute_r_star,
     get_capital_growth_qrtly,
@@ -45,14 +46,14 @@ from src.data import (
     get_housing_wealth_growth_lagged_qrtly,
     get_import_price_growth_annual,
     get_import_price_growth_lagged_annual,
-    get_trimmed_mean_annual,
-    get_trimmed_mean_qrtly,
     get_labour_force_growth_qrtly,
     get_log_gdp,
     get_net_exports_ratio_change_qrtly,
     get_oil_change_lagged_annual,
     get_participation_rate_change_qrtly,
     get_real_wage_gap,
+    get_trimmed_mean_annual,
+    get_trimmed_mean_qrtly,
     get_twi_change_lagged_annual,
     get_twi_change_lagged_qrtly,
     get_twi_change_qrtly,
@@ -92,6 +93,7 @@ def apply_anchor_mode(
 
     Returns:
         Anchored expectations series
+
     """
     if anchor_mode == "expectations":
         return expectations
@@ -157,12 +159,12 @@ def _prepare_hours_growth() -> pd.Series:
 # --- Main Function ---
 
 
-def build_observations(
+def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not genuinely complex
     start: str | None = None,
     end: str | None = None,
     hma_term: int = HMA_TERM,
     anchor_mode: AnchorMode = "rba",
-    verbose: bool = False,
+    verbose: bool = False,  # noqa: ARG001 — reserved for future use
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, str, pd.DataFrame]:
     """Build observation dictionary for model.
 
@@ -191,7 +193,7 @@ def build_observations(
     # --- Load data from library ---
     print("Loading observation series:")
 
-    def _load(var_name, ds):
+    def _load(var_name: str, ds: DataSeries) -> pd.Series:
         """Extract data from DataSeries, printing variable name and description."""
         print(f"  {var_name:<{_NAME_WIDTH}s}{ds.description or '(no description)'}")
         return ds.data

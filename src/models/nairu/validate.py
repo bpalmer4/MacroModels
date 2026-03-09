@@ -17,7 +17,6 @@ import arviz as az
 import mgplot as mg
 import numpy as np
 import pandas as pd
-import pymc as pm
 
 from src.models.common.diagnostics import check_for_zero_coeffs, check_model_diagnostics
 from src.models.common.extraction import get_scalar_var
@@ -29,6 +28,13 @@ from src.models.nairu.analysis.residual_autocorrelation import residual_autocorr
 from src.models.nairu.config import ModelConfig
 from src.models.nairu.results import DEFAULT_CHART_BASE, NAIRUResults, load_results
 
+# --- Validation thresholds ---
+
+PASS_THRESHOLD = 0.90       # probability threshold for PASS
+WEAK_THRESHOLD = 0.50       # probability threshold for WEAK (below = FAIL)
+STRONG_PASS = 0.99          # stricter threshold for sign/range tests
+NEAR_ZERO_THRESHOLD = 0.01  # absolute value below which a sample is "near zero"
+BUNCHED_THRESHOLD = 0.20    # fraction near zero that triggers BUNCHED warning
 
 # --- Theoretical Expectations ---
 
@@ -120,7 +126,8 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
                 "Median": f"{median:.3f}",
                 "90% HDI": f"[{hdi_90[0]:.3f}, {hdi_90[1]:.3f}]",
                 "P(in range)": f"{prob_in_range:.1%}",
-                "Result": "PASS" if prob_in_range > 0.90 else ("*WEAK*" if prob_in_range > 0.50 else "*FAIL*"),
+                "Result": ("PASS" if prob_in_range > PASS_THRESHOLD
+                           else ("*WEAK*" if prob_in_range > WEAK_THRESHOLD else "*FAIL*")),
             })
         elif isinstance(expected, (int, float)):
             in_hdi = hdi_90[0] <= expected <= hdi_90[1]
@@ -142,12 +149,13 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
                 "Median": f"{median:.3f}",
                 "90% HDI": f"[{hdi_90[0]:.3f}, {hdi_90[1]:.3f}]",
                 "P(0<t<1)": f"{prob_valid:.1%}",
-                "Result": "PASS" if prob_valid > 0.99 else ("*WEAK*" if prob_valid > 0.90 else "*FAIL*"),
+                "Result": ("PASS" if prob_valid > STRONG_PASS
+                           else ("*WEAK*" if prob_valid > PASS_THRESHOLD else "*FAIL*")),
             })
         elif expected == "nonzero":
             hdi_excludes_zero = (hdi_90[0] > 0) or (hdi_90[1] < 0)
-            p_near_zero = np.mean(np.abs(samples) < 0.01)
-            is_bunched = p_near_zero > 0.20
+            p_near_zero = np.mean(np.abs(samples) < NEAR_ZERO_THRESHOLD)
+            is_bunched = p_near_zero > BUNCHED_THRESHOLD
 
             if is_bunched:
                 result = "*BUNCHED*"
@@ -166,10 +174,7 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
             })
         else:
             # Sign test
-            if expected == "negative":
-                prob_correct = np.mean(samples < 0)
-            else:
-                prob_correct = np.mean(samples > 0)
+            prob_correct = np.mean(samples < 0) if expected == "negative" else np.mean(samples > 0)
 
             results.append({
                 "Parameter": param,
@@ -177,7 +182,8 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
                 "Median": f"{median:.3f}",
                 "90% HDI": f"[{hdi_90[0]:.3f}, {hdi_90[1]:.3f}]",
                 "P(sign)": f"{prob_correct:.1%}",
-                "Result": "PASS" if prob_correct > 0.99 else ("*WEAK*" if prob_correct > 0.90 else "*FAIL*"),
+                "Result": ("PASS" if prob_correct > STRONG_PASS
+                           else ("*WEAK*" if prob_correct > PASS_THRESHOLD else "*FAIL*")),
             })
 
     return pd.DataFrame(results)
@@ -248,7 +254,7 @@ def _build_obs_vars(
 # --- Critical parameters for zero-coefficient check ---
 
 
-def _build_critical_params(config: ModelConfig) -> list[str]:
+def _build_critical_params(config: ModelConfig) -> list[str]:  # noqa: PLR0912 — flat feature-flag list
     """Build critical parameter list from config (no trace sniffing)."""
     params: list[str] = []
 

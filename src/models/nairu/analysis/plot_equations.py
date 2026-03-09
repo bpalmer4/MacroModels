@@ -7,11 +7,12 @@ the actual model specification.
 
 import inspect
 import re
+from collections.abc import Callable  # noqa: TC003 — used in annotations only but kept for readability
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-import mgplot as mg
 import matplotlib.pyplot as plt
+import mgplot as mg
 
 # Regex to extract the 'Model:' line from a function's docstring
 _MODEL_LINE_RE = re.compile(r"^\s*Model:\s*(.+)$", re.MULTILINE)

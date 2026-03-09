@@ -152,6 +152,7 @@ __all__ = [
     "get_labour_productivity_growth",
     "get_mfp_growth",
     "compute_mfp_trend_floored",
+    "compute_mfp_trend_hma",
     "get_real_wage_gap",
     # Inflation
     "get_trimmed_mean_annual",

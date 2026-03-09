@@ -77,5 +77,5 @@ if __name__ == "__main__":
 
     # Show phase region
     phase_region = exp.data.loc["1992Q1":"1999Q2"]
-    print(f"\nPhase region:")
+    print("\nPhase region:")
     print(phase_region.to_string())

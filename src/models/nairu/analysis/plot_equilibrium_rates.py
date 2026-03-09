@@ -7,6 +7,7 @@ from scipy import stats
 
 from src.data.rba_loader import PI_TARGET
 from src.models.common.extraction import get_vector_var
+from src.models.nairu.results import NAIRUResults
 
 
 def _quarterly_to_monthly(data: pd.Series) -> pd.Series:
@@ -15,12 +16,11 @@ def _quarterly_to_monthly(data: pd.Series) -> pd.Series:
     full_monthly = pd.period_range(start=monthly_idx.min(), end=monthly_idx.max(), freq="M")
     result = data.copy()
     result.index = monthly_idx
-    result = result.reindex(full_monthly).interpolate(limit=2)
-    return result
+    return result.reindex(full_monthly).interpolate(limit=2)
 
 
 def plot_equilibrium_rates(
-    results,
+    results: NAIRUResults,
     *,
     cash_rate_monthly: pd.Series,
     pi_target: float = PI_TARGET,

@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
-from src.models.nairu.observations import ANCHOR_LABELS, AnchorMode, build_observations
 from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
 from src.models.nairu.config import ModelConfig
 from src.models.nairu.equations.employment import employment_equation
@@ -42,12 +41,13 @@ from src.models.nairu.equations.potential import (
     potential_output_equation,
     potential_output_skewnormal_equation,
 )
+from src.models.nairu.observations import ANCHOR_LABELS, AnchorMode, build_observations
 
 # Default output directory
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
 
 
-def build_model(obs: dict[str, np.ndarray], config: ModelConfig) -> pm.Model:
+def build_model(obs: dict[str, np.ndarray], config: ModelConfig) -> pm.Model:  # noqa: C901, PLR0912, PLR0915
     """Build the joint NAIRU + Output Gap model from a ModelConfig.
 
     Args:
@@ -181,8 +181,8 @@ def build_model(obs: dict[str, np.ndarray], config: ModelConfig) -> pm.Model:
             print(f"  {name} = {value}")
 
     # Store metadata on model
-    model._descriptions = descriptions
-    model._config = config
+    model._descriptions = descriptions  # noqa: SLF001 — our own metadata on PyMC model
+    model._config = config  # noqa: SLF001
 
     return model
 
@@ -234,7 +234,7 @@ def save_results(
 
     # Save observations, config, and metadata as pickle
     obs_path = output_dir / f"{prefix}_obs.pkl"
-    with open(obs_path, "wb") as f:
+    with obs_path.open("wb") as f:
         pickle.dump({
             "obs": obs,
             "obs_index": obs_index,

@@ -48,9 +48,10 @@ class DataSeries:
 
     def __repr__(self) -> str:
         """Concise representation showing key info."""
+        reasonable_length = 50
         desc = self.description or self.series_id or "unnamed"
-        if len(desc) > 50:
-            desc = desc[:47] + "..."
+        if len(desc) > reasonable_length:
+            desc = desc[:reasonable_length - 3] + "..."
         if len(self.data) > 0:
             start, end = self.data.index.min(), self.data.index.max()
             return f"DataSeries({desc!r}, source={self.source!r}, {start}–{end})"

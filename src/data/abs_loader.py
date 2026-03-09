@@ -113,7 +113,7 @@ def load_series(input_tuple: ReqsTuple, verbose: bool = False) -> DataSeries:
 
     """
     cat, table, did, stype, unit, seek_yr_growth, calc_growth, zip_file = input_tuple
-    stype_full = stype if stype not in STYPE_CODES else STYPE_CODES[stype]
+    stype_full = STYPE_CODES.get(stype, stype)
 
     if cat:
         data, meta = _get_table(cat, table)
@@ -187,7 +187,7 @@ def get_abs_data(wanted: ReqsDict, verbose: bool = False) -> dict[str, DataSerie
 def get_population(
     state: str = "Australia",
     project: bool = True,
-    **kwargs: Any,
+    **kwargs: Any,  # noqa: ANN401 — pass-through to readabs
 ) -> DataSeries:
     """Fetch ABS population Series for a given state.
 
@@ -231,7 +231,7 @@ def get_population(
 
 def get_abs_catalogue_data(
     cat: str,
-    **kwargs: Any,
+    **kwargs: Any,  # noqa: ANN401 — pass-through to readabs
 ) -> tuple[dict[str, DataFrame], DataFrame, str, str]:
     """Get ABS data for a specific catalogue number.
 
@@ -337,7 +337,8 @@ if __name__ == "__main__":
 
     # Test single series
     cpi_reqs = ReqsTuple(
-        "6401.0", "640106", "All groups CPI, seasonally adjusted", "S", "", True, False, ""
+        "6401.0", "640106", "All groups CPI, seasonally adjusted", "S", "",
+        seek_yr_growth=True, calc_growth=False, zip_file="",
     )
     cpi_result = load_series(cpi_reqs)
     print(f"CPI series: {cpi_result}")
@@ -347,7 +348,8 @@ if __name__ == "__main__":
     sought: ReqsDict = {
         "Monthly CPI (SA)": cpi_reqs,
         "Unemployment rate monthly (SA)": ReqsTuple(
-            "6202.0", "6202001", "Unemployment rate ;  Persons ;", "S", "", False, False, ""
+            "6202.0", "6202001", "Unemployment rate ;  Persons ;", "S", "",
+            seek_yr_growth=False, calc_growth=False, zip_file="",
         ),
     }
     dataset = get_abs_data(sought)

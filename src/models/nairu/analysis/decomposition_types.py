@@ -6,8 +6,8 @@ import pandas as pd
 
 
 @dataclass
-class InflationDecomposition:
-    """Price inflation decomposition into demand and supply components.
+class DecompositionBase:
+    """Base class for inflation decomposition results.
 
     All components are in percentage points (quarterly).
     """
@@ -15,19 +15,27 @@ class InflationDecomposition:
     observed: pd.Series
     anchor: pd.Series
     demand: pd.Series
-    supply_import: pd.Series
-    supply_gscpi: pd.Series
     residual: pd.Series
     fitted: pd.Series
     index: pd.PeriodIndex
+
+
+@dataclass
+class InflationDecomposition(DecompositionBase):
+    """Price inflation decomposition into demand and supply components."""
+
+    supply_import: pd.Series
+    supply_gscpi: pd.Series
     has_import_price: bool = True
     has_gscpi: bool = True
 
     @property
     def supply_total(self) -> pd.Series:
+        """Total supply contribution (import + GSCPI)."""
         return self.supply_import + self.supply_gscpi
 
     def to_dataframe(self) -> pd.DataFrame:
+        """Convert to DataFrame with all components."""
         return pd.DataFrame({
             "observed": self.observed, "anchor": self.anchor,
             "demand": self.demand, "supply_import": self.supply_import,
@@ -37,20 +45,15 @@ class InflationDecomposition:
 
 
 @dataclass
-class WageInflationDecomposition:
+class WageInflationDecomposition(DecompositionBase):
     """Wage inflation (ULC growth) decomposition."""
 
-    observed: pd.Series
-    anchor: pd.Series
-    demand: pd.Series
     price_passthrough: pd.Series
-    residual: pd.Series
-    fitted: pd.Series
-    index: pd.PeriodIndex
     has_price_passthrough: bool = False
     has_expectations: bool = False
 
     def to_dataframe(self) -> pd.DataFrame:
+        """Convert to DataFrame with all components."""
         return pd.DataFrame({
             "observed": self.observed, "anchor": self.anchor,
             "demand": self.demand, "price_passthrough": self.price_passthrough,
@@ -59,21 +62,16 @@ class WageInflationDecomposition:
 
 
 @dataclass
-class HCOEInflationDecomposition:
+class HCOEInflationDecomposition(DecompositionBase):
     """Hourly COE growth decomposition."""
 
-    observed: pd.Series
-    anchor: pd.Series
-    demand: pd.Series
     price_passthrough: pd.Series
     productivity: pd.Series
-    residual: pd.Series
-    fitted: pd.Series
-    index: pd.PeriodIndex
     has_price_passthrough: bool = False
     has_expectations: bool = False
 
     def to_dataframe(self) -> pd.DataFrame:
+        """Convert to DataFrame with all components."""
         return pd.DataFrame({
             "observed": self.observed, "anchor": self.anchor,
             "demand": self.demand, "price_passthrough": self.price_passthrough,

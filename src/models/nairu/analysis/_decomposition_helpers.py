@@ -1,13 +1,15 @@
 """Shared helpers for inflation decomposition plots."""
 
+import arviz as az
 import mgplot as mg
 import pandas as pd
+from matplotlib.axes import Axes
 
 from src.models.common.extraction import get_scalar_var
 from src.models.nairu.config import REGIME_COVID_START, REGIME_GFC_START
 
 
-def get_regime_gamma(trace, obs_index: pd.PeriodIndex, prefix: str) -> pd.Series:
+def get_regime_gamma(trace: az.InferenceData, obs_index: pd.PeriodIndex, prefix: str) -> pd.Series:
     """Extract regime-switching or single gamma as a time series."""
     if f"{prefix}_pre_gfc" in trace.posterior:
         gamma = pd.Series(index=obs_index, dtype=float)
@@ -63,7 +65,7 @@ def hcoe_eq_unscaled(has_phi: bool, has_exp: bool) -> str:
 
 # --- Shared plotting ---
 
-def add_equation_box(ax, equation: str, x: float = 0.5, y: float = 0.02) -> None:
+def add_equation_box(ax: Axes, equation: str, x: float = 0.5, y: float = 0.02) -> None:
     """Add a LaTeX equation in a text box to the axes."""
     ax.text(x, y, equation, transform=ax.transAxes, fontsize=9,
             va="bottom", ha="center", usetex=True,

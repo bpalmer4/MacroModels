@@ -6,6 +6,7 @@ import pandas as pd
 
 from src.models.common.extraction import get_scalar_var, get_vector_var
 from src.models.nairu.config import REGIME_COVID_START, REGIME_GFC_START
+from src.models.nairu.results import NAIRUResults
 
 _CONFIG = {
     "price": ("gamma_pi", "steelblue", "Price Phillips Curve Slope Over Time", ""),
@@ -16,7 +17,7 @@ _CONFIG = {
 
 
 def plot_phillips_slope(
-    results,
+    results: NAIRUResults,
     *,
     curve_type: str = "price",
     rfooter: str = "",

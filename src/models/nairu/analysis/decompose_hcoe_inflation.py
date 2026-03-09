@@ -1,5 +1,7 @@
 """Hourly COE growth decomposition."""
 
+import arviz as az
+import numpy as np
 import pandas as pd
 
 from src.models.common.extraction import get_scalar_var, get_vector_var
@@ -8,7 +10,12 @@ from src.models.nairu.analysis.decomposition_types import HCOEInflationDecomposi
 from src.utilities.rate_conversion import quarterly
 
 
-def decompose_hcoe_inflation(trace, obs, obs_index, wage_expectations=False):
+def decompose_hcoe_inflation(
+    trace: az.InferenceData,
+    obs: dict[str, np.ndarray],
+    obs_index: pd.PeriodIndex,
+    wage_expectations: bool = False,
+) -> HCOEInflationDecomposition:
     """Decompose hourly COE growth into demand, price, and productivity components."""
     alpha_hcoe = get_scalar_var("alpha_hcoe", trace).median()
     lambda_hcoe = get_scalar_var("lambda_hcoe", trace).median()

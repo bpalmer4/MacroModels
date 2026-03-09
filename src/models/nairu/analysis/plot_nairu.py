@@ -3,8 +3,9 @@
 import mgplot as mg
 import pandas as pd
 
-from src.models.nairu.observations import PHASE_END
 from src.models.common.timeseries import plot_posterior_timeseries
+from src.models.nairu.observations import PHASE_END
+from src.models.nairu.results import NAIRUResults
 
 START = pd.Period("1985Q1", freq="Q")
 
@@ -41,7 +42,7 @@ ANNUAL_TARGET = {
 
 
 def plot_nairu(
-    results,
+    results: NAIRUResults,
     *,
     rfooter: str = "",
     show: bool = False,
@@ -63,11 +64,11 @@ def plot_nairu(
     π4 = π4[π4.index >= START]
 
     back, front = 3, 1.5
-    for color, width, label in zip(["white", ""], [back, front], ["_", ""]):
-        U.name = "Unemployment Rate" if not label else label
-        mg.line_plot(U, ax=ax, color=color if color else "brown", width=width, zorder=4)
-        π4.name = "Inflation rate (trimmed mean, annual)" if not label else label
-        mg.line_plot(π4, ax=ax, color=color if color else "darkorange", width=width, zorder=4)
+    for color, width, label in zip(["white", ""], [back, front], ["_", ""], strict=True):
+        U.name = label or "Unemployment Rate"
+        mg.line_plot(U, ax=ax, color=color or "brown", width=width, zorder=4)
+        π4.name = label or "Inflation rate (trimmed mean, annual)"
+        mg.line_plot(π4, ax=ax, color=color or "darkorange", width=width, zorder=4)
 
     if ax is not None:
         lfooter = rf"Australia. $NAIRU = U^*$. {results.anchor_label}."

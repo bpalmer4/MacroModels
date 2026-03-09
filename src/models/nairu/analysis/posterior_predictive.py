@@ -9,7 +9,7 @@ import pymc as pm
 
 def posterior_predictive_checks(
     trace: az.InferenceData,
-    model,
+    model: pm.Model,
     obs_vars: dict[str, np.ndarray],
     obs_index: pd.Index,
     *,

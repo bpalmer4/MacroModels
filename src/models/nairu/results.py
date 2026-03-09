@@ -92,8 +92,8 @@ def load_results(
 
     # Load observations and config
     obs_path = output_dir / f"{prefix}_obs.pkl"
-    with open(obs_path, "rb") as f:
-        data = pickle.load(f)
+    with obs_path.open("rb") as f:
+        data = pickle.load(f)  # noqa: S301 — loading our own model outputs, not untrusted data
 
     obs = data["obs"]
     obs_index = data["obs_index"]
@@ -111,7 +111,7 @@ def load_results(
     # Optionally rebuild model (needed for posterior predictive checks)
     model = None
     if rebuild_model:
-        from src.models.nairu.estimate import build_model
+        from src.models.nairu.estimate import build_model  # noqa: PLC0415 — circular import
         model = build_model(obs, config)
 
     return NAIRUResults(

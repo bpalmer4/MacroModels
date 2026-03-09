@@ -7,12 +7,13 @@ from scipy import stats
 
 from src.models.common.extraction import get_vector_var
 from src.models.common.timeseries import plot_posterior_timeseries
+from src.models.nairu.results import NAIRUResults
 
 START = pd.Period("1985Q1", freq="Q")
 
 
 def plot_potential_growth(
-    results,
+    results: NAIRUResults,
     *,
     rfooter: str = "",
     show: bool = False,

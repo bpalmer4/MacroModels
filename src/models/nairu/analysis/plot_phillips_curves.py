@@ -5,6 +5,7 @@ import mgplot as mg
 import numpy as np
 
 from src.models.common.extraction import get_scalar_var, get_vector_var
+from src.models.nairu.results import NAIRUResults
 from src.utilities.rate_conversion import annualize
 
 # (gamma_var_suffix, color, label) for each curve type
@@ -15,7 +16,9 @@ _CURVE_SPECS = [
 ]
 
 
-def _curve_bands(u_range, gamma, nairu_last, idx):
+def _curve_bands(
+    u_range: np.ndarray, gamma: np.ndarray, nairu_last: np.ndarray, idx: np.ndarray,
+) -> np.ndarray:
     """Compute (lower, median, upper) annualised Phillips curves."""
     curves = np.array([
         annualize(gamma[i] * (u_range - nairu_last[i]) / u_range) for i in idx
@@ -24,7 +27,7 @@ def _curve_bands(u_range, gamma, nairu_last, idx):
 
 
 def plot_phillips_curves(
-    results,
+    results: NAIRUResults,
     *,
     rfooter: str = "",
     show: bool = False,

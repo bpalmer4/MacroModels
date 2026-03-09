@@ -10,7 +10,7 @@ def get_vector_var(var_name: str, trace: az.InferenceData) -> pd.DataFrame:
     Returns DataFrame with rows=time periods, columns=samples.
     """
     return (
-        az.extract(trace, var_names=var_name)
+        az.extract(trace, var_names=var_name)  # noqa: PD010 — unstacking MultiIndex level, not pivoting
         .transpose("sample", ...)
         .to_dataframe()[var_name]
         .unstack(level=2)

@@ -1,6 +1,6 @@
 """Posterior time series plotting with credible intervals."""
 
-from collections.abc import Sequence
+from collections.abc import Sequence  # noqa: TC003 — used in annotations
 from typing import Any
 
 import arviz as az
@@ -23,7 +23,7 @@ def plot_posterior_timeseries(
     alphas: Sequence[float] = (0.1, 0.2, 0.3),
     ax: Axes | None = None,
     finalise: bool = True,
-    **finalise_kwargs: Any,
+    **finalise_kwargs: Any,  # noqa: ANN401 — pass-through to mg.finalise_plot
 ) -> Axes | None:
     """Plot posterior time series with credible intervals.
 
@@ -64,8 +64,9 @@ def plot_posterior_timeseries(
     if start is not None:
         samples = samples[samples.index >= start]
 
-    for cut, alpha in zip(cuts, alphas):
-        if not (0 < cut < 0.5):
+    max_cut = 0.5  # quantile cuts must be below 50%
+    for cut, alpha in zip(cuts, alphas, strict=True):
+        if not (0 < cut < max_cut):
             raise ValueError("Cuts must be between 0 and 0.5")
 
         lower = samples.quantile(q=cut, axis=1)

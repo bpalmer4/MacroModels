@@ -11,7 +11,7 @@ ModelConfig is serializable — it is saved alongside the trace and observations
 so that analyse.py and forecast.py know exactly what produced the results.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import pandas as pd
@@ -117,6 +117,7 @@ class ModelConfig:
     net_exports_const: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
+        """Set default NAIRU innovation based on distribution type."""
         if self.nairu_const is None:
             innovation = 0.10 if self.student_t_nairu else 0.15
             self.nairu_const = {"nairu_innovation": innovation}
@@ -133,14 +134,39 @@ class ModelConfig:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for saving with results."""
-        from dataclasses import asdict
-
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "ModelConfig":
+    def from_dict(cls, d: dict[str, Any]) -> ModelConfig:
         """Reconstruct from saved dict."""
         return cls(**d)
+
+    def _observation_equations(self) -> list[str]:  # noqa: C901 — flat feature-flag list, not genuinely complex
+        """List active observation equations."""
+        regime = " [regime-switching]" if self.regime_switching else ""
+        eqs = []
+        if self.include_okun:
+            form = "gap-to-gap" if self.okun_gap_form else "simple change"
+            eqs.append(f"  Okun's Law ({form})")
+        if self.include_price_inflation:
+            eqs.append(f"  Price Phillips curve{regime}")
+        if self.include_wage_growth:
+            eqs.append(f"  Wage Phillips curve (ULC){regime}")
+        if self.include_hourly_coe:
+            eqs.append(f"  Hourly COE Phillips curve{regime}")
+        if self.include_is_curve:
+            eqs.append("  IS curve")
+        if self.include_participation:
+            eqs.append("  Participation rate")
+        if self.include_employment:
+            eqs.append("  Employment")
+        if self.include_exchange_rate:
+            eqs.append("  Exchange rate (UIP)")
+        if self.include_import_price:
+            eqs.append("  Import price pass-through")
+        if self.include_net_exports:
+            eqs.append("  Net exports")
+        return eqs
 
     def summary(self) -> str:
         """Human-readable summary of active equations."""
@@ -155,32 +181,7 @@ class ModelConfig:
 
         # Observation equations
         lines.append("")
-        eqs = []
-        if self.include_okun:
-            form = "gap-to-gap" if self.okun_gap_form else "simple change"
-            eqs.append(f"  Okun's Law ({form})")
-        if self.include_price_inflation:
-            regime = " [regime-switching]" if self.regime_switching else ""
-            eqs.append(f"  Price Phillips curve{regime}")
-        if self.include_wage_growth:
-            regime = " [regime-switching]" if self.regime_switching else ""
-            eqs.append(f"  Wage Phillips curve (ULC){regime}")
-        if self.include_hourly_coe:
-            regime = " [regime-switching]" if self.regime_switching else ""
-            eqs.append(f"  Hourly COE Phillips curve{regime}")
-        if self.include_is_curve:
-            eqs.append("  IS curve")
-        if self.include_participation:
-            eqs.append("  Participation rate")
-        if self.include_employment:
-            eqs.append("  Employment")
-        if self.include_exchange_rate:
-            eqs.append("  Exchange rate (UIP)")
-        if self.include_import_price:
-            eqs.append("  Import price pass-through")
-        if self.include_net_exports:
-            eqs.append("  Net exports")
-
+        eqs = self._observation_equations()
         lines.extend(eqs)
         lines.append(f"  Total: 2 state + {len(eqs)} observation equations")
 

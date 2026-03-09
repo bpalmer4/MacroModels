@@ -30,16 +30,16 @@ from src.models.nairu.analysis import (
     plot_taylor_rule,
     plot_unemployment_gap,
 )
-from src.models.nairu.results import DEFAULT_CHART_BASE, load_results
+from src.models.nairu.results import DEFAULT_CHART_BASE, NAIRUResults, load_results
 
 
 def run_analyse(
     output_dir: Path | str | None = None,
     prefix: str = "nairu_output_gap",
     chart_dir: Path | str | None = None,
-    verbose: bool = False,
+    verbose: bool = False,  # noqa: ARG001 — reserved for future use
     show_plots: bool = False,
-) -> "NAIRUResults":
+) -> NAIRUResults:
     """Generate all output analysis charts."""
     results = load_results(output_dir=output_dir, prefix=prefix, rebuild_model=False)
     config = results.config

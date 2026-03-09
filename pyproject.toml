@@ -86,6 +86,9 @@ lint.ignore = [
     "N806",    # variable should be lowercase (U for unemployment, Y for output)
     "PLC2401", # non-ASCII variable names (π, Δ are standard economics notation)
     "ERA001",  # commented-out code (often explanatory formulas in economics code)
+    "RUF022",  # __all__ not sorted - prefer categorical grouping for readability
+    "TC001",   # move application import into TYPE_CHECKING block - too aggressive
+    "TC002",   # move third-party import into TYPE_CHECKING block - too aggressive
 
     # --- specifically for Jupyter notebooks.
     "B018",    # Found useless attribute access (often at cell end for output) 

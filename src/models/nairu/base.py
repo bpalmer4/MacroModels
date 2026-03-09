@@ -1,7 +1,7 @@
 """Base utilities for PyMC model building and sampling."""
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path  # noqa: TC003 — used at runtime in function signatures
 from typing import Any
 
 import arviz as az
@@ -50,7 +50,7 @@ def sample_model(
         config = SamplerConfig()
 
     with model:
-        trace = pm.sample(
+        return pm.sample(
             draws=config.draws,
             tune=config.tune,
             chains=config.chains,
@@ -59,8 +59,6 @@ def sample_model(
             target_accept=config.target_accept,
             random_seed=config.random_seed,
         )
-
-    return trace
 
 
 def set_model_coefficients(
@@ -92,7 +90,7 @@ def set_model_coefficients(
         constant = {}
 
     if not hasattr(model, "_fixed_constants"):
-        model._fixed_constants = {}
+        model._fixed_constants = {}  # noqa: SLF001 — our own metadata on PyMC model
 
     coefficients = {}
 
@@ -100,7 +98,7 @@ def set_model_coefficients(
         for name, params in settings.items():
             if name in constant:
                 coefficients[name] = constant[name]
-                model._fixed_constants[name] = constant[name]
+                model._fixed_constants[name] = constant[name]  # noqa: SLF001
             elif "sigma" in params and "mu" not in params:
                 coefficients[name] = pm.HalfNormal(name, sigma=params["sigma"])
             elif "lower" in params or "upper" in params:

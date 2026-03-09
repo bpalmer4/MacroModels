@@ -102,7 +102,9 @@ def compute_r_star(
         data=r_star,
         source="Derived",
         units="% per year",
-        description=f"Deterministic r* (potential growth, α={'time-varying' if isinstance(alpha, pd.Series) else alpha})",
+        description=(
+            f"Deterministic r* (potential growth, α={'time-varying' if isinstance(alpha, pd.Series) else alpha})"
+        ),
     )
 
 

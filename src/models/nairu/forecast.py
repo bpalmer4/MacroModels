@@ -16,8 +16,9 @@ Calibrations applied (RBA-based):
 """
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path  # noqa: TC003 — used at runtime in function signatures
 
+import arviz as az
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -113,13 +114,15 @@ def _compute_demand_multiplier(
     cumulative_inflation = 0.0
 
     for t in range(h):
-        rate_effect = 1.0 if t >= 2 else 0.0
+        rate_lag = 2  # quarters before rate changes affect output
+        rate_effect = 1.0 if t >= rate_lag else 0.0
         og = r_is * og - b_is * rate_effect
         ug = t2 * ug + t1 * og
         cumulative_inflation += g_pi * (ug / u_level)
 
+    near_zero = 1e-6
     model_demand_pp = abs(cumulative_inflation)
-    if model_demand_pp < 1e-6:
+    if model_demand_pp < near_zero:
         return 2.0
 
     return RBA_DEMAND_CHANNEL_PP / model_demand_pp
@@ -163,18 +166,23 @@ class ForecastResults:
         )
 
     def output_gap_hdi(self, prob: float = 0.90) -> pd.DataFrame:
+        """Output gap HDI bands."""
         return self._quantiles(self.output_gap_forecast, prob)
 
     def unemployment_hdi(self, prob: float = 0.90) -> pd.DataFrame:
+        """Unemployment rate HDI bands."""
         return self._quantiles(self.unemployment_forecast, prob)
 
     def unemployment_gap_hdi(self, prob: float = 0.90) -> pd.DataFrame:
+        """Unemployment gap (U - NAIRU) HDI bands."""
         return self._quantiles(self.unemployment_forecast - self.nairu_forecast, prob)
 
     def inflation_hdi(self, prob: float = 0.90) -> pd.DataFrame:
+        """Quarterly inflation HDI bands."""
         return self._quantiles(self.inflation_forecast, prob)
 
     def inflation_annual_hdi(self, prob: float = 0.90) -> pd.DataFrame:
+        """Annualised inflation HDI bands."""
         return self._quantiles(annualize(self.inflation_forecast), prob)
 
     def output_samples(self) -> pd.DataFrame:
@@ -182,6 +190,7 @@ class ForecastResults:
         return self.potential_forecast + self.output_gap_forecast
 
     def output_hdi(self, prob: float = 0.90) -> pd.DataFrame:
+        """GDP (log level) HDI bands."""
         return self._quantiles(self.output_samples(), prob)
 
     def gdp_growth_forecast(self) -> pd.DataFrame:
@@ -194,9 +203,11 @@ class ForecastResults:
         return self.potential_growth + og_change
 
     def gdp_growth_annual_hdi(self, prob: float = 0.90) -> pd.DataFrame:
+        """Annualised GDP growth HDI bands."""
         return self._quantiles(annualize(self.gdp_growth_forecast()), prob)
 
     def summary(self) -> pd.DataFrame:
+        """Tabular summary of median forecasts."""
         return pd.DataFrame(
             {
                 "Output Gap": self.output_gap_forecast.median(axis=1),
@@ -209,6 +220,7 @@ class ForecastResults:
         )
 
     def print_summary(self) -> None:
+        """Print formatted forecast summary to console."""
         print(f"\n{'=' * 70}")
         print(f"FORECAST: {self.scenario_name} (cash rate {self.cash_rate:.2f}%)")
         print(f"{'=' * 70}")
@@ -223,7 +235,7 @@ class ForecastResults:
 # --- Forecasting ---
 
 
-def forecast(
+def forecast(  # noqa: C901, PLR0912, PLR0915
     results: NAIRUResults,
     cash_rate_override: float | None = None,
     scenario_name: str = "baseline",
@@ -291,7 +303,7 @@ def forecast(
     sigma_okun = get_coef("epsilon_okun")
     sigma_pi = get_coef("epsilon_pi")
     sigma_nairu = results.constants.get("nairu_innovation", 0.25)
-    has_student_t_nairu = sigma_nairu < 0.2
+    has_student_t_nairu = results.config.student_t_nairu
     sigma_potential = results.constants.get("potential_innovation", 0.30)
 
     # --- Demand multiplier ---
@@ -332,8 +344,8 @@ def forecast(
     g_MFP = float(obs["mfp_growth"][-1])
     potential_growth = alpha * g_K + (1 - alpha) * g_L + g_MFP
 
-    # Detect skewnormal potential
-    has_skewnormal = sigma_potential < 0.08
+    # Skewnormal potential from config
+    has_skewnormal = results.config.skewnormal_potential
     if has_skewnormal:
         skew_alpha = 1.0
         delta = skew_alpha / np.sqrt(1 + skew_alpha**2)
@@ -409,10 +421,7 @@ def forecast(
                 output_gap_fcst[t] = tau2_okun * output_gap_prev
             else:
                 output_gap_fcst[t] = 0.85 * output_gap_prev
-            if t == 0:
-                import_effect = rho_pi * obs["Δ4ρm_1"][-1]
-            else:
-                import_effect = -rate_change * FX_PASSTHROUGH_PER_100BP
+            import_effect = rho_pi * obs["Δ4ρm_1"][-1] if t == 0 else -rate_change * FX_PASSTHROUGH_PER_100BP
         output_gap_prev = output_gap_fcst[t]
 
         # Okun's Law
@@ -494,7 +503,7 @@ def run_scenarios(
     }
 
 
-def check_transmission_channels(trace) -> set[str]:
+def check_transmission_channels(trace: az.InferenceData) -> set[str]:
     """Check which required channels are missing from the trace."""
     return {v for k, v in REQUIRED_CHANNELS.items() if k not in trace.posterior}
 
@@ -547,7 +556,7 @@ def run_forecast(
     prefix: str = "nairu_output_gap",
     n_samples: int = N_SAMPLES,
     chart_dir: Path | str | None = None,
-    verbose: bool = False,
+    verbose: bool = False,  # noqa: ARG001 — reserved for future use
     show_plots: bool = False,
 ) -> dict[str, ForecastResults] | None:
     """Run forecast scenarios and generate charts.
@@ -583,10 +592,10 @@ def run_forecast(
     print_scenario_comparison(scenario_results, current_rate)
 
     # Plot
-    from src.models.nairu.forecast_plots import plot_all_scenarios
+    from src.models.nairu.forecast_plots import plot_all_scenarios  # noqa: PLC0415 — circular import
 
     if chart_dir is None:
-        from src.models.nairu.results import DEFAULT_CHART_BASE
+        from src.models.nairu.results import DEFAULT_CHART_BASE  # noqa: PLC0415 — conditional import
         chart_dir = DEFAULT_CHART_BASE / config.chart_dir_name
 
     plot_all_scenarios(

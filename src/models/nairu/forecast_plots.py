@@ -6,11 +6,12 @@ _plot_scenarios helper does the work; thin wrappers configure
 the data source, labels, and reference lines.
 """
 
+from collections.abc import Callable  # noqa: TC003 — used in annotations
 from pathlib import Path
-from typing import Callable
 
 import mgplot as mg
 import pandas as pd
+from matplotlib.axes import Axes
 
 from src.data.inflation import get_trimmed_mean_qrtly
 from src.models.nairu.forecast import (
@@ -35,7 +36,7 @@ def _plot_scenarios(
     n_history: int = 4,
     show: bool = False,
 ) -> None:
-    """Generic scenario plot.
+    """Plot scenario forecasts with historical overlay.
 
     Args:
         scenario_results: {name: ForecastResults}
@@ -106,7 +107,7 @@ def _plot_scenarios(
     )
 
 
-def _add_hold_band(ax, hold: ForecastResults, extract_fn) -> None:
+def _add_hold_band(ax: Axes, hold: ForecastResults, extract_fn: Callable[[ForecastResults], pd.Series]) -> None:
     """Add 90% HDI shading for the hold scenario.
 
     We need to figure out which underlying DataFrame the extract_fn
@@ -133,7 +134,6 @@ def _add_hold_band(ax, hold: ForecastResults, extract_fn) -> None:
             return
 
     # Fallback: no band if we can't match
-    pass
 
 
 # --- Thin wrappers ---

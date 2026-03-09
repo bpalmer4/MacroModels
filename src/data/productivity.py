@@ -12,6 +12,7 @@ import pandas as pd
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
 from src.data.dataseries import DataSeries
+from src.data.henderson import hma
 
 HP_LAMBDA = 1600  # Hodrick-Prescott smoothing parameter for quarterly data
 
@@ -160,8 +161,6 @@ def compute_mfp_trend_hma(
         DataSeries with HMA-smoothed MFP trend growth (floored at zero)
 
     """
-    from src.data.henderson import hma
-
     # Get raw MFP
     mfp_raw = get_mfp_growth(
         ulc_growth, hcoe_growth, capital_growth, hours_growth, alpha

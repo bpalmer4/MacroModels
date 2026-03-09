@@ -8,6 +8,7 @@ from scipy import stats
 from src.data.rba_loader import PI_TARGET
 from src.models.common.extraction import get_vector_var
 from src.models.common.timeseries import plot_posterior_timeseries
+from src.models.nairu.results import NAIRUResults
 
 
 def _quarterly_to_monthly(data: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
@@ -16,12 +17,11 @@ def _quarterly_to_monthly(data: pd.Series | pd.DataFrame) -> pd.Series | pd.Data
     full_monthly = pd.period_range(start=monthly_idx.min(), end=monthly_idx.max(), freq="M")
     result = data.copy()
     result.index = monthly_idx
-    result = result.reindex(full_monthly).interpolate(limit=2)
-    return result
+    return result.reindex(full_monthly).interpolate(limit=2)
 
 
 def plot_taylor_rule(
-    results,
+    results: NAIRUResults,
     *,
     cash_rate_monthly: pd.Series,
     pi_target: float = PI_TARGET,

@@ -120,10 +120,10 @@ if __name__ == "__main__":
 
         # Show splice region
         splice_region = exp.data.loc["1991Q1":"1991Q4"]
-        print(f"\nSplice region (1991):")
+        print("\nSplice region (1991):")
         print(splice_region.to_string())
 
-        print(f"\nRecent values:")
+        print("\nRecent values:")
         print(exp.data.tail(8))
     except FileNotFoundError as e:
         print(f"Error: {e}")

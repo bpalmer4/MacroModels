@@ -22,7 +22,6 @@ def okun_equation(
     if constant is None:
         constant = {}
 
-    nairu = latents["nairu"]
     potential_output = latents["potential_output"]
 
     with model:

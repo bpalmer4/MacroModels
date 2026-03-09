@@ -79,10 +79,11 @@ def hma_asymmetric_weights(m: int, sym_weights: np.ndarray) -> np.ndarray:
         sum_end += (float(i) - ((m + 1.0) / 2.0)) * sym_weights[i - 1]
 
     # beta squared / sigma squared - formula at the bottom of page 904
+    monthly_threshold, quarterly_threshold = 13, 15
     ic: float = 1.0
-    if 13 <= n < 15:
+    if monthly_threshold <= n < quarterly_threshold:
         ic = 3.5
-    elif n >= 15:
+    elif n >= quarterly_threshold:
         ic = 4.5
     b2s2: float = (4.0 / np.pi) / (ic * ic)
 

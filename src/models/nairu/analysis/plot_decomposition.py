@@ -3,9 +3,13 @@
 import pandas as pd
 
 from src.models.nairu.analysis._decomposition_helpers import (
-    eq_unscaled, hcoe_eq_unscaled, plot_decomposition_bars, wage_eq_unscaled,
+    eq_unscaled,
+    hcoe_eq_unscaled,
+    plot_decomposition_bars,
+    wage_eq_unscaled,
 )
 from src.models.nairu.analysis.decomposition_types import (
+    DecompositionBase,
     HCOEInflationDecomposition,
     InflationDecomposition,
     WageInflationDecomposition,
@@ -43,7 +47,7 @@ _CONFIG = {
 }
 
 
-def plot_decomposition(decomp, *, rfooter="", show=False):
+def plot_decomposition(decomp: DecompositionBase, *, rfooter: str = "", show: bool = False) -> None:
     """Plot inflation decomposition as stacked bars with all components."""
     cfg = _CONFIG[type(decomp)]
     df = annualize(decomp.to_dataframe())

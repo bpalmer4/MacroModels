@@ -5,12 +5,13 @@ import pandas as pd
 
 from src.data.henderson import hma
 from src.models.common.extraction import get_vector_var
+from src.models.nairu.results import NAIRUResults
 
 START = pd.Period("1985Q1", freq="Q")
 
 
 def plot_potential_growth_comparison(
-    results,
+    results: NAIRUResults,
     *,
     rfooter: str = "",
     show: bool = False,
@@ -47,7 +48,10 @@ def plot_potential_growth_comparison(
         title="Potential Growth: Input vs Modeled Output",
         ylabel="Per cent per annum",
         legend={"loc": "upper right", "fontsize": "small"},
-        lfooter="Australia. Cobb-Douglas potential growth (input), posterior median potential growth (output), and HMA(13) smoothed.",
+        lfooter=(
+            "Australia. Cobb-Douglas potential growth (input),"
+            " posterior median potential growth (output), and HMA(13) smoothed."
+        ),
         rfooter=rfooter,
         y0=True,
         show=show,
