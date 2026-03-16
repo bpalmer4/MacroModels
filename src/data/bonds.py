@@ -13,73 +13,87 @@ from src.data.rba_loader import get_bond_yield_10y, get_indexed_bond_yield
 # --- Public API ---
 
 
-def get_nominal_10y() -> DataSeries:
-    """Get 10-year nominal government bond yield (quarterly).
+def get_nominal_10y(*, monthly: bool = False) -> DataSeries:
+    """Get 10-year nominal government bond yield.
+
+    Args:
+        monthly: If True, return monthly frequency. If False (default), quarterly.
 
     Returns:
-        DataSeries with quarterly 10-year bond yield (%)
+        DataSeries with bond yield (%)
 
     """
     raw = get_bond_yield_10y()
     series = raw.data.copy()
-    series.index = series.index.to_period("Q")
+    freq = "M" if monthly else "Q"
+    freq_label = "monthly" if monthly else "quarterly"
+    series.index = series.index.to_period(freq)
     series = series.groupby(series.index).last()
 
     return DataSeries(
         data=series,
         source="RBA",
         units="%",
-        description="10-year Government Bond Yield (quarterly)",
+        description=f"10-year Government Bond Yield ({freq_label})",
         table="F2",
         series_id="FCMYGBAG10",
     )
 
 
-def get_indexed_yield() -> DataSeries:
-    """Get indexed (inflation-linked) bond yield (quarterly).
+def get_indexed_yield(*, monthly: bool = False) -> DataSeries:
+    """Get indexed (inflation-linked) bond yield.
+
+    Args:
+        monthly: If True, return monthly frequency. If False (default), quarterly.
 
     Returns:
-        DataSeries with quarterly indexed bond yield (%)
+        DataSeries with indexed bond yield (%)
 
     """
     raw = get_indexed_bond_yield()
     series = raw.data.copy()
-    series.index = series.index.to_period("Q")
+    freq = "M" if monthly else "Q"
+    freq_label = "monthly" if monthly else "quarterly"
+    series.index = series.index.to_period(freq)
     series = series.groupby(series.index).last()
 
     return DataSeries(
         data=series,
         source="RBA",
         units="%",
-        description="Indexed Bond Yield (quarterly)",
+        description=f"Indexed Bond Yield ({freq_label})",
         table="F2",
         series_id="FCMYGBAGI",
     )
 
 
-def get_breakeven_inflation() -> DataSeries:
+def get_breakeven_inflation(*, monthly: bool = False) -> DataSeries:
     """Get breakeven inflation (nominal 10y minus indexed).
 
     This is a market-implied measure of inflation expectations,
     though it includes risk and liquidity premia.
 
+    Args:
+        monthly: If True, return monthly frequency. If False (default), quarterly.
+
     Returns:
-        DataSeries with quarterly breakeven inflation (%)
+        DataSeries with breakeven inflation (%)
 
     """
-    nominal = get_nominal_10y().data
-    indexed = get_indexed_yield().data
+    nominal = get_nominal_10y(monthly=monthly).data
+    indexed = get_indexed_yield(monthly=monthly).data
 
     # Align and compute breakeven
     common_idx = nominal.index.intersection(indexed.index)
     breakeven = nominal.loc[common_idx] - indexed.loc[common_idx]
     breakeven = breakeven.dropna()
 
+    freq_label = "monthly" if monthly else "quarterly"
     return DataSeries(
         data=breakeven,
         source="RBA",
         units="%",
-        description="Breakeven Inflation (10y nominal - indexed)",
+        description=f"Breakeven Inflation (10y nominal - indexed, {freq_label})",
         table="F2",
         series_id="derived",
     )

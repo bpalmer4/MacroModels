@@ -77,11 +77,18 @@ def get_model_expectations_hdi() -> pd.DataFrame:
 
 
 def _load_model_output(model_type: str) -> pd.DataFrame:
-    """Load parquet file for a specific model type."""
-    path = OUTPUT_DIR / f"expectations_{model_type}_hdi.parquet"
+    """Load quarterly parquet file for a specific model type.
+
+    Uses the quarterly extract from monthly model runs when available,
+    otherwise falls back to the main HDI file (from quarterly runs).
+    """
+    quarterly_path = OUTPUT_DIR / f"expectations_{model_type}_hdi_quarterly.parquet"
+    main_path = OUTPUT_DIR / f"expectations_{model_type}_hdi.parquet"
+    path = quarterly_path if quarterly_path.exists() else main_path
+
     if not path.exists():
         raise FileNotFoundError(
-            f"Expectations model output not found at {path}. "
+            f"Expectations model output not found at {main_path}. "
             f"Run the expectations model first: "
             f"uv run python -m src.models.expectations.stage1 --model {model_type}"
         )

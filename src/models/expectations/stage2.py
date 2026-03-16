@@ -34,13 +34,33 @@ class ExpectationsResults:
     inflation: pd.Series
     index: pd.PeriodIndex
     model_type: str
+    monthly: bool = False
+
+    @property
+    def is_monthly(self) -> bool:
+        """Whether the model was estimated at monthly frequency."""
+        return self.monthly or self.index.freqstr.startswith("M")
 
     def expectations_posterior(self) -> pd.DataFrame:
-        """Get full posterior samples."""
+        """Get full posterior samples at native frequency."""
         samples = self.trace.posterior["pi_exp"].to_numpy()
         n_chains, n_draws, n_time = samples.shape
         flat = samples.reshape(n_chains * n_draws, n_time).T
         return pd.DataFrame(flat, index=self.index)
+
+    def expectations_posterior_quarterly(self) -> pd.DataFrame:
+        """Get posterior samples at quarterly frequency (Mar/Jun/Sep/Dec).
+
+        For quarterly models this is the same as expectations_posterior().
+        For monthly models, extracts quarter-end months and relabels to quarterly.
+        """
+        post = self.expectations_posterior()
+        if not self.is_monthly:
+            return post
+        qtr_mask = post.index.month.isin([3, 6, 9, 12])
+        post_q = post.loc[qtr_mask].copy()
+        post_q.index = post_q.index.to_timestamp().to_period("Q")
+        return post_q
 
     def expectations_median(self) -> pd.Series:
         """Get posterior median."""
@@ -55,6 +75,16 @@ class ExpectationsResults:
             "median": post.median(axis=1),
             "upper": post.quantile(1 - alpha, axis=1),
         }, index=self.index)
+
+    def expectations_hdi_quarterly(self, prob: float = 0.9) -> pd.DataFrame:
+        """Get HDI bounds at quarterly frequency."""
+        post = self.expectations_posterior_quarterly()
+        alpha = (1 - prob) / 2
+        return pd.DataFrame({
+            "lower": post.quantile(alpha, axis=1),
+            "median": post.median(axis=1),
+            "upper": post.quantile(1 - alpha, axis=1),
+        }, index=post.index)
 
 
 # --- Loading ---
@@ -78,6 +108,7 @@ def load_results(model_type: str, output_dir: Path | None = None) -> Expectation
         inflation=metadata["inflation"],
         index=metadata["index"],
         model_type=model_type,
+        monthly=metadata.get("monthly", False),
     )
 
 
@@ -119,9 +150,26 @@ def run_diagnostics(results: ExpectationsResults, verbose: bool = True) -> None:
             print("\nNo sampled parameters (all fixed).")
 
         # Latest values
-        hdi = results.expectations_hdi()
-        print("\nLatest Expectations (90% HDI):")
+        if results.is_monthly:
+            hdi = results.expectations_hdi_quarterly()
+            print("\nLatest Expectations (90% HDI, quarterly extract):")
+        else:
+            hdi = results.expectations_hdi()
+            print("\nLatest Expectations (90% HDI):")
         print(hdi.tail(4))
+
+
+def _to_monthly_index(df: pd.DataFrame, target_index: pd.PeriodIndex) -> pd.DataFrame:
+    """Convert a quarterly-indexed DataFrame to a monthly PeriodIndex.
+
+    Places quarterly values at quarter-end months and interpolates
+    between them for smooth curves in comparison plots.
+    """
+    if df.index.freqstr.startswith("M"):
+        return df  # Already monthly
+    df = df.copy()
+    df.index = df.index.asfreq("M", how="end")
+    return df.reindex(target_index).interpolate(method="linear")
 
 
 # --- Plotting ---
@@ -132,6 +180,25 @@ PLOT_KWARGS = {
     "axhline": {"y": 2.5, "color": "black", "linestyle": "dashed", "linewidth": 0.75},
     "legend": {"loc": "best", "fontsize": "x-small"},
 }
+
+
+def _match_freq(series: pd.Series, target_index: pd.PeriodIndex) -> pd.Series:
+    """Convert overlay series to match the target index frequency."""
+    target_freq = target_index.freqstr[0]  # "M" or "Q"
+    source_freq = series.index.freqstr[0] if hasattr(series.index, "freqstr") else None
+    if source_freq == target_freq:
+        return series
+    if target_freq == "Q" and source_freq == "M":
+        # Monthly → quarterly: take end-of-quarter values
+        s = series.copy()
+        s.index = s.index.to_timestamp().to_period("Q")
+        return s.groupby(s.index).last()
+    if target_freq == "M" and source_freq == "Q":
+        # Quarterly → monthly: place at quarter-end month
+        s = series.copy()
+        s.index = s.index.asfreq("M", how="end")
+        return s.reindex(target_index)
+    return series
 
 
 def _plot_model(
@@ -148,7 +215,8 @@ def _plot_model(
 
     if overlays:
         for series, color in overlays:
-            mg.line_plot(series, ax=ax, color=color, width=1.5, annotate=False, zorder=5)
+            matched = _match_freq(series, results.index)
+            mg.line_plot(matched, ax=ax, color=color, width=1.5, annotate=False, zorder=5)
 
     mg.finalise_plot(
         ax,
@@ -171,9 +239,14 @@ def generate_plots(
 
     # Use first available result for shared data
     first_result = next(iter(all_results.values()))
+    monthly = first_result.is_monthly
 
-    # Prepare overlay data
+    # Prepare overlay data — reindex quarterly series onto the monthly grid
+    # so mgplot sees a contiguous PeriodIndex (NaN at non-quarter months).
     trimmed = get_trimmed_mean_annual().data
+    if monthly:
+        trimmed.index = trimmed.index.asfreq("M", how="end")
+        trimmed = trimmed.reindex(first_result.index)
     trimmed = trimmed[trimmed.index >= first_result.index[0]]
     trimmed.name = "Trimmed Mean Inflation"
 
@@ -183,32 +256,37 @@ def generate_plots(
     breakeven_series.name = "Breakeven (10yr)"
 
     pie_rbaq = get_inflation_expectations().data
+    if monthly:
+        pie_rbaq.index = pie_rbaq.index.asfreq("M", how="end")
+        pie_rbaq = pie_rbaq.reindex(first_result.index)
     pie_rbaq = pie_rbaq[pie_rbaq.index >= first_result.index[0]]
     pie_rbaq.name = "RBA PIE_RBAQ"
 
     # Single-model plot specs: (model_type, title, lfooter, legend_stem, overlays, axvspan_fn)
     plot_specs = [
         ("target", "Target Anchored Inflation Expectations",
-         "Australia. Model: market_1y + breakeven + business + market_yoy + anchor.",
+         "Australia. Bayesian signal extraction from surveys, bonds, inflation, wages. 2.5% target anchor post-1998.",
          "Target Anchored", [(trimmed, "darkorange")], None),
         ("target", "Target Anchored Inflation Expectations vs RBA PIE_RBAQ",
-         "Australia. Model: market_1y + breakeven + business + market_yoy + anchor.",
+         "Australia. Bayesian signal extraction from surveys, bonds, inflation, wages. 2.5% target anchor post-1998.",
          "Target Anchored", [(pie_rbaq, "darkorange")], None),
         ("unanchored", "Unanchored Inflation Expectations",
-         "Australia. Model: market_1y + breakeven + business + market_yoy (no target anchor).",
+         "Australia. Bayesian signal extraction from surveys, bonds, inflation, wages (no target anchor).",
          "Unanchored", [(trimmed, "darkorange")], None),
         ("unanchored", "Unanchored Inflation Expectations vs RBA PIE_RBAQ",
-         "Australia. Model: market_1y + breakeven + business + market_yoy (no target anchor).",
+         "Australia. Bayesian signal extraction from surveys, bonds, inflation, wages (no target anchor).",
          "Unanchored", [(pie_rbaq, "darkorange")], None),
         ("short", "Short Run Inflation Expectations (1 Year)",
          "Australia. Bayesian signal extraction from market economist 1-year expectations.",
          "Short Run", [(market_1y, "darkorange"), (trimmed, "brown")],
-         lambda r: {"xmin": r.index[0].ordinal, "xmax": market_1y.index[0].ordinal,
+         lambda r: {"xmin": r.index[0].ordinal,
+                    "xmax": r.measures["market_1y"].dropna().index[0].ordinal,
                     "color": "goldenrod", "alpha": 0.2, "label": "Proxy period (headline CPI)"}),
         ("market", "Long Run Inflation Expectations (10-Year)",
          "Australia. Bayesian signal extraction from breakeven inflation and nominal bonds.",
          "Long Run", [(breakeven_series, "darkorange"), (trimmed, "brown")],
-         lambda r: {"xmin": r.index[0].ordinal, "xmax": breakeven_series.index[0].ordinal,
+         lambda r: {"xmin": r.index[0].ordinal,
+                    "xmax": r.measures["breakeven"].dropna().index[0].ordinal,
                     "color": "goldenrod", "alpha": 0.2, "label": "Proxy period (nominal bonds)"}),
     ]
 
@@ -220,9 +298,13 @@ def generate_plots(
 
     # Comparison plots (require all three: target, short, market)
     if all(k in all_results for k in ("target", "short", "market")):
+        monthly_index = all_results["target"].index
         posterior_target = all_results["target"].expectations_posterior()
         posterior_short = all_results["short"].expectations_posterior()
-        posterior_market = all_results["market"].expectations_posterior()
+        # Market may be quarterly — convert to monthly index for shared axis
+        posterior_market = _to_monthly_index(
+            all_results["market"].expectations_posterior(), monthly_index,
+        )
 
         # Three distributions
         ax = plot_posterior_timeseries(data=posterior_target, legend_stem="Target Anchored",

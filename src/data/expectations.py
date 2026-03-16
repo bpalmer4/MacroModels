@@ -27,8 +27,12 @@ G3_SERIES = {
 # --- Public API ---
 
 
-def get_expectations_surveys() -> dict[str, DataSeries]:
+def get_expectations_surveys(*, monthly: bool = False) -> dict[str, DataSeries]:
     """Get inflation expectations survey measures from RBA G3.
+
+    Args:
+        monthly: If True, return monthly frequency (end-of-month).
+                 If False (default), return quarterly (end-of-quarter).
 
     Returns:
         Dict of DataSeries keyed by series name:
@@ -43,8 +47,9 @@ def get_expectations_surveys() -> dict[str, DataSeries]:
     df.index = pd.to_datetime(df.index)
     df = df.apply(pd.to_numeric, errors="coerce")
 
-    # Convert to quarterly (end of quarter)
-    df.index = df.index.to_period("Q")
+    freq = "M" if monthly else "Q"
+    freq_label = "monthly" if monthly else "quarterly"
+    df.index = df.index.to_period(freq)
     df = df.groupby(df.index).last()
 
     result = {}
@@ -55,7 +60,7 @@ def get_expectations_surveys() -> dict[str, DataSeries]:
                 data=series,
                 source="RBA",
                 units="%",
-                description=f"Inflation Expectations ({name})",
+                description=f"Inflation Expectations ({name}, {freq_label})",
                 table="G3",
                 series_id=code,
             )
