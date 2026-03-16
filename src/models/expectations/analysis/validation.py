@@ -147,5 +147,6 @@ def plot_validation(
     )
 
     kwargs.setdefault("axisbelow", True)
+    kwargs.setdefault("ylabel", "Per cent")
     mg.finalise_plot(ax, title=title, lfooter=lfooter, rfooter=rfooter, **kwargs)
     return None

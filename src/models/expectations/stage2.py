@@ -176,6 +176,7 @@ def _to_monthly_index(df: pd.DataFrame, target_index: pd.PeriodIndex) -> pd.Data
 
 # Common plot styling
 PLOT_KWARGS = {
+    "ylabel": "Per cent",
     "axhspan": {"ymin": 2, "ymax": 3, "color": "red", "alpha": 0.1, "zorder": -1},
     "axhline": {"y": 2.5, "color": "black", "linestyle": "dashed", "linewidth": 0.75},
     "legend": {"loc": "best", "fontsize": "x-small"},
