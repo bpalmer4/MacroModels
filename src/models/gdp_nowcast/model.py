@@ -10,9 +10,12 @@ Bridge groups:
     2. Labour:       employment growth, hours worked growth (monthly, ~2 months lead)
     3. Investment:   building approvals growth (monthly, ~2 months lead)
     4. Trade:        goods trade balance (monthly, ~2 months lead)
-    5. Prices:       quarterly CPI trimmed mean (~5 weeks lead), WPI growth (~3 weeks lead)
-    6. Business:     company profits growth, business sales growth (~3 days lead)
-    7. Production:   Cobb-Douglas (time-varying α from factor income shares)
+    5. Survey:       NAB business conditions (monthly, ~2 weeks lead)
+    6. Prices:       quarterly CPI trimmed mean (~4-5 weeks lead), WPI growth (~2-3 weeks lead)
+    7. Investment:   construction work done (~2-3 weeks lead), private capex (~1-2 weeks lead)
+    8. Government:   GFCE (spliced 5206.0 + GFS early release, ~1-2 weeks lead)
+    9. Business:     company profits, sales, inventories growth (~1-2 days lead)
+   10. Production:   Cobb-Douglas (time-varying α from factor income shares)
 
 Uncertainty is estimated via bootstrap resampling of bridge equation residuals.
 
@@ -52,11 +55,16 @@ from src.data.abs_loader import load_series
 from src.data.business_indicators import (
     get_business_sales_growth_qrtly,
     get_company_profits_growth_qrtly,
+    get_inventories_growth_qrtly,
 )
+from src.data.capex import get_total_capex_growth_qrtly
+from src.data.construction import get_total_construction_growth_qrtly
 from src.data.dataseries import DataSeries
 from src.data.gdp import get_gdp
+from src.data.gov_finance import get_gov_consumption_spliced_growth_qrtly
 from src.data.inflation import get_genuine_monthly_cpi_index, get_monthly_cpi_index
 from src.data.series_specs import EMPLOYMENT_PERSONS
+from src.data.surveys import get_nab_business_conditions_monthly
 from src.data.wpi import get_wpi_growth_qrtly
 
 logger = logging.getLogger(__name__)
@@ -94,6 +102,7 @@ PUBLICATION_LAGS = {
     "building_approvals": 2,  # ~5-6 weeks after reference month
     "goods_balance": 2,     # ~5 weeks after reference month
     "cpi_monthly": 1,       # ~4 weeks after reference month
+    "nab_conditions": 1,    # ~2 weeks after reference month (fast)
 }
 
 
@@ -115,10 +124,15 @@ class DataAvailability:
     building_approvals: pd.Period | None = None
     goods_balance: pd.Period | None = None
     cpi_monthly: pd.Period | None = None
+    nab_conditions: pd.Period | None = None
     cpi_quarterly: bool = False
     wpi: bool = False
     business_profits: bool = False
     business_sales: bool = False
+    inventories: bool = False
+    construction: bool = False
+    capex: bool = False
+    gov_consumption: bool = False
 
     def monthly_status(self, target_quarter: pd.Period) -> dict[str, str]:
         """Report data availability for each monthly indicator.
@@ -134,7 +148,10 @@ class DataAvailability:
         ]
 
         status = {}
-        for name in ("employment", "hours_worked", "retail", "building_approvals", "goods_balance", "cpi_monthly"):
+        for name in (
+            "employment", "hours_worked", "retail", "building_approvals",
+            "goods_balance", "cpi_monthly", "nab_conditions",
+        ):
             cutoff = getattr(self, name)
             if cutoff is None:
                 status[name] = "0/3 months"
@@ -234,10 +251,15 @@ class DataAvailability:
             building_approvals=month_3,
             goods_balance=month_3,
             cpi_monthly=month_3,
+            nab_conditions=month_3,
             cpi_quarterly=True,
             wpi=True,
             business_profits=True,
             business_sales=True,
+            inventories=True,
+            construction=True,
+            capex=True,
+            gov_consumption=True,
         )
 
 
@@ -618,6 +640,7 @@ def _load_monthly_indicators() -> dict[str, DataSeries]:
         "hours_worked": get_hours_worked_monthly(),
         "employment": load_series(EMPLOYMENT_PERSONS),
         "goods_balance": get_goods_balance_monthly(),
+        "nab_conditions": get_nab_business_conditions_monthly(),
     }
 
     # Monthly CPI: spliced series for bridge estimation (full history),
@@ -637,6 +660,10 @@ def _load_quarterly_indicators() -> dict[str, pd.Series]:
         "wpi": get_wpi_growth_qrtly,
         "business_profits": get_company_profits_growth_qrtly,
         "business_sales": get_business_sales_growth_qrtly,
+        "inventories": get_inventories_growth_qrtly,
+        "construction": get_total_construction_growth_qrtly,
+        "capex": get_total_capex_growth_qrtly,
+        "gov_consumption": get_gov_consumption_spliced_growth_qrtly,
     }
     for name, loader in loaders.items():
         try:
@@ -654,6 +681,10 @@ QUARTERLY_BRIDGE_NAMES = {
     "wpi": "Prices: WPI",
     "business_profits": "Business: profits",
     "business_sales": "Business: sales",
+    "inventories": "Business: inventories",
+    "construction": "Investment: construction",
+    "capex": "Investment: private capex",
+    "gov_consumption": "Government: GFCE",
 }
 
 
@@ -735,6 +766,7 @@ def _build_monthly_bridges(
         ("Labour: employment", "employment", "mean", True, True, None),
         ("Trade", "goods_balance", "sum", False, False, None),
         ("Prices: monthly CPI", "cpi_monthly", "mean", True, False, "cpi_monthly_genuine"),
+        ("Survey: NAB conditions", "nab_conditions", "mean", False, False, None),
     ]
 
     # Load genuine monthly CPI for SARIMA (6484.0 + 640106, not interpolated quarterly)

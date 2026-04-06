@@ -65,8 +65,11 @@ These arrive ~2 months before GDP publication. Missing months within the target 
 | Labour: employment | Employed total persons | 6202.0 (Labour Force), table 6202001 | Quarterly mean |
 | Trade | Balance on goods | 5368.0 (International Trade in Goods) | Quarterly sum |
 | Prices: monthly CPI | CPI All Groups SA index (spliced) | 6484.0 + 6401.0 table 640106 | Quarterly mean |
+| Survey: NAB conditions | NAB business conditions index (SA) | RBA Table H3 (GICNBC) | Quarterly mean |
 
 The two labour bridges include an **HMA(13) labour productivity trend** as an additional regressor. This is derived from wage data (Δhcoe - Δulc) and corrects for periods where employment grows faster than output (negative productivity growth). Without this adjustment, the labour bridges systematically overpredict GDP during productivity downturns.
+
+The **NAB business conditions bridge** uses the index level (deviation from long-run average, in percentage points), not growth — analogous to the goods trade balance bridge. This is the only soft data (survey) indicator in the bridge set. It publishes faster than most hard indicators (~2 weeks lag) and helps at mid-cycle horizons where hard data is still arriving.
 
 The **monthly CPI bridge** uses a spliced index combining the discontinued Monthly CPI Indicator (6484.0, Sep 2017 – Sep 2025) with the current monthly CPI from 6401.0 table 640106 (Apr 2024 onwards). For SARIMA completion, only the genuine monthly observations are used (not interpolated quarterly history), ensuring the SARIMA model learns real monthly dynamics. For bridge equation estimation, the full spliced series (including quarterly-interpolated pre-2017 history) is used to maximise the training sample.
 
@@ -76,10 +79,14 @@ These are published shortly before GDP. The bridge is only active if the indicat
 
 | Bridge | Indicator | Source | Lead over GDP |
 |--------|-----------|--------|---------------|
-| Prices: CPI | CPI trimmed mean (quarterly) | 6401.0, Appendix 1a | ~5 weeks |
-| Prices: WPI | WPI growth (log diff) | 6345.0 | ~3 weeks |
-| Business: profits | Gross operating profits growth (nominal) | 5676.0 | ~3 days |
-| Business: sales | Total sales (summed across industries, CVM) | 5676.0 | ~3 days |
+| Prices: CPI | CPI trimmed mean (quarterly) | 6401.0, Appendix 1a | ~4-5 weeks |
+| Prices: WPI | WPI growth (log diff) | 6345.0 | ~2-3 weeks |
+| Investment: construction | Total construction work done growth (CVM) | 8755.0 | ~2-3 weeks |
+| Investment: private capex | Total private capex growth (CVM) | 5625.0 | ~1-2 weeks |
+| Government: GFCE | Government consumption growth (spliced 5206.0 + GFS) | 5206.0 + GFS | ~1-2 weeks |
+| Business: profits | Gross operating profits growth (nominal) | 5676.0 | ~1-2 days |
+| Business: sales | Total sales (summed across industries, CVM) | 5676.0 | ~1-2 days |
+| Business: inventories | Inventories growth (CVM) | 5676.0 | ~1-2 days |
 
 ### Production Bridge (Cobb-Douglas)
 
@@ -168,16 +175,16 @@ Publication lags are approximated per indicator:
 
 ## Backtest Results (2022Q1-2025Q4, latest-revised data)
 
-| Info Set | RMSE | MAE | Bias | Direction | 90% CI Coverage |
-|----------|------|-----|------|-----------|-----------------|
-| T-3m | 0.325% | 0.271% | -0.017% | 94% | 94% |
-| T-2m | 0.378% | 0.293% | -0.195% | 81% | 88% |
-| T-1m | 0.325% | 0.267% | -0.090% | 88% | 94% |
-| T-0 | 0.287% | 0.234% | +0.003% | 94% | 94% |
+| Info Set | RMSE | MAE | Bias | Direction | 90% CI Coverage | Bridges |
+|----------|------|-----|------|-----------|-----------------|---------|
+| T-3m | 0.380% | 0.333% | +0.222% | 94% | 94% | 8.0 |
+| T-2m | 0.326% | 0.254% | -0.120% | 88% | 94% | 8.0 |
+| T-1m | 0.286% | 0.234% | -0.029% | 88% | 100% | 8.0 |
+| T-0 | 0.268% | 0.227% | +0.086% | 94% | 81% | 16.0 |
 
 Naive benchmark (trailing 4-quarter average): RMSE 0.285%.
 
-**T-0 matches the naive benchmark with near-zero bias.** The nowcast adds most value at T-3m (3 months early) where no alternative estimate exists.
+**T-0 beats the naive benchmark (0.268% vs 0.285%).** The NAB business conditions survey bridge improves mid-cycle accuracy: T-2m RMSE dropped from 0.345% to 0.326% and T-1m from 0.303% to 0.286%. T-3m degraded (0.327% → 0.380%) due to SARIMA over-forecasting with minimal data, but this horizon has limited practical value.
 
 ### Caveats
 
@@ -194,6 +201,12 @@ Naive benchmark (trailing 4-quarter average): RMSE 0.285%.
 - **Independent production bridge inputs**: Uses capital stock and labour force from Modellers Database (1364.0) and MFP from wage data, not the same employment/hours/approvals used by monthly bridges. Earlier version double-counted these inputs.
 - **Monthly CPI bridge instead of deflation**: Retail turnover and company profits are nominal (current prices) while GDP is real (chain volume). Rather than deflating these indicators, a monthly CPI bridge is included as a separate bridge equation. Backtesting showed the CPI bridge outperforms deflation: the OLS coefficients on the CPI bridge capture price acceleration as a coincident demand signal (positive net coefficient = rising inflation → stronger demand → higher GDP), which is more informative than the rigid mechanical deflation. With the CPI bridge, T-2m RMSE improved from 0.378% to 0.345% and T-0 from 0.288% to 0.278%. The monthly CPI index is spliced from the discontinued Monthly CPI Indicator (6484.0, Sep 2017 onwards) and the current 6401.0 table 640106 (Apr 2024 onwards), with quarterly Appendix 1a interpolated to monthly for pre-2017 bridge estimation history. SARIMA completion uses only the genuine monthly observations.
 - **Business indicators included despite late publication**: 5676.0 arrives ~3 days before GDP, but still adds genuine information at T-0.
+- **BoP goods & services balance (5302.0) — excluded**: A quarterly bridge using the change in the SA goods & services balance (table 530204) was tested but excluded after leave-one-out analysis showed it degraded T-0 RMSE from 0.269% to 0.275%. Despite covering services trade (unlike the monthly 5368.0 goods balance), the BoP change series is noisy, arrives only ~1 day before GDP, and adds little over the monthly goods balance bridge which has longer estimation history and SARIMA-refined estimates by T-0. The data loader (`src/data/balance_of_payments.py`) is retained for other uses.
+- **Construction work done (8755.0)**: Published ~3 weeks before GDP. Total sectors, all construction types, chain volume measures (SA). Direct read on the investment component of GDP. Complements the monthly building approvals bridge which is a leading indicator of construction activity, not a measure of work actually done.
+- **Private capex (5625.0)**: Published ~4 weeks before GDP. Total private capital expenditure, chain volume measures (SA), including education and health. Captures business investment spending directly.
+- **Inventories (5676.0)**: Published ~3 days before GDP alongside profits and sales. Inventory swings are a volatile GDP component that is otherwise uncaptured by the monthly bridges. Uses log-differenced chain volume measures.
+- **Government GFCE (spliced 5206.0 + GFS)**: Government consumption is ~25% of GDP but was previously uncaptured by any bridge. Uses 5206.0 national accounts GFCE growth for the long bridge estimation history (back to 1959), spliced with the GFS early release for the target quarter. GFS publishes ~2 weeks before GDP; the two sources produce identical growth rates on revised data so no scaling is needed. The GFS workbook is a data cube (not standard ABS time series) and is parsed directly via openpyxl.
+- **NAB business conditions survey (RBA H3)**: The first soft data indicator in the bridge set. Published monthly by NAB (~2 weeks after reference month), republished in RBA Statistical Table H3 (series GICNBC). Used as a quarterly mean level (not growth — it's already a deviation from long-run average). The survey adds most value at mid-cycle horizons: T-2m RMSE improved from 0.345% to 0.326%, T-1m from 0.303% to 0.286%. At T-0 the effect is marginal (hard data dominates). Westpac-MI consumer sentiment was also tested but excluded — it added nothing beyond NAB conditions and has shorter history (2010 vs 1997). The key value of survey data is at turning points: hard activity indicators (employment, retail) lagged the 2023 per-capita recession by 2-3 quarters, while business conditions captured the slowdown earlier.
 - **No monetary policy variables**: Cash rate, yield curve, credit aggregates, and financial conditions indices were considered but excluded. At the nowcast horizon (0–3 months), monetary policy transmission is already embedded in the real activity indicators (retail trade, building approvals, labour data) by the time they are published. This is consistent with standard practice — bridge equation nowcasts at central banks (RBA, BoE) and in the literature rely on hard activity and survey data, not policy rates. MP variables have predictive power at the 1–8 quarter forecasting horizon but add little once contemporaneous real data is available.
 
 ---

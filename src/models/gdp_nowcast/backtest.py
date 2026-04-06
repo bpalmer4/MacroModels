@@ -305,24 +305,30 @@ def _plot_rmse_by_info_set(bt: BacktestResults) -> None:
 
 
 def _plot_actual_vs_nowcast(bt: BacktestResults) -> None:
-    """Scatter-style line chart of actual vs nowcast at T-0."""
+    """Actual vs nowcast at T-0 with 90% confidence band."""
     t0 = bt.results[bt.results["info_set"] == "T-0"].copy()
     t0 = t0.set_index("quarter").sort_index()
 
+    # 90% CI band behind the nowcast
+    ci_band = pd.DataFrame({
+        "lower": t0["ci_90_lower"],
+        "upper": t0["ci_90_upper"],
+    })
+    ax = mg.fill_between_plot(ci_band, color="red", alpha=0.12, label="90% CI")
+
+    # Nowcast and actual lines on top
     df = pd.DataFrame({
         "Actual": t0["actual_qoq"],
         "Nowcast (T-0)": t0["nowcast_qoq"],
     })
+    mg.line_plot(df, ax=ax, color=["navy", "red"], width=[2, 1.5], style=["-", "--"])
 
-    mg.line_plot_finalise(
-        df,
+    mg.finalise_plot(
+        ax,
         title="Actual vs Nowcast GDP Growth (Q/Q, T-0)",
         ylabel="Per cent",
         rfooter="Source: ABS 5206.0",
         lfooter="Pseudo real-time backtest, latest-revised data. ",
-        color=["navy", "red"],
-        width=[2, 1.5],
-        style=["-", "--"],
         y0=True,
         legend={"loc": "lower left", "fontsize": "small"},
         show=False,
