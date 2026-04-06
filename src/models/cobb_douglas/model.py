@@ -543,7 +543,7 @@ def run_decomposition(
                 potential["output_gap"],
                 inflation_annual,
             )
-        except Exception as e:
+        except (ValueError, KeyError, OSError) as e:
             print(f"Warning: Could not load inflation data for Phillips check: {e}")
 
     return DecompositionResult(

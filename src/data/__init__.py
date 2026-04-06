@@ -66,7 +66,31 @@ from src.data.import_prices import (
     get_import_price_growth_lagged_annual,
     get_import_price_index_qrtly,
 )
+from src.data.building_approvals import (
+    get_building_approvals_growth_qrtly,
+    get_building_approvals_monthly,
+    get_building_approvals_qrtly,
+)
+from src.data.business_indicators import (
+    get_business_sales_growth_qrtly,
+    get_business_sales_qrtly,
+    get_business_wages_growth_qrtly,
+    get_business_wages_qrtly,
+    get_company_profits_growth_qrtly,
+    get_company_profits_qrtly,
+    get_inventories_growth_qrtly,
+    get_inventories_qrtly,
+)
+from src.data.goods_trade import (
+    get_goods_balance_monthly,
+    get_goods_balance_qrtly,
+)
 from src.data.inflation import get_trimmed_mean_annual, get_trimmed_mean_qrtly
+from src.data.retail_trade import (
+    get_retail_growth_qrtly,
+    get_retail_turnover_monthly,
+    get_retail_turnover_qrtly,
+)
 from src.data.labour_force import (
     get_employed_qrtly,
     get_employment_growth_lagged_qrtly,
@@ -228,6 +252,26 @@ __all__ = [
     "get_gscpi_covid_lagged_qrtly",
     "get_gscpi_monthly",
     "get_gscpi_qrtly",
+    # Retail trade
+    "get_retail_turnover_monthly",
+    "get_retail_turnover_qrtly",
+    "get_retail_growth_qrtly",
+    # Building approvals
+    "get_building_approvals_monthly",
+    "get_building_approvals_qrtly",
+    "get_building_approvals_growth_qrtly",
+    # Goods trade
+    "get_goods_balance_monthly",
+    "get_goods_balance_qrtly",
+    # Business indicators
+    "get_company_profits_qrtly",
+    "get_company_profits_growth_qrtly",
+    "get_inventories_qrtly",
+    "get_inventories_growth_qrtly",
+    "get_business_wages_qrtly",
+    "get_business_wages_growth_qrtly",
+    "get_business_sales_qrtly",
+    "get_business_sales_growth_qrtly",
     # Utilities
     "hma",
     "splice_series",

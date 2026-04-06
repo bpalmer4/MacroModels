@@ -92,7 +92,6 @@ lint.ignore = [
 
     # --- specifically for Jupyter notebooks.
     "B018",    # Found useless attribute access (often at cell end for output) 
-    "BLE001",  # catch-all exceptions - not usefull in Jupyter notebooks
     "D100",    # Missing docstring in public module
     "E402",    # Module level import not at top of file - doesn't work with Notebooks
     "INP001",  # implicit-namespace-package - not relevant for Jupyter notebooks

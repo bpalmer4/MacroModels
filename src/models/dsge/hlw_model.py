@@ -345,7 +345,7 @@ def compute_hlw_log_likelihood(
     try:
         model = HLWModel(params=params)
         return model.kalman_filter_with_exog(y_obs, r_lag, import_price_growth)
-    except Exception:
+    except (ValueError, np.linalg.LinAlgError, FloatingPointError):
         return -1e10
 
 

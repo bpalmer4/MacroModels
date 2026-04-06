@@ -196,5 +196,5 @@ if __name__ == "__main__":
         buffers = get_mortgage_buffers_qrtly()
         print(f"{buffers}")
         print(f"Latest values:\n{buffers.data.tail(4).round(2)}")
-    except Exception as e:
+    except (ValueError, KeyError, OSError) as e:
         print(f"Failed: {e}")
