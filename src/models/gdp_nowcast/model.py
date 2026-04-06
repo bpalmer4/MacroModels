@@ -55,6 +55,7 @@ from src.data.business_indicators import (
 )
 from src.data.dataseries import DataSeries
 from src.data.gdp import get_gdp
+from src.data.inflation import get_genuine_monthly_cpi_index, get_monthly_cpi_index
 from src.data.series_specs import EMPLOYMENT_PERSONS
 from src.data.wpi import get_wpi_growth_qrtly
 
@@ -92,6 +93,7 @@ PUBLICATION_LAGS = {
     "retail": 1,            # ~4 weeks after reference month
     "building_approvals": 2,  # ~5-6 weeks after reference month
     "goods_balance": 2,     # ~5 weeks after reference month
+    "cpi_monthly": 1,       # ~4 weeks after reference month
 }
 
 
@@ -112,6 +114,7 @@ class DataAvailability:
     retail: pd.Period | None = None
     building_approvals: pd.Period | None = None
     goods_balance: pd.Period | None = None
+    cpi_monthly: pd.Period | None = None
     cpi_quarterly: bool = False
     wpi: bool = False
     business_profits: bool = False
@@ -131,7 +134,7 @@ class DataAvailability:
         ]
 
         status = {}
-        for name in ("employment", "hours_worked", "retail", "building_approvals", "goods_balance"):
+        for name in ("employment", "hours_worked", "retail", "building_approvals", "goods_balance", "cpi_monthly"):
             cutoff = getattr(self, name)
             if cutoff is None:
                 status[name] = "0/3 months"
@@ -230,6 +233,7 @@ class DataAvailability:
             retail=month_3,
             building_approvals=month_3,
             goods_balance=month_3,
+            cpi_monthly=month_3,
             cpi_quarterly=True,
             wpi=True,
             business_profits=True,
@@ -608,7 +612,7 @@ def _build_production_bridge(
 
 def _load_monthly_indicators() -> dict[str, DataSeries]:
     """Load all monthly indicator series (full history)."""
-    return {
+    indicators: dict[str, DataSeries] = {
         "retail": get_retail_turnover_monthly(),
         "building_approvals": get_building_approvals_monthly(),
         "hours_worked": get_hours_worked_monthly(),
@@ -616,10 +620,18 @@ def _load_monthly_indicators() -> dict[str, DataSeries]:
         "goods_balance": get_goods_balance_monthly(),
     }
 
+    # Monthly CPI: spliced series for bridge estimation (full history),
+    # genuine monthly series stored separately for SARIMA completion
+    cpi_spliced = get_monthly_cpi_index()
+    indicators["cpi_monthly"] = cpi_spliced
+
+    return indicators
+
 
 def _load_quarterly_indicators() -> dict[str, pd.Series]:
     """Load all quarterly indicator series (full history)."""
     indicators = {}
+
     loaders = {
         "cpi_quarterly": get_trimmed_mean_qrtly,
         "wpi": get_wpi_growth_qrtly,
@@ -632,6 +644,7 @@ def _load_quarterly_indicators() -> dict[str, pd.Series]:
             indicators[name] = ds.data.dropna()
         except (ValueError, KeyError, OSError):
             logger.warning("Failed to load quarterly indicator '%s'", name)
+
     return indicators
 
 
@@ -671,6 +684,30 @@ def _get_labour_productivity_trend(target_quarter: pd.Period) -> pd.Series:
     return lp_trend
 
 
+def _prepare_monthly_series(
+    monthly: pd.Series,
+    cutoff: pd.Period | None,
+    sarima_override: pd.Series | None,
+) -> tuple[pd.Series, pd.Series] | None:
+    """Prepare monthly series for a bridge: truncate, resolve SARIMA series.
+
+    Returns (bridge_series, sarima_series) or None if insufficient data.
+    """
+    bridge_series = _truncate_monthly(monthly.dropna(), cutoff)
+
+    if len(bridge_series) < MIN_SARIMA_TRAINING:
+        return None
+
+    if sarima_override is not None:
+        sarima_series = _truncate_monthly(sarima_override.dropna(), cutoff)
+        if len(sarima_series) < MIN_SARIMA_TRAINING:
+            return None
+    else:
+        sarima_series = bridge_series
+
+    return bridge_series, sarima_series
+
+
 def _build_monthly_bridges(
     gdp_growth: pd.Series,
     monthly_indicators: dict[str, DataSeries],
@@ -688,31 +725,36 @@ def _build_monthly_bridges(
     # Compute labour productivity trend once for the labour bridges
     lp_trend = _get_labour_productivity_trend(target_quarter)
 
-    # (name, indicator_key, aggregation, growth_calc, include_productivity)
+    # (name, indicator_key, aggregation, growth_calc, include_productivity, sarima_key)
+    # sarima_key: if set, use a different series for SARIMA completion (e.g. genuine
+    # monthly CPI for SARIMA, spliced series for bridge estimation)
     bridge_configs = [
-        ("Consumption", "retail", "sum", True, False),
-        ("Investment", "building_approvals", "sum", True, False),
-        ("Labour: hours", "hours_worked", "sum", True, True),
-        ("Labour: employment", "employment", "mean", True, True),
-        ("Trade", "goods_balance", "sum", False, False),
+        ("Consumption", "retail", "sum", True, False, None),
+        ("Investment", "building_approvals", "sum", True, False, None),
+        ("Labour: hours", "hours_worked", "sum", True, True, None),
+        ("Labour: employment", "employment", "mean", True, True, None),
+        ("Trade", "goods_balance", "sum", False, False, None),
+        ("Prices: monthly CPI", "cpi_monthly", "mean", True, False, "cpi_monthly_genuine"),
     ]
 
-    for bridge_name, ind_key, agg, calc_growth, include_prod in bridge_configs:
+    # Load genuine monthly CPI for SARIMA (6484.0 + 640106, not interpolated quarterly)
+    genuine_monthly_cpi = get_genuine_monthly_cpi_index().data
+    sarima_overrides = {"cpi_monthly_genuine": genuine_monthly_cpi}
+
+    for bridge_name, ind_key, agg, calc_growth, include_prod, sarima_key in bridge_configs:
         ds = monthly_indicators[ind_key]
         cutoff = getattr(availability, ind_key)
+        override = sarima_overrides.get(sarima_key) if sarima_key else None
 
-        # Truncate monthly data to availability cutoff
-        monthly = _truncate_monthly(ds.data.dropna(), cutoff)
-
-        if len(monthly) < MIN_SARIMA_TRAINING:
-            logger.warning("Bridge '%s': insufficient data after truncation", bridge_name)
+        prepared = _prepare_monthly_series(ds.data, cutoff, override)
+        if prepared is None:
+            logger.info("Bridge '%s': insufficient data, skipping", bridge_name)
             continue
+        monthly, sarima_series = prepared
 
-        # SARIMA-complete the target quarter
         try:
-            # month statuses unused; available via DataAvailability
             q_value, _month_statuses = monthly_to_quarterly_completed(
-                monthly, target_quarter, agg=agg,
+                sarima_series, target_quarter, agg=agg,
             )
         except RuntimeError:
             logger.warning("Bridge '%s': SARIMA completion failed", bridge_name)
@@ -1047,7 +1089,7 @@ def _plot_fan_chart(
         rfooter="Source: ABS 5206.0",
         lfooter=f"Australia. Nowcast: {lfooter_value}. {pd.Timestamp.now().strftime('%d %b %Y')}. ",
         y0=True,
-        legend={"loc": "lower left", "fontsize": "x-small"},
+        legend={"loc": "best", "fontsize": "x-small"},
         show=SHOW,
     )
 
@@ -1101,36 +1143,52 @@ def _plot_growth(result: NowcastResult, gdp: pd.Series) -> None:
         rfooter="Source: ABS 5206.0",
         lfooter=f"Australia. Nowcast Q/Q: {result.gdp_qoq:+.2f}%, TTY: {result.gdp_tty:+.2f}%. "
                 f"{pd.Timestamp.now().strftime('%d %b %Y')}. ",
-        legend={"loc": "lower left", "fontsize": "x-small"},
+        legend={"loc": "best", "fontsize": "x-small"},
         show=SHOW,
     )
 
 
 def _plot_bridge_weights(result: NowcastResult) -> None:
-    """Plot bridge contributions to the nowcast as a horizontal bar chart."""
+    """Plot bridge weights and nowcast values as two horizontal bar charts."""
     import matplotlib.pyplot as plt  # noqa: PLC0415
 
-    active = [(b.name, b.nowcast_qoq * result.weights.get(b.name, 0))
+    active = [(b.name, b.nowcast_qoq, result.weights.get(b.name, 0))
               for b in result.bridge_results if b.available]
 
     if not active:
         return
 
-    names, contributions = zip(*active, strict=True)
-    colors = ["#2ca02c" if c >= 0 else "#d62728" for c in contributions]
+    names, nowcasts, weights = zip(*active, strict=True)
+    date_str = pd.Timestamp.now().strftime("%d %b %Y")
+    q = result.target_quarter
 
-    _, ax = plt.subplots(figsize=(10, 5))
-    ax.barh(range(len(names)), contributions, color=colors, alpha=0.8)
-    ax.set_yticks(range(len(names)))
-    ax.set_yticklabels(names)
-    ax.axvline(x=0, color="black", linewidth=0.5)
-
+    # Chart 1: Weights (inverse-MSE)
+    _, ax1 = plt.subplots(figsize=(10, 5))
+    ax1.barh(range(len(names)), [w * 100 for w in weights], color="steelblue", alpha=0.8)
+    ax1.set_yticks(range(len(names)))
+    ax1.set_yticklabels(names)
     mg.finalise_plot(
-        ax,
-        title=f"Bridge Contributions: {result.target_quarter}",
-        xlabel="Contribution to nowcast (pp)",
+        ax1,
+        title=f"Bridge Weights: {q}",
+        xlabel="Weight (%)",
         rfooter="Source: ABS",
-        lfooter=f"Australia. Combined: {result.gdp_qoq:+.2f}%. {pd.Timestamp.now().strftime('%d %b %Y')}. ",
+        lfooter=f"Australia. Inverse-MSE weights. {date_str}. ",
+        show=SHOW,
+    )
+
+    # Chart 2: Nowcast values (what each bridge thinks GDP growth is)
+    colors = ["#2ca02c" if n >= 0 else "#d62728" for n in nowcasts]
+    _, ax2 = plt.subplots(figsize=(10, 5))
+    ax2.barh(range(len(names)), nowcasts, color=colors, alpha=0.8)
+    ax2.set_yticks(range(len(names)))
+    ax2.set_yticklabels(names)
+    ax2.axvline(x=0, color="black", linewidth=0.5)
+    mg.finalise_plot(
+        ax2,
+        title=f"Bridge Nowcasts: {q}",
+        xlabel="Nowcast Q/Q growth (%)",
+        rfooter="Source: ABS",
+        lfooter=f"Australia. Combined: {result.gdp_qoq:+.2f}%. {date_str}. ",
         show=SHOW,
     )
 

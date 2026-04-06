@@ -59,13 +59,16 @@ These arrive ~2 months before GDP publication. Missing months within the target 
 
 | Bridge | Indicator | Source | Aggregation |
 |--------|-----------|--------|-------------|
-| Consumption | Retail turnover | 5682.0 (Monthly Household Spending) | Quarterly sum |
+| Consumption | Retail turnover (nominal) | 5682.0 (Monthly Household Spending) | Quarterly sum |
 | Investment | Total dwelling approvals | 8731.0 (Building Approvals) | Quarterly sum |
 | Labour: hours | Monthly hours worked | 6202.0 (Labour Force), table 6202019 | Quarterly sum |
 | Labour: employment | Employed total persons | 6202.0 (Labour Force), table 6202001 | Quarterly mean |
 | Trade | Balance on goods | 5368.0 (International Trade in Goods) | Quarterly sum |
+| Prices: monthly CPI | CPI All Groups SA index (spliced) | 6484.0 + 6401.0 table 640106 | Quarterly mean |
 
 The two labour bridges include an **HMA(13) labour productivity trend** as an additional regressor. This is derived from wage data (Δhcoe - Δulc) and corrects for periods where employment grows faster than output (negative productivity growth). Without this adjustment, the labour bridges systematically overpredict GDP during productivity downturns.
+
+The **monthly CPI bridge** uses a spliced index combining the discontinued Monthly CPI Indicator (6484.0, Sep 2017 – Sep 2025) with the current monthly CPI from 6401.0 table 640106 (Apr 2024 onwards). For SARIMA completion, only the genuine monthly observations are used (not interpolated quarterly history), ensuring the SARIMA model learns real monthly dynamics. For bridge equation estimation, the full spliced series (including quarterly-interpolated pre-2017 history) is used to maximise the training sample.
 
 ### Quarterly Bridges (available or excluded)
 
@@ -75,8 +78,8 @@ These are published shortly before GDP. The bridge is only active if the indicat
 |--------|-----------|--------|---------------|
 | Prices: CPI | CPI trimmed mean (quarterly) | 6401.0, Appendix 1a | ~5 weeks |
 | Prices: WPI | WPI growth (log diff) | 6345.0 | ~3 weeks |
-| Business: profits | Gross operating profits growth | 5676.0 | ~3 days |
-| Business: sales | Total sales (summed across industries) | 5676.0 | ~3 days |
+| Business: profits | Gross operating profits growth (nominal) | 5676.0 | ~3 days |
+| Business: sales | Total sales (summed across industries, CVM) | 5676.0 | ~3 days |
 
 ### Production Bridge (Cobb-Douglas)
 
@@ -189,8 +192,9 @@ Naive benchmark (trailing 4-quarter average): RMSE 0.285%.
 - **Unfloored MFP in production bridge**: Negative MFP is informative for nowcasting actual GDP, unlike potential output estimation where it represents underutilisation.
 - **Labour productivity adjustment**: HMA(13) trend from wage data added to labour bridge equations to correct for productivity drag. Eliminated the +0.3pp positive bias present without it.
 - **Independent production bridge inputs**: Uses capital stock and labour force from Modellers Database (1364.0) and MFP from wage data, not the same employment/hours/approvals used by monthly bridges. Earlier version double-counted these inputs.
-- **Monthly CPI excluded**: Too short a history, doesn't map cleanly to quarterly CPI.
+- **Monthly CPI bridge instead of deflation**: Retail turnover and company profits are nominal (current prices) while GDP is real (chain volume). Rather than deflating these indicators, a monthly CPI bridge is included as a separate bridge equation. Backtesting showed the CPI bridge outperforms deflation: the OLS coefficients on the CPI bridge capture price acceleration as a coincident demand signal (positive net coefficient = rising inflation → stronger demand → higher GDP), which is more informative than the rigid mechanical deflation. With the CPI bridge, T-2m RMSE improved from 0.378% to 0.345% and T-0 from 0.288% to 0.278%. The monthly CPI index is spliced from the discontinued Monthly CPI Indicator (6484.0, Sep 2017 onwards) and the current 6401.0 table 640106 (Apr 2024 onwards), with quarterly Appendix 1a interpolated to monthly for pre-2017 bridge estimation history. SARIMA completion uses only the genuine monthly observations.
 - **Business indicators included despite late publication**: 5676.0 arrives ~3 days before GDP, but still adds genuine information at T-0.
+- **No monetary policy variables**: Cash rate, yield curve, credit aggregates, and financial conditions indices were considered but excluded. At the nowcast horizon (0–3 months), monetary policy transmission is already embedded in the real activity indicators (retail trade, building approvals, labour data) by the time they are published. This is consistent with standard practice — bridge equation nowcasts at central banks (RBA, BoE) and in the literature rely on hard activity and survey data, not policy rates. MP variables have predictive power at the 1–8 quarter forecasting horizon but add little once contemporaneous real data is available.
 
 ---
 
