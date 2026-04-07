@@ -22,7 +22,7 @@ Bridge equation model for nowcasting the next unpublished quarterly GDP growth (
 ### File Structure
 
 ```
-gdp_nowcast/
+gdp_nowcast_bridge/
 ├── __init__.py
 ├── model.py              # Core nowcast model
 ├── backtest.py           # Backtesting framework
@@ -33,11 +33,11 @@ gdp_nowcast/
 
 ```python
 # Live nowcast (auto-detects target quarter, generates charts)
-from src.models.gdp_nowcast.model import run_nowcast
+from src.models.gdp_nowcast_bridge.model import run_nowcast
 result = run_nowcast()
 
 # Programmatic nowcast (explicit target and availability)
-from src.models.gdp_nowcast.model import nowcast, DataAvailability
+from src.models.gdp_nowcast_bridge.model import nowcast, DataAvailability
 result = nowcast(
     target_quarter=pd.Period("2025Q4", "Q-DEC"),
     availability=DataAvailability.at_t_minus_1m(pd.Period("2025Q4", "Q-DEC")),
@@ -45,7 +45,7 @@ result = nowcast(
 )
 
 # Backtesting
-from src.models.gdp_nowcast.backtest import run_backtest, BacktestConfig
+from src.models.gdp_nowcast_bridge.backtest import run_backtest, BacktestConfig
 bt = run_backtest(BacktestConfig(start="2022Q1"))
 ```
 
@@ -140,6 +140,14 @@ MSE is computed from expanding-window one-step-ahead forecasts (minimum training
 
 Only bridges with available data and finite MSE are included. This means the nowcast automatically improves as more indicators are published.
 
+### Why inverse-MSE weighting is robust
+
+A useful property of the bridge approach (compared with joint covariance models like the BVAR or the DFM) is that **adding noisy indicators rarely hurts performance**. Each bridge is fit independently and weighted by its own out-of-sample MSE: a noisy indicator just gets a low weight and contributes little to the combined nowcast. The good bridges dominate by construction.
+
+Joint-covariance approaches behave differently. In a BVAR conditional update, every variable contributes to the residual covariance matrix Σ, which is then inverted to compute the conditional mean of GDP given the other indicators. A single noisy indicator can pollute the entire update through spurious cross-correlations — its noise gets amplified through Σ⁻¹ and corrupts the conditioning even on the good variables. Empirically, the BVAR comparator in this project tops out around 10 well-chosen variables and *gets worse* when government finance or BoP trade are added to the panel. The bridge model, by contrast, comfortably incorporates 16+ indicators (8 monthly + 8 quarterly + production bridge) because each one is judged on its own out-of-sample track record.
+
+The general principle: **bridge equations degrade gracefully**, joint-covariance models do not. If you're not sure whether an indicator helps, the bridge framework lets you add it cheaply — the worst case is that it earns a low MSE weight and gets ignored. In a BVAR or DFM, the same indicator can quietly degrade the whole model.
+
 ---
 
 ## Uncertainty
@@ -215,14 +223,14 @@ Naive benchmark (trailing 4-quarter average): RMSE 0.285%.
 
 ```bash
 # Live nowcast
-./run-gdp-nowcast.sh
-uv run python -m src.models.gdp_nowcast.model
+./run-gdp-nowcast-bridge.sh
+uv run python -m src.models.gdp_nowcast_bridge.model
 
 # Backtest (default: 2022Q1 to latest)
-uv run python -m src.models.gdp_nowcast.backtest
+uv run python -m src.models.gdp_nowcast_bridge.backtest
 
 # Backtest with custom range
-uv run python -m src.models.gdp_nowcast.backtest --start 2022Q1 --end 2025Q4
+uv run python -m src.models.gdp_nowcast_bridge.backtest --start 2022Q1 --end 2025Q4
 ```
 
 ### Output

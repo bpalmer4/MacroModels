@@ -21,10 +21,10 @@ Uncertainty is estimated via bootstrap resampling of bridge equation residuals.
 
 Usage:
     # Live nowcast
-    uv run python -m src.models.gdp_nowcast.model
+    uv run python -m src.models.gdp_nowcast_bridge.model
 
     # Programmatic use
-    from src.models.gdp_nowcast.model import nowcast, DataAvailability
+    from src.models.gdp_nowcast_bridge.model import nowcast, DataAvailability
     result = nowcast(target_quarter=pd.Period("2025Q4", "Q-DEC"))
     result = nowcast(
         target_quarter=pd.Period("2025Q4", "Q-DEC"),
@@ -1134,7 +1134,7 @@ def _plot_nowcast(result: NowcastResult, gdp_growth_hist: pd.Series) -> None:
         ci_70=result.gdp_qoq_70,
         ci_90=result.gdp_qoq_90,
         target_quarter=result.target_quarter,
-        title=f"GDP Growth Nowcast (Q/Q): {result.target_quarter}",
+        title=f"GDP Growth Bridge Model Nowcast (Q/Q): {result.target_quarter}",
         lfooter_value=f"{result.gdp_qoq:+.2f}%",
     )
 
@@ -1148,7 +1148,7 @@ def _plot_nowcast_tty(result: NowcastResult, gdp: pd.Series) -> None:
         ci_70=result.gdp_tty_70,
         ci_90=result.gdp_tty_90,
         target_quarter=result.target_quarter,
-        title=f"GDP Growth Nowcast (TTY): {result.target_quarter}",
+        title=f"GDP Growth Bridge Model Nowcast (TTY): {result.target_quarter}",
         lfooter_value=f"{result.gdp_tty:+.2f}%",
     )
 
@@ -1170,7 +1170,7 @@ def _plot_growth(result: NowcastResult, gdp: pd.Series) -> None:
 
     mg.growth_plot_finalise(
         growth_df,
-        title=f"GDP Growth Nowcast: {result.target_quarter}",
+        title=f"GDP Growth Bridge Model Nowcast: {result.target_quarter}",
         ylabel="Per cent",
         rfooter="Source: ABS 5206.0",
         lfooter=f"Australia. Nowcast Q/Q: {result.gdp_qoq:+.2f}%, TTY: {result.gdp_tty:+.2f}%. "
@@ -1201,7 +1201,7 @@ def _plot_bridge_weights(result: NowcastResult) -> None:
     ax1.set_yticklabels(names)
     mg.finalise_plot(
         ax1,
-        title=f"Bridge Weights: {q}",
+        title=f"Bridge Model Weights: {q}",
         xlabel="Weight (%)",
         rfooter="Source: ABS",
         lfooter=f"Australia. Inverse-MSE weights. {date_str}. ",
@@ -1217,7 +1217,7 @@ def _plot_bridge_weights(result: NowcastResult) -> None:
     ax2.axvline(x=0, color="black", linewidth=0.5)
     mg.finalise_plot(
         ax2,
-        title=f"Bridge Nowcasts: {q}",
+        title=f"Bridge Model Nowcasts: {q}",
         xlabel="Nowcast Q/Q growth (%)",
         rfooter="Source: ABS",
         lfooter=f"Australia. Combined: {result.gdp_qoq:+.2f}%. {date_str}. ",

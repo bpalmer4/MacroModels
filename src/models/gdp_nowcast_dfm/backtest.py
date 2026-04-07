@@ -1,15 +1,14 @@
-"""GDP nowcast backtesting.
+"""GDP nowcast DFM backtesting.
 
-Runs the nowcast model across historical quarters at four information set
+Runs the DFM nowcast model across historical quarters at four information set
 timings (T-3m, T-2m, T-1m, T-0) and evaluates against actual GDP outcomes.
 
 Note: This is a pseudo real-time backtest using latest-revised data for both
-inputs and evaluation. Upgrading to true vintage data (via readabs history
-parameter) is a future improvement.
+inputs and evaluation.
 
 Usage:
-    uv run python -m src.models.gdp_nowcast.backtest
-    uv run python -m src.models.gdp_nowcast.backtest --start 2022Q1 --end 2025Q4
+    uv run python -m src.models.gdp_nowcast_dfm.backtest
+    uv run python -m src.models.gdp_nowcast_dfm.backtest --start 2022Q1 --end 2025Q4
 """
 
 import argparse
@@ -22,8 +21,9 @@ import numpy as np
 import pandas as pd
 
 from src.data.gdp import get_gdp
-from src.models.gdp_nowcast.model import (
+from src.models.gdp_nowcast_dfm.model import (
     DataAvailability,
+    NowcastResult,
     _compute_gdp_growth,
     _load_monthly_indicators,
     _load_quarterly_indicators,
@@ -32,8 +32,8 @@ from src.models.gdp_nowcast.model import (
 
 logger = logging.getLogger(__name__)
 
-BACKTEST_CHART_DIR = "./charts/GDP-Nowcast-Backtest/"
-BACKTEST_OUTPUT_DIR = "./model_outputs/gdp_nowcast/"
+BACKTEST_CHART_DIR = "./charts/GDP-Nowcast-DFM-Backtest/"
+BACKTEST_OUTPUT_DIR = "./model_outputs/gdp_nowcast_dfm/"
 
 INFO_SETS = {
     "T-3m": DataAvailability.at_t_minus_3m,
@@ -48,7 +48,7 @@ class BacktestConfig:
     """Configuration for a backtest run."""
 
     start: str = "2022Q1"
-    end: str | None = None  # None = latest published quarter
+    end: str | None = None
 
 
 @dataclass
@@ -56,8 +56,8 @@ class BacktestResults:
     """Results from a backtest run."""
 
     config: BacktestConfig
-    results: pd.DataFrame  # Quarter × info_set → nowcast_qoq, actual_qoq, error, etc.
-    summary: pd.DataFrame  # Metrics by info_set
+    results: pd.DataFrame
+    summary: pd.DataFrame
 
 
 def _get_backtest_quarters(config: BacktestConfig, gdp: pd.Series) -> list[pd.Period]:
@@ -65,7 +65,6 @@ def _get_backtest_quarters(config: BacktestConfig, gdp: pd.Series) -> list[pd.Pe
     start = pd.Period(config.start, "Q-DEC")
     end = pd.Period(config.end, "Q-DEC") if config.end is not None else gdp.dropna().index[-1]
 
-    # Only include quarters where we have actual GDP to evaluate against
     quarters = []
     current = start
     while current <= end:
@@ -77,16 +76,10 @@ def _get_backtest_quarters(config: BacktestConfig, gdp: pd.Series) -> list[pd.Pe
 
 
 def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
-    """Run the backtest across historical quarters.
-
-    For each quarter, runs the nowcast at four information set timings
-    and compares to the actual GDP outcome.
-
-    """
+    """Run the backtest across historical quarters."""
     if config is None:
         config = BacktestConfig()
 
-    # Load all data once (latest vintage)
     print("Loading data...")
     gdp_ds = get_gdp(gdp_type="CVM", seasonal="SA")
     gdp = gdp_ds.data.dropna()
@@ -98,7 +91,6 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
     quarters = _get_backtest_quarters(config, gdp)
     print(f"Backtesting {len(quarters)} quarters: {quarters[0]} to {quarters[-1]}")
 
-    # Run nowcasts
     rows = []
     for i, target_q in enumerate(quarters):
         actual_qoq = gdp_growth.loc[target_q] if target_q in gdp_growth.index else np.nan
@@ -127,7 +119,6 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
                     "nowcast_tty": result.gdp_tty,
                     "actual_tty": actual_tty,
                     "error_tty": result.gdp_tty - actual_tty,
-                    "n_active_bridges": sum(1 for b in result.bridge_results if b.available),
                     "ci_70_lower": result.gdp_qoq_70[0],
                     "ci_70_upper": result.gdp_qoq_70[1],
                     "ci_90_lower": result.gdp_qoq_90[0],
@@ -145,25 +136,20 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
                     "nowcast_tty": np.nan,
                     "actual_tty": actual_tty,
                     "error_tty": np.nan,
-                    "n_active_bridges": 0,
                     "ci_70_lower": np.nan,
                     "ci_70_upper": np.nan,
                     "ci_90_lower": np.nan,
                     "ci_90_upper": np.nan,
                 })
 
-        # Progress
         if (i + 1) % 5 == 0 or i == len(quarters) - 1:
             print(f"  {i + 1}/{len(quarters)} quarters completed")
 
     results_df = pd.DataFrame(rows)
-
-    # Compute summary statistics by info set
     summary = _compute_summary(results_df)
 
     bt_results = BacktestResults(config=config, results=results_df, summary=summary)
 
-    # Output
     _print_backtest_summary(bt_results)
     _save_results(bt_results)
     _plot_backtest(bt_results, gdp_growth)
@@ -183,12 +169,10 @@ def _compute_summary(results: pd.DataFrame) -> pd.DataFrame:
         errors = subset["error_qoq"]
         errors_tty = subset["error_tty"].dropna()
 
-        # Direction accuracy: did we get the sign of Q/Q change right?
         direction_correct = (
             (subset["nowcast_qoq"] > 0) == (subset["actual_qoq"] > 0)
         ).mean()
 
-        # CI coverage
         ci_70_covers = (
             (subset["actual_qoq"] >= subset["ci_70_lower"])
             & (subset["actual_qoq"] <= subset["ci_70_upper"])
@@ -199,9 +183,14 @@ def _compute_summary(results: pd.DataFrame) -> pd.DataFrame:
             & (subset["actual_qoq"] <= subset["ci_90_upper"])
         ).mean()
 
-        # Naive benchmark: GDP grows at its trailing 4-quarter average
+        # Naive benchmark: trailing 4-quarter average
         naive_errors = subset["actual_qoq"] - subset["actual_qoq"].rolling(4).mean().shift(1)
         naive_rmse = np.sqrt((naive_errors ** 2).mean()) if len(naive_errors.dropna()) > 0 else np.nan
+
+        # Correlation between nowcast and actual — measures whether the model
+        # tracks the *shape* of GDP growth, independent of bias.
+        corr = subset[["nowcast_qoq", "actual_qoq"]].corr().iloc[0, 1]
+        nowcast_std = subset["nowcast_qoq"].std()
 
         rows.append({
             "info_set": info_set,
@@ -215,7 +204,8 @@ def _compute_summary(results: pd.DataFrame) -> pd.DataFrame:
             "ci_70_coverage": ci_70_covers,
             "ci_90_coverage": ci_90_covers,
             "naive_rmse_qoq": naive_rmse,
-            "avg_active_bridges": subset["n_active_bridges"].mean(),
+            "correlation": corr,
+            "nowcast_std": nowcast_std,
         })
 
     return pd.DataFrame(rows).set_index("info_set")
@@ -224,32 +214,34 @@ def _compute_summary(results: pd.DataFrame) -> pd.DataFrame:
 def _print_backtest_summary(bt: BacktestResults) -> None:
     """Print backtest summary to terminal."""
     print("\n" + "=" * 80)
-    print(f"  BACKTEST SUMMARY: {bt.config.start} to {bt.config.end or 'latest'}")
+    print(f"  DFM BACKTEST SUMMARY: {bt.config.start} to {bt.config.end or 'latest'}")
     print("=" * 80)
 
     s = bt.summary
-    print(f"\n  {'Info Set':<10} {'RMSE':>8} {'MAE':>8} {'Bias':>8} {'Dir%':>8} "
-          f"{'70%CI':>8} {'90%CI':>8} {'Naive':>8} {'Bridges':>8}")
-    print("  " + "-" * 74)
+    print(f"\n  {'Info Set':<8} {'RMSE':>7} {'MAE':>7} {'Bias':>8} {'Dir%':>6} "
+          f"{'Corr':>7} {'NCstd':>7} {'70%CI':>6} {'90%CI':>6} {'Naive':>7}")
+    print("  " + "-" * 76)
 
     for info_set in s.index:
         row = s.loc[info_set]
-        print(f"  {info_set:<10} "
-              f"{row['rmse_qoq']:>7.3f}% "
-              f"{row['mae_qoq']:>7.3f}% "
+        print(f"  {info_set:<8} "
+              f"{row['rmse_qoq']:>6.3f}% "
+              f"{row['mae_qoq']:>6.3f}% "
               f"{row['mean_bias_qoq']:>+7.3f}% "
-              f"{row['direction_accuracy']:>7.0%} "
-              f"{row['ci_70_coverage']:>7.0%} "
-              f"{row['ci_90_coverage']:>7.0%} "
-              f"{row['naive_rmse_qoq']:>7.3f}% "
-              f"{row['avg_active_bridges']:>7.1f}")
+              f"{row['direction_accuracy']:>5.0%} "
+              f"{row['correlation']:>+7.3f} "
+              f"{row['nowcast_std']:>6.3f}% "
+              f"{row['ci_70_coverage']:>5.0%} "
+              f"{row['ci_90_coverage']:>5.0%} "
+              f"{row['naive_rmse_qoq']:>6.3f}%")
 
     print("\n  RMSE = Root Mean Squared Error (Q/Q growth)")
     print("  MAE = Mean Absolute Error")
     print("  Dir% = Direction accuracy (positive/negative growth)")
+    print("  Corr = Correlation between nowcast and actual (shape-tracking)")
+    print("  NCstd = Std deviation of nowcasts (model variance — flat = ~naive)")
     print("  70%CI, 90%CI = Confidence interval coverage rates")
     print("  Naive = RMSE of trailing 4-quarter average benchmark")
-    print("  Bridges = Average number of active bridge equations")
     print("\n  Note: Pseudo real-time backtest using latest-revised data.")
     print("=" * 80)
 
@@ -263,7 +255,7 @@ def _save_results(bt: BacktestResults) -> None:
     bt.summary.to_csv(output_dir / "backtest_summary.csv")
 
     with (output_dir / "backtest_summary.txt").open("w") as f:
-        f.write(f"Backtest: {bt.config.start} to {bt.config.end or 'latest'}\n\n")
+        f.write(f"DFM Backtest: {bt.config.start} to {bt.config.end or 'latest'}\n\n")
         f.write(bt.summary.to_string())
         f.write("\n\nNote: Pseudo real-time backtest using latest-revised data.\n")
 
@@ -281,7 +273,7 @@ def _plot_backtest(bt: BacktestResults, gdp_growth: pd.Series) -> None:
     _plot_rmse_by_info_set(bt)
     _plot_actual_vs_nowcast(bt)
     _plot_error_distribution(bt)
-    _plot_nowcast_evolution(bt, gdp_growth)
+    _plot_nowcast_evolution(bt)
 
 
 def _plot_rmse_by_info_set(bt: BacktestResults) -> None:
@@ -289,13 +281,13 @@ def _plot_rmse_by_info_set(bt: BacktestResults) -> None:
     s = bt.summary
 
     rmse_df = pd.DataFrame({
-        "Nowcast": s["rmse_qoq"],
+        "DFM Nowcast": s["rmse_qoq"],
         "Naive": s["naive_rmse_qoq"],
     })
 
     mg.bar_plot_finalise(
         rmse_df,
-        title="RMSE by Information Set (Q/Q Growth)",
+        title="DFM RMSE by Information Set (Q/Q Growth)",
         ylabel="RMSE (percentage points)",
         rfooter=f"{bt.config.start} to {bt.config.end or 'latest'}",
         lfooter="Pseudo real-time backtest, latest-revised data. ",
@@ -309,23 +301,21 @@ def _plot_actual_vs_nowcast(bt: BacktestResults) -> None:
     t0 = bt.results[bt.results["info_set"] == "T-0"].copy()
     t0 = t0.set_index("quarter").sort_index()
 
-    # 90% CI band behind the nowcast
     ci_band = pd.DataFrame({
         "lower": t0["ci_90_lower"],
         "upper": t0["ci_90_upper"],
     })
     ax = mg.fill_between_plot(ci_band, color="red", alpha=0.12, label="90% CI")
 
-    # Nowcast and actual lines on top
     df = pd.DataFrame({
         "Actual": t0["actual_qoq"],
-        "Nowcast (T-0)": t0["nowcast_qoq"],
+        "DFM Nowcast (T-0)": t0["nowcast_qoq"],
     })
     mg.line_plot(df, ax=ax, color=["navy", "red"], width=[2, 1.5], style=["-", "--"])
 
     mg.finalise_plot(
         ax,
-        title="Actual vs Nowcast GDP Growth (Q/Q, T-0)",
+        title="Actual vs DFM Nowcast GDP Growth (Q/Q, T-0)",
         ylabel="Per cent",
         rfooter="Source: ABS 5206.0",
         lfooter="Pseudo real-time backtest, latest-revised data. ",
@@ -337,12 +327,6 @@ def _plot_actual_vs_nowcast(bt: BacktestResults) -> None:
 
 def _plot_error_distribution(bt: BacktestResults) -> None:
     """Error distribution across information sets."""
-    errors = {}
-    for info_set in INFO_SETS:
-        subset = bt.results[bt.results["info_set"] == info_set]
-        errors[info_set] = subset["error_qoq"].dropna()
-
-    # Plot as box-like: show errors over time for each info set
     error_df = pd.DataFrame({
         info_set: bt.results[bt.results["info_set"] == info_set].set_index("quarter")["error_qoq"]
         for info_set in INFO_SETS
@@ -350,7 +334,7 @@ def _plot_error_distribution(bt: BacktestResults) -> None:
 
     mg.line_plot_finalise(
         error_df,
-        title="Nowcast Errors by Information Set (Q/Q Growth)",
+        title="DFM Nowcast Errors by Information Set (Q/Q Growth)",
         ylabel="Error (percentage points)",
         rfooter=f"{bt.config.start} to {bt.config.end or 'latest'}",
         lfooter="Positive = overestimate. Pseudo real-time backtest. ",
@@ -361,10 +345,7 @@ def _plot_error_distribution(bt: BacktestResults) -> None:
     )
 
 
-def _plot_nowcast_evolution(
-    bt: BacktestResults,
-    _gdp_growth: pd.Series,  # retained for future overlay of actual GDP growth
-) -> None:
+def _plot_nowcast_evolution(bt: BacktestResults) -> None:
     """Show how the nowcast converges to actual as data arrives."""
     evolution_data = {}
     for info_set in INFO_SETS:
@@ -379,7 +360,7 @@ def _plot_nowcast_evolution(
 
     mg.line_plot_finalise(
         rolling_mae,
-        title="Nowcast Accuracy Evolution (4-quarter rolling MAE)",
+        title="DFM Nowcast Accuracy Evolution (4-quarter rolling MAE)",
         ylabel="MAE (percentage points)",
         rfooter=f"{bt.config.start} to {bt.config.end or 'latest'}",
         lfooter="Lower = better. Pseudo real-time backtest. ",
@@ -394,9 +375,9 @@ def _plot_nowcast_evolution(
 
 def main() -> None:
     """CLI entry point for backtesting."""
-    parser = argparse.ArgumentParser(description="GDP Nowcast Backtest")
-    parser.add_argument("--start", default="2022Q1", help="First quarter to backtest (default: 2022Q1)")
-    parser.add_argument("--end", default=None, help="Last quarter to backtest (default: latest)")
+    parser = argparse.ArgumentParser(description="GDP Nowcast DFM Backtest")
+    parser.add_argument("--start", default="2022Q1", help="First quarter (default: 2022Q1)")
+    parser.add_argument("--end", default=None, help="Last quarter (default: latest)")
     args = parser.parse_args()
 
     config = BacktestConfig(start=args.start, end=args.end)
