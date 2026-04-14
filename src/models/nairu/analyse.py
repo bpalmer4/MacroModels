@@ -19,6 +19,7 @@ from src.models.nairu.analysis import (
     plot_decomposition,
     plot_equations,
     plot_equilibrium_rates,
+    plot_expectations_input,
     plot_gdp_vs_potential,
     plot_nairu,
     plot_output_gap,
@@ -60,6 +61,9 @@ def run_analyse(
         constants=results.constants,
         show=show_plots,
     )
+
+    # --- Inputs ---
+    plot_expectations_input(results, rfooter=rfooter, show=show_plots)
 
     # --- Core estimates ---
     plot_nairu(results, rfooter=rfooter, show=show_plots)

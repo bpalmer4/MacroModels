@@ -11,6 +11,7 @@ from src.models.nairu.analysis.decomposition_types import (
 from src.models.nairu.analysis.plot_decomposition import plot_decomposition
 from src.models.nairu.analysis.plot_equations import plot_equations
 from src.models.nairu.analysis.plot_equilibrium_rates import plot_equilibrium_rates
+from src.models.nairu.analysis.plot_expectations_input import plot_expectations_input
 from src.models.nairu.analysis.plot_gdp_vs_potential import plot_gdp_vs_potential
 from src.models.nairu.analysis.plot_nairu import plot_nairu
 from src.models.nairu.analysis.plot_nairu_comparison import plot_nairu_comparison
@@ -39,6 +40,7 @@ __all__ = [
     "plot_decomposition",
     "plot_equations",
     "plot_equilibrium_rates",
+    "plot_expectations_input",
     "plot_gdp_vs_potential",
     "plot_nairu",
     "plot_nairu_comparison",

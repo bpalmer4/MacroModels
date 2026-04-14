@@ -237,6 +237,60 @@ Y*_t = Y*_{t-1} + g_potential_t
 
 ---
 
+## Inflation Expectations Anchor
+
+The expectations series `π_exp` feeds the price and wage Phillips curves. The choice
+of anchor determines what question the model is answering — it is not a pure fit
+decision.
+
+### Two research questions
+
+| Question | Appropriate anchor | Rationale |
+|----------|-------------------|-----------|
+| **Policy counterfactual**: *"What setting (output gap, unemployment gap, cash rate) is consistent with inflation returning to the 2.5% target?"* | `rba`, `target` | Pins the long-run anchor to 2.5%, so the Phillips curve residual measures distance from the target-consistent equilibrium. |
+| **Inflation explanation**: *"Given where expectations actually were, what is driving observed inflation?"* | `unanchored`, `unanchored_raw` | Lets the anchor move with survey/market evidence so demand, import price and GSCPI channels are not contaminated by a forced 2.5% lock. |
+
+The policy-counterfactual anchors tend to *widen* the residual during 2022–2024 (when
+actual expectations drifted above 2.5%), which is correct behaviour — the residual is
+meant to signal distance from target. The inflation-explanation anchors will always
+fit tighter on those same windows because they absorb that drift into the anchor
+instead of the residual.
+
+### Anchor modes
+
+| `--anchor` | Pre-1993 | 1993→1998 | Post-1998 |
+|------------|----------|-----------|-----------|
+| `rba` | RBA PIE_RBAQ | phased | **2.5% target** |
+| `target` | model expectations (target-anchored series) | phased | **2.5% target** |
+| `expectations` | model expectations (target-anchored series) — full series, no phasing | | |
+| `unanchored` *(default)* | RBA PIE_RBAQ | phased | **unanchored model median** |
+| `unanchored_raw` | unanchored model median — full series, no phasing | | |
+
+- "phased" = linear interpolation between pre-1993 source and post-1998 destination across 1992Q4–1998Q4.
+- The unanchored model is `expectations_unanchored_hdi.parquet` (signal-extraction run with no 2.5% prior).
+- `unanchored` was designed to be the "similar treatment" counterpart to `rba`: same phase window, same pre-1993 history, only the post-1998 destination changes.
+- `unanchored_raw` is the cleanest inflation-explanation anchor but loses the RBA early-1980s history.
+
+### Interpreting the NAIRU estimate under each anchor
+
+The anchor choice changes what the estimated NAIRU means:
+
+- **Target-locked anchors (`rba`, `target`)** — the NAIRU is the unemployment rate consistent with inflation returning to the **2.5% target**. This is the policy-relevant NAIRU: the gap `U − NAIRU` measures distance from a target-consistent equilibrium.
+- **Non-target anchors (`unanchored`, `unanchored_raw`, `expectations`)** — the NAIRU is the unemployment rate consistent with **prevailing expectations**, whatever they happen to be. If expectations sit above (or below) 2.5%, closing the unemployment gap to this NAIRU will stabilise inflation at that expectations level — not at target. Reaching the target then requires either (a) waiting for expectations to re-anchor at 2.5% or (b) running unemployment *above* this NAIRU until they do.
+
+In short: use the target-locked NAIRU to ask *"what rate gets us back to 2.5%?"* and the non-target NAIRU to ask *"what rate would stabilise inflation where expectations currently sit?"* The two coincide when expectations are already at target.
+
+### Implementation
+
+`src/models/nairu/observations.py` dispatches on `anchor_mode`:
+
+- `rba` → `get_rba_expectations()` — RBA PIE_RBAQ, phased to 2.5%
+- `target` / `expectations` → `get_model_expectations()` + optional `apply_anchor_mode()`
+- `unanchored` → `_build_rba_to_unanchored()` — RBA pre-1993, phased to unanchored post-1998
+- `unanchored_raw` → `get_model_expectations_unanchored()` — unanchored series unmodified
+
+---
+
 ## Observation Equations
 
 ### Price Phillips Curve (`equations/phillips_price.py`)

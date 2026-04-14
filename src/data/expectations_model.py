@@ -73,6 +73,29 @@ def get_model_expectations_hdi() -> pd.DataFrame:
     return _load_model_output("target")
 
 
+def get_model_expectations_unanchored() -> DataSeries:
+    """Load Unanchored inflation expectations from signal extraction model.
+
+    Returns the median of the unanchored estimate (no 2.5% target prior).
+
+    Returns:
+        DataSeries with quarterly expectations median (%)
+
+    Raises:
+        FileNotFoundError: If model output not found (run expectations model first)
+
+    """
+    median = _load_model_output("unanchored")["median"]
+    return DataSeries(
+        data=median,
+        source="Model",
+        units="%",
+        description="Inflation Expectations (Unanchored)",
+        table="expectations_unanchored_hdi",
+        series_id="median",
+    )
+
+
 # --- Internal ---
 
 

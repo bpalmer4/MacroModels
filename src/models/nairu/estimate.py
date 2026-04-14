@@ -251,7 +251,7 @@ def save_results(
 def run_estimate(
     start: str | None = "1980Q1",
     end: str | None = None,
-    anchor_mode: AnchorMode = "rba",
+    anchor_mode: AnchorMode = "unanchored",
     config: ModelConfig | None = None,
     sampler_config: SamplerConfig | None = None,
     output_dir: Path | str | None = None,

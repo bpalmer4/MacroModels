@@ -11,7 +11,7 @@ import pandas as pd
 
 # --- Anchor Mode ---
 
-AnchorMode = Literal["expectations", "target", "rba"]
+AnchorMode = Literal["expectations", "target", "rba", "unanchored", "unanchored_raw"]
 
 # Inflation target (RBA's 2-3% band midpoint)
 INFLATION_TARGET = 2.5
@@ -25,6 +25,8 @@ ANCHOR_LABELS = {
     "expectations": "Anchor: Estimated expectations",
     "target": "Anchor: Expectations → 1993 → phased → 1998 → Target",
     "rba": "Anchor: RBA PIE_RBAQ → 1993 → phased → 1998 → Target",
+    "unanchored": "Anchor: RBA PIE_RBAQ → 1993 → phased → 1998 → Unanchored",
+    "unanchored_raw": "Anchor: Unanchored model expectations (no phase-in)",
 }
 
 from src.data import (
@@ -65,8 +67,9 @@ from src.data import (
     get_unemployment_speed_limit_qrtly,
     hma,
 )
-from src.data.expectations_model import get_model_expectations
+from src.data.expectations_model import get_model_expectations, get_model_expectations_unanchored
 from src.data.expectations_rba import get_rba_expectations
+from src.data.rba_loader import get_inflation_expectations as get_rba_raw_expectations
 from src.models.nairu.config import REGIME_COVID_START, REGIME_GFC_START
 
 # --- Constants ---
@@ -100,23 +103,79 @@ def apply_anchor_mode(
 
     # Target mode: phase from expectations to target
     result = expectations.copy()
+    target_series = pd.Series(INFLATION_TARGET, index=result.index, dtype=float)
+    return _phase_between(result, target_series)
 
-    # Calculate phase weights (linear interpolation)
-    # 0 at PHASE_START, 1 at PHASE_END
+
+def _phase_between(early: pd.Series, late: pd.Series) -> pd.Series:
+    """Phase from `early` series (pre-PHASE_START) to `late` series (post-PHASE_END).
+
+    Between PHASE_START and PHASE_END, uses linear blend: weight 0 → 1 on `late`.
+    Both series must share the same PeriodIndex (quarterly).
+    """
+    result = early.copy()
     phase_periods = pd.period_range(PHASE_START, PHASE_END, freq="Q")
     n_periods = len(phase_periods)
 
     for i, period in enumerate(phase_periods):
-        if period in result.index:
-            # Weight increases linearly from 0 to 1
-            weight = i / (n_periods - 1)
-            exp_value = expectations.loc[period] if period in expectations.index else INFLATION_TARGET
-            result.loc[period] = (1 - weight) * exp_value + weight * INFLATION_TARGET
+        if period not in result.index:
+            continue
+        weight = i / (n_periods - 1)
+        e = early.loc[period] if period in early.index else np.nan
+        l = late.loc[period] if period in late.index else np.nan
+        if pd.isna(e) or pd.isna(l):
+            continue
+        result.loc[period] = (1 - weight) * e + weight * l
 
-    # After PHASE_END: use target
     post_phase = result.index > PHASE_END
-    result.loc[post_phase] = INFLATION_TARGET
+    result.loc[post_phase] = late.reindex(result.index[post_phase]).to_numpy()
+    return result
 
+
+def _build_rba_to_unanchored() -> pd.Series:
+    """Build RBA-raw → Unanchored phased series.
+
+    Pre-1993: RBA PIE_RBAQ raw (no target lock)
+    1993-1998: linear phase from RBA raw to unanchored model median
+    Post-1998: unanchored model median
+    """
+    rba_raw = get_rba_raw_expectations().data
+    unanchored = get_model_expectations_unanchored().data
+
+    # Align on a common quarterly index spanning both series
+    start = min(rba_raw.index.min(), unanchored.index.min())
+    end = max(rba_raw.index.max(), unanchored.index.max())
+    full_index = pd.period_range(start, end, freq="Q")
+
+    early = rba_raw.reindex(full_index).astype(float)
+    late = unanchored.reindex(full_index).astype(float)
+
+    # Pre-PHASE_START: use RBA raw
+    result = pd.Series(index=full_index, dtype=float)
+    pre_phase = full_index <= PHASE_START
+    result.loc[pre_phase] = early.loc[pre_phase]
+
+    # PHASE_START → PHASE_END: blend
+    phase_periods = pd.period_range(PHASE_START, PHASE_END, freq="Q")
+    n_periods = len(phase_periods)
+    for i, period in enumerate(phase_periods):
+        if period not in full_index:
+            continue
+        weight = i / (n_periods - 1)
+        e = early.loc[period]
+        l = late.loc[period]
+        if pd.isna(e) and pd.isna(l):
+            continue
+        if pd.isna(e):
+            result.loc[period] = l
+        elif pd.isna(l):
+            result.loc[period] = e
+        else:
+            result.loc[period] = (1 - weight) * e + weight * l
+
+    # Post-PHASE_END: use unanchored
+    post_phase = full_index > PHASE_END
+    result.loc[post_phase] = late.loc[post_phase]
     return result
 
 
@@ -163,7 +222,7 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
     start: str | None = None,
     end: str | None = None,
     hma_term: int = HMA_TERM,
-    anchor_mode: AnchorMode = "rba",
+    anchor_mode: AnchorMode = "unanchored",
     verbose: bool = False,  # noqa: ARG001 — reserved for future use
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, str, pd.DataFrame]:
     """Build observation dictionary for model.
@@ -179,9 +238,11 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
         end: End period
         hma_term: Henderson MA smoothing term (default 13)
         anchor_mode: How to anchor expectations
-            - "expectations": Use full estimated expectations series
+            - "expectations": Use full estimated (target-anchored) expectations series
             - "target": Phase from expectations to 2.5% target (1993-1998)
-            - "rba": Use RBA PIE_RBAQ with same phase-in to target
+            - "rba": RBA PIE_RBAQ, phased to 2.5% target (policy-counterfactual)
+            - "unanchored" (default): RBA PIE_RBAQ phased to unanchored model post-1998
+            - "unanchored_raw": unanchored model series, no phase-in
         verbose: Print sample info
 
     Returns:
@@ -228,6 +289,11 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
     # Inflation expectations
     if anchor_mode == "rba":
         π_exp = _load("π_exp", get_rba_expectations())
+    elif anchor_mode == "unanchored":
+        print(f"  {'π_exp':<{_NAME_WIDTH}s}RBA PIE_RBAQ → phased 1993-1998 → Unanchored model")
+        π_exp = _build_rba_to_unanchored()
+    elif anchor_mode == "unanchored_raw":
+        π_exp = _load("π_exp", get_model_expectations_unanchored())
     else:
         π_exp_raw = _load("π_exp", get_model_expectations())
         π_exp = apply_anchor_mode(π_exp_raw, anchor_mode)

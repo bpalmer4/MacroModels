@@ -18,7 +18,7 @@ DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs
 
 def _run_variant(
     config: ModelConfig,
-    anchor_mode: AnchorMode = "rba",
+    anchor_mode: AnchorMode = "unanchored",
     verbose: bool = False,
     estimate: bool = True,
     validate: bool = True,
@@ -76,7 +76,7 @@ def _run_variant(
 
 
 def main(
-    anchor_mode: AnchorMode = "rba",
+    anchor_mode: AnchorMode = "unanchored",
     verbose: bool = False,
     variants: list[str] | None = None,
     estimate_only: bool = False,
@@ -143,9 +143,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--anchor",
         type=str,
-        choices=["expectations", "target", "rba"],
-        default="rba",
-        help="Expectations anchor mode (default: rba)",
+        choices=["expectations", "target", "rba", "unanchored", "unanchored_raw"],
+        default="unanchored",
+        help="Expectations anchor mode (default: unanchored — RBA → phased 1993-1998 → unanchored model)",
     )
     parser.add_argument(
         "--variant",
