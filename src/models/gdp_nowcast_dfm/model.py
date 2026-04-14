@@ -21,6 +21,7 @@ Indicator panel:
         4. Employment (ABS 6202.0) — labour demand
         5. Goods trade balance (ABS 5368.0) — external sector
         6. NAB business conditions (RBA H3) — survey/soft data
+        7. Westpac-MI consumer sentiment (RBA H3) — household soft data
 
     Quarterly (entered as quarterly series in the mixed-frequency model):
         7. GDP growth (ABS 5206.0) — target variable
@@ -65,7 +66,10 @@ from src.data.construction import get_total_construction_growth_qrtly
 from src.data.dataseries import DataSeries
 from src.data.gdp import get_gdp
 from src.data.series_specs import EMPLOYMENT_PERSONS
-from src.data.surveys import get_nab_business_conditions_monthly
+from src.data.surveys import (
+    get_consumer_sentiment_monthly,
+    get_nab_business_conditions_monthly,
+)
 from src.data.wpi import get_wpi_growth_qrtly
 
 logger = logging.getLogger(__name__)
@@ -105,6 +109,7 @@ PUBLICATION_LAGS = {
     "employment": 1,
     "goods_balance": 2,
     "nab_conditions": 1,
+    "consumer_sentiment": 1,  # Westpac-MI, mid-month for the same month
 }
 
 
@@ -125,6 +130,7 @@ class DataAvailability:
     building_approvals: pd.Period | None = None
     goods_balance: pd.Period | None = None
     nab_conditions: pd.Period | None = None
+    consumer_sentiment: pd.Period | None = None
     cpi_quarterly: bool = False
     wpi: bool = False
     business_profits: bool = False
@@ -194,6 +200,7 @@ class DataAvailability:
             building_approvals=month_3,
             goods_balance=month_3,
             nab_conditions=month_3,
+            consumer_sentiment=month_3,
             cpi_quarterly=True,
             wpi=True,
             business_profits=True,
@@ -256,6 +263,7 @@ def _load_monthly_indicators() -> dict[str, DataSeries]:
         "employment": load_series(EMPLOYMENT_PERSONS),
         "goods_balance": get_goods_balance_monthly(),
         "nab_conditions": get_nab_business_conditions_monthly(),
+        "consumer_sentiment": get_consumer_sentiment_monthly(),
     }
 
 

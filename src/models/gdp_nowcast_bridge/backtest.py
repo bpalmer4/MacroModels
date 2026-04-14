@@ -32,7 +32,7 @@ from src.models.gdp_nowcast_bridge.model import (
 
 logger = logging.getLogger(__name__)
 
-BACKTEST_CHART_DIR = "./charts/GDP-Nowcast-Backtest/"
+BACKTEST_CHART_DIR = "./charts/GDP-Nowcast-Bridge-Backtest/"
 BACKTEST_OUTPUT_DIR = "./model_outputs/gdp_nowcast/"
 
 INFO_SETS = {

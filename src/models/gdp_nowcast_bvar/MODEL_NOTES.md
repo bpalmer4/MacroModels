@@ -132,6 +132,7 @@ The binding constraint is **WPI growth (1997Q4)**, giving ~112 quarterly observa
 - **Government consumption growth (5206.0 + GFS spliced)**: long history (1959Q4+) so no sample-length issue, but adding it to the 10-variable panel *reduced correlation from 0.594 to 0.569* and increased RMSE slightly (0.597 → 0.611). The bridge model uses this series usefully because each bridge is fit independently; the BVAR's joint conditional update apparently treats it as a noisy signal that pollutes Σ_oo.
 - **BoP goods+services balance change**: long history available but adding it cut correlation more sharply (0.594 → 0.521). Same explanation — quarterly noisy series that doesn't fit well into the joint covariance structure.
 - **Both gov consumption and BoP added together**: cumulative damage — RMSE 0.626%, correlation 0.493. Worse than either individually.
+- **Westpac-MI consumer sentiment (quarterly mean)**: long history available, but adding it to the 10-variable panel *increased RMSE from 0.597% to 0.636%* (+6.5%) and raised nowcast volatility (NCstd 0.664 → 0.728) with no gain in correlation. Same failure mode as gov consumption and BoP: the joint conditional update treats a noisy, partially-collinear-with-NAB survey as a legitimate signal and pollutes Σ_oo. The DFM absorbs the same series usefully because its factor structure *extracts* the shared variance with NAB and discards the idiosyncratic noise.
 - **Productivity-adjusted labour input**: tried in DFM, didn't help there, not retried here
 
 ### 5-variable panel tested and rejected

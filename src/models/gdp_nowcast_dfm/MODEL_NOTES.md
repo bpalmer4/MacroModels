@@ -92,7 +92,7 @@ e_i,t = ρ_i e_{i,t-1} + ε_i,t
 
 ## Indicator Panel
 
-### Monthly Indicators (6)
+### Monthly Indicators (7)
 
 | Indicator | Source | Transformation |
 |-----------|--------|----------------|
@@ -102,6 +102,9 @@ e_i,t = ρ_i e_{i,t-1} + ε_i,t
 | Employment persons | 6202.0 (Labour Force) table 6202001 | Log difference × 100 |
 | Goods trade balance | 5368.0 (International Trade in Goods) | Simple difference (level can be negative) |
 | NAB business conditions | RBA Table H3 (GICNBC) | Simple difference (already a deviation index) |
+| Westpac-MI consumer sentiment | RBA Table H3 (GICWMICS) | Log difference × 100 |
+
+**Westpac-MI consumer sentiment was tested and kept.** T-0 RMSE improved from 0.478% to 0.455% (–5%), correlation with actual GDP lifted (+0.635 → +0.648), and nowcast variance fell (NCstd 0.411 → 0.371), over the 2022Q1–2025Q4 backtest window. After standardisation the panel treats sentiment as a second soft-data factor — it tends to load onto the prices/surveys factor alongside NAB and adds information during periods where the two surveys diverge (households vs. businesses).
 
 ### Quarterly Indicators (6, including target)
 

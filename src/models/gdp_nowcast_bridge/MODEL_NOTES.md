@@ -71,6 +71,8 @@ The two labour bridges include an **HMA(13) labour productivity trend** as an ad
 
 The **NAB business conditions bridge** uses the index level (deviation from long-run average, in percentage points), not growth — analogous to the goods trade balance bridge. This is the only soft data (survey) indicator in the bridge set. It publishes faster than most hard indicators (~2 weeks lag) and helps at mid-cycle horizons where hard data is still arriving.
 
+**Westpac-MI consumer sentiment was tested and rejected.** Adding it as a second survey bridge (level, quarterly mean aggregation) left the T-0 RMSE unchanged at 0.268% and slightly reduced correlation with actual GDP growth (+0.474 → +0.462) over the 2022Q1–2025Q4 backtest window. Households' reported sentiment has historically tracked their income and interest-rate expectations more than real activity, and within the bridge combination the inverse-MSE weighting already discounts noisy indicators — so there was no accuracy gain to justify keeping it.
+
 The **monthly CPI bridge** uses a spliced index combining the discontinued Monthly CPI Indicator (6484.0, Sep 2017 – Sep 2025) with the current monthly CPI from 6401.0 table 640106 (Apr 2024 onwards). For SARIMA completion, only the genuine monthly observations are used (not interpolated quarterly history), ensuring the SARIMA model learns real monthly dynamics. For bridge equation estimation, the full spliced series (including quarterly-interpolated pre-2017 history) is used to maximise the training sample.
 
 ### Quarterly Bridges (available or excluded)

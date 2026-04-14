@@ -74,7 +74,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="statsmodels")
 
 # --- Constants ---
 
-CHART_DIR = "./charts/GDP-Nowcast/"
+CHART_DIR = "./charts/GDP-Nowcast-Bridge/"
 N_BOOTSTRAP = 1000
 COVID_START = "2020Q1"
 COVID_END = "2021Q1"
