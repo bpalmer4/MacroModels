@@ -11,9 +11,15 @@ from pathlib import Path
 
 from src.models.nairu.config import PRESETS, ModelConfig
 from src.models.nairu.observations import AnchorMode
+from src.models.nairu.results import DEFAULT_CHART_BASE
 
 # Default output directory
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
+
+
+def _run_prefix(label: str, anchor_mode: AnchorMode) -> str:
+    """File/chart prefix combining variant label and anchor mode."""
+    return f"nairu_{label}_{anchor_mode}"
 
 
 def _run_variant(
@@ -27,11 +33,12 @@ def _run_variant(
 ) -> None:
     """Run the pipeline for a single model variant."""
     label = config.label
-    prefix = f"nairu_{label}"
+    prefix = _run_prefix(label, anchor_mode)
+    chart_dir = DEFAULT_CHART_BASE / prefix
 
     if estimate:
         print("=" * 60)
-        print(f"ESTIMATE [{label}]")
+        print(f"ESTIMATE [{label} / {anchor_mode}]")
         print("=" * 60)
 
         from src.models.nairu.estimate import run_estimate  # noqa: PLC0415 — conditional pipeline stage
@@ -46,32 +53,32 @@ def _run_variant(
 
     if validate:
         print("=" * 60)
-        print(f"VALIDATE [{label}]")
+        print(f"VALIDATE [{label} / {anchor_mode}]")
         print("=" * 60)
 
         from src.models.nairu.validate import run_validate  # noqa: PLC0415 — conditional pipeline stage
 
-        run_validate(prefix=prefix, verbose=verbose)
+        run_validate(prefix=prefix, chart_dir=chart_dir, verbose=verbose)
         print()
 
     if analyse:
         print("=" * 60)
-        print(f"ANALYSE [{label}]")
+        print(f"ANALYSE [{label} / {anchor_mode}]")
         print("=" * 60)
 
         from src.models.nairu.analyse import run_analyse  # noqa: PLC0415 — conditional pipeline stage
 
-        run_analyse(prefix=prefix, verbose=verbose)
+        run_analyse(prefix=prefix, chart_dir=chart_dir, verbose=verbose)
         print()
 
     if forecast:
         print("=" * 60)
-        print(f"FORECAST [{label}]")
+        print(f"FORECAST [{label} / {anchor_mode}]")
         print("=" * 60)
 
         from src.models.nairu.forecast import run_forecast  # noqa: PLC0415 — conditional pipeline stage
 
-        run_forecast(prefix=prefix, verbose=verbose)
+        run_forecast(prefix=prefix, chart_dir=chart_dir, verbose=verbose)
         print()
 
 
@@ -130,7 +137,7 @@ def main(
         print("#" * 60 + "\n")
 
         all_results = [
-            load_results(prefix=f"nairu_{name}", rebuild_model=False)
+            load_results(prefix=_run_prefix(name, anchor_mode), rebuild_model=False)
             for name in variants
         ]
         plot_nairu_comparison(all_results)

@@ -280,6 +280,18 @@ The anchor choice changes what the estimated NAIRU means:
 
 In short: use the target-locked NAIRU to ask *"what rate gets us back to 2.5%?"* and the non-target NAIRU to ask *"what rate would stabilise inflation where expectations currently sit?"* The two coincide when expectations are already at target.
 
+### Empirical comparison (2025Q4 endpoint)
+
+Running the `default` variant with each anchor:
+
+| Anchor | Endpoint π_exp | Endpoint NAIRU (median) | 90% HDI |
+|---|---|---|---|
+| `rba` (RBA → Target)        | 2.50% | 4.84% | [4.32, 5.39] |
+| `unanchored` (RBA → Unanchored) | 2.70% | 4.61% | [4.05, 5.19] |
+| **Δ**                        | **+0.20** | **−0.23** | |
+
+The difference is consistent with the price Phillips slope γ_π ≈ −0.82: a +0.20 pp shift in π_exp implies Δ(U − U*) ≈ −0.20 / −0.82 ≈ −0.24 pp to fit the same observed inflation, so holding U fixed, U* drops by ~0.24 pp — matching the 0.23 pp NAIRU gap. Higher expectations "absorb" inflation pressure, so the model infers a lower NAIRU.
+
 ### Implementation
 
 `src/models/nairu/observations.py` dispatches on `anchor_mode`:
