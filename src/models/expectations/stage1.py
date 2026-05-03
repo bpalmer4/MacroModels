@@ -502,7 +502,7 @@ def run_model(
     """Run model and return trace + data."""
     model_desc = {
         "target": "Target-anchored (all surveys + anchor)",
-        "unanchored": "Unanchored (all surveys, no anchor)",
+        "unanchored": "Expectations (all surveys, no anchor)",
         "short": "Short-run (market_1y, no anchor)",
         "market": "Market (breakeven only, no anchor)",
     }

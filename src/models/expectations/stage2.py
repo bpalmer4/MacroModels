@@ -271,12 +271,12 @@ def generate_plots(
         ("target", "Target Anchored Inflation Expectations vs RBA PIE_RBAQ",
          "Australia. Bayesian signal extraction from surveys, bonds, inflation, wages. 2.5% target anchor post-1998.",
          "Target Anchored", [(pie_rbaq, "darkorange")], None),
-        ("unanchored", "Unanchored Inflation Expectations",
+        ("unanchored", "Inflation Expectations",
          "Australia. Bayesian signal extraction from surveys, bonds, inflation, wages (no target anchor).",
-         "Unanchored", [(trimmed, "darkorange")], None),
-        ("unanchored", "Unanchored Inflation Expectations vs RBA PIE_RBAQ",
+         "Expectations", [(trimmed, "darkorange")], None),
+        ("unanchored", "Inflation Expectations vs RBA PIE_RBAQ",
          "Australia. Bayesian signal extraction from surveys, bonds, inflation, wages (no target anchor).",
-         "Unanchored", [(pie_rbaq, "darkorange")], None),
+         "Expectations", [(pie_rbaq, "darkorange")], None),
         ("short", "Short Run Inflation Expectations (1 Year)",
          "Australia. Bayesian signal extraction from market economist 1-year expectations.",
          "Short Run", [(market_1y, "darkorange"), (trimmed, "brown")],
@@ -297,10 +297,10 @@ def generate_plots(
             axvspan = axvspan_fn(results) if axvspan_fn else None
             _plot_model(results, title, lfooter, legend_stem, overlays, axvspan)
 
-    # Comparison plots (require all three: target, short, market)
-    if all(k in all_results for k in ("target", "short", "market")):
-        monthly_index = all_results["target"].index
-        posterior_target = all_results["target"].expectations_posterior()
+    # Comparison plots (require all three: unanchored, short, market)
+    if all(k in all_results for k in ("unanchored", "short", "market")):
+        monthly_index = all_results["unanchored"].index
+        posterior_unanchored = all_results["unanchored"].expectations_posterior()
         posterior_short = all_results["short"].expectations_posterior()
         # Market may be quarterly — convert to monthly index for shared axis
         posterior_market = _to_monthly_index(
@@ -308,7 +308,7 @@ def generate_plots(
         )
 
         # Three distributions
-        ax = plot_posterior_timeseries(data=posterior_target, legend_stem="Target Anchored",
+        ax = plot_posterior_timeseries(data=posterior_unanchored, legend_stem="Expectations",
                                        color="steelblue", finalise=False)
         ax = plot_posterior_timeseries(data=posterior_short, legend_stem="Short Run (1yr)",
                                        color="darkorange", ax=ax, finalise=False)
@@ -317,14 +317,14 @@ def generate_plots(
         mg.finalise_plot(
             ax,
             title="Inflation Expectations: Three Measures",
-            lfooter="Australia. Blue=target anchored, orange=short run (1yr), green=long run (10yr bond).",
-            rfooter=f"Sample: {all_results['target'].index[0]} to {all_results['target'].index[-1]}",
+            lfooter="Australia. Blue=expectations (all surveys), orange=short run (1yr), green=long run (10yr bond).",
+            rfooter=f"Sample: {all_results['unanchored'].index[0]} to {all_results['unanchored'].index[-1]}",
             **PLOT_KWARGS,
         )
 
         # Medians comparison
         medians = [
-            (posterior_target.median(axis=1), "Target Anchored", "steelblue"),
+            (posterior_unanchored.median(axis=1), "Expectations", "steelblue"),
             (posterior_short.median(axis=1), "Short Run (1yr)", "darkorange"),
             (posterior_market.median(axis=1), "Long Run (10yr)", "darkgreen"),
         ]
@@ -335,8 +335,8 @@ def generate_plots(
         mg.finalise_plot(
             ax,
             title="Inflation Expectations: Median Comparison",
-            lfooter="Australia. Blue=target anchored, orange=short run (1yr), green=long run (10yr bond).",
-            rfooter=f"Sample: {all_results['target'].index[0]} to {all_results['target'].index[-1]}",
+            lfooter="Australia. Blue=expectations (all surveys), orange=short run (1yr), green=long run (10yr bond).",
+            rfooter=f"Sample: {all_results['unanchored'].index[0]} to {all_results['unanchored'].index[-1]}",
             **PLOT_KWARGS,
         )
 
