@@ -16,14 +16,22 @@ The eps_t term is i.i.d. (not a random walk) — it gives r* a small posterior
 spread around the blend without re-introducing the unidentified random walk
 that previously bedevilled identification. Because the IS curve already has
 its own sigma_IS absorbing rate-gap noise (and a_r is small), sigma_r is
-likely to be largely prior-dominated.
+likely to be largely prior-dominated. eps_t is non-centred (sample raw N(0,1),
+scale by sigma_r) to avoid a Neal's funnel when sigma_r is small.
 
-Two extensions were tested and reverted:
+Extensions tested and reverted (see MODEL_NOTES.md):
 - Regime-switching alpha (alpha_pre / alpha_post around 2008Q4): regimes
-  not separated, sampling much worse. See MODEL_NOTES.md.
+  not separated, sampling much worse.
+- Regime-switching alpha (alpha_normal / alpha_divergence, 2011Q3–2021Q4
+  "great divergence" period): regimes again not separated (0.54 vs 0.50),
+  267 divergences, rhat warnings. Reverted.
 - Slope-based time-varying k_t = k0 + k_slope * (10y_nominal - cash):
   k_slope was identifiable but sampling collapsed (10,655 divergences,
-  r_star ESS 17). Substantive answer barely changed. See MODEL_NOTES.md.
+  r_star ESS 17). Substantive answer barely changed.
+- Intercept c replacing k: r* = alpha*g + (1-alpha)*indexed + c + eps.
+  g still 2.66%, 359 divergences. c did not release g.
+- Intercept c alongside k: r* = alpha*g + (1-alpha)*(indexed-k) + c + eps.
+  2,104 divergences — c and (1-alpha)*k collinear, sampler collapsed.
 
 Requires obs["indexed_10y"]. Must run after trend_growth_equation.
 """
@@ -82,8 +90,13 @@ def r_star_equation(
         if "r_innovation" in constant:
             r_innovation = constant["r_innovation"]
         else:
-            r_innovation = pm.Normal(
-                "r_innovation", mu=0, sigma=mc["sigma_r"], shape=n_periods,
+            # Non-centred parameterization: sample raw N(0,1) and scale by
+            # sigma_r. Eliminates the Neal's funnel when sigma_r is small.
+            r_innovation_raw = pm.Normal(
+                "r_innovation_raw", mu=0, sigma=1, shape=n_periods,
+            )
+            r_innovation = pm.Deterministic(
+                "r_innovation", r_innovation_raw * mc["sigma_r"],
             )
 
         r_star = pm.Deterministic("r_star", blend + r_innovation)

@@ -60,6 +60,7 @@ The legacy `indexed_bond.py` observation equation (`indexed_10y_t = r*_t + tp + 
 - **`σ_trend_obs` is fixed at 2.0**, not estimated. Letting it be a free parameter (`HalfNormal(1.5)`) led the data to collapse it to ~0.02, turning the "soft" anchor into a hard constraint that forced g to follow the smoothed observable. Fixing keeps the anchor genuinely soft.
 - **Linear regression** rather than Henderson MA for the trend observable: HMA(13) had the COVID GDP collapse baked into the smoothed series, which then bled into g. The linear regression is immune to single-quarter shocks.
 - **The α scalar is Beta(2, 2)** so the prior is centred at 0.5 with mass on the full [0,1] interval. The data picks the posterior; no prior commitment to either anchor.
+- **r_innovation is non-centred.** The i.i.d. ε_t in the r* blend was originally parameterised as `r_innovation ~ N(0, σ_r)` (centred). Because σ_r wants to be small (the blend already explains most of r*), this created a Neal's funnel — when σ_r shrinks, the r_innovation vector must shrink proportionally, producing a narrow neck NUTS can't navigate. Reparameterised to `r_innovation_raw ~ N(0, 1)` scaled by σ_r, decoupling the geometry. This reduced divergences from 908 to 156, fixed σ_r convergence (R-hat 1.090 → 1.000, ESS 41 → 44,528), and fixed r_innovation convergence (R-hat max 1.053 → 1.001). Remaining divergences are in σ_g (the trend_growth GRW scale), which cannot be non-centred (see above).
 - **σ_r is largely prior-dominated.** The IS curve already has its own σ_IS absorbing rate-gap noise, and a_r is small (~0.05), so σ_r contributes little to the IS likelihood.
 
 ## What r* actually means in this model
@@ -152,10 +153,11 @@ A deterministic blend of the two anchors. No latent z. The single scalar α tell
 - σ_r posterior median ≈ 0.23 (largely prior-dominated, as expected)
 - r* span ≈ **3.15 pp** (between A and B)
 - r* path: 1995Q1 ≈ 4.0%, 2015 trough ≈ 1.3%, 2025Q4 ≈ 2.3%
-- ~2,700 divergences with the linear soft anchor on g (1,200 without it; the anchor adds some sampling cost in exchange for a more credible g path)
-- Latent r* convergence: R-hat 1.003, ESS 4,774 (very clean)
-- Latent g convergence: R-hat 1.008, ESS 1,150 (very clean)
-- σ_g posterior 0.065 (within prior HalfNormal(0.04) regime), `b_y` 0.38, `a_r` -0.06
+- ~156 divergences (down from ~900 pre-non-centring; residual divergences in σ_g only)
+- Latent r* convergence: R-hat 1.001, ESS 5,720+ (very clean)
+- Latent g convergence: R-hat 1.003–1.012, ESS 468–1,453 (acceptable; σ_g is the remaining weak spot)
+- σ_r convergence: R-hat 1.000, ESS 44,528 (clean after non-centring; was R-hat 1.09, ESS 41 before)
+- σ_g posterior 0.045 (within prior HalfNormal(0.04) regime), `b_y` 0.41, `a_r` -0.04
 
 **Why this is the best of the three:**
 - Level is economically credible (trough 1.05%, never negative)
@@ -264,6 +266,12 @@ Reasoning:
 
 **Never recommend:** intermediate identification regimes (canonical HLW with looser priors, latent term premium). They are unidentified and produce thousands of divergences.
 
+### How the blend produces a robust r*
+
+Resolution C's r* is robustly identified by the IS curve — it is the level of the real rate consistent with closing the output gap, and this estimate is stable across all specification variants tried. The blend achieves this by adjusting its two components: because the bond anchor typically sits below the IS-curve-implied r*, the model pushes g upward (~2.6% vs a structural expectation of ~2.2%) and k downward to make the convex combination hit the right level. This is the mechanism, not a defect — the blend's degrees of freedom (α, g, k) absorb the decomposition ambiguity so that r* itself can be pinned by the IS curve. Multiple attempts to produce independently credible components — regime-switching alpha, intercept replacing k, intercept alongside k — all confirmed that the IS curve's pull on r* propagates through α into g regardless of parameterisation.
+
+**Implication:** r* is the credible output of Resolution C. The decomposition chart shows *how the blend constructs r** from its two anchors, not independent structural estimates of trend growth or the equilibrium real bond yield. If an independent estimate of trend growth is needed, it should come from the potential output equation or an external source.
+
 ## NAIRU integration
 
 The original motivation for this model. Once a single canonical run is settled, the path forward is sequential coupling:
@@ -294,6 +302,9 @@ A log of approaches that were attempted and discarded, for the benefit of future
 | HMA(13) of YoY GDP growth as g anchor (free σ_trend_obs) | σ_trend_obs collapsed from prior HalfNormal(1.5) to posterior 0.022 — anchor became hard, not soft. g pulled toward smoothed YoY *including the COVID dip* (g = -1.11% in 2020Q1) | The data over-fits a free measurement σ when it's the only tight constraint on g; HMA carries cyclical contamination into the "trend" |
 | Linear-trend g anchor with loose σ_g HalfNormal(0.10) | g shape clean but divergences 9,967, r_star ESS 15 | The linear pull and the y* drift conflict at endpoints — funnel returns when g has too much freedom |
 | Slope-based time-varying k in Resolution C: `k_t = k0 + k_slope * (10y_nominal − cash)` | k0 = 0.71, k_slope = 0.38 (both identified); k_t path 0.18-2.52 pp tracks curve slope sensibly. But: 10,655 divergences, r_star ESS 17, r_star R-hat 1.191. **Substantive r* path barely changed** vs. constant-k (trough 1.10% vs 1.05%; latest 1.76% vs 2.06%) | The slope-based k_t added flexibility (α and k_slope and k0 trade off) without bringing new identifying information. The data does not support disentangling a time-varying term premium from r* itself — adding the structure broke sampling without changing the answer |
+| Regime-switching alpha targeting 2011Q3–2021Q4 "great divergence" (alpha_normal / alpha_divergence) | 267 divergences, rhat > 1.01 on some params, low ESS; alpha_normal 0.54, alpha_divergence 0.50 — regimes not separated; g still 2.63% | Same lesson as iteration 7 (GFC split): the data cannot identify time-variation in alpha regardless of where the break is placed. The structural and market anchors' divergence is absorbed by other parameters (k, sigma_r) rather than by a shift in alpha |
+| Intercept c replacing k: `r* = α·g + (1−α)·indexed + c + ε` | 359 divergences; c = −0.13, g still 2.66%, α 0.545 — c did not release g | The IS curve pulls g up through α regardless of whether the level offset is k or c. An intercept shifts the blend level but doesn't change the time-varying dynamics that pin g |
+| Intercept c alongside k: `r* = α·g + (1−α)·(indexed−k) + c + ε` | 2,104 divergences; c = −0.10, k = 0.60, g = 2.62% | c and (1−α)·k are near-collinear when α is uncertain. Sampler collapsed on the c/k ridge. No benefit |
 
 ## Sampler progression across iterations
 
@@ -311,11 +322,15 @@ Sampler diagnostics across the major model variants. All runs use NumPyro NUTS, 
 | 8 | Resolution C, σ_g loosened to HalfNormal(0.10), no anchor | 1993Q1 | 5,771 | g 3.26% → 2.73%, but r_star ESS 20 — unreliable |
 | 9 | Resolution C + HMA(13) anchor on g (free σ_trend_obs) | 1993Q1 | 8,276 | σ_trend_obs collapsed to 0.022; COVID dip bled into g |
 | 10 | Resolution C + linear-trend anchor on g, loose σ_g | 1993Q1 | 9,967 | g shape clean but funnel returned at endpoints |
-| 11 | **Resolution C + linear-trend anchor on g, tight σ_g, fixed σ_trend_obs=2.0 (CURRENT)** | 1993Q1 | **2,685** | **r* span 3.58 pp, trough 1.05%; g 3.57% → 2.37%; r_star R-hat 1.003, ESS 4,774** |
+| 11 | Resolution C + linear-trend anchor on g, tight σ_g, fixed σ_trend_obs=2.0 | 1993Q1 | 2,685 | r* span 3.58 pp, trough 1.05%; g 3.57% → 2.37%; r_star R-hat 1.003, ESS 4,774 |
+| 12 | **Iteration 11 + non-centred r_innovation (CURRENT)** | 1980Q1 | **156** | **σ_r funnel eliminated: σ_r R-hat 1.090→1.000, ESS 41→44,528; r_innovation R-hat max 1.053→1.001; remaining divergences in σ_g only** |
+| 13 | Resolution C with regime-switching α (α_normal / α_divergence, 2011Q3–2021Q4 divergence dummy) | 1980Q1 | 267 | α_normal 0.54, α_divergence 0.50 — regimes not separated; rhat > 1.01, low ESS; g 2.63% unchanged; reverted |
+| 14 | Resolution C with intercept c replacing k | 1980Q1 | 359 | c = −0.13, g 2.66%, α 0.545 — c did not release g; reverted |
+| 15 | Resolution C with intercept c alongside k | 1980Q1 | 2,104 | c/k collinear, sampler collapsed; reverted |
 
-Iteration 11 (current) produces the cleanest sampling of any model that delivers both non-trivial r* dynamics and a credible g slowdown. Latent `r_star` converges with R-hat 1.003 and ESS 4,774; `trend_growth` with R-hat 1.008 and ESS 1,150; `α_rstar` with R-hat 1.000 and ESS 29,007. Remaining divergences cluster in σ_r, σ_pi (scale parameters), not in the substantive answer.
+Iteration 12 (current) applies a standard non-centred reparameterisation to r_innovation: sample `r_innovation_raw ~ N(0, 1)` and scale by σ_r, rather than sampling `r_innovation ~ N(0, σ_r)` directly. This eliminates the Neal's funnel that formed when σ_r was small (the blend already explains most of r*, so σ_r wants to be near zero). Divergences dropped from 908 to 156, with the residual divergences attributable to σ_g — the trend_growth GaussianRandomWalk scale, which cannot be non-centred (see iteration 4). Substantive estimates are unchanged from iteration 11.
 
-Iteration 7 (regime-switching α) was an explicit test of whether the trade-off between structural and market anchors changed at the GFC. Result: the data does not support a regime split. α_pre and α_post posteriors overlap so heavily that the difference HDI [−0.44, +0.58] straddles zero by a wide margin, while sampling degraded substantially. **One constant α is the right specification for Australia 1993-2025.**
+Iterations 7 and 13 both tested regime-switching α. Iteration 7 split at the GFC (2008Q4); iteration 13 targeted the 2011Q3–2021Q4 "great divergence" when the structural anchor (g) and market anchor (indexed bond yield) visibly separated on the decomposition chart. Both failed: α posteriors overlap heavily regardless of where the break is placed (iteration 7: 0.55 vs 0.48; iteration 13: 0.54 vs 0.50). **The data cannot identify time-variation in α — one constant α is the right specification.**
 
 Iterations 8-10 explored loosening σ_g and adding observation anchors on g. The lesson: (a) the data won't support a free measurement σ on the g anchor — it collapses; (b) σ_g must stay tight or the y*-equation funnel returns. The combination that works is **tight σ_g + linear-trend anchor + fixed σ_trend_obs** — the linear trend provides the secular shape, σ_trend_obs is fixed at a large value to keep the anchor soft, and the tight σ_g prevents random-walk innovations from competing with y* innovations.
 
