@@ -34,7 +34,7 @@ dependencies = [
     # - internet
     "requests",
     "bs4",
-    "lxml",
+    "lxml>=6.1.0",
     "html5lib",
     "webdriver_manager",
     "selenium",
