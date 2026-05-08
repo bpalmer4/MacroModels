@@ -1,10 +1,10 @@
 """Run the HLW Bayesian r-star estimation pipeline.
 
 Usage:
-    uv run python -m src.models.rstar.run
-    uv run python -m src.models.rstar.run -v
-    uv run python -m src.models.rstar.run --estimate-only
-    uv run python -m src.models.rstar.run --skip-estimate
+    uv run python -m src.models.rstar_hlw.run
+    uv run python -m src.models.rstar_hlw.run -v
+    uv run python -m src.models.rstar_hlw.run --estimate-only
+    uv run python -m src.models.rstar_hlw.run --skip-estimate
 """
 
 import argparse
@@ -16,6 +16,7 @@ def main(
     start: str = "1980Q1",
     end: str | None = None,
     resolution: str = "C",
+    seed: int | None = None,
 ) -> None:
     """Run estimation and/or analysis stages."""
     prefix = f"rstar_hlw_{resolution}"
@@ -24,10 +25,10 @@ def main(
         print("=" * 60)
         print(f"ESTIMATE [HLW r-star, Resolution {resolution}, start={start}]")
         print("=" * 60)
-        from src.models.rstar.estimate import run_estimate  # noqa: PLC0415
+        from src.models.rstar_hlw.estimate import run_estimate  # noqa: PLC0415
         run_estimate(
             start=start, end=end, verbose=verbose,
-            prefix=prefix, resolution=resolution,
+            prefix=prefix, resolution=resolution, seed=seed,
         )
         print()
 
@@ -35,7 +36,7 @@ def main(
         print("=" * 60)
         print(f"ANALYSE [HLW r-star, Resolution {resolution}]")
         print("=" * 60)
-        from src.models.rstar.analyse import run_analyse  # noqa: PLC0415
+        from src.models.rstar_hlw.analyse import run_analyse  # noqa: PLC0415
         run_analyse(prefix=prefix, resolution=resolution, verbose=verbose)
         print()
 
@@ -70,7 +71,17 @@ if __name__ == "__main__":
         type=str,
         choices=["A", "B", "C"],
         default="C",
-        help="r* identity: A (canonical HLW, r* = g + z), B (canonical + indexed bond observation), or C (blend, default)",
+        help=(
+            "r* identity: A (canonical HLW, r* = g + z), "
+            "B (canonical + indexed bond observation), "
+            "C (blend, default)"
+        ),
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Override the sampler random seed (default: SamplerConfig default = 42)",
     )
     args = parser.parse_args()
     main(
@@ -80,4 +91,5 @@ if __name__ == "__main__":
         start=args.start,
         end=args.end,
         resolution=args.resolution,
+        seed=args.seed,
     )

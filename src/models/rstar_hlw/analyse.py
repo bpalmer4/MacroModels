@@ -5,7 +5,8 @@ from pathlib import Path
 import mgplot as mg
 import pandas as pd
 
-from src.models.rstar.results import DEFAULT_CHART_BASE, RStarResults, load_results
+from src.data.world_rstar import get_world_rstar
+from src.models.rstar_hlw.results import DEFAULT_CHART_BASE, RStarResults, load_results
 
 LFOOTER = "Australia. "
 RFOOTER = "HLW Bayesian r-star model. "
@@ -153,6 +154,41 @@ def plot_r_star_decomposition(results: RStarResults, show: bool = False) -> None
     )
 
 
+def plot_world_rstar_overlay(results: RStarResults, show: bool = False) -> None:
+    """Median r*_AU vs the NY Fed HLW r* estimates for US, Euro Area, Canada.
+
+    Always pulls fresh data from the NY Fed (force_download=True) so the
+    comparison reflects the latest published HLW estimates rather than a
+    stale cached file. The chart starts at the AU sample start.
+    """
+    au = results.r_star_median()
+    components = get_world_rstar(force_download=True)
+
+    df = pd.DataFrame({
+        "r* (Australia)": au,
+        "US":             components["US"],
+        "Euro Area":      components["Euro Area"],
+        "Canada":         components["Canada"],
+    })
+    df = df.loc[df.index >= au.index[0]]
+
+    mg.line_plot_finalise(
+        df,
+        title="r* Comparison: Australia, US, Canada and Euro Area",
+        ylabel="Per cent per annum",
+        color=["navy", "steelblue", "seagreen", "firebrick"],
+        width=[2.5, 1.4, 1.4, 1.4],
+        style=["-", "--", "--", "--"],
+        annotate=True,
+        rounding=1,
+        y0=True,
+        lfooter=LFOOTER,
+        rfooter=RFOOTER + "Foreign r* = NY Fed HLW (US, Euro Area, Canada).",
+        legend=True,
+        show=show,
+    )
+
+
 def plot_alpha_posterior(results: RStarResults, show: bool = False) -> None:
     """Histogram of alpha_rstar posterior — the weight on the structural anchor.
 
@@ -204,10 +240,10 @@ def run_analyse(
     results = load_results(prefix=prefix)
 
     posterior_vars = results.trace.posterior.data_vars
-    is_resolution_c = "alpha_rstar" in posterior_vars
-    is_resolution_b = (not is_resolution_c) and ("tp" in posterior_vars)
+    is_blend = "alpha_rstar" in posterior_vars
+    is_resolution_b = (not is_blend) and ("tp" in posterior_vars)
     label = (
-        "C (blend)" if is_resolution_c
+        "C (blend)" if is_blend
         else "B (canonical + indexed bond)" if is_resolution_b
         else "A (canonical, r* = g + z)"
     )
@@ -222,7 +258,7 @@ def run_analyse(
         print(f"  r* range:      [{r_star.min():.2f}, {r_star.max():.2f}]%")
         print(f"  r* latest:     {r_star.iloc[-1]:.2f}%")
         print(f"  g  latest:     {g.iloc[-1]:.2f}%")
-        if is_resolution_c:
+        if is_blend:
             alpha_med = float(get_scalar_var("alpha_rstar", results.trace).median())
             k_med = float(get_scalar_var("k", results.trace).median())
             print(f"  alpha median:  {alpha_med:.3f}")
@@ -234,8 +270,9 @@ def run_analyse(
     plot_r_star(results, show=show)
     plot_trend_growth(results, show=show)
     plot_output_gap(results, show=show)
-    if is_resolution_c:
+    if is_blend:
         plot_r_star_decomposition(results, show=show)
         plot_alpha_posterior(results, show=show)
+    plot_world_rstar_overlay(results, show=show)
 
     print(f"Charts saved to: {chart_dir}")

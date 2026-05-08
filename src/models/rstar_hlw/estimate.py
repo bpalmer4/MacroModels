@@ -10,14 +10,14 @@ import pandas as pd
 import pymc as pm
 
 from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
-from src.models.rstar.equations.indexed_bond import indexed_bond_equation
-from src.models.rstar.equations.is_curve import is_curve_equation
-from src.models.rstar.equations.phillips import phillips_curve_equation
-from src.models.rstar.equations.potential import potential_output_equation
-from src.models.rstar.equations.r_star import r_star_equation
-from src.models.rstar.equations.trend_growth import trend_growth_equation
-from src.models.rstar.equations.z_star import z_star_equation
-from src.models.rstar.observations import build_observations
+from src.models.rstar_hlw.equations.indexed_bond import indexed_bond_equation
+from src.models.rstar_hlw.equations.is_curve import is_curve_equation
+from src.models.rstar_hlw.equations.phillips import phillips_curve_equation
+from src.models.rstar_hlw.equations.potential import potential_output_equation
+from src.models.rstar_hlw.equations.r_star import r_star_equation
+from src.models.rstar_hlw.equations.trend_growth import trend_growth_equation
+from src.models.rstar_hlw.equations.z_star import z_star_equation
+from src.models.rstar_hlw.observations import build_observations
 
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
 
@@ -38,7 +38,7 @@ def build_model(
     if constants is None:
         constants = {}
     if resolution not in ("A", "B", "C"):
-        raise ValueError(f"resolution must be 'A', 'B', or 'C', got {resolution!r}")
+        raise ValueError(f"resolution must be 'A', 'B' or 'C', got {resolution!r}")
 
     # Resolutions A and B are textbook canonical: no fiscal impulse, no soft
     # anchor on g. Strip those terms from obs so the equations skip them (the
@@ -140,19 +140,28 @@ def run_estimate(
     prefix: str = "rstar_hlw",
     resolution: str = "C",
     verbose: bool = False,
+    seed: int | None = None,
 ) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex]:
     """Build observations, sample posterior, save results."""
     if sampler_config is None:
-        sampler_config = SamplerConfig(
-            draws=10_000,
-            tune=3_500,
-            chains=5,
-            cores=5,
-            target_accept=0.90,
-        )
+        kwargs = {
+            "draws": 10_000,
+            "tune": 3_500,
+            "chains": 5,
+            "cores": 5,
+            "target_accept": 0.90,
+        }
+        if seed is not None:
+            kwargs["random_seed"] = seed
+        sampler_config = SamplerConfig(**kwargs)
+    elif seed is not None:
+        sampler_config.random_seed = seed
+    print(f"Sampler seed: {sampler_config.random_seed}")
 
     print("Building observations...")
-    obs, obs_index, chart_obs = build_observations(start=start, end=end, verbose=verbose)
+    obs, obs_index, chart_obs = build_observations(
+        start=start, end=end, verbose=verbose,
+    )
 
     print(f"Building model (Resolution {resolution})...")
     model = build_model(obs, resolution=resolution)

@@ -169,18 +169,26 @@ A deterministic blend of the two anchors. No latent z. The single scalar α tell
 
 ## Switching resolutions
 
-The CLI exposes a `--resolution` flag that toggles between A and C:
+The CLI exposes a `--resolution` flag that toggles between A, B, and C:
 
 ```bash
-./run-rstar.sh -v                          # Resolution C (blend, default)
-./run-rstar.sh -v --resolution A           # canonical HLW: r* = g + z
+./run-rstar-hlw.sh -v                          # Resolution C (blend, default)
+./run-rstar-hlw.sh -v --resolution A           # canonical HLW: r* = g + z
+./run-rstar-hlw.sh -v --resolution B           # canonical + indexed-bond observation
 ```
 
-Both share trend_growth (with linear soft anchor on g), potential output, IS curve, and Phillips curve. They differ only in the r* identity:
+All resolutions share trend_growth (with linear soft anchor on g), potential output, IS curve, and Phillips curve. They differ in the r* identity and which observations are added:
 - **A**: `r* = g + z` — z is an AR(1)-reparameterised non-centred random walk (Lewis-Vazquez-Grande 2019 form)
+- **B**: `r* = g + z` plus indexed-bond observation `indexed_10y = r* + tp + ε`
 - **C**: `r* = α·g + (1-α)·(indexed_10y − k) + ε` — the blend
 
 Note: the "Resolution A" wired into the toggle uses the AR(1) reparameterised z, not the strict canonical RW z. The strict canonical version was only run in iteration 1 of the sampler progression and produced r* ≈ g (dead z).
+
+## Australia vs G3 r* comparison chart
+
+`analyse.py` always emits an overlay of the model's median r* against the NY Fed Holston-Laubach-Williams r* estimates for **US, Euro Area, and Canada** (`src/data/world_rstar.py`). The three foreign series are plotted individually — no trade-weighted aggregate.
+
+The chart is purely descriptive — none of the foreign r* series are observations in the model. `analyse.py` calls `get_world_rstar(force_download=True)`, so each run pulls the latest published file from `https://www.newyorkfed.org/research/policy/rstar` rather than relying on the cached copy in `input_data/`. The chart is clipped to start at the AU sample start so the longer US/Canada history (back to the 1960s) doesn't squash the AU series.
 
 ## Empirical comparison: A vs B vs C on the same Australian data
 
@@ -345,7 +353,7 @@ Iterations 8-10 explored loosening σ_g and adding observation anchors on g. The
 ## File structure
 
 ```
-src/models/rstar/
+src/models/rstar_hlw/
 ├── observations.py           # Data loading (incl. indexed_10y, linear-trend g anchor)
 ├── equations/
 │   ├── trend_growth.py       # g state equation (centred RW) + soft observation on g
@@ -361,7 +369,7 @@ src/models/rstar/
 ├── run.py                    # CLI: --start, --estimate-only, --skip-estimate
 └── MODEL_NOTES.md            # This file
 
-run-rstar.sh                  # Shell wrapper
+run-rstar-hlw.sh              # Shell wrapper
 ```
 
 `z_star.py` and `indexed_bond.py` are no longer imported by `estimate.py` but are kept in `equations/` as a record of the journey. They can be re-wired manually to recover Resolution A or B if needed.

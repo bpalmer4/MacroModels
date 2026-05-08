@@ -26,3 +26,5 @@ charts/**
 model_outputs/**
 output/**
 
+# fetched data caches
+input_data/Holston_Laubach_Williams_current_estimates.xlsx
