@@ -70,14 +70,38 @@ def r_star_equation(
     indexed = obs["indexed_10y"]
 
     with model:
-        # alpha uses Beta — set_model_coefficients only handles Normal/HalfNormal/Truncated
+        # alpha uses Beta — set_model_coefficients only handles Normal/HalfNormal/Truncated.
+        # Default Beta(1, 1) = Uniform — uninformative; lets the (weak) data
+        # signal show through the posterior shape rather than being masked by
+        # a symmetric central-mass prior. Override:
+        #   constant['alpha_prior'] = (a, b)  → fixed Beta(a, b)
+        #   constant['alpha_hierarchical'] = True  → a, b ~ Uniform(0.25, 2);
+        #     alpha ~ Beta(a, b)  (let the data inform the prior shape itself)
+        # The Uniform(0.25, 2) hyperprior is flat over a range that spans both
+        # U-shapes (a, b < 1) and mild bell-shapes (a, b > 1), and is
+        # symmetric around 1 (the Beta = Uniform point). Earlier vintages used
+        # HalfNormal(1) which had ~58% prior mass below 1 and was found to
+        # mildly favour U-shapes a priori — see MODEL_NOTES iteration 24.
         if "alpha_rstar" in constant:
             alpha = constant["alpha_rstar"]
             if not hasattr(model, "_fixed_constants"):
                 model._fixed_constants = {}  # noqa: SLF001
             model._fixed_constants["alpha_rstar"] = alpha  # noqa: SLF001
+        elif constant.get("alpha_hierarchical", False):
+            alpha_a_hyper = pm.Uniform("alpha_a_hyper", lower=0.25, upper=2.0)
+            alpha_b_hyper = pm.Uniform("alpha_b_hyper", lower=0.25, upper=2.0)
+            alpha = pm.Beta("alpha_rstar", alpha=alpha_a_hyper, beta=alpha_b_hyper)
+            if not hasattr(model, "_fixed_constants"):
+                model._fixed_constants = {}  # noqa: SLF001
+            model._fixed_constants["alpha_hierarchical"] = True  # noqa: SLF001
+            model._fixed_constants["alpha_hyperprior"] = "Uniform(0.25, 2)"  # noqa: SLF001
         else:
-            alpha = pm.Beta("alpha_rstar", alpha=2.0, beta=2.0)
+            a_param, b_param = constant.get("alpha_prior", (1.0, 1.0))
+            alpha = pm.Beta("alpha_rstar", alpha=float(a_param), beta=float(b_param))
+            if not hasattr(model, "_fixed_constants"):
+                model._fixed_constants = {}  # noqa: SLF001
+            model._fixed_constants["alpha_prior_a"] = float(a_param)  # noqa: SLF001
+            model._fixed_constants["alpha_prior_b"] = float(b_param)  # noqa: SLF001
 
         settings = {
             "k": {"mu": 0.5, "sigma": 0.5, "lower": 0.0},

@@ -17,12 +17,15 @@ target-counterfactual).
 import numpy as np
 import pandas as pd
 
-from src.data.bonds import get_indexed_yield
+from src.data.bonds import get_indexed_yield_filled
 from src.data.cash_rate import get_cash_rate_qrtly
+from src.data.commodity_prices import get_icp_aud_change_lagged_qrtly
 from src.data.expectations_model import get_model_expectations_unanchored
 from src.data.gdp import get_log_gdp
 from src.data.gov_spending import get_fiscal_impulse_lagged_qrtly
 from src.data.inflation import get_trimmed_mean_annual, get_trimmed_mean_qrtly
+from src.data.tot import get_tot_change_qrtly
+from src.data.twi import get_twi_change_lagged_qrtly
 
 _NAME_WIDTH = 20
 
@@ -52,7 +55,11 @@ def build_observations(
     pi_q = get_trimmed_mean_qrtly().data
     pi_4 = get_trimmed_mean_annual().data
     fiscal_impulse_1 = get_fiscal_impulse_lagged_qrtly().data
-    indexed_10y = get_indexed_yield().data  # 10y inflation-linked bond yield (real)
+    indexed_10y = get_indexed_yield_filled().data  # 10y inflation-linked bond yield (real); 2013Q3-2014Q3 gap filled via nominal − interpolated breakeven
+    # SOE-block IS-curve regressors (used by Resolution D)
+    tot_change_1 = get_tot_change_qrtly().data.shift(1)  # quarterly ToT % change, lag 1
+    twi_change_1 = get_twi_change_lagged_qrtly().data    # quarterly TWI change (lag 1)
+    icp_change_1 = get_icp_aud_change_lagged_qrtly().data  # RBA ICP A$ change (lag 1)
 
     df = pd.DataFrame({
         "log_gdp": log_gdp,
@@ -62,6 +69,9 @@ def build_observations(
         "pi_4": pi_4,
         "fiscal_impulse_1": fiscal_impulse_1,
         "indexed_10y": indexed_10y,
+        "tot_change_1": tot_change_1,
+        "twi_change_1": twi_change_1,
+        "icp_change_1": icp_change_1,
     })
     df.index = df.index.asfreq("Q")
     df = df.dropna()

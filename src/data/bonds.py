@@ -67,6 +67,75 @@ def get_indexed_yield(*, monthly: bool = False) -> DataSeries:
     )
 
 
+def get_indexed_yield_filled(*, monthly: bool = False) -> DataSeries:
+    """Indexed 10y yield with missing periods filled via nominal − interpolated breakeven.
+
+    The RBA F2 series for the 10y indexed bond yield has a 5-quarter gap
+    (2013Q3–2014Q3) when the benchmark inflation-linked Treasury bond was
+    being transitioned between maturities, and the standardised 10y measure
+    had no clean underlying instrument. The gap drops 5 quarters from the
+    HLW model's sample if used unfilled.
+
+    Fill method:
+
+    1. Compute breakeven inflation (nominal_10y − indexed_10y) wherever both
+       series are available.
+    2. Linearly interpolate breakeven across missing quarters.
+    3. For each missing-indexed quarter where nominal_10y is observed,
+       set ``indexed = nominal − breakeven_interpolated``.
+
+    Why this works: breakeven inflation is anchored to inflation expectations
+    (which are themselves anchored to the RBA target), so it moves slowly and
+    interpolates well. The nominal yield, which IS observed throughout the
+    gap, contributes the actual real-rate dynamics of the period (notably the
+    2013 taper-tantrum spike). Subtracting an interpolated breakeven from the
+    observed nominal cleanly recovers the real component without smoothing
+    away the underlying real-rate movement.
+
+    Args:
+        monthly: If True, return monthly frequency. If False (default), quarterly.
+
+    Returns:
+        DataSeries with indexed bond yield (%), gaps filled.
+
+    """
+    nominal = get_nominal_10y(monthly=monthly).data
+    indexed = get_indexed_yield(monthly=monthly).data
+
+    # Align both series to a contiguous index covering both — so missing
+    # quarters in either series surface as explicit NaN values rather than
+    # silently dropping out of the index.
+    common_idx = nominal.index.union(indexed.index).sort_values()
+    nominal_aligned = nominal.reindex(common_idx)
+    indexed_aligned = indexed.reindex(common_idx)
+
+    breakeven = nominal_aligned - indexed_aligned  # NaN where either is missing
+    breakeven_interp = breakeven.interpolate(method="linear")
+
+    indexed_filled = indexed_aligned.copy()
+    fill_mask = (
+        indexed_aligned.isna()
+        & nominal_aligned.notna()
+        & breakeven_interp.notna()
+    )
+    indexed_filled.loc[fill_mask] = (
+        nominal_aligned.loc[fill_mask] - breakeven_interp.loc[fill_mask]
+    )
+
+    freq_label = "monthly" if monthly else "quarterly"
+    return DataSeries(
+        data=indexed_filled,
+        source="RBA F2 (gaps filled)",
+        units="%",
+        description=(
+            f"Indexed Bond Yield ({freq_label}); gaps filled via "
+            f"nominal − interpolated breakeven"
+        ),
+        table="F2",
+        series_id="FCMYGBAGI_filled",
+    )
+
+
 def get_breakeven_inflation(*, monthly: bool = False) -> DataSeries:
     """Get breakeven inflation (nominal 10y minus indexed).
 

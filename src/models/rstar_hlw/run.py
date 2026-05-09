@@ -15,7 +15,7 @@ def main(
     analyse: bool = True,
     start: str = "1980Q1",
     end: str | None = None,
-    resolution: str = "C",
+    resolution: str = "G",
     seed: int | None = None,
 ) -> None:
     """Run estimation and/or analysis stages."""
@@ -69,12 +69,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--resolution",
         type=str,
-        choices=["A", "B", "C"],
-        default="C",
+        choices=["A", "B", "C", "D", "E", "F", "G", "H"],
+        default="G",
         help=(
             "r* identity: A (canonical HLW, r* = g + z), "
             "B (canonical + indexed bond observation), "
-            "C (blend, default)"
+            "C (blend, fixed alpha prior), "
+            "D (canonical r* + open-economy IS curve: fiscal + ToT + TWI + ICP), "
+            "E (blend + AR(1) z: r* = alpha*g + (1-alpha)*(indexed-k) + z), "
+            "F (E's r* identity + open-economy IS curve), "
+            "G (default; C with hierarchical Beta(a, b) on alpha; a, b ~ Uniform(0.25, 2)), "
+            "H (blend with time-varying alpha_t via logit-RW)"
         ),
     )
     parser.add_argument(
