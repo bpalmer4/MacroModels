@@ -186,13 +186,13 @@ Numbers below reflect the current spec (α ~ Beta(1, 1) Uniform; previously Beta
 - Latent r* convergence: R-hat 1.000, ESS 6,133 (clean — sharper than pre-fill ESS 4,588)
 - σ_g posterior 0.043 (within prior HalfNormal(0.04) regime), `b_y` 0.41, `a_r` −0.035, σ_IS 0.68
 
-**Why this is the best of the working specs:**
-- Level is economically credible (trough 0.82%, never negative)
-- Dynamics tell the post-GFC decline + recent recovery story for r*
-- g shows a credible secular slowdown thanks to the linear soft anchor — without the anchor, g would sit flat near sample-average aggregate GDP growth (~3%) and the chart would look implausibly stable
-- α posterior with wide HDI is itself a finding: the data weakly prefers trend growth as the anchor (median 0.56) but not strongly enough to pick one anchor over the other
-- No unidentified random walk; identification reduced to one scalar (α) which is itself weakly identified
-- Honest about what r* is: a blend of structural and market signals, weights data-determined to the extent the IS curve has anything to say (which is little — see headline finding)
+**What this spec offers (without claiming it is the right answer):**
+- Level sits inside the published Australian range (trough 0.82%, never negative); whether that is a virtue or a feature of the construction depends on how much weight one places on the bond anchor — see "Recommended use" and "External cross-validation: Bullock's 2026 statements".
+- Dynamics trace a post-GFC decline + recent recovery, because both anchors do — the blend inherits whatever shape its components have.
+- g shows a secular slowdown thanks to the linear soft anchor — without the anchor, g would sit flat near sample-average aggregate GDP growth (~3%).
+- α posterior with wide HDI [0.07, 0.96] is itself the finding: the data weakly tilts toward higher α (median 0.56) but does not pick one anchor over the other.
+- Identification is reduced to one scalar (α), which is itself weakly identified — the IS curve cannot discriminate between α weightings within the blend family (confirmed independently by Resolutions G and H; see headline finding).
+- Honest about what r* is: a blend of structural and market signals, with weights chosen mostly by the analyst's prior rather than by the data.
 
 ### Resolution D: canonical r* + open-economy IS curve
 
@@ -316,12 +316,12 @@ Approximate density at endpoints / middle (40-bin histogram, density-normalised)
 - Latent r* convergence: R-hat 1.000, ESS 6,169 (clean)
 - The trough is now closer to C's 0.82% than to the old HalfNormal-G's 1.18%, because the U-shape's α=1-attractor that pulled r* toward g has weakened
 
-**Why G is a more informative default than C:**
-- C produces a posterior on α that is mostly the prior shape — informative about *the analyst's choice*, not about the data
-- G's hierarchical structure lets the data express its actual preference about α, and the answer is dramatically more interpretable: bimodal at the endpoints
-- The bimodality is itself the headline finding: the IS curve does not prefer a central blend — it prefers extreme weights, with mild preference for trend growth
+**Why G is the running default (a methodological choice, not a claim about answers):**
+- C's posterior on α is mostly the prior shape — informative about *the analyst's choice*, not about the data.
+- G's hierarchical structure lets the data express any preference it has about the Beta shape; under the neutral `Uniform(0.25, 2)` hyperprior, the answer is "a slightly bell-shaped Beta with mild right-tilt and soft endpoint pile-up" — not the dramatic bimodality the original `HalfNormal(1)` hyperprior produced.
+- An earlier version of these notes treated G's bimodality as a substantive headline finding. Iteration 24 (hyperprior swap) and Resolution H (time-varying α) together undermined that read: the bimodality was substantially the hyperprior's contribution, and when α is allowed to drift period-by-period it lands almost flat at ~0.59. The honest summary is that the data has very little to say about α — neither central tendency, nor shape, nor era-specific drift.
 
-C is kept as the simpler/named alternative when downstream code needs a stable r* path without the hierarchical machinery (e.g. for NAIRU integration, the median r* path under G or C is essentially identical because both medians are weighted means of the same two anchors). G is preferred when reading the α posterior is part of the analysis.
+C is kept as the simpler alternative when downstream code wants a stable r* path without the hierarchical machinery; the median r* path under C, G, and H is essentially identical because all three are weighted means of the same two anchors with α near 0.55–0.59. The choice between them is a presentational one, not a substantive disagreement.
 
 ### Resolution H: blend with time-varying α_t (logit-RW)
 
@@ -401,9 +401,9 @@ Note: the "Resolution A" wired into the toggle uses the AR(1) reparameterised z,
 
 The chart is purely descriptive — none of the foreign r* series are observations in the model. `analyse.py` calls `get_world_rstar(force_download=True)`, so each run pulls the latest published file from `https://www.newyorkfed.org/research/policy/rstar` rather than relying on the cached copy in `input_data/`. The chart is clipped to start at the AU sample start so the longer US/Canada history (back to the 1960s) doesn't squash the AU series.
 
-## Empirical comparison: A vs B vs C vs D vs E vs F on the same Australian data
+## Empirical comparison: A through H on the same Australian data
 
-All three resolutions were run on the identical 1993Q1-2025Q4 sample. They share the same Phillips curve and potential output equation. The differences:
+All eight resolutions were run on the identical 1986Q3-2025Q4 sample. They share the same Phillips curve and potential output equation. The differences are summarised in the side-by-side table below; the structural-level differences in the closed-/open-economy IS curves and r* identities are:
 
 | Spec | A (textbook canonical) | B (canonical + bond observation) | C (blend, current default) |
 |---|---|---|---|
@@ -551,13 +551,13 @@ The deliverable, properly understood, is a *meta-tool*: a way to read any r* cla
 
 ### Analytical assessment
 
-The three resolutions produce three qualitatively different stories from the same data — and each one is informative about a different aspect of the identification problem.
+The eight resolutions reduce to three qualitatively different stories from the same data — growth-anchored (A, D), yield-anchored (B), and blend (C, E, F, G, H) — and each is informative about a different aspect of the identification problem.
 
 **Resolution A confirms the literature's finding that canonical HLW cannot identify z for Australia.** σ_z posterior median is 0.063 with HDI [0, 0.18], piling up at the lower bound. z span is 0.11 pp over 33 years. r* tracks g with virtually no independent variation. This is exactly what Buncic (2021) shows for Euro Area / UK / Canada: the correct λ_z is essentially zero, and any apparent r* movement in canonical HLW is MUE artefact. The pathology shows up in the sampling diagnostics — latent r_star, trend_growth, and z_star all have R-hat > 1.3, ESS < 25, and σ_z is effectively unsampled (R-hat 1.48, ESS 9.5). **The poor sampling is itself diagnostic of the identification failure.** A misses the post-GFC decline narrative entirely; r* sits at ~3% throughout, which means policy has been "loose" for fifteen years according to A — economically implausible.
 
 **Resolution B goes to the other extreme.** Once the indexed bond is added as a direct observation of r*, σ_z jumps from 0.063 to 0.294 (5×) — z becomes very identifiable, but only because the bond yield is dictating r*. The IS curve and Phillips curve don't materially constrain z; the bond observation does. Result: r* tracks the bond yield minus a constant term premium of 0.93pp, swinging from +4.6% in 1995 to **−0.72% in 2020** as indexed yields collapsed during the global low-rate period. Sampling is even worse than A — **11,458 divergences**, R-hat for r_star at 1.302 — because B has the worst of both worlds: a free RW z that wants to wander, plus a strong bond-observation pull that pins r* tightly to a moving target. The latent state has to satisfy both, and NUTS can't navigate the resulting geometry. **B's r* level is implausibly low at the trough**, below every published Australian estimate, and the constant-term-premium assumption pushes post-GFC term-premium compression into r* itself.
 
-**Resolution C threads the needle.** Instead of adding the bond as an observation that competes with the latent z, C builds the bond into the *definition* of r* via the α blend weight. There is no independent z latent state — r* is a deterministic function of g, indexed_10y, and two scalar parameters (α, k) plus an i.i.d. ε. The blend lets the data choose how much to weight each anchor (α posterior 0.56 with wide HDI [0.07, 0.96] under the Uniform prior; the data weakly tilts toward higher α). The structural anchor (g) keeps r* from collapsing to bond-yield-minus-constant; the market anchor keeps r* from sticking at trend growth. Result on the gap-filled sample: **193 divergences, r_star R-hat 1.000, ESS 6,133**, and an r* path with span 3.31pp inside every published Australian range — 4.13% peak declining to 0.82% trough in 2020Q4 and recovering to 2.19% by 2025Q4.
+**Resolution C produces an in-range path by construction.** Instead of adding the bond as an observation that competes with the latent z, C builds the bond into the *definition* of r* via the α blend weight. There is no independent z latent state — r* is a deterministic function of g, indexed_10y, and two scalar parameters (α, k) plus an i.i.d. ε. The blend formally lets the data choose how much to weight each anchor (α posterior 0.56 with wide HDI [0.07, 0.96] under the Uniform prior; the data weakly tilts toward higher α). The structural anchor (g) keeps r* from collapsing to bond-yield-minus-constant; the market anchor keeps r* from sticking at trend growth. Result on the gap-filled sample: **193 divergences, r_star R-hat 1.000, ESS 6,133**, and an r* path with span 3.31pp — 4.13% peak declining to 0.82% trough in 2020Q4 and recovering to 2.19% by 2025Q4. The path "lands inside every published Australian range" because the analyst-chosen α and k together place the median where the published estimates are; this is a feature of how the blend is parameterised, not an independent verdict from the data.
 
 **The IS curve `a_r` and `σ_IS` are remarkably stable across resolutions.** A: a_r = −0.045, σ_IS = 0.72. B: a_r = −0.047, σ_IS = 0.70. C: a_r = −0.060, σ_IS = 0.72. D: a_r = −0.034, σ_IS = 0.70. The IS rate channel is genuinely weak for Australian data; **no choice of r* identification or IS-curve specification — open or closed economy — makes it strong**. This is a substantive finding about the Australian IS curve, not a model artefact.
 
@@ -567,18 +567,22 @@ The three resolutions produce three qualitatively different stories from the sam
 
 ### Conclusion
 
-The four-way comparison is decisive:
+The eight-way comparison is consistent — and what is consistent across it matters more than the small differences between specs:
 
 - **A** (canonical, closed economy) shows what the data alone says: r* cannot be separately identified from g; canonical HLW fails for Australia. Matches Buncic, McCririck-Rees, and Ellis.
-- **B** (canonical + bond observation) shows what happens when you add a strong external identifier to a model that otherwise can't pin r*: the external identifier *becomes* r*, with implausibly extreme dynamics and the worst sampling of the six.
-- **C** (blend) is the principled middle ground: bond information is included by design rather than as an observation that fights with the latent z. The blend weight α is the only thing the data has to identify, and even there the posterior is wide — but the resulting r* path is credible, the sampling converges, and the model is honest about what it's doing.
-- **D** (canonical + open-economy IS curve) tests the SOE-block hypothesis: that A's failure is mis-specification fixable by adding the right external regressors. The hypothesis is empirically refuted — σ_IS and a_r are unchanged, z still dead, r* still ≈ g. The Australian rate channel is genuinely weak; the SOE block doesn't help.
-- **E** (blend + AR(1) z) tests whether C's deterministic identity over-constrains r*. With z given proper room (σ_z fixed at 0.15 pp/quarter, ρ_z ≈ 0.95) the IS curve is allowed to nudge r* away from the blend persistently — and finds nothing to add. z posterior median is 0.04 pp absolute, span 0.12 pp. r* posterior matches C within Monte Carlo error.
-- **F** (E + open-economy IS curve) combines E and D. Soft anchor + extra regressors. Same result: r* matches C, z dead, γ coefficients dead.
+- **B** (canonical + bond observation) shows what happens when you add a strong external identifier to a model that otherwise can't pin r*: the external identifier *becomes* r*. Sampling is the worst of the eight, but the level it returns is also the closest to Bullock's stated working view.
+- **C** (blend) is the principled middle ground in construction terms: bond information is included by design rather than as an observation that fights with the latent z. The blend weight α is the only thing the data has to identify, and even there the posterior is wide. Whether C's level is *the right level* is the bond-vs-growth question that the data inside the model cannot answer.
+- **D** (canonical + open-economy IS curve) tests whether A's failure was mis-specification fixable by adding SOE regressors. Empirically refuted — σ_IS and a_r are unchanged, z still dead, r* still ≈ g.
+- **E** (blend + AR(1) z) tests whether C's deterministic identity over-constrains r*. With z given proper room, the IS curve adds essentially nothing above the blend.
+- **F** (E + open-economy IS curve) combines E and D. Same result: r* matches C, z dead, γ coefficients dead.
+- **G** (blend + hierarchical Beta on α) lets the data pick the prior shape on α. Under a neutral hyperprior the chosen shape is a mildly bell-shaped Beta — there is no strong data-implied bimodality, and r* is within Monte Carlo error of C.
+- **H** (blend + time-varying α_t) lets α drift period-by-period under a permissive logit-RW prior. α_t lands almost flat (sd 0.002 across 158 quarters), and r* matches C/G to within MC error. The data has no era-specific preference for one anchor over the other — including no support for a recent shift toward the bond anchor.
 
-The cross-resolution evidence is now complete. Across **all six** specifications, σ_IS sits at 0.70 ± 0.02 and a_r at −0.04 ± 0.01. Wherever the structural identity admits external observables (g, indexed_10y, world r*, blend), r* tracks those observables. Wherever it doesn't (canonical A, D), r* tracks g. **No specification produces a usefully *time-varying* r* that's separately identified by the IS curve.** C is the spec that gets used because its structural assumption (the blend) generates a plausible-looking time path; that doesn't mean the IS curve identified r*.
+Across **all eight** specifications, σ_IS sits at 0.70 ± 0.02 and a_r at −0.04 ± 0.01. Wherever the structural identity admits external observables (g, indexed_10y, blend), r* tracks those observables. Wherever it doesn't (canonical A, D), r* tracks g. **No specification produces a usefully *time-varying* r* that's separately identified by the IS curve.**
 
-Resolutions A, B, D, E, and F are valuable as contrastive baselines that demonstrate empirically what r* is doing in this model. They are not recommended for substantive use as standalone estimates.
+The blend (C / G / H) gives credible numbers but does not actually identify r* from the IS curve — it returns a weighted average of the two anchors at whatever weight its prior supports. A and D return the growth-anchored answer; B returns the yield-anchored answer. The data inside this sample tilts only weakly between them, and the direction of the tilt depends on which prior on α one chooses.
+
+A, B, D, E, F are kept as contrastive baselines. C, G, and H are interchangeable presentational forms of the same blend story.
 
 ## The headline finding: r\* is the structural assumption, not the estimate
 
@@ -592,6 +596,8 @@ What the cross-resolution evidence above adds up to is a finding that's stronger
 - D imposes the same structure as A but with an open-economy IS curve → returns r* = g (the IS curve still doesn't identify z, even with the SOE block).
 - E imposes `r* = blend + AR(1) z` with σ_z fixed → returns r* = blend (z stays at 0; the IS curve has no information to put into z).
 - F imposes E's identity plus the open-economy IS curve → returns r* = blend (combination doesn't help either).
+- G imposes C's identity with a hierarchical Beta(a, b) on α → returns r* = blend; the hyperparameters' posterior tracks the hyperprior more than it tracks the data.
+- H imposes C's identity with a time-varying α_t (logit-RW) → returns r* = blend with α_t pulled to a near-constant ~0.59 (drift 0.01pp end-to-end), even though σ_a = 0.05 would have permitted ~1pp/quarter drift on the logit scale.
 
 In every case, r* is *what we said it was*, plus a Monte Carlo whisker. The Bayesian update on r* is in the third decimal place. The IS curve's contribution to r* identification is essentially nil; the data, conditional on the structural assumption, has nothing material to add about r*.
 
@@ -605,7 +611,7 @@ The IS curve has a measurable but weak rate channel: posterior median `a_r ≈ �
 
 That's a 1-in-10 effect. Across 150-odd quarters of data, the IS curve cannot distinguish r* paths that imply different r_gap dynamics in any meaningful way. Whatever structural assumption we impose on the latent r* state, the IS-curve likelihood does not have enough power to overrule it.
 
-This is the **Buncic-Pagan-Robinson 2023** finding ("On Constructing a Country-Specific Time Series for the Natural Rate of Interest") in concrete form for Australian data: when the number of latent shocks meets or exceeds the number of independent observables that constrain them, the latent stars are not point-identified; the posterior is essentially the prior projected through the structural model, with a thin layer of likelihood on top. We've now demonstrated this empirically across six specifications — varying both the r* identity and the IS-curve composition — and observed the predicted pattern in every one.
+This is the **Buncic-Pagan-Robinson 2023** finding ("On Constructing a Country-Specific Time Series for the Natural Rate of Interest") in concrete form for Australian data: when the number of latent shocks meets or exceeds the number of independent observables that constrain them, the latent stars are not point-identified; the posterior is essentially the prior projected through the structural model, with a thin layer of likelihood on top. We've now demonstrated this empirically across eight specifications — varying the r* identity (canonical z, blend, blend + AR(1) z), the α prior (fixed Beta, hierarchical Beta, time-varying α_t), and the IS-curve composition (closed, open-economy SOE block) — and observed the predicted pattern in every one.
 
 It is also consistent with the broader SOE literature:
 - Buncic (2021) for Euro Area / UK / Canada: λ_z is essentially zero in canonical HLW, MUE manufactures the apparent r* movement.
@@ -710,28 +716,32 @@ The pattern across all the α-prior experiments tells a clean story:
 
 **Endpoint stacking only appears when the (hyper)prior allows Beta shape parameters to drop below 1**, putting the Beta family in U-shape territory. The data's signal on α is too weak to either confirm or rule out U-shapes — and U-shapes by construction place mass at the endpoints. So the chain happily drifts into sub-1 (a, b) regions and the marginal posterior on α picks up the endpoint mass. **The stacking is the constraint structure × diffuse signal interaction, not a data preference for extreme α.**
 
-#### The "smear" implication for constant α
+#### The "smear" implication for constant α — and what time-varying α_t (Resolution H) found
 
-A second corollary: **with constant α and a weak likelihood, the r\* posterior at any single time t is necessarily wide** — it's a mixture across all the (constant) α values the chain visited. Each draw applies its α to the whole sample; with α ranging 0–1 and the two anchors diverging by ~3pp post-2018, the implied r* span at any single t is correspondingly wide. This is the "smear" we see in G's bimodal decomposition chart. It does not represent uncertainty about r* at time t — it represents sample-wide uncertainty about a constant α projected period-by-period.
+A second corollary: **with constant α and a weak likelihood, the r\* posterior at any single time t is necessarily wide** — it's a mixture across all the (constant) α values the chain visited. Each draw applies its α to the whole sample; with α ranging 0–1 and the two anchors diverging by ~3pp post-2018, the implied r* span at any single t is correspondingly wide. This is the "smear" we see in G's decomposition chart. It does not represent uncertainty about r* at time t — it represents sample-wide uncertainty about a constant α projected period-by-period.
 
-The principled fix would be **time-varying α_t** (a logit-RW on α, controlled smoothness via fixed σ_α). That would let each period have a tight α posterior even if the sample-wide story is "α was high in the 1990s and low post-2010". Whether this works depends on the data being able to say *when* α should differ — earlier regime-switching attempts (iterations 7 and 13) failed because the data couldn't pick a date. A continuous RW might succeed where hard regime splits failed, by allowing smooth gradients rather than forcing breakpoints.
+The principled candidate fix is **time-varying α_t** (a logit-RW on α, controlled smoothness via fixed σ_α): each period would in principle have its own posterior on α even if the sample-wide story is "α was high in the 1990s and low post-2010". Earlier regime-switching attempts (iterations 7 and 13) failed because the data couldn't pick a date; a continuous RW relaxes that constraint, allowing smooth gradients rather than forcing breakpoints.
 
-#### What this third independent test confirms
+**Resolution H implements this and reports a flat answer.** With σ_a = 0.05 on the logit scale (permissive — allows ~1pp/quarter drift at α = 0.5), α_t lands almost perfectly horizontal: standard deviation 0.002 across 158 quarters, total end-to-end drift 0.01pp. r* matches C and G to within Monte Carlo error. The IS curve has no era-specific information about which anchor matters more in different periods — the data does not want time-variation in α, even when given ample room to express it. Bullock's "r* has shifted upward" framing — which would imply α_t drifting toward 0 in recent years as the bond anchor takes over — is not supported inside this model. So the smear in constant-α specs reflects analyst uncertainty about a single sample-wide α, not lost period-specific signal that H could recover.
+
+#### What this third independent test confirms — and what the fourth (H) added
 
 - α is essentially unidentified by the data; the posterior shape always tracks whatever prior structure we put in.
 - The hyperparameter posteriors are themselves prior-sensitive: HalfNormal(1) → sub-1 medians (U-shape preferred); Uniform(0.25, 2) → just-above-1 medians (mild bell preferred).
 - The r* level is robust across all these prior choices (cross-resolution invariance documented in the headline).
-- The within-period r* posterior CI is wide because α is constant — a structural choice, not a data finding.
+- The within-period r* posterior CI under constant α is wide because α is constant — a structural choice, not a data finding.
 
-This is a clean Bayesian-machinery confirmation of the headline finding: even when we hand the prior over to the data, the data hands it back with effectively no information added — and the *shape* of the bimodality observed depends on the analyst's hyperprior choice, not on the data.
+This is a clean Bayesian-machinery confirmation of the headline finding: even when we hand the prior over to the data, the data hands it back with effectively no information added — and the *shape* of the bimodality first observed depends on the analyst's hyperprior choice, not on the data.
+
+**Resolution H added a fourth independent confirmation from a different angle.** Rather than vary the prior shape on a single α, H freed α to drift over time — and the data pulled α_t toward a constant. Combined with the σ_z sweep (CI-scales-with-prior), the α-prior sensitivity (posterior tracks the Uniform), and the hierarchical-Beta result (hyperprior-sensitive endpoint stacking), this closes the loop: the data does not have an opinion on α — not on its level, not on the Beta shape, not on era-specific drift. Whatever any single resolution returns is a recombination of the structural assumption and the prior; the IS curve does not adjudicate.
 
 ### Implications for the project
 
 1. **Reporting r\* as a single number with credible bands overstates precision and conceals what the bands actually represent.** The posterior CI within any single resolution is conditional on (a) the structural assumption being right, and (b) the variance-ratio priors being right. Neither is established by the data. The σ_z sweep above shows the within-model CI is *almost entirely prior-driven* — the data has nothing to say about how uncertain r* should be. The honest "uncertainty band" is the spread *across* specifications: r* latest ranges from 1.48% (B) to 2.43% (A), with C/E/F/G clustered around 2.15–2.23% and D at 1.77%. That ~1.0 pp spread (excluding the implausible B) is the actual uncertainty, and almost all of it is structural-assumption uncertainty rather than within-model statistical uncertainty.
 
-2. **C is the recommended *specification* but the "answer" is the externally-observed blend.** What C produces is what the deterministic blend implies, given α ≈ 0.5 and k ≈ 0.65 — economically interpretable and inside published Australian ranges. But it is not "an estimate of r* from the IS curve and Phillips curve". It is an explicit weighted average of trend growth and the inflation-linked bond yield (less a constant term premium), with the blend's components carrying nearly all the information.
+2. **The blend resolutions (C / G / H) produce credible numbers but the "answer" is the externally-observed blend.** What C/G/H produce is what the deterministic blend implies, given α ≈ 0.55–0.59 and k ≈ 0.62 — economically interpretable and inside published Australian ranges. But this is not "an estimate of r* from the IS curve and Phillips curve". It is an explicit weighted average of trend growth and the inflation-linked bond yield (less a constant term premium), with the blend's components carrying nearly all the information. The blend is one defensible answer among several; whether it is the *best* answer depends on prior commitments about the bond-vs-growth weight that the data inside the model cannot resolve (see "Recommended use" below).
 
-3. **For NAIRU integration, the median r\* series from C is a defensible input,** but treating it as an estimated quantity with its narrow within-model CI is the wrong model of its uncertainty. The downstream NAIRU model should either (a) use the median and acknowledge in interpretation that r* is mostly an externally-imposed input, or (b) propagate cross-specification uncertainty by running NAIRU with multiple r* series (C, D, E, F at minimum).
+3. **For NAIRU integration, the median r\* series from a blend resolution (C, G, or H — all near-identical at the median) is a defensible input,** but treating it as an estimated quantity with its narrow within-model CI is the wrong model of its uncertainty. The downstream NAIRU model should either (a) use the median and acknowledge in interpretation that r* is mostly an externally-imposed input, or (b) propagate cross-specification uncertainty by running NAIRU with multiple r* series (B and a blend resolution at minimum, ideally also A for the growth-anchored extreme).
 
 4. **Future work should focus on richer external anchors rather than richer IS-curve identification.** The IS curve's weakness is a property of the data; no respecification of the IS curve in the HLW framework changes that. The leverage is in better external observables — long-run survey expectations, term-structure-implied real rates, convenience yields, foreign r* with credible country wedge — i.e., the specifications listed in "What was *not* tried (potential future work)".
 
@@ -786,11 +796,11 @@ The honest summary: **the model gives you a Bayesian framework for placing any �
 
 **Never recommend:** intermediate identification regimes (canonical HLW with looser priors, latent term premium without the bond observation). They are unidentified and produce thousands of divergences.
 
-### How the blend produces a robust r*
+### How the blend produces a stable median r*
 
-Resolution C's r* is robustly identified by the IS curve — it is the level of the real rate consistent with closing the output gap, and this estimate is stable across all specification variants tried. The blend achieves this by adjusting its two components: because the bond anchor typically sits below the IS-curve-implied r*, the model pushes g upward (~2.6% vs a structural expectation of ~2.2%) and k downward to make the convex combination hit the right level. This is the mechanism, not a defect — the blend's degrees of freedom (α, g, k) absorb the decomposition ambiguity so that r* itself can be pinned by the IS curve. Multiple attempts to produce independently credible components — regime-switching alpha, intercept replacing k, intercept alongside k — all confirmed that the IS curve's pull on r* propagates through α into g regardless of parameterisation.
+Resolution C's median r* is stable across specification variants — replacing the fixed Beta with a hierarchical one (G), softening the deterministic identity to a soft anchor + AR(1) z (E), letting α drift period-by-period (H), and adding the open-economy IS regressors (F) all return r* paths within Monte Carlo error of C. That stability is a feature of the construction rather than independent confirmation that the level is right: the blend's degrees of freedom (α, g, k) absorb decomposition ambiguity, with the bond anchor typically sitting below the IS-curve-implied r*, so the model pushes g upward (~2.6% vs a structural expectation of ~2.2%) and k downward to make the convex combination hit a level consistent with the IS curve. Earlier attempts to produce independently credible components — regime-switching alpha, intercept replacing k, intercept alongside k — all confirmed that the IS curve's pull on r* propagates through α into g regardless of parameterisation.
 
-**Implication:** r* is the credible output of Resolution C. The decomposition chart shows *how the blend constructs r** from its two anchors, not independent structural estimates of trend growth or the equilibrium real bond yield. If an independent estimate of trend growth is needed, it should come from the potential output equation or an external source.
+**Implication:** the median r* under any blend variant should be read as a weighted average of the two anchors with the weight chosen mostly by the prior, not as a structural estimate that the IS curve has independently identified. The decomposition chart shows *how the blend constructs r\** from its two anchors, not independent structural estimates of trend growth or the equilibrium real bond yield. If an independent estimate of trend growth is needed, it should come from the potential output equation or an external source.
 
 ## NAIRU integration
 
