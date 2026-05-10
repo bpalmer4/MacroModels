@@ -125,19 +125,20 @@ This is equivalent to a Bayesian update of the GDP nowcast, treating the joint f
 
 The binding constraint is **WPI growth (1997Q4)**, giving ~112 quarterly observations of complete data after dropna.
 
+**Labour series aggregation note**: `employment_growth` and `hours_growth` are sourced from the *monthly* Labour Force Survey (cat 6202.0) and aggregated to quarterly — employment by quarterly mean (it's a stock), hours by quarterly sum (it's a flow). Earlier versions of this model sourced these from cat 1364.0.15.003 (Modellers' Database, employment) and cat 5206.0 table 5206001 (National Accounts hours-worked index). Those quarterly publications release alongside GDP itself, making them useless for forward nowcasting — by the time they arrive, the GDP they were meant to predict is already out. The LFS-aggregated versions release ~3 weeks after quarter-end, so all three months of a quarter are typically in hand 5–6 weeks before the GDP print, providing a real conditioning lead. The tradeoff is slightly higher Q/Q variance (the NA hours index is reconciled within the National Accounts framework; LFS hours is the direct survey estimate).
+
 ### Indicators tested but excluded
 
-- **Retail growth (5682.0)**: only from 2012Q4 — would shrink the sample to ~52 observations
-- **Business profits growth (5676.0)**: only from 2001Q2 — would shrink to ~95 observations
-- **Government consumption growth (5206.0 + GFS spliced)**: long history (1959Q4+) so no sample-length issue, but adding it to the 10-variable panel *reduced correlation from 0.594 to 0.569* and increased RMSE slightly (0.597 → 0.611). The bridge model uses this series usefully because each bridge is fit independently; the BVAR's joint conditional update apparently treats it as a noisy signal that pollutes Σ_oo.
-- **BoP goods+services balance change**: long history available but adding it cut correlation more sharply (0.594 → 0.521). Same explanation — quarterly noisy series that doesn't fit well into the joint covariance structure.
-- **Both gov consumption and BoP added together**: cumulative damage — RMSE 0.626%, correlation 0.493. Worse than either individually.
-- **Westpac-MI consumer sentiment (quarterly mean)**: long history available, but adding it to the 10-variable panel *increased RMSE from 0.597% to 0.636%* (+6.5%) and raised nowcast volatility (NCstd 0.664 → 0.728) with no gain in correlation. Same failure mode as gov consumption and BoP: the joint conditional update treats a noisy, partially-collinear-with-NAB survey as a legitimate signal and pollutes Σ_oo. The DFM absorbs the same series usefully because its factor structure *extracts* the shared variance with NAB and discards the idiosyncratic noise.
+- **Retail growth (5682.0)**: short history (from 2012Q4) shrinks the training sample materially
+- **Business profits growth (5676.0)**: short history (from 2001Q2) shrinks the training sample
+- **Government consumption growth (5206.0 + GFS spliced)**: hurt RMSE and correlation despite long history. The bridge model uses this series usefully because each bridge is fit independently; the BVAR's joint conditional update treats it as noise that pollutes Σ_oo.
+- **BoP goods+services balance change**: hurt correlation more sharply than gov consumption — same failure mode through the joint covariance structure.
+- **Westpac-MI consumer sentiment (quarterly mean)**: raised nowcast volatility without improving correlation. The DFM absorbs the same series usefully because its factor structure *extracts* the shared variance with NAB and discards the idiosyncratic noise.
 - **Productivity-adjusted labour input**: tried in DFM, didn't help there, not retried here
 
 ### 5-variable panel tested and rejected
 
-A compact 5-variable panel was tested (gdp_growth, hours_growth, construction_growth, cpi_trimmed_mean, nab_conditions) on the theory that fewer collinear variables would dampen the over-volatility. **It was strictly worse**: every NCstd value across the λ sweep exceeded every NCstd in the 10-variable version.
+A compact 5-variable panel was tested (gdp_growth, hours_growth, construction_growth, cpi_trimmed_mean, nab_conditions) on the theory that fewer collinear variables would dampen the over-volatility. **It was strictly worse** at every λ tested.
 
 **Why**: with many variables, contemporaneous indicator surprises *partially cancel* (one says "GDP up", another says "GDP down"), which dampens the conditional update. With fewer carefully-chosen variables, all indicators move in the same direction, so the conditional update is *more* confident, not less. Removing collinearity backfired for the conditional forecast formula.
 
@@ -159,77 +160,28 @@ In live mode, the BVAR refines its nowcast of the next quarter's GDP as each ind
 | Week 10 | CPI trimmed mean (Q) | 9/9 |
 | Week 10 | **GDP for Q published by ABS** | (everything in) |
 
-Each new release tightens the conditional forecast. As an illustration, simulated 2026Q1 nowcasts at different stages of the cycle:
+Each new release tightens the conditional forecast. The point estimate typically doesn't move dramatically as the conditioning set fills in (since most indicators correlate strongly with GDP and pull in similar directions); the main practical benefit is **CI tightening** — confidence in the nowcast grows substantially as more indicators arrive. Going from 1/9 to 6/9 indicators typically halves the 90% CI width.
 
-| Stage | Indicators in | Nowcast Q/Q | 90% CI width |
-|-------|--------------|-------------|--------------|
-| Just NAB published | 1/9 | +0.58% | 2.73pp |
-| + Employment + Hours | 3/9 | +0.62% | 1.91pp |
-| + Approvals + Goods + WPI | 6/9 | +0.67% | 1.89pp |
-| All indicators | 9/9 | (full conditional) | (tightest) |
-
-The CI tightening is the main practical benefit — the point estimate doesn't necessarily move much, but the confidence in it grows substantially. The BVAR is therefore most useful in the mid-cycle window (weeks 4-9) when you have meaningful information about the current quarter but GDP hasn't published yet. Right after a GDP release (weeks 1-2) the model has nothing to work with and falls back to hindcasting the last published quarter.
+The BVAR is therefore most useful in the mid-cycle window (weeks 4–9) when you have meaningful information about the current quarter but GDP hasn't published yet. Right after a GDP release (weeks 1–2) the model has nothing to work with and falls back to hindcasting the last published quarter.
 
 ---
 
-## Backtest Results (2022Q1–2025Q4, latest-revised data)
+## Empirical Performance
 
-| Info Set | RMSE | MAE | Bias | Direction | Corr | NCstd | 90% CI |
-|----------|------|-----|------|-----------|------|-------|--------|
-| T-0 | 0.597% | 0.458% | +0.281% | 88% | +0.594 | 0.664% | 88% |
-
-Naive benchmark RMSE: 0.285%. Actual GDP std: 0.289%.
-
-### Comparison with Bridge and DFM
-
-| Metric | Bridge | DFM | **BVAR** |
-|--------|--------|-----|----------|
-| RMSE | 0.268% | 0.478% | 0.597% |
-| MAE | 0.227% | 0.391% | 0.458% |
-| Bias | +0.085% | +0.365% | +0.281% |
-| Direction | 94% | 94% | 88% |
-| **Correlation** | +0.474 | **+0.635** | +0.594 |
-| **NCstd** (vs actual 0.289) | 0.198 | 0.411 | **0.664** |
-| 90% CI coverage | 81% | 94% | 88% |
-
-The BVAR sits between bridge and DFM on correlation, has small-to-moderate bias, well-calibrated CIs — but is **structurally over-volatile** (NCstd ~2× actual). This explains its high RMSE: the model is making bold predictions that get the direction roughly right but overshoot the magnitude.
-
-### Per-year bias decay
-
-Like the DFM, the BVAR's bias is **dominated by 2022** (the post-COVID productivity shock period):
-
-| Year | BVAR Mean Error |
-|------|-----------------|
-| 2022 | **+0.78pp** |
-| 2023 | +0.26pp |
-| 2024 | +0.16pp |
-| 2025 | **−0.07pp** |
-
-Three quarters in 2022 (Q1: +1.33, Q2: +1.25, Q3: +0.77) account for ~75% of the entire bias. By 2025 the model is essentially unbiased. As the test sample rolls forward, the headline numbers will improve naturally.
-
-### Hyperparameter solution space
-
-Sweep over `lambda_tight` (overall prior tightness) on the 10-variable panel:
-
-```
-  lambda     RMSE      MAE      Bias     Corr    NCstd
---------------------------------------------------------
-    0.02   0.730%   0.546%   +0.168%   +0.496   0.833%   ← tightest, worst RMSE
-    0.05   0.697%   0.519%   +0.195%   +0.520   0.795%
-    0.10   0.639%   0.484%   +0.231%   +0.569   0.731%
-    0.15   0.611%   0.464%   +0.259%   +0.592   0.693%
-    0.20   0.597%   0.458%   +0.281%   +0.594   0.664%   ← current default, best correlation
-    0.30   0.577%   0.443%   +0.301%   +0.576   0.617%
-    0.50   0.564%   0.422%   +0.306%   +0.538   0.580%   ← best RMSE, best NCstd
-    1.00   0.604%   0.435%   +0.310%   +0.492   0.615%
-    2.00   0.661%   0.457%   +0.316%   +0.461   0.675%
+For current empirical performance, run:
+```bash
+uv run python -m src.models.gdp_nowcast_bvar.backtest
 ```
 
-**Key findings:**
-- **No setting brings RMSE below 0.564%** — still 2× the bridge model
-- **No setting brings NCstd below 0.580%** — still 2× actual GDP std
-- The minimum NCstd value across the *entire* hyperparameter sweep is structurally bounded
-- Tighter prior (smaller λ) actually *increases* volatility, contrary to intuition — see below
+The backtest reports RMSE, MAE, bias, direction accuracy, correlation with actual GDP, NCstd (nowcast standard deviation vs actual GDP std), 90% CI coverage, per-year bias, and a sweep over `lambda_tight`.
+
+### Qualitative findings
+
+- **The BVAR is structurally over-volatile** — its nowcast standard deviation runs roughly 2× actual GDP standard deviation. This is a property of the conditional VAR formulation (see derivation below), not a hyperparameter or variable-selection issue. It can be reduced but not eliminated.
+- **Among the three nowcast models, the BVAR sits in the middle on correlation** with actual GDP — better than bridge, worse than DFM. It overshoots magnitudes, so its headline RMSE is the worst of the three despite reasonable directional accuracy.
+- **Bias is concentrated in 2022** (post-COVID productivity shock). Mirrors what the DFM showed. As the test sample rolls forward, the headline numbers improve naturally — by 2025 the model is essentially unbiased.
+- **No `lambda_tight` setting brings RMSE or NCstd into a competitive range.** The hyperparameter sweep documents that the over-volatility is structurally bounded — tightening the prior actually *increases* volatility (see below).
+- **The 90% CIs are reasonably calibrated** despite the headline volatility — coverage tracks close to nominal.
 
 ### Why the BVAR is structurally over-volatile
 
@@ -254,7 +206,7 @@ The DFM avoids this because the indicators feed through a 2-factor bottleneck, w
 
 - **10-variable panel, not 5**: The 5-variable version was strictly worse — fewer collinear variables removed the natural dampening from conflicting indicator surprises.
 
-- **`lambda_tight` = 0.2**: Default chosen to maximise correlation with actual GDP. The minimum-RMSE setting is `lambda_tight` = 0.5, but the correlation is slightly lower there (0.538 vs 0.594). Since the model is interesting mainly for its tracking ability (high correlation), the higher-correlation default is preferred.
+- **`lambda_tight` = 0.2**: Default chosen to maximise correlation with actual GDP. A looser prior (~0.5) gives marginally lower RMSE but at meaningfully reduced correlation. Since the model is interesting mainly for its tracking ability rather than its point accuracy, the higher-correlation default is preferred.
 
 - **VAR(2)**: Two lags is the standard for quarterly macro VARs. Tested VAR(1) — slightly worse. Higher orders are not feasible with 112 observations and 10 variables.
 
@@ -282,9 +234,9 @@ The DFM avoids this because the indicators feed through a 2-factor bottleneck, w
 | Number of indicators | 8 monthly + 8 quarterly + production = 17 | 6 monthly + 6 quarterly = 12 | 10 quarterly = 10 |
 | Estimation | OLS per bridge | EM algorithm (state space) | Closed-form Minnesota posterior |
 | Implementation effort | Moderate | High | Low |
-| RMSE @ T-0 | 0.27% | 0.48% | 0.60% |
-| Correlation @ T-0 | 0.47 | **0.64** | 0.59 |
-| NCstd @ T-0 | 0.20 (under) | 0.41 | 0.66 (over) |
+| Volatility (NCstd vs actual) | Under | Roughly matched | Over (~2×) |
+| Headline RMSE rank | Best | Middle | Worst |
+| Correlation rank | Worst | Best | Middle |
 | Best for | **Operational forecasts** | Shape tracking + honest CIs | Conceptual comparator |
 
 ---

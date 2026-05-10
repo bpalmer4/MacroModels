@@ -104,7 +104,7 @@ e_i,t = ρ_i e_{i,t-1} + ε_i,t
 | NAB business conditions | RBA Table H3 (GICNBC) | Simple difference (already a deviation index) |
 | Westpac-MI consumer sentiment | RBA Table H3 (GICWMICS) | Log difference × 100 |
 
-**Westpac-MI consumer sentiment was tested and kept.** T-0 RMSE improved from 0.478% to 0.455% (–5%), correlation with actual GDP lifted (+0.635 → +0.648), and nowcast variance fell (NCstd 0.411 → 0.371), over the 2022Q1–2025Q4 backtest window. After standardisation the panel treats sentiment as a second soft-data factor — it tends to load onto the prices/surveys factor alongside NAB and adds information during periods where the two surveys diverge (households vs. businesses).
+**Westpac-MI consumer sentiment was tested and kept.** It improved RMSE, lifted correlation with actual GDP, and reduced nowcast variance over the backtest window. After standardisation the panel treats sentiment as a second soft-data factor — it tends to load onto the prices/surveys factor alongside NAB and adds information during periods where the two surveys diverge (households vs. businesses).
 
 ### Quarterly Indicators (6, including target)
 
@@ -158,68 +158,40 @@ Prediction intervals come directly from the Kalman filter's state covariance mat
 2. The standard error of the prediction `se` is extracted from `result.get_prediction().se_mean`
 3. Normal-distribution intervals: 70% = ±1.04·se, 90% = ±1.645·se
 
-This is more theoretically grounded than the bridge model's bootstrap approach, which (a) assumes residuals are exchangeable across bridges, (b) ignores parameter uncertainty, and (c) understates the true uncertainty. Empirically, the DFM CIs are wider (~2.1pp at 90%) but better calibrated (94% empirical coverage vs 81% for the bridge model).
+This is more theoretically grounded than the bridge model's bootstrap approach, which (a) assumes residuals are exchangeable across bridges, (b) ignores parameter uncertainty, and (c) understates the true uncertainty. Empirically, the DFM CIs are noticeably wider than the bridge's bootstrap intervals but cover the actual outturn at close to nominal rates, whereas the bridge intervals tend to under-cover.
 
 ---
 
-## Backtest Results (2022Q1-2025Q4, latest-revised data)
+## Empirical Performance
 
-| Info Set | RMSE | MAE | Bias | Direction | Corr | 90% CI Coverage |
-|----------|------|-----|------|-----------|------|-----------------|
-| T-3m | 0.305% | 0.235% | +0.183% | 94% | +0.500 | 100% |
-| T-2m | 0.493% | 0.423% | +0.291% | 94% | +0.203 | 100% |
-| T-1m | 0.476% | 0.388% | +0.359% | 94% | +0.619 | 94% |
-| T-0 | 0.478% | 0.391% | +0.365% | 94% | **+0.635** | 94% |
+For current empirical performance, run:
+```bash
+uv run python -m src.models.gdp_nowcast_dfm.backtest
+```
 
-Naive benchmark (trailing 4-quarter average): RMSE 0.285%.
+The backtest reports RMSE, MAE, bias, direction accuracy, correlation with actual GDP, and 90% CI coverage at four information sets (T-3m, T-2m, T-1m, T-0).
 
-### Comparison with Bridge Model
+### Qualitative findings
 
-| Metric | Bridge T-0 | DFM T-0 |
-|--------|-----------|---------|
-| RMSE | 0.268% | 0.478% |
-| MAE | 0.227% | 0.391% |
-| Bias | +0.085% | +0.365% |
-| Direction | 94% | 94% |
-| **Correlation with actual** | **+0.474** | **+0.635** |
-| 90% CI coverage | 81% (under-covers) | 94% (slightly over-covers) |
-| 90% CI width | ~0.83pp | ~2.09pp |
-
-**The DFM tracks the *shape* of GDP growth significantly better than the bridge model** (correlation 0.64 vs 0.47). The bridge model has lower RMSE and a smaller bias, but the DFM is substantially better at capturing the period-to-period movements in GDP growth — which is arguably the more important property of a nowcasting model. A point estimate that tracks turning points but is biased high by 0.3pp is more useful than one that's centred but flat.
-
-The DFM's positive bias is concentrated in the post-COVID productivity slump period (2022–2024) and is already shrinking by 2025:
-
-| Period | DFM Mean Error |
-|--------|----------------|
-| 2022 (full year) | +0.68pp |
-| 2023 (full year) | +0.46pp |
-| 2024 (full year) | +0.55pp |
-| 2025 (full year) | +0.06pp |
-
-As more recent data accumulates and the post-COVID period falls out of the heavily-weighted recent training window, the bias should fade naturally.
+- **The DFM tracks the *shape* of GDP growth significantly better than the bridge model** — correlation with actual GDP is materially higher. The trade-off is higher headline RMSE driven by a positive bias.
+- **Bias is concentrated in the post-COVID productivity slump (2022–2024)** and has been fading. By 2025 it is essentially gone. As the test sample rolls forward, the headline numbers improve naturally.
+- **Bias-correction approaches hurt more than they help** — see "Why Not Fix the Bias?" below.
+- **CIs are well calibrated** — Kalman-derived intervals come close to nominal coverage, whereas the bridge's bootstrap intervals tend to under-cover.
+- **The DFM beats the trailing-4-quarter naive benchmark on correlation** but ties or trails it on RMSE because of the bias.
 
 ### Why Not "Fix" the Bias?
 
-We tried several approaches to reduce the bias and each one **hurt the correlation more than it helped the bias**:
-
-| Configuration | T-0 RMSE | Bias | Correlation |
-|---------------|----------|------|-------------|
-| **Vanilla (current)** | **0.478%** | **+0.365%** | **+0.635** |
-| + LP-adjusted labour | 0.382% | −0.140% | +0.357 |
-| + LP + 3-qtr COVID mask | 0.338% | +0.031% | +0.009 |
-| + LP + 7-qtr COVID mask | 0.318% | +0.083% | −0.260 |
-
-Each "improvement" pushed RMSE down at the cost of crushing the correlation. The improvements were largely illusory — they came from regressing toward the mean rather than from better predictions. A model whose nowcasts have correlation near zero with actual GDP is just predicting the historical average regardless of conditions, and its low RMSE comes from GDP growth being modestly variable around a stable mean.
+Several bias-reduction approaches were tested — labour-productivity-adjusted labour input, COVID-quarter masking (3-quarter and 7-quarter windows), and combinations. **Each one reduced the bias but crushed the correlation between nowcasts and actual GDP.** The improvements were largely illusory: they came from regressing toward the mean rather than from better predictions. A model whose nowcasts have correlation near zero with actual GDP is just predicting the historical average regardless of conditions, and its low RMSE comes from GDP growth being modestly variable around a stable mean.
 
 The vanilla DFM is kept because:
-1. Its correlation (0.635) substantially exceeds both the bridge model (0.474) and the naive forecast (0)
+1. Its correlation with actual GDP substantially exceeds the bridge model's and the naive forecast's
 2. Its bias is concentrated in a specific known period (post-COVID productivity slump) and is already fading
-3. RMSE differences of 0.1pp on n=16 are within sampling noise; correlation differences of 0.6 are not
+3. RMSE differences of ~0.1 pp on a small backtest sample are within sampling noise; correlation differences of the magnitudes seen here are not
 
 ### Caveats
 
 - **Pseudo real-time**: Uses latest-revised data, not vintage data as published at the time
-- **Small sample**: 16 quarters is too short to make statistically meaningful claims about model differences. Diebold-Mariano test would likely show the DFM-vs-bridge RMSE difference is not significant.
+- **Small sample**: The backtest window is too short to make statistically meaningful claims about model differences. A formal Diebold-Mariano test would likely fail to reject equal RMSE between the DFM and the bridge.
 - **Prediction index labels**: statsmodels' `DynamicFactorMQ.get_prediction()` returns a DataFrame whose PeriodIndex labels are unreliable — they don't correspond to actual dates. Extraction uses positional indexing (last value = nowcast for target quarter).
 
 ---
@@ -234,11 +206,11 @@ The vanilla DFM is kept because:
 
 - **Standardisation on**: Required for the EM algorithm to converge properly. Each variable is standardised to mean zero, unit variance before factor extraction, then back-transformed for prediction.
 
-- **Sample truncation to 1990Q1**: Removes pre-inflation-target era dynamics that are no longer relevant. Improves backtest by ~0.2pp on T-0 RMSE.
+- **Sample truncation to 1990Q1**: Removes pre-inflation-target era dynamics that are no longer relevant. Empirically improves backtest performance vs longer samples.
 
-- **No bias correction in production**: Several bias-reduction approaches were tested (labour productivity adjustment, COVID quarter masking, adding ULC/hCOE panel variables). Each one reduced the bias but also crushed the correlation between nowcasts and actual GDP — i.e. they made the model regress toward the historical mean rather than improving its predictions. The current vanilla model has correlation 0.635 at T-0 (vs 0.474 for the bridge model and ~0 for any of the bias-corrected variants). A biased model that tracks the shape of GDP growth is more useful than an unbiased model that effectively predicts the mean every quarter. The bias is concentrated in 2022–2024 (post-COVID productivity slump) and is already shrinking by 2025; it should fade naturally as more recent data accumulates. See "Why Not Fix the Bias?" above.
+- **No bias correction in production**: Several bias-reduction approaches were tested (labour productivity adjustment, COVID quarter masking, adding ULC/hCOE panel variables). Each one reduced the bias but also crushed the correlation between nowcasts and actual GDP — i.e. they made the model regress toward the historical mean rather than improving its predictions. A biased model that tracks the shape of GDP growth is more useful than an unbiased model that effectively predicts the mean every quarter. The bias is concentrated in 2022–2024 (post-COVID productivity slump) and has largely faded by 2025; it should disappear naturally as more recent data accumulates. See "Why Not Fix the Bias?" above.
 
-- **Wider, better-calibrated CIs**: The Kalman-derived intervals are ~2.5x wider than the bridge model's bootstrap intervals, but they are honest. Bridge model CIs under-cover (81% empirical vs 90% nominal); DFM CIs are essentially well-calibrated (94% empirical vs 90% nominal).
+- **Wider, better-calibrated CIs**: The Kalman-derived intervals are noticeably wider than the bridge model's bootstrap intervals, but they are honest. Bridge intervals under-cover (empirical < nominal); DFM intervals come close to nominal coverage.
 
 - **Same data availability framework**: The `DataAvailability` dataclass and factory methods (`at_t_minus_3m`, `at_t_minus_2m`, etc.) mirror the bridge model exactly, so the two backtests are directly comparable at each information set.
 
@@ -257,14 +229,14 @@ The vanilla DFM is kept because:
 | Uncertainty | Bootstrap residual resampling | Kalman state covariance |
 | Best metric | RMSE, MAE | Correlation with actual, CI calibration, CRPS |
 
-The bridge model is currently more accurate by RMSE on the small backtest sample (T-0 RMSE 0.27% vs 0.48% for the DFM), but the DFM tracks the *shape* of GDP growth substantially better (correlation 0.64 vs 0.47) and has cleaner theoretical foundations. The DFM's RMSE handicap comes from a +0.37pp positive bias concentrated in 2022–2024 (the post-COVID productivity slump period), which is fading as more recent data accumulates. Both models are tied with the naive benchmark on this short sample.
+The bridge model is currently more accurate by RMSE on the small backtest sample, but the DFM tracks the *shape* of GDP growth substantially better and has cleaner theoretical foundations. The DFM's RMSE handicap comes from a positive bias concentrated in 2022–2024 (the post-COVID productivity slump period), which is fading as more recent data accumulates. Both models are roughly tied with the naive benchmark on this short sample.
 
 ---
 
 ## Potential Improvements
 
 1. **Add the missing bridge model series** (monthly CPI, business sales, inventories, gov. consumption) for an apples-to-apples comparison with the bridge model
-2. **Diebold-Mariano test** — formal test of whether the bridge-vs-DFM RMSE difference is statistically significant (probably not, with n=16)
+2. **Diebold-Mariano test** — formal test of whether the bridge-vs-DFM RMSE difference is statistically significant (probably not given the small backtest sample)
 3. **CRPS evaluation** — would give a fairer comparison that rewards the DFM's better-calibrated CIs
 4. **Mincer-Zarnowitz decomposition** — separates level bias from tracking error
 5. **News decomposition** — DFM allows attributing nowcast revisions to specific data releases (Bańbura et al. 2011 methodology)

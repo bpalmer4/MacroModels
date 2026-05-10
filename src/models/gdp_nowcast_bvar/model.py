@@ -41,9 +41,9 @@ import pandas as pd
 
 from src.data import (
     get_building_approvals_growth_qrtly,
-    get_employment_growth_qrtly,
+    get_employment_growth_qrtly_lfs,
     get_goods_balance_qrtly,
-    get_hours_growth_qrtly,
+    get_hours_growth_qrtly_lfs,
     get_trimmed_mean_qrtly,
 )
 from src.data.capex import get_total_capex_growth_qrtly
@@ -316,8 +316,8 @@ def _load_panel() -> pd.DataFrame:
     series = {
         "gdp_growth": gdp_growth,
         "building_approvals_growth": get_building_approvals_growth_qrtly().data,
-        "employment_growth": get_employment_growth_qrtly().data,
-        "hours_growth": get_hours_growth_qrtly().data,
+        "employment_growth": get_employment_growth_qrtly_lfs().data,
+        "hours_growth": get_hours_growth_qrtly_lfs().data,
         "goods_balance": get_goods_balance_qrtly().data,
         "nab_conditions": get_nab_business_conditions_qrtly().data,
         "cpi_trimmed_mean": get_trimmed_mean_qrtly().data,

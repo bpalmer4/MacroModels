@@ -11,6 +11,7 @@ import readabs as ra
 from src.data.abs_loader import get_abs_data, load_series
 from src.data.dataseries import DataSeries
 from src.data.series_specs import (
+    EMPLOYMENT_PERSONS,
     HOURS_WORKED,
     HOURS_WORKED_INDEX,
     LABOUR_FORCE_TOTAL,
@@ -328,4 +329,82 @@ def get_hours_growth_qrtly() -> DataSeries:
         description="Hours worked growth (quarterly, log difference)",
         cat=hours_index.cat,
         table=hours_index.table,
+    )
+
+
+def get_employed_qrtly_lfs() -> DataSeries:
+    """Get total employed from monthly LFS aggregated to quarterly mean.
+
+    Uses cat 6202.0 (Labour Force Survey, monthly), aggregated by quarterly
+    mean (employment is a stock — average level over the quarter). Available
+    ~3 weeks after quarter-end, well ahead of the National Accounts (5206.0)
+    and Modellers' Database (1364.0.15.003) versions, which only release
+    alongside GDP itself.
+
+    Returns:
+        DataSeries with quarterly employment (mean of 3 months, '000)
+
+    """
+    monthly = load_series(EMPLOYMENT_PERSONS)
+    quarterly = ra.monthly_to_qtly(monthly.data, q_ending="DEC", f="mean")
+
+    return DataSeries(
+        data=quarterly,
+        source=monthly.source,
+        units=monthly.units,
+        description="Total employed (quarterly mean from monthly LFS, cat 6202.0)",
+        cat=monthly.cat,
+        table=monthly.table,
+    )
+
+
+def get_employment_growth_qrtly_lfs() -> DataSeries:
+    """Quarterly employment growth (log diff) from monthly LFS.
+
+    Drop-in replacement for `get_employment_growth_qrtly()` that sources
+    from the monthly Labour Force Survey (cat 6202.0) rather than the
+    Modellers' Database. Available ~3 weeks post quarter-end, suitable
+    for nowcast conditioning sets.
+
+    Returns:
+        DataSeries with employment growth (% per quarter)
+
+    """
+    emp = get_employed_qrtly_lfs()
+    log_emp = np.log(emp.data) * 100
+    emp_growth = log_emp.diff(1)
+
+    return DataSeries(
+        data=emp_growth,
+        source=emp.source,
+        units="% per quarter",
+        description="Employment growth (quarterly log diff, monthly LFS source)",
+        cat=emp.cat,
+        table=emp.table,
+    )
+
+
+def get_hours_growth_qrtly_lfs() -> DataSeries:
+    """Quarterly hours-worked growth (log diff) from monthly LFS.
+
+    Drop-in replacement for `get_hours_growth_qrtly()` that sources from
+    the monthly LFS hours-worked series (cat 6202.0, aggregated by
+    quarterly sum — hours is a flow) rather than the National Accounts
+    hours-worked index (cat 5206.0, which only releases with GDP itself).
+
+    Returns:
+        DataSeries with hours growth (% per quarter)
+
+    """
+    hours_q = get_hours_worked_qrtly()
+    log_hours = np.log(hours_q.data) * 100
+    hours_growth = log_hours.diff(1)
+
+    return DataSeries(
+        data=hours_growth,
+        source=hours_q.source,
+        units="% per quarter",
+        description="Hours worked growth (quarterly log diff, monthly LFS source)",
+        cat=hours_q.cat,
+        table=hours_q.table,
     )

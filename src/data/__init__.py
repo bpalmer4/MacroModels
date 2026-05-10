@@ -111,9 +111,12 @@ from src.data.import_prices import (
 from src.data.inflation import get_trimmed_mean_annual, get_trimmed_mean_qrtly
 from src.data.labour_force import (
     get_employed_qrtly,
+    get_employed_qrtly_lfs,
     get_employment_growth_lagged_qrtly,
     get_employment_growth_qrtly,
+    get_employment_growth_qrtly_lfs,
     get_hours_growth_qrtly,
+    get_hours_growth_qrtly_lfs,
     get_hours_worked_monthly,
     get_hours_worked_qrtly,
     get_labour_force_growth_qrtly,
@@ -181,9 +184,12 @@ __all__ = [
     "get_log_gdp",
     # Labour force
     "get_employed_qrtly",
+    "get_employed_qrtly_lfs",
     "get_employment_growth_lagged_qrtly",
     "get_employment_growth_qrtly",
+    "get_employment_growth_qrtly_lfs",
     "get_hours_growth_qrtly",
+    "get_hours_growth_qrtly_lfs",
     "get_hours_worked_monthly",
     "get_hours_worked_qrtly",
     "get_labour_force_growth_qrtly",
