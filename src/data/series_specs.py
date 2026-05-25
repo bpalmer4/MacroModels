@@ -25,7 +25,7 @@ HISTORICAL_RATE_FILE = str(_PROJECT_ROOT / "input_data" / "interbank_overnight_r
 
 UNEMPLOYMENT_RATE = ReqsTuple(
     cat="6202.0",
-    table="6202001",
+    table="62020001",
     did="Unemployment rate ;  Persons ;",
     stype="SA",
     unit="",
@@ -36,7 +36,7 @@ UNEMPLOYMENT_RATE = ReqsTuple(
 
 PARTICIPATION_RATE = ReqsTuple(
     cat="6202.0",
-    table="6202001",
+    table="62020001",
     did="Participation rate ;  Persons ;",
     stype="SA",
     unit="",
@@ -47,7 +47,7 @@ PARTICIPATION_RATE = ReqsTuple(
 
 EMPLOYMENT_PERSONS = ReqsTuple(
     cat="6202.0",
-    table="6202001",
+    table="62020001",
     did="Employed total ;  Persons ;",
     stype="SA",
     unit="",
@@ -58,7 +58,7 @@ EMPLOYMENT_PERSONS = ReqsTuple(
 
 HOURS_WORKED = ReqsTuple(
     cat="6202.0",
-    table="6202019",
+    table="62020017",  # hours worked moved from table 19 to 17 in ABS 8-digit renumber
     did="Monthly hours worked in all jobs ;  Persons ;",
     stype="SA",
     unit="",

@@ -348,7 +348,7 @@ if __name__ == "__main__":
     sought: ReqsDict = {
         "Monthly CPI (SA)": cpi_reqs,
         "Unemployment rate monthly (SA)": ReqsTuple(
-            "6202.0", "6202001", "Unemployment rate ;  Persons ;", "S", "",
+            "6202.0", "62020001", "Unemployment rate ;  Persons ;", "S", "",
             seek_yr_growth=False, calc_growth=False, zip_file="",
         ),
     }
