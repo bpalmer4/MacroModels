@@ -6,6 +6,8 @@ this captures both goods and services trade on a BoP basis.
 """
 
 import numpy as np
+import readabs as ra
+from readabs import metacol as mc
 
 from src.data.abs_loader import ReqsTuple, load_series
 from src.data.dataseries import DataSeries
@@ -45,6 +47,18 @@ BOP_GOODS_DEBITS = ReqsTuple(
     zip_file="",
 )
 
+# Services-only balance — isolates the services trade channel (cloud, IP,
+# licensing, travel, transport, financial services). The Goods+Services
+# aggregates above dilute this with the dominant goods component already
+# captured by the monthly goods balance (5368.0) bridge / indicator.
+#
+# Loaded directly (not via ReqsTuple) because "Services ;" is a substring of
+# "Goods and Services ;" — the substring-based ReqsTuple selector matches both
+# rows. We use search_abs_meta with exact_match=True to disambiguate.
+_BOP_SERVICES_CAT = "5302.0"
+_BOP_SERVICES_TABLE = "530204"
+_BOP_SERVICES_DID = "Services ;"
+
 
 def get_bop_goods_services_balance_qrtly() -> DataSeries:
     """Get balance on goods and services (quarterly, SA, current prices, BoP basis).
@@ -74,6 +88,59 @@ def get_bop_goods_services_change_qrtly() -> DataSeries:
         source=balance.source,
         units="$M change",
         description="Change in balance on goods and services (quarterly, BoP basis)",
+        series_id=balance.series_id,
+        table=balance.table,
+        cat=balance.cat,
+        stype=balance.stype,
+    )
+
+
+def get_bop_services_balance_qrtly() -> DataSeries:
+    """Get balance on services (quarterly, SA, current prices, BoP basis).
+
+    Returns:
+        DataSeries with quarterly services balance ($M)
+
+    """
+    data, meta = ra.read_abs_cat(_BOP_SERVICES_CAT, single_excel_only=_BOP_SERVICES_TABLE, verbose=False)
+    row = ra.search_abs_meta(
+        meta,
+        {_BOP_SERVICES_DID: mc.did, "Seasonally Adjusted": mc.stype},
+        exact_match=True,
+        validate_unique=True,
+    ).iloc[0]
+    series_id = row.name
+    series = data[_BOP_SERVICES_TABLE][series_id]
+    return DataSeries(
+        data=series,
+        source="ABS",
+        units=row[mc.unit],
+        description=row[mc.did],
+        series_id=series_id,
+        table=_BOP_SERVICES_TABLE,
+        cat=_BOP_SERVICES_CAT,
+        stype="SA",
+    )
+
+
+def get_bop_services_change_qrtly() -> DataSeries:
+    """Get quarterly change in services balance.
+
+    The change in the trade balance maps more directly to net exports'
+    contribution to GDP growth than the balance level.
+
+    Returns:
+        DataSeries with quarterly change in services balance ($M)
+
+    """
+    balance = get_bop_services_balance_qrtly()
+    change = balance.data.diff(1)
+
+    return DataSeries(
+        data=change,
+        source=balance.source,
+        units="$M change",
+        description="Change in balance on services (quarterly, BoP basis)",
         series_id=balance.series_id,
         table=balance.table,
         cat=balance.cat,

@@ -10,6 +10,7 @@ module parses the Excel workbook directly rather than using readabs metadata sea
 
 import logging
 import re
+import time
 from functools import cache
 from pathlib import Path
 
@@ -29,8 +30,22 @@ GFS_URL = (
 _CACHE_DIR = Path(".readabs_cache")
 _CACHE_FILE = _CACHE_DIR / "gfs_quarterly.xlsx"
 
+# Re-download the workbook if the cached copy is older than this. GFS is
+# released quarterly, so a same-business-day window keeps release-day runs
+# fresh without re-fetching on every call. Lower this (or delete the file) if
+# you need to pick up an intra-day re-issue.
+_CACHE_MAX_AGE_SECONDS = 6 * 3600
+
 # Quarter name → pd.Period mapping
 _QTR_MAP = {"Mar": 3, "Jun": 6, "Sep": 9, "Dec": 12}
+
+
+def _cache_is_fresh() -> bool:
+    """Return True if the cached workbook exists and is younger than _CACHE_MAX_AGE_SECONDS."""
+    if not _CACHE_FILE.exists():
+        return False
+    age = time.time() - _CACHE_FILE.stat().st_mtime
+    return age < _CACHE_MAX_AGE_SECONDS
 
 
 def _parse_quarter(label: str) -> pd.Period:
@@ -78,7 +93,7 @@ def _load_gfs_table15() -> dict[str, pd.Series]:
 
     Returns dict of {series_name: pd.Series} with quarterly PeriodIndex.
     """
-    if not _CACHE_FILE.exists():
+    if not _cache_is_fresh():
         _download_gfs_workbook()
 
     wb = openpyxl.load_workbook(_CACHE_FILE, read_only=True)

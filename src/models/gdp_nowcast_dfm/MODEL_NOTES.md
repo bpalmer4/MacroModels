@@ -119,6 +119,10 @@ e_i,t = ρ_i e_{i,t-1} + ε_i,t
 
 The DFM handles the **ragged edge** natively — different indicators have different last available dates, and the Kalman filter forecasts missing values forward using the common factor structure. No SARIMA pre-completion is needed.
 
+### Indicators tested and rejected
+
+- **BoP services-only balance (5302.0)**: Tested 2026-05-28 as a quarterly indicator (SA "Services ;" change from table 530204, T-0 only since 5302.0 publishes ~1 day before GDP). T-0 RMSE was flat at 0.442% with a marginal correlation improvement (+0.682 → +0.688) over the 2022Q1–2025Q4 backtest. Effectively neutral — the factor structure didn't latch onto useful shared variance with the rest of the panel, so the marginal information value was indistinguishable from noise. Not retained, since adding it complicates the panel without measurable benefit. The data loader (`src/data/balance_of_payments.py`) is retained for reference.
+
 ---
 
 ## Ragged Edge Handling

@@ -133,6 +133,7 @@ The binding constraint is **WPI growth (1997Q4)**, giving ~112 quarterly observa
 - **Business profits growth (5676.0)**: short history (from 2001Q2) shrinks the training sample
 - **Government consumption growth (5206.0 + GFS spliced)**: hurt RMSE and correlation despite long history. The bridge model uses this series usefully because each bridge is fit independently; the BVAR's joint conditional update treats it as noise that pollutes Σ_oo.
 - **BoP goods+services balance change**: hurt correlation more sharply than gov consumption — same failure mode through the joint covariance structure.
+- **BoP services-only balance change**: re-tested 2026-05-28 as the 11th panel variable (SA "Services ;" change from 5302.0 table 530204), on the theory that stripping out the goods component would isolate a cleaner signal. **Still degraded** the model — T-0 RMSE 0.625% → 0.640%, T-0 correlation +0.680 → +0.580, and nowcast variance climbed (NCstd 0.722% → 0.737%). Same Σ_oo pollution as the aggregate case: even a small noisy variable participates in every conditional update via the inverse covariance matrix.
 - **Westpac-MI consumer sentiment (quarterly mean)**: raised nowcast volatility without improving correlation. The DFM absorbs the same series usefully because its factor structure *extracts* the shared variance with NAB and discards the idiosyncratic noise.
 - **Productivity-adjusted labour input**: tried in DFM, didn't help there, not retried here
 
