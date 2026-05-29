@@ -25,6 +25,8 @@ from src.data.business_indicators import (
     get_business_wages_qrtly,
     get_company_profits_growth_qrtly,
     get_company_profits_qrtly,
+    get_company_profits_real_growth_qrtly,
+    get_company_profits_real_qrtly,
     get_inventories_growth_qrtly,
     get_inventories_qrtly,
 )
@@ -71,6 +73,8 @@ from src.data.gdp import get_gdp, get_gdp_growth, get_log_gdp
 from src.data.goods_trade import (
     get_goods_balance_monthly,
     get_goods_balance_qrtly,
+    get_goods_balance_real_monthly,
+    get_goods_balance_real_qrtly,
 )
 from src.data.gov_finance import (
     get_gov_consumption_gfs_growth_qrtly,
@@ -102,6 +106,10 @@ from src.data.house_prices import (
 from src.data.household import (
     get_saving_ratio_change_qrtly,
     get_saving_ratio_qrtly,
+)
+from src.data.household_spending import (
+    get_household_spending_cvm_growth_qrtly,
+    get_household_spending_cvm_qrtly,
 )
 from src.data.import_prices import (
     get_import_price_growth_annual,
@@ -148,8 +156,10 @@ from src.data.productivity import (
 )
 from src.data.retail_trade import (
     get_retail_growth_qrtly,
+    get_retail_real_growth_qrtly,
     get_retail_turnover_monthly,
     get_retail_turnover_qrtly,
+    get_retail_turnover_real_monthly,
 )
 from src.data.surveys import (
     get_consumer_sentiment_monthly,
@@ -291,6 +301,11 @@ __all__ = [
     "get_retail_turnover_monthly",
     "get_retail_turnover_qrtly",
     "get_retail_growth_qrtly",
+    "get_retail_turnover_real_monthly",
+    "get_retail_real_growth_qrtly",
+    # Household spending (5682.0 quarterly CVM)
+    "get_household_spending_cvm_qrtly",
+    "get_household_spending_cvm_growth_qrtly",
     # Building approvals
     "get_building_approvals_monthly",
     "get_building_approvals_qrtly",
@@ -303,6 +318,8 @@ __all__ = [
     # Goods trade
     "get_goods_balance_monthly",
     "get_goods_balance_qrtly",
+    "get_goods_balance_real_monthly",
+    "get_goods_balance_real_qrtly",
     # Construction
     "get_total_construction_qrtly",
     "get_total_construction_growth_qrtly",
@@ -320,6 +337,8 @@ __all__ = [
     # Business indicators
     "get_company_profits_qrtly",
     "get_company_profits_growth_qrtly",
+    "get_company_profits_real_qrtly",
+    "get_company_profits_real_growth_qrtly",
     "get_inventories_qrtly",
     "get_inventories_growth_qrtly",
     "get_business_wages_qrtly",

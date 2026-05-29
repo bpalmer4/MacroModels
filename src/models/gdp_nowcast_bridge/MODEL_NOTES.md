@@ -59,11 +59,11 @@ These arrive ~2 months before GDP publication. Missing months within the target 
 
 | Bridge | Indicator | Source | Aggregation |
 |--------|-----------|--------|-------------|
-| Consumption | Retail turnover (nominal) | 5682.0 (Monthly Household Spending) | Quarterly sum |
-| Investment | Total dwelling approvals | 8731.0 (Building Approvals) | Quarterly sum |
+| Consumption | Retail turnover, **CPI-deflated** (real) | 5682.0 (Monthly Household Spending) | Quarterly sum |
+| Investment | Total dwelling approvals (count) | 8731.0 (Building Approvals) | Quarterly sum |
 | Labour: hours | Monthly hours worked | 6202.0 (Labour Force), table 6202019 | Quarterly sum |
 | Labour: employment | Employed total persons | 6202.0 (Labour Force), table 6202001 | Quarterly mean |
-| Trade | Balance on goods | 5368.0 (International Trade in Goods) | Quarterly sum |
+| Trade | Balance on goods, **CPI-deflated** (real) | 5368.0 (International Trade in Goods) | Quarterly sum |
 | Prices: monthly CPI | CPI All Groups SA index (spliced) | 6484.0 + 6401.0 table 640106 | Quarterly mean |
 | Survey: NAB conditions | NAB business conditions index (SA) | RBA Table H3 (GICNBC) | Quarterly mean |
 
@@ -83,12 +83,41 @@ These are published shortly before GDP. The bridge is only active if the indicat
 |--------|-----------|--------|---------------|
 | Prices: CPI | CPI trimmed mean (quarterly) | 6401.0, Appendix 1a | ~4-5 weeks |
 | Prices: WPI | WPI growth (log diff) | 6345.0 | ~2-3 weeks |
+| Consumption: Household spending | Total household spending growth (CVM) | 5682.0 table 5682015 | ~5 weeks |
 | Investment: construction | Total construction work done growth (CVM) | 8755.0 | ~2-3 weeks |
 | Investment: private capex | Total private capex growth (CVM) | 5625.0 | ~1-2 weeks |
 | Government: GFCE | Government consumption growth (spliced 5206.0 + GFS) | 5206.0 + GFS | ~1-2 weeks |
-| Business: profits | Gross operating profits growth (nominal) | 5676.0 | ~1-2 days |
+| Business: profits | Gross operating profits growth, **CPI-deflated** (real) | 5676.0 | ~1-2 days |
 | Business: sales | Total sales (summed across industries, CVM) | 5676.0 | ~1-2 days |
 | Business: inventories | Inventories growth (CVM) | 5676.0 | ~1-2 days |
+
+### Deflation of nominal indicators
+
+Three indicators in the panel are published in nominal (current-price) terms while everything else is a volume measure, a physical quantity (counts of dwellings, hours, employed persons), or a survey index. To keep the panel consistently real and remove a nominal-bias channel during inflationary periods, those three indicators are deflated before they enter their bridges:
+
+| Indicator | Deflator | Where |
+|-----------|----------|-------|
+| Retail turnover (monthly, 5682.0) | Monthly trimmed mean index (spliced) | `get_retail_turnover_real_monthly()` |
+| Balance on goods (monthly, 5368.0) | Monthly trimmed mean index (spliced) | `get_goods_balance_real_monthly()` |
+| Gross operating profits (quarterly, 5676.0) | Quarterly-mean monthly trimmed mean | `get_company_profits_real_qrtly()` |
+
+Why this matters: the bridge regressions learn a coefficient that maps indicator growth to real GDP growth. Fitted on nominal indicators, that coefficient absorbs whatever average inflation passthrough prevailed in the training sample. During periods of unusually high inflation (e.g. 2022-23), the nominal print mechanically translates to a hot real GDP nowcast — over-cooking it. Deflating upstream removes this bias and lets the bridge coefficient measure the volume relationship directly.
+
+**Deflator choice — trimmed mean over headline CPI.** Trimmed mean (CPI underlying) is the deflator rather than All Groups CPI. Both exist at monthly frequency (spliced from 6401.0 Appendix 1a quarterly + 640106 monthly from Apr 2024), and both produce conceptually-real series. Trimmed mean is preferred because it strips volatile items (energy, food, government rebates) that would otherwise propagate as deflator noise into the deflated indicator. Without that smoothing, the inverse-MSE combination logic downweights the deflated bridges precisely because they have become noisier — defeating the point of the fix.
+
+A national-accounts deflator (GDP deflator or HFCE deflator) would be conceptually purer but is unusable: it is locked behind the same publication barrier as the GDP target variable itself. Monthly trimmed mean is the best available high-frequency price index.
+
+The balance-on-goods deflation is approximate — conceptually you would deflate exports and imports separately by their own price indices, but those are quarterly-only. Trimmed mean strips underlying inflation while leaving terms-of-trade signal intact, which is the available compromise.
+
+### Consumption: Household spending CVM (5682.0)
+
+A second consumption bridge uses the **quarterly Chain Volume Measures** Total Household Spending series from 5682.0 table 5682015. This series is conceptually close to the 5206.0 Household Final Consumption Expenditure (HFCE) component of GDP, but published with the third monthly Household Spending Indicator release of each quarter — roughly five weeks after the reference quarter ends, ahead of the GDP publication.
+
+History begins 2014Q3 (~46 growth obs as of 2026), which is enough for a standard bridge regression. The loader (`get_household_spending_cvm_qrtly()`) always requests the most recent quarter-end-month snapshot via the `history=` parameter, so it returns data reliably regardless of which month the nowcast is run in.
+
+This bridge complements the monthly retail bridge:
+- **Retail** captures fast-moving signals from the first two months of the quarter via SARIMA completion (~2 months lead, but a narrower consumption basket).
+- **Household spending CVM** is broader (full HFCE-style basket) and already real, but only arrives once the third monthly 5682.0 print lands.
 
 ### Production Bridge (Cobb-Douglas)
 
@@ -215,17 +244,33 @@ The backtest reports RMSE, MAE, bias, direction accuracy, and 90% CI coverage at
 - **Labour productivity adjustment**: HMA(13) trend from wage data added to labour bridge equations to correct for productivity drag. Eliminates the persistent positive bias that the labour bridges otherwise carry during productivity downturns.
 - **Independent production bridge inputs**: Uses capital stock and labour force from Modellers Database (1364.0) and MFP from wage data, not the same employment/hours/approvals used by monthly bridges. Earlier version double-counted these inputs.
 - **Monthly CPI bridge instead of deflation**: Retail turnover and company profits are nominal (current prices) while GDP is real (chain volume). Rather than deflating these indicators, a monthly CPI bridge is included as a separate bridge equation. Backtesting showed the CPI bridge outperforms deflation: the OLS coefficients on the CPI bridge capture price acceleration as a coincident demand signal (positive net coefficient = rising inflation → stronger demand → higher GDP), which is more informative than the rigid mechanical deflation. The monthly CPI index is spliced from the discontinued Monthly CPI Indicator (6484.0, Sep 2017 onwards) and the current 6401.0 table 640106 (Apr 2024 onwards), with quarterly Appendix 1a interpolated to monthly for pre-2017 bridge estimation history. SARIMA completion uses only the genuine monthly observations.
-- **Business indicators included despite late publication**: 5676.0 arrives ~3 days before GDP, but still adds genuine information at T-0.
+- **Business indicators included despite late publication**: 5676.0 arrives 1-2 days before GDP, but still adds genuine information at T-0.
 - **BoP goods & services balance (5302.0) — excluded**: A quarterly bridge using the change in the SA goods & services balance (table 530204) was tested but excluded after leave-one-out analysis showed it degraded T-0 RMSE. Despite covering services trade (unlike the monthly 5368.0 goods balance), the BoP change series is noisy, arrives only ~1 day before GDP, and adds little over the monthly goods balance bridge which has longer estimation history and SARIMA-refined estimates by T-0. The data loader (`src/data/balance_of_payments.py`) is retained for other uses.
 - **BoP services-only balance (5302.0) — also excluded**: Re-tested 2026-05-28 using the SA *services-only* change (table 530204, did `"Services ;"`), on the theory that the aggregate G+S series was diluted by the goods component already covered by the monthly bridge. The services-only bridge **still degraded** the combination — T-0 RMSE 0.268% → 0.286% and T-0 correlation +0.474 → +0.436 over the 2022Q1–2025Q4 backtest window. The inverse-MSE weighting absorbed the noisy bridge despite assigning it a small weight, because the residual covariance with other quarterly bridges pulled the combined estimate sideways. Same conclusion as the aggregate test: BoP-basis quarterly trade data is too noisy at T-0 to help the bridge model, and the ~1-day lead leaves no early-horizon role either. The `get_bop_services_balance_qrtly` / `get_bop_services_change_qrtly` helpers in `src/data/balance_of_payments.py` are retained for reference.
 - **Construction work done (8755.0)**: Published ~3 weeks before GDP. Total sectors, all construction types, chain volume measures (SA). Direct read on the investment component of GDP. Complements the monthly building approvals bridge which is a leading indicator of construction activity, not a measure of work actually done.
 - **Private capex (5625.0)**: Published ~4 weeks before GDP. Total private capital expenditure, chain volume measures (SA), including education and health. Captures business investment spending directly.
-- **Inventories (5676.0)**: Published ~3 days before GDP alongside profits and sales. Inventory swings are a volatile GDP component that is otherwise uncaptured by the monthly bridges. Uses log-differenced chain volume measures.
-- **Government GFCE (spliced 5206.0 + GFS)**: Government consumption is ~25% of GDP but was previously uncaptured by any bridge. Uses 5206.0 national accounts GFCE growth for the long bridge estimation history (back to 1959), spliced with the GFS early release for the target quarter. GFS publishes ~2 weeks before GDP; the two sources produce identical growth rates on revised data so no scaling is needed. The GFS workbook is a data cube (not standard ABS time series) and is parsed directly via openpyxl.
+- **Inventories (5676.0)**: Published 1-2 days before GDP alongside profits and sales. Inventory swings are a volatile GDP component that is otherwise uncaptured by the monthly bridges. Uses log-differenced chain volume measures.
+- **Government GFCE (spliced 5206.0 + GFS)**: Government consumption is ~25% of GDP but was previously uncaptured by any bridge. Uses 5206.0 national accounts GFCE growth for the long bridge estimation history (back to 1959), spliced with the GFS early release for the target quarter. GFS publishes 1 day before GDP; the two sources produce identical growth rates on revised data so no scaling is needed. The GFS workbook is a data cube (not standard ABS time series) and is parsed directly via openpyxl.
 - **NAB business conditions survey (RBA H3)**: The first soft data indicator in the bridge set. Published monthly by NAB (~2 weeks after reference month), republished in RBA Statistical Table H3 (series GICNBC). Used as a quarterly mean level (not growth — it's already a deviation from long-run average). The survey adds most value at mid-cycle horizons (T-2m and T-1m); at T-0 the effect is marginal because hard data dominates. Westpac-MI consumer sentiment was also tested but excluded — it added nothing beyond NAB conditions and has shorter history (2010 vs 1997). The key value of survey data is at turning points: hard activity indicators (employment, retail) lagged the 2023 per-capita recession by 2–3 quarters, while business conditions captured the slowdown earlier.
 - **No monetary policy variables**: Cash rate, yield curve, credit aggregates, and financial conditions indices were considered but excluded. At the nowcast horizon (0–3 months), monetary policy transmission is already embedded in the real activity indicators (retail trade, building approvals, labour data) by the time they are published. This is consistent with standard practice — bridge equation nowcasts at central banks (RBA, BoE) and in the literature rely on hard activity and survey data, not policy rates. MP variables have predictive power at the 1–8 quarter forecasting horizon but add little once contemporaneous real data is available.
 
 ---
+
+## Capex-Imports Hotness Diagnostic
+
+After each nowcast, the print summary appends a shared diagnostic from `src/models/common/nowcast_diagnostics.py:capex_imports_hotness()` that compares the latest equipment capex print against the goods imports that should offset it under the GDP identity (I↑ ⇒ M↑).
+
+**How it works:**
+- Equipment capex QoQ change (5625.0 CVM SA, all industries) and goods imports QoQ change (5368.0 SA, quarterly sum of monthly) are each expressed as a percentage of contemporaneous GDP.
+- Each is compared against its mean (and σ) from 1997Q4 onward — the BVAR's estimation frame, chosen for a stable, identity-relevant baseline.
+- Hotness = (capex deviation from mean) − (imports deviation from mean).
+
+**Interpretation:**
+- Positive hotness (> +0.10pp): capex is unusually high relative to its history, *and more so than imports are unusually high*. The bridges treat capex as a positive GDP signal but inverse-MSE combination doesn't enforce the matching M offset, so the headline nowcast may be over-stating GDP growth by roughly this amount.
+- Negative hotness (< −0.10pp): imports are surging by more than capex — the nowcast may be under-stating GDP growth.
+- |hotness| ≤ 0.10pp: negligible, flagged as such.
+
+The diagnostic was added specifically to flag the AI / data-centre buildout starting in mid-2025, which lifts the I-component sharply while the corresponding goods/services imports do not flow through the bridges symmetrically. The diagnostic is purely post-hoc — it does not change the bridge estimates or the combined nowcast — so it is a transparency tool for the user, not a model correction.
 
 ## Running
 

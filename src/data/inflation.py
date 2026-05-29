@@ -33,6 +33,30 @@ _CPI_MONTHLY_SA_INDEX = ReqsTuple(
     zip_file="",
 )
 
+# Monthly Trimmed Mean SA index from table 640106 (available from Apr 2024)
+_TRIMMED_MEAN_MONTHLY_SA_INDEX = ReqsTuple(
+    cat="6401.0",
+    table="640106",
+    did="Index Numbers ;  Trimmed Mean ;  Australia ;",
+    stype="SA",
+    unit="Index Numbers",
+    seek_yr_growth=False,
+    calc_growth=False,
+    zip_file="",
+)
+
+# Quarterly Trimmed Mean SA index from Appendix 1a (full history)
+_TRIMMED_MEAN_QUARTERLY_SA_INDEX = ReqsTuple(
+    cat="6401.0",
+    table="64010Appendix1a",
+    did="Index Numbers ;  Trimmed Mean ;  Australia ;",
+    stype="SA",
+    unit="Index Numbers",
+    seek_yr_growth=False,
+    calc_growth=False,
+    zip_file="",
+)
+
 # ABS Monthly CPI Indicator landing page (discontinued catalogue, needs explicit URL)
 _CPI_6484_URL = (
     "https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/"
@@ -170,7 +194,52 @@ def get_monthly_cpi_index() -> DataSeries:
         data=spliced,
         source="ABS",
         units="Index Numbers",
-        description="CPI All Groups SA index (monthly, spliced from quarterly + 6484.0 + 640106)",
+        description="CPI All Groups SA index (monthly, spliced from quarterly + 6484.0 + 648401)",
         cat="6401.0",
         table="640106 / 648401 / 64010Appendix1a",
+    )
+
+
+@cache
+def get_monthly_trimmed_mean_index() -> DataSeries:
+    """Get monthly CPI Trimmed Mean SA index, spliced from quarterly and monthly sources.
+
+    Trimmed mean is a smoother underlying-inflation measure than headline CPI —
+    less affected by volatile items (energy, food, government rebates) — and is
+    useful as a deflator where headline-CPI noise would inflate OOS bridge MSE.
+
+    Combines two sources (monthly takes precedence in overlap):
+    1. Quarterly trimmed mean index (6401.0 Appendix 1a) interpolated to monthly
+       — full history, but flat within each quarter (no genuine monthly variation)
+    2. Monthly trimmed mean index (6401.0 table 640106) from Apr 2024 onwards
+       — genuine monthly observations
+
+    There is no analogue of the 6484.0 splice here because the discontinued
+    Monthly CPI Indicator only published trimmed mean as an annual % change,
+    not as an index.
+
+    Returns:
+        DataSeries with monthly trimmed mean index (seasonally adjusted)
+
+    """
+    quarterly_ds = load_series(_TRIMMED_MEAN_QUARTERLY_SA_INDEX)
+    quarterly_monthly = ra.qtly_to_monthly(quarterly_ds.data, interpolate=True)
+
+    monthly_ds = load_series(_TRIMMED_MEAN_MONTHLY_SA_INDEX)
+    genuine = monthly_ds.data.dropna()
+
+    # Rebase the quarterly-interpolated series to the genuine monthly base period
+    splice_point = genuine.index[0]
+    rebase_factor = genuine.iloc[0] / quarterly_monthly[splice_point]
+    quarterly_rebased = quarterly_monthly * rebase_factor
+
+    spliced = genuine.combine_first(quarterly_rebased)
+
+    return DataSeries(
+        data=spliced,
+        source="ABS",
+        units="Index Numbers",
+        description="CPI Trimmed Mean SA index (monthly, spliced from quarterly + 640106)",
+        cat="6401.0",
+        table="640106 / 64010Appendix1a",
     )

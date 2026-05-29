@@ -13,6 +13,7 @@ from readabs import metacol as mc
 
 from src.data.abs_loader import ReqsTuple, load_series
 from src.data.dataseries import DataSeries
+from src.data.inflation import get_monthly_trimmed_mean_index
 
 # --- Business Indicators (5676.0) ---
 
@@ -78,6 +79,45 @@ def get_company_profits_growth_qrtly() -> DataSeries:
         description="Company profits growth (quarterly, log difference)",
         cat=profits.cat,
         table=profits.table,
+    )
+
+
+def get_company_profits_real_qrtly() -> DataSeries:
+    """Get gross operating profits deflated by trimmed mean (quarterly, SA).
+
+    Quarterly nominal profits divided by the quarterly mean of the spliced
+    monthly trimmed mean index. Trimmed mean is preferred over headline CPI
+    to avoid feeding volatile-item noise into the bridge regression.
+    """
+    nominal = get_company_profits_qrtly()
+    monthly_def = get_monthly_trimmed_mean_index().data
+    deflator_qrtly = ra.monthly_to_qtly(monthly_def, q_ending="DEC", f="mean")
+    common = nominal.data.index.intersection(deflator_qrtly.index)
+    real = (nominal.data.loc[common] / deflator_qrtly.loc[common]).dropna()
+    return DataSeries(
+        data=real,
+        source=nominal.source,
+        units="Real $ (trimmed mean base year)",
+        description="Gross Operating Profits, real (quarterly nominal / quarterly mean trimmed mean), SA",
+        series_id=nominal.series_id,
+        table=nominal.table,
+        cat=nominal.cat,
+        stype=nominal.stype,
+    )
+
+
+def get_company_profits_real_growth_qrtly() -> DataSeries:
+    """Get quarterly real company profits growth (log diff of trimmed-mean-deflated profits)."""
+    real = get_company_profits_real_qrtly()
+    log_real = np.log(real.data) * 100
+    growth = log_real.diff(1)
+    return DataSeries(
+        data=growth,
+        source=real.source,
+        units="% per quarter",
+        description="Real company profits growth (quarterly, log difference of trimmed-mean-deflated)",
+        cat=real.cat,
+        table=real.table,
     )
 
 

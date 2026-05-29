@@ -96,26 +96,35 @@ e_i,t = ρ_i e_{i,t-1} + ε_i,t
 
 | Indicator | Source | Transformation |
 |-----------|--------|----------------|
-| Retail turnover | 5682.0 (Monthly Household Spending) | Log difference × 100 |
+| Retail turnover, **trimmed-mean-deflated** | 5682.0 (Monthly Household Spending) | Log difference × 100 |
 | Building approvals | 8731.0 (Building Approvals) | Log difference × 100 |
 | Hours worked | 6202.0 (Labour Force) table 6202019 | Log difference × 100 |
 | Employment persons | 6202.0 (Labour Force) table 6202001 | Log difference × 100 |
-| Goods trade balance | 5368.0 (International Trade in Goods) | Simple difference (level can be negative) |
+| Goods trade balance, **trimmed-mean-deflated** | 5368.0 (International Trade in Goods) | Simple difference (level can be negative) |
 | NAB business conditions | RBA Table H3 (GICNBC) | Simple difference (already a deviation index) |
 | Westpac-MI consumer sentiment | RBA Table H3 (GICWMICS) | Log difference × 100 |
 
 **Westpac-MI consumer sentiment was tested and kept.** It improved RMSE, lifted correlation with actual GDP, and reduced nowcast variance over the backtest window. After standardisation the panel treats sentiment as a second soft-data factor — it tends to load onto the prices/surveys factor alongside NAB and adds information during periods where the two surveys diverge (households vs. businesses).
 
-### Quarterly Indicators (6, including target)
+### Quarterly Indicators (7, including target)
 
 | Indicator | Source | Transformation |
 |-----------|--------|----------------|
 | **GDP growth (target)** | 5206.0 (Australian National Accounts), CVM SA | Log difference × 100 |
 | CPI trimmed mean | 6401.0 Appendix 1a | Quarterly % change |
 | WPI growth | 6345.0 | Log difference × 100 |
-| Company profits | 5676.0 (Business Indicators) | Log difference × 100 |
+| Company profits, **trimmed-mean-deflated** | 5676.0 (Business Indicators) | Log difference × 100 |
 | Construction work done | 8755.0 | Log difference × 100 |
 | Private capex | 5625.0 | Log difference × 100 |
+| Household spending CVM (Total) | 5682.0 table 5682015 | Log difference × 100 |
+
+### Deflation of nominal indicators
+
+Retail turnover, the goods trade balance, and gross operating profits are published in nominal terms; every other indicator is a volume measure, physical quantity, or survey index. To keep the panel consistently real, those three are divided by the spliced monthly trimmed mean index before entering the panel (see `src/data/retail_trade.py`, `src/data/goods_trade.py`, `src/data/business_indicators.py`). Trimmed mean is preferred over headline CPI because it strips volatile items (energy, food, government rebates) that would otherwise feed deflator noise into the factor structure. A GDP-deflator-based approach would be conceptually purer but is blocked by the same publication barrier as the GDP target itself.
+
+### Household spending CVM as a quarterly indicator
+
+The Total Household Spending CVM series from 5682.0 table 5682015 (history begins 2014Q3) is conceptually close to the 5206.0 HFCE component of GDP but publishes ~5 weeks after each quarter ends, ahead of the GDP release. The DFM's ragged-edge EM handles its short history naturally — it carries missing values pre-2014Q3 without dropping other series.
 
 The DFM handles the **ragged edge** natively — different indicators have different last available dates, and the Kalman filter forecasts missing values forward using the common factor structure. No SARIMA pre-completion is needed.
 
@@ -249,6 +258,22 @@ The bridge model is currently more accurate by RMSE on the small backtest sample
 8. **Outlier-robust DFM** (Antolin-Diaz, Drechsel & Petrella 2021) — t-distributed shocks or stochastic volatility could downweight COVID quarters automatically without crushing the correlation the way explicit masking does.
 
 ---
+
+## Capex-Imports Hotness Diagnostic
+
+After each nowcast, the print summary appends a shared diagnostic from `src/models/common/nowcast_diagnostics.py:capex_imports_hotness()` that compares the latest equipment capex print against the goods imports that should offset it under the GDP identity (I↑ ⇒ M↑).
+
+**How it works:**
+- Equipment capex QoQ change (5625.0 CVM SA, all industries) and goods imports QoQ change (5368.0 SA, quarterly sum of monthly) are each expressed as a percentage of contemporaneous GDP.
+- Each is compared against its mean (and σ) from 1997Q4 onward — the BVAR's estimation frame, chosen for a stable, identity-relevant baseline.
+- Hotness = (capex deviation from mean) − (imports deviation from mean).
+
+**Interpretation:**
+- Positive hotness (> +0.10pp): capex is unusually high relative to its history, *and more so than imports are unusually high*. The DFM absorbs the I/M relationship via factor loadings, but only on the speed at which the estimation sample updates — a fresh regime change (e.g. AI capex surge) takes several quarters to be reflected. In the meantime, the headline nowcast may be over-stating GDP growth by roughly this amount.
+- Negative hotness (< −0.10pp): imports surging by more than capex — possibly an under-stated nowcast.
+- |hotness| ≤ 0.10pp: negligible, flagged as such.
+
+The diagnostic was added specifically to flag the AI / data-centre buildout starting in mid-2025, which lifts the I-component sharply while the corresponding goods/services imports do not flow through the factor structure symmetrically in real time. The diagnostic is purely post-hoc — it does not change the model estimates or the nowcast — so it is a transparency tool for the user, not a model correction.
 
 ## Running
 

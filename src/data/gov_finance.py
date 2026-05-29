@@ -1,7 +1,7 @@
 """Government finance statistics data loading.
 
 Provides quarterly government spending from ABS Government Finance Statistics,
-Australia (formerly 5519.0). Published ~2 weeks before GDP, covering government
+Australia (formerly 5519.0). Published 1 day before GDP, covering government
 final consumption expenditure and gross fixed capital formation.
 
 The ABS publishes GFS as a data cube (not standard time series format), so this
@@ -170,7 +170,7 @@ def get_gov_consumption_spliced_growth_qrtly() -> DataSeries:
     Uses 5206.0 (national accounts) for long bridge estimation history, extended
     with GFS Table 15 for quarters not yet in 5206.0. This provides the full
     historical series for OLS estimation plus the early GFS read for the target
-    quarter (~2 weeks before GDP publication).
+    quarter (1 day before GDP publication).
 
     The two sources produce identical growth rates on revised data, so no
     scaling is needed — GFS quarters beyond 5206.0 are simply appended.

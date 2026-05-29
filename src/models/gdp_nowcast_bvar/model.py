@@ -42,7 +42,7 @@ import pandas as pd
 from src.data import (
     get_building_approvals_growth_qrtly,
     get_employment_growth_qrtly_lfs,
-    get_goods_balance_qrtly,
+    get_goods_balance_real_qrtly,
     get_hours_growth_qrtly_lfs,
     get_trimmed_mean_qrtly,
 )
@@ -310,15 +310,22 @@ def _load_panel() -> pd.DataFrame:
     # removed the natural dampening that came from conflicting indicator
     # surprises in the conditional update step.
     #
+    # goods_balance enters as the trimmed-mean-deflated (real) series — every
+    # other indicator in the panel is already a volume measure or quantity,
+    # so deflating goods_balance keeps the panel consistently real.
+    #
     # Excluded entirely (short history):
     #   - retail_growth (5682.0 only from 2012Q4)
     #   - business_profits_growth (5676.0 only from 2001Q2)
+    #   - household_spending CVM growth (5682.0 table 5682015 only from 2014Q3 —
+    #     adding it would force the panel start from 1997Q4 to 2014Q3, hurting
+    #     every coefficient in the VAR not just consumption)
     series = {
         "gdp_growth": gdp_growth,
         "building_approvals_growth": get_building_approvals_growth_qrtly().data,
         "employment_growth": get_employment_growth_qrtly_lfs().data,
         "hours_growth": get_hours_growth_qrtly_lfs().data,
-        "goods_balance": get_goods_balance_qrtly().data,
+        "goods_balance": get_goods_balance_real_qrtly().data,
         "nab_conditions": get_nab_business_conditions_qrtly().data,
         "cpi_trimmed_mean": get_trimmed_mean_qrtly().data,
         "wpi_growth": get_wpi_growth_qrtly().data,
@@ -568,6 +575,13 @@ def _print_summary(result: NowcastResult) -> None:
     print(f"  Sample: {result.panel.dropna().index[0]} to {result.panel.dropna().index[-1]}")
     print(f"  Training observations: {len(result.panel.dropna())}")
     print(f"  Minnesota prior: λ_tight={LAMBDA_TIGHT}, λ_cross={LAMBDA_CROSS}, λ_decay={LAMBDA_DECAY}")
+
+    try:
+        from src.models.common.nowcast_diagnostics import print_capex_imports_hotness  # noqa: PLC0415
+
+        print_capex_imports_hotness(target_quarter=result.target_quarter)
+    except (ValueError, KeyError, OSError) as exc:
+        logger.warning("Capex-imports hotness diagnostic failed: %s", exc)
 
     print("\n" + "=" * 70)
 

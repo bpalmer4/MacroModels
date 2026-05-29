@@ -116,12 +116,14 @@ This is equivalent to a Bayesian update of the GDP nowcast, treating the joint f
 | Building approvals growth | 8731.0 | 1990Q1 |
 | Employment growth | 6202.0 | 1990Q1 |
 | Hours worked growth | 6202.0 table 6202019 | 1990Q1 |
-| Goods trade balance | 5368.0 | 1990Q1 |
+| Goods trade balance, **trimmed-mean-deflated** | 5368.0 | 1990Q1 |
 | NAB business conditions | RBA H3 (GICNBC) | 1997Q2 |
 | CPI trimmed mean | 6401.0 | 1990Q1 |
 | WPI growth | 6345.0 | 1997Q4 |
 | Construction work done growth | 8755.0 | 1990Q1 |
 | Private capex growth | 5625.0 | 1990Q1 |
+
+**Goods balance deflation**: this is the only nominal indicator in the BVAR panel, so it's divided by the spliced monthly trimmed mean index (and quarterly-summed) before entering the VAR. Every other indicator is already real / a quantity. Keeps the panel consistently real and avoids feeding nominal-inflation drift into the joint covariance matrix.
 
 The binding constraint is **WPI growth (1997Q4)**, giving ~112 quarterly observations of complete data after dropna.
 
@@ -131,6 +133,7 @@ The binding constraint is **WPI growth (1997Q4)**, giving ~112 quarterly observa
 
 - **Retail growth (5682.0)**: short history (from 2012Q4) shrinks the training sample materially
 - **Business profits growth (5676.0)**: short history (from 2001Q2) shrinks the training sample
+- **Household spending CVM (5682.0 table 5682015)**: short history (from 2014Q3, ~46 growth obs) would force the panel start from 1997Q4 to 2014Q3, hurting *every* coefficient in the VAR not just consumption. The Bridge and DFM both use this series — they handle short-history series gracefully via per-bridge estimation and ragged-edge EM respectively, but the BVAR cannot
 - **Government consumption growth (5206.0 + GFS spliced)**: hurt RMSE and correlation despite long history. The bridge model uses this series usefully because each bridge is fit independently; the BVAR's joint conditional update treats it as noise that pollutes Σ_oo.
 - **BoP goods+services balance change**: hurt correlation more sharply than gov consumption — same failure mode through the joint covariance structure.
 - **BoP services-only balance change**: re-tested 2026-05-28 as the 11th panel variable (SA "Services ;" change from 5302.0 table 530204), on the theory that stripping out the goods component would isolate a cleaner signal. **Still degraded** the model — T-0 RMSE 0.625% → 0.640%, T-0 correlation +0.680 → +0.580, and nowcast variance climbed (NCstd 0.722% → 0.737%). Same Σ_oo pollution as the aggregate case: even a small noisy variable participates in every conditional update via the inverse covariance matrix.
@@ -253,6 +256,22 @@ These are noted but **not currently planned** because the BVAR isn't intended as
 5. **Optimal Σ structure for nowcasting**: Empirical exploration of which off-diagonal elements of Σ to shrink. Niche.
 
 ---
+
+## Capex-Imports Hotness Diagnostic
+
+After each nowcast, the print summary appends a shared diagnostic from `src/models/common/nowcast_diagnostics.py:capex_imports_hotness()` that compares the latest equipment capex print against the goods imports that should offset it under the GDP identity (I↑ ⇒ M↑).
+
+**How it works:**
+- Equipment capex QoQ change (5625.0 CVM SA, all industries) and goods imports QoQ change (5368.0 SA, quarterly sum of monthly) are each expressed as a percentage of contemporaneous GDP.
+- Each is compared against its mean (and σ) from 1997Q4 onward — the BVAR's own estimation frame, so the historical baseline is exactly the sample the BVAR coefficients are fit on.
+- Hotness = (capex deviation from mean) − (imports deviation from mean).
+
+**Interpretation:**
+- Positive hotness (> +0.10pp): capex is unusually high relative to its history, *and more so than imports are unusually high*. The BVAR absorbs the I/M relationship via the joint covariance matrix Σ, but the conditional update at T-0 uses fixed coefficients estimated over the full sample — a fresh regime change (e.g. AI capex surge) is treated as a draw from the historical distribution, not a structural shift. In the meantime, the headline nowcast may be over-stating GDP growth by roughly this amount.
+- Negative hotness (< −0.10pp): imports surging by more than capex — possibly an under-stated nowcast.
+- |hotness| ≤ 0.10pp: negligible, flagged as such.
+
+The diagnostic was added specifically to flag the AI / data-centre buildout starting in mid-2025, which lifts the I-component sharply while the corresponding goods/services imports do not yet show up symmetrically in the BVAR's conditioning information. The diagnostic is purely post-hoc — it does not change the BVAR estimation or the nowcast — so it is a transparency tool for the user, not a model correction.
 
 ## Running
 

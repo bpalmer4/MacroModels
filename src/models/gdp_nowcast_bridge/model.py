@@ -6,16 +6,17 @@ are SARIMA-completed to fill partial quarters, and bridge forecasts are combined
 using inverse-MSE weights from expanding-window out-of-sample evaluation.
 
 Bridge groups:
-    1. Consumption:  retail trade turnover (monthly, ~2 months lead)
+    1. Consumption:  retail trade turnover, CPI-deflated (monthly, ~2 months lead)
     2. Labour:       employment growth, hours worked growth (monthly, ~2 months lead)
     3. Investment:   building approvals growth (monthly, ~2 months lead)
-    4. Trade:        goods trade balance (monthly, ~2 months lead)
+    4. Trade:        goods trade balance, CPI-deflated (monthly, ~2 months lead)
     5. Survey:       NAB business conditions (monthly, ~2 weeks lead)
     6. Prices:       quarterly CPI trimmed mean (~4-5 weeks lead), WPI growth (~2-3 weeks lead)
     7. Investment:   construction work done (~2-3 weeks lead), private capex (~1-2 weeks lead)
-    8. Government:   GFCE (spliced 5206.0 + GFS early release, ~1-2 weeks lead)
-    9. Business:     company profits, sales, inventories growth (~1-2 days lead)
-   10. Production:   Cobb-Douglas (time-varying α from factor income shares)
+    8. Government:   GFCE (spliced 5206.0 + GFS early release, ~1 day lead)
+    9. Business:     company profits (CPI-deflated), sales, inventories growth (~1-2 days lead)
+   10. Consumption:  household spending 5682.0 CVM (quarterly, ~5 weeks lead)
+   11. Production:   Cobb-Douglas (time-varying α from factor income shares)
 
 Uncertainty is estimated via bootstrap resampling of bridge equation residuals.
 
@@ -46,15 +47,16 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 from src.data import (
     get_building_approvals_monthly,
     get_capital_share,
-    get_goods_balance_monthly,
+    get_goods_balance_real_monthly,
     get_hours_worked_monthly,
-    get_retail_turnover_monthly,
+    get_household_spending_cvm_growth_qrtly,
+    get_retail_turnover_real_monthly,
     get_trimmed_mean_qrtly,
 )
 from src.data.abs_loader import load_series
 from src.data.business_indicators import (
     get_business_sales_growth_qrtly,
-    get_company_profits_growth_qrtly,
+    get_company_profits_real_growth_qrtly,
     get_inventories_growth_qrtly,
 )
 from src.data.capex import get_total_capex_growth_qrtly
@@ -133,6 +135,7 @@ class DataAvailability:
     construction: bool = False
     capex: bool = False
     gov_consumption: bool = False
+    household_spending: bool = False
 
     def monthly_status(self, target_quarter: pd.Period) -> dict[str, str]:
         """Report data availability for each monthly indicator.
@@ -260,6 +263,7 @@ class DataAvailability:
             construction=True,
             capex=True,
             gov_consumption=True,
+            household_spending=True,
         )
 
 
@@ -633,13 +637,19 @@ def _build_production_bridge(
 
 
 def _load_monthly_indicators() -> dict[str, DataSeries]:
-    """Load all monthly indicator series (full history)."""
+    """Load all monthly indicator series (full history).
+
+    Retail turnover and goods trade balance are CPI-deflated (real) variants —
+    every other indicator in the panel is already a volume or quantity measure,
+    so deflating these two keeps the panel consistently real and removes a
+    nominal-bias channel during inflationary periods.
+    """
     indicators: dict[str, DataSeries] = {
-        "retail": get_retail_turnover_monthly(),
+        "retail": get_retail_turnover_real_monthly(),
         "building_approvals": get_building_approvals_monthly(),
         "hours_worked": get_hours_worked_monthly(),
         "employment": load_series(EMPLOYMENT_PERSONS),
-        "goods_balance": get_goods_balance_monthly(),
+        "goods_balance": get_goods_balance_real_monthly(),
         "nab_conditions": get_nab_business_conditions_monthly(),
     }
 
@@ -652,23 +662,33 @@ def _load_monthly_indicators() -> dict[str, DataSeries]:
 
 
 def _load_quarterly_indicators() -> dict[str, pd.Series]:
-    """Load all quarterly indicator series (full history)."""
+    """Load all quarterly indicator series (full history).
+
+    Profits is the CPI-deflated (real) variant — every other quarterly
+    indicator is already a volume measure, so deflating profits keeps the
+    panel consistently real.
+    """
     indicators = {}
 
     loaders = {
         "cpi_quarterly": get_trimmed_mean_qrtly,
         "wpi": get_wpi_growth_qrtly,
-        "business_profits": get_company_profits_growth_qrtly,
+        "business_profits": get_company_profits_real_growth_qrtly,
         "business_sales": get_business_sales_growth_qrtly,
         "inventories": get_inventories_growth_qrtly,
         "construction": get_total_construction_growth_qrtly,
         "capex": get_total_capex_growth_qrtly,
         "gov_consumption": get_gov_consumption_spliced_growth_qrtly,
+        "household_spending": get_household_spending_cvm_growth_qrtly,
     }
     for name, loader in loaders.items():
         try:
             ds = loader()
-            indicators[name] = ds.data.dropna()
+            series = ds.data.dropna()
+            if len(series) > 0:
+                indicators[name] = series
+            else:
+                logger.warning("Quarterly indicator '%s' returned empty series", name)
         except (ValueError, KeyError, OSError):
             logger.warning("Failed to load quarterly indicator '%s'", name)
 
@@ -685,6 +705,7 @@ QUARTERLY_BRIDGE_NAMES = {
     "construction": "Investment: construction",
     "capex": "Investment: private capex",
     "gov_consumption": "Government: GFCE",
+    "household_spending": "Consumption: Household spending (5682 CVM)",
 }
 
 
@@ -1074,6 +1095,13 @@ def _print_summary(result: NowcastResult) -> None:
     print("\n  Data availability (monthly indicators):")
     for name, status in result.data_status.items():
         print(f"    {name:<25} {status}")
+
+    try:
+        from src.models.common.nowcast_diagnostics import print_capex_imports_hotness  # noqa: PLC0415
+
+        print_capex_imports_hotness(target_quarter=result.target_quarter)
+    except (ValueError, KeyError, OSError) as exc:
+        logger.warning("Capex-imports hotness diagnostic failed: %s", exc)
 
     print("\n" + "=" * 70)
 

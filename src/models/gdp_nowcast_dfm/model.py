@@ -15,11 +15,11 @@ Based on:
 
 Indicator panel:
     Monthly:
-        1. Retail turnover (ABS 5682.0) — consumption proxy
-        2. Building approvals (ABS 8731.0) — investment proxy
+        1. Retail turnover, trimmed-mean-deflated (ABS 5682.0) — real consumption proxy
+        2. Building approvals (ABS 8731.0) — investment proxy (counts)
         3. Hours worked (ABS 6202.0) — labour input
         4. Employment (ABS 6202.0) — labour demand
-        5. Goods trade balance (ABS 5368.0) — external sector
+        5. Goods trade balance, trimmed-mean-deflated (ABS 5368.0) — external sector
         6. NAB business conditions (RBA H3) — survey/soft data
         7. Westpac-MI consumer sentiment (RBA H3) — household soft data
 
@@ -27,9 +27,11 @@ Indicator panel:
         7. GDP growth (ABS 5206.0) — target variable
         8. CPI trimmed mean (ABS 6401.0) — prices
         9. WPI growth (ABS 6345.0) — wages
-       10. Company profits growth (ABS 5676.0) — business activity
-       11. Construction work done growth (ABS 8755.0) — investment
-       12. Private capex growth (ABS 5625.0) — investment
+       10. Company profits growth, trimmed-mean-deflated (ABS 5676.0) — real business activity
+       11. Construction work done growth (ABS 8755.0) — investment (CVM)
+       12. Private capex growth (ABS 5625.0) — investment (CVM)
+       13. Household spending CVM growth (ABS 5682.0 table 5682015) — real consumption,
+           HFCE-analogue, published ~5 weeks after quarter-end
 
 Usage:
     # Live nowcast
@@ -52,14 +54,15 @@ from statsmodels.tsa.statespace.dynamic_factor_mq import DynamicFactorMQ
 
 from src.data import (
     get_building_approvals_monthly,
-    get_goods_balance_monthly,
+    get_goods_balance_real_monthly,
     get_hours_worked_monthly,
-    get_retail_turnover_monthly,
+    get_household_spending_cvm_growth_qrtly,
+    get_retail_turnover_real_monthly,
     get_trimmed_mean_qrtly,
 )
 from src.data.abs_loader import load_series
 from src.data.business_indicators import (
-    get_company_profits_growth_qrtly,
+    get_company_profits_real_growth_qrtly,
 )
 from src.data.capex import get_total_capex_growth_qrtly
 from src.data.construction import get_total_construction_growth_qrtly
@@ -136,6 +139,7 @@ class DataAvailability:
     business_profits: bool = False
     construction: bool = False
     capex: bool = False
+    household_spending: bool = False
 
     @classmethod
     def from_live_data(
@@ -206,6 +210,7 @@ class DataAvailability:
             business_profits=True,
             construction=True,
             capex=True,
+            household_spending=True,
         )
 
     def monthly_status(self, target_quarter: pd.Period) -> dict[str, str]:
@@ -255,32 +260,46 @@ class NowcastResult:
 
 
 def _load_monthly_indicators() -> dict[str, DataSeries]:
-    """Load all monthly indicator series (full history)."""
+    """Load all monthly indicator series (full history).
+
+    Retail turnover and goods balance are trimmed-mean-deflated (real) — see
+    src/data/retail_trade.py and src/data/goods_trade.py for deflation logic.
+    """
     return {
-        "retail": get_retail_turnover_monthly(),
+        "retail": get_retail_turnover_real_monthly(),
         "building_approvals": get_building_approvals_monthly(),
         "hours_worked": get_hours_worked_monthly(),
         "employment": load_series(EMPLOYMENT_PERSONS),
-        "goods_balance": get_goods_balance_monthly(),
+        "goods_balance": get_goods_balance_real_monthly(),
         "nab_conditions": get_nab_business_conditions_monthly(),
         "consumer_sentiment": get_consumer_sentiment_monthly(),
     }
 
 
 def _load_quarterly_indicators() -> dict[str, pd.Series]:
-    """Load all quarterly indicator series (full history)."""
+    """Load all quarterly indicator series (full history).
+
+    Profits is trimmed-mean-deflated (real). Household spending CVM (5682.0
+    table 5682015) starts 2014Q3 — short history but the DFM handles
+    ragged-edge panels via missing-data EM.
+    """
     indicators = {}
     loaders = {
         "cpi_quarterly": get_trimmed_mean_qrtly,
         "wpi": get_wpi_growth_qrtly,
-        "business_profits": get_company_profits_growth_qrtly,
+        "business_profits": get_company_profits_real_growth_qrtly,
         "construction": get_total_construction_growth_qrtly,
         "capex": get_total_capex_growth_qrtly,
+        "household_spending": get_household_spending_cvm_growth_qrtly,
     }
     for name, loader in loaders.items():
         try:
             ds = loader()
-            indicators[name] = ds.data.dropna()
+            series = ds.data.dropna()
+            if len(series) > 0:
+                indicators[name] = series
+            else:
+                logger.warning("Quarterly indicator '%s' returned empty series", name)
         except (ValueError, KeyError, OSError):
             logger.warning("Failed to load quarterly indicator '%s'", name)
     return indicators
@@ -663,6 +682,13 @@ def _print_summary(result: NowcastResult) -> None:
     print("\n  Data availability (monthly indicators):")
     for name, status in result.data_status.items():
         print(f"    {name:<25} {status}")
+
+    try:
+        from src.models.common.nowcast_diagnostics import print_capex_imports_hotness  # noqa: PLC0415
+
+        print_capex_imports_hotness(target_quarter=result.target_quarter)
+    except (ValueError, KeyError, OSError) as exc:
+        logger.warning("Capex-imports hotness diagnostic failed: %s", exc)
 
     print("\n" + "=" * 70)
 
