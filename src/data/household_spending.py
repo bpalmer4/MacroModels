@@ -52,14 +52,25 @@ def _empty_series() -> DataSeries:
 
 
 @cache
-def get_household_spending_cvm_qrtly() -> DataSeries:
+def get_household_spending_cvm_qrtly(history: str | None = None) -> DataSeries:
     """Get Total Household Spending (quarterly, CVM, seasonally adjusted).
 
-    Always fetches with the most recent quarter-end-month `history` so the
-    quarterly table is present even when called mid-quarter. Returns an empty
-    DataSeries on any failure (so downstream models can degrade gracefully).
+    The quarterly CVM table (5682015) only ships with the monthly 5682.0 release
+    that lands on a quarter-end month, so it is fetched via the `history`
+    snapshot. By default `history` is the most recent quarter-end month (so the
+    table is present even when called mid-quarter). A caller that already knows
+    its target quarter — e.g. the components nowcast running the day before GDP —
+    can pass that quarter's end month directly (e.g. ``"dec-2025"``) to pull the
+    snapshot covering it. Returns an empty DataSeries on any failure (so
+    downstream models can degrade gracefully).
+
+    Args:
+        history: quarter-end month as ``"mmm-yyyy"`` (lowercase) to fetch, or
+            ``None`` to use the most recent quarter-end month.
+
     """
-    history = _latest_quarter_end_month()
+    if history is None:
+        history = _latest_quarter_end_month()
     try:
         data, meta = ra.read_abs_cat(
             "5682.0", history=history, single_excel_only=_TABLE, verbose=False
@@ -88,14 +99,19 @@ def get_household_spending_cvm_qrtly() -> DataSeries:
     )
 
 
-def get_household_spending_cvm_growth_qrtly() -> DataSeries:
+def get_household_spending_cvm_growth_qrtly(history: str | None = None) -> DataSeries:
     """Get quarterly Total Household Spending CVM growth (log difference).
+
+    Args:
+        history: quarter-end month as ``"mmm-yyyy"`` to fetch, or ``None`` for the
+            most recent quarter-end month. Passed through to
+            :func:`get_household_spending_cvm_qrtly`.
 
     Returns:
         DataSeries with household spending growth (% per quarter)
 
     """
-    ds = get_household_spending_cvm_qrtly()
+    ds = get_household_spending_cvm_qrtly(history)
     if len(ds.data) == 0:
         return DataSeries(
             data=pd.Series(dtype=float),
