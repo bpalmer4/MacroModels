@@ -514,8 +514,9 @@ def _extract_nowcast(
         ci_70 = (nowcast_qoq - 1.04 * se, nowcast_qoq + 1.04 * se)
         ci_90 = (nowcast_qoq - 1.645 * se, nowcast_qoq + 1.645 * se)
     else:
-        # Fallback: use historical GDP growth volatility
-        hist_std = gdp.pct_change().dropna().std() * 100
+        # Fallback: use historical GDP growth volatility, in the same log-difference
+        # units as nowcast_qoq (compute_gdp_growth already scales by 100).
+        hist_std = compute_gdp_growth(gdp).dropna().std()
         ci_70 = (nowcast_qoq - 1.04 * hist_std, nowcast_qoq + 1.04 * hist_std)
         ci_90 = (nowcast_qoq - 1.645 * hist_std, nowcast_qoq + 1.645 * hist_std)
 
