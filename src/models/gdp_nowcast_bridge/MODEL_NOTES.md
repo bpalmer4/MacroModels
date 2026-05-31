@@ -157,6 +157,51 @@ Where `lp_trend` is the HMA(13) labour productivity trend derived from wage data
 
 The COVID dummy covers 2020Q1-2021Q1.
 
+### Building the nowcast regressor row (and why the zero-fill is safe)
+
+`_bridge_nowcast` assembles the regressor row for the target quarter, then aligns
+it to the fitted coefficient index, filling any **missing column** with `0.0`:
+
+```python
+X_new = pd.DataFrame([row])
+for col in bridge.coefficients.index:
+    if col not in X_new.columns:
+        X_new[col] = 0.0
+X_new = X_new[bridge.coefficients.index]
+```
+
+At first glance this looks dangerous: if the contemporaneous indicator value were
+missing, the column would be created as `0.0`, and the bridge would "nowcast" off a
+zero for its own driver — a spurious strong-negative signal — while still carrying a
+full inverse-MSE weight. **That path is unreachable by construction.** The zero-fill
+only ever supplies *structural* terms (`const`, and the `_L1` lag when the target
+quarter is the first observation), never the contemporaneous indicator.
+
+The guarantee is that **every caller inserts the target-quarter indicator value into
+the index before calling `_bridge_nowcast`**:
+
+| Caller | Guard |
+|--------|-------|
+| Monthly bridges (`_build_monthly_bridges`) | `quarterly_full.loc[target_quarter] = q_value` set immediately before the call; SARIMA-completion failure `continue`s and skips the bridge entirely |
+| Production bridge (`_build_production_bridge`) | `indicators_ext.loc[target_quarter] = pg_nowcast` set immediately before the call |
+| Quarterly bridges (`_build_quarterly_bridges`) | Called only inside `if available and target_quarter in series.index`; otherwise `available = False` and the bridge is excluded from combination |
+
+So `target_quarter in indicators_nowcast.index` always holds when the contemporaneous
+value is read, and the indicator column is always populated. The `available` flag and
+the `_combine_bridges` filter (`available and np.isfinite(mse_oos) and mse_oos > 0`)
+together ensure that a bridge lacking target-quarter data is *excluded*, not zero-filled.
+
+**Reviewer note on NaN:** the upstream guards (SARIMA-failure skip; `pd.notna` in the
+availability detection) mean a NaN indicator does not normally survive to the
+combination on the standard path (target = next unpublished quarter). But an available
+bridge *can* still produce a NaN point estimate if a regressor is undefined at the
+target quarter — concretely, the labour bridges' HMA labour-productivity trend has no
+value when nowcasting a quarter beyond its support (e.g. forcing a target two quarters
+past the last published GDP). Such a bridge has a finite MSE and `available=True`, so it
+would otherwise be combined with full weight and poison the result (NaN). `_combine_bridges`
+therefore also requires `np.isfinite(nowcast_qoq)`: bridges with a non-finite nowcast are
+excluded (and logged), so the combination degrades gracefully to the remaining bridges.
+
 ---
 
 ## Combination
@@ -183,12 +228,31 @@ The general principle: **bridge equations degrade gracefully**, joint-covariance
 
 ## Uncertainty
 
-Bootstrap prediction intervals from pooled, weighted bridge residuals:
+Bootstrap prediction intervals via a **row-wise (block) bootstrap** over bridge residuals:
 
-1. Pool residuals from active bridges, scaled by their combination weights
-2. Resample with replacement (1000 draws)
-3. Add resampled residuals to the combined nowcast point estimate
+1. Align active bridges' residuals on the common window where every bridge has a value
+2. Each of the 1000 draws picks one quarter `t*` and sums every active bridge's residual **at that same quarter**, weighted: `Σ_i w_i · e_i(t*)`
+3. Add that combined residual draw to the combined nowcast point estimate
 4. Report 70% (15th-85th percentile) and 90% (5th-95th percentile) intervals
+
+### Why row-wise (preserving cross-bridge correlation)
+
+The combined error is `e_c = Σ_i w_i e_i`, a weighted sum over bridges that all predict
+the **same** GDP quarter, so the residuals `e_i` are positively correlated. An earlier
+version pooled all weighted residuals and drew each summand *independently*; that
+reproduces only the independent-sum variance `Σ_i w_i² Var(e_i)` and drops the positive
+covariance `2 Σ_{i<j} w_i w_j Cov(e_i, e_j)`, so the bands came out too tight. Drawing a
+whole quarter's residuals together keeps `Cov(e_i, e_j)` intact and widens the intervals
+to a properly-calibrated level.
+
+If a short-history bridge collapses the common window below `MIN_BOOTSTRAP_ROWS` (20
+quarters), the code falls back to the old independent pooled resample and logs a warning —
+in that case the bands again understate uncertainty.
+
+**Known residual gap (not yet addressed):** the bootstrap uses *in-sample* OLS residuals
+(`fit.resid`), which are smaller than genuine out-of-sample errors, and it ignores
+parameter-estimation uncertainty. Both push intervals narrower. Capturing them would need
+the per-quarter out-of-sample errors retained (only the scalar `mse_oos` is kept today).
 
 ---
 
@@ -225,9 +289,10 @@ The backtest reports RMSE, MAE, bias, direction accuracy, and 90% CI coverage at
 
 - **The bridge model is the best-performing of the three on RMSE** at T-0 — it beats the trailing-4-quarter naive benchmark, and beats both the DFM and the BVAR.
 - **Accuracy improves monotonically as the publication cycle progresses** (T-3m → T-2m → T-1m → T-0), which is the expected pattern when more information is genuinely available.
+- **The model only beats the naive benchmark once enough in-quarter hard data has landed — at T-0, with a near-tie at T-1m.** At T-3m and T-2m its RMSE is actually *worse* than just carrying the trailing-4-quarter average, because there is too little hard data in the target quarter for the bridges to add signal over persistence. **Treat T-3m/T-2m as indicative, not forecasts**; the nowcast earns its keep from ~1 month out. (The asymmetric early-horizon bias and the >naive RMSE are two faces of the same thing — extra variance, not extra signal.)
 - **NAB business conditions adds mid-cycle value**, lifting accuracy at T-2m and T-1m. At T-0 the effect is marginal because hard data dominates.
 - **The bridge framework degrades gracefully** when noisy indicators are added — inverse-MSE weighting automatically discounts them. This is in contrast to joint-covariance models (BVAR, DFM) where a single noisy indicator can corrupt the whole posterior.
-- **Bootstrap CIs tend to under-cover** the actual outturn — narrower than nominal coverage would suggest. This is a known limitation of the bootstrap approach (assumes residual exchangeability, ignores parameter uncertainty); the DFM's Kalman-derived intervals are wider but better calibrated.
+- **Bootstrap CI coverage is now close to nominal** after the row-wise bootstrap fix (see *Uncertainty*): 90% CI coverage runs ~94–100% across horizons and 70% CI coverage ~56–94% (lightest at T-3m). Earlier, the independent pooled resample dropped the cross-bridge residual correlation and the bands under-covered. Residual narrowing remains from using in-sample residuals and ignoring parameter uncertainty (noted under *Uncertainty*); coverage rates are coarse on the 16-quarter backtest (~6pts per quarter).
 - **Correlation with actual GDP is the lowest of the three models** despite the lowest RMSE. The bridge tends toward the historical mean more than the DFM or BVAR — its small RMSE is partly an artefact of GDP growth being moderately variable around a stable mean, not necessarily of accurately tracking turning points.
 
 ### Caveats

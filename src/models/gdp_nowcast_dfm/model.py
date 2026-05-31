@@ -44,12 +44,11 @@ Usage:
 
 import logging
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import mgplot as mg
 import numpy as np
 import pandas as pd
-import readabs as ra
 from statsmodels.tsa.statespace.dynamic_factor_mq import DynamicFactorMQ
 
 from src.data import (
@@ -155,19 +154,28 @@ class DataAvailability:
         monthly_indicators: dict[str, DataSeries],
         quarterly_indicators: dict[str, pd.Series],
         target_quarter: pd.Period,
-    ) -> "DataAvailability":
+    ) -> DataAvailability:
         """Detect availability from actual data."""
         avail = cls()
+        # Strict T-0: the nowcast uses no data beyond the target quarter, so cap each
+        # monthly cutoff at the target quarter's third month even when later (next-quarter)
+        # observations exist. This keeps the live information set identical to the
+        # backtest's T-0 (at_t_minus_0) and prevents the panel extending past the target.
+        q3_month = pd.Period(
+            year=target_quarter.year,
+            month=(target_quarter.quarter - 1) * 3 + 3,
+            freq="M",
+        )
         for name, ds in monthly_indicators.items():
             last = ds.data.dropna().index[-1]
-            setattr(avail, name, last)
+            setattr(avail, name, min(last, q3_month))
         for q_name, series in quarterly_indicators.items():
             available = target_quarter in series.index and pd.notna(series.loc[target_quarter])
             setattr(avail, q_name, available)
         return avail
 
     @classmethod
-    def at_t_minus_3m(cls, target_quarter: pd.Period) -> "DataAvailability":
+    def at_t_minus_3m(cls, target_quarter: pd.Period) -> DataAvailability:
         """~0 months of target quarter data available."""
         q_start_month = (target_quarter.quarter - 1) * 3 + 1
         q_year = target_quarter.year
@@ -178,7 +186,7 @@ class DataAvailability:
         return avail
 
     @classmethod
-    def at_t_minus_2m(cls, target_quarter: pd.Period) -> "DataAvailability":
+    def at_t_minus_2m(cls, target_quarter: pd.Period) -> DataAvailability:
         """~1 month of target quarter data available."""
         q_start_month = (target_quarter.quarter - 1) * 3 + 1
         q_year = target_quarter.year
@@ -189,7 +197,7 @@ class DataAvailability:
         return avail
 
     @classmethod
-    def at_t_minus_1m(cls, target_quarter: pd.Period) -> "DataAvailability":
+    def at_t_minus_1m(cls, target_quarter: pd.Period) -> DataAvailability:
         """~2 months of target quarter data available."""
         q_start_month = (target_quarter.quarter - 1) * 3 + 1
         q_year = target_quarter.year
@@ -200,7 +208,7 @@ class DataAvailability:
         return avail
 
     @classmethod
-    def at_t_minus_0(cls, target_quarter: pd.Period) -> "DataAvailability":
+    def at_t_minus_0(cls, target_quarter: pd.Period) -> DataAvailability:
         """All data available, just before GDP publication."""
         q_start_month = (target_quarter.quarter - 1) * 3 + 1
         q_year = target_quarter.year
@@ -448,13 +456,11 @@ def _fit_dfm(
         standardize=True,
     )
 
-    result = model.fit_em(maxiter=500, tolerance=1e-6, disp=False)
-
-    return result
+    return model.fit_em(maxiter=500, tolerance=1e-6, disp=False)
 
 
 def _extract_nowcast(
-    result,
+    result: DynamicFactorMQ,
     target_quarter: pd.Period,
     gdp: pd.Series,
 ) -> tuple[float, tuple[float, float], tuple[float, float]]:
@@ -477,19 +483,31 @@ def _extract_nowcast(
             raise RuntimeError(msg)
         gdp_col = gdp_cols[0]
 
-    # DynamicFactorMQ's prediction index labels are unreliable (statsmodels quirk
-    # with PeriodIndex). Use positional indexing: the LAST observation in the
-    # gdp_growth predictions corresponds to the last month of the model's data,
-    # which is the third month of the target quarter.
-    gdp_preds = pred_mean[gdp_col].dropna()
-    gdp_ses = pred_se[gdp_col].dropna()
-
-    if len(gdp_preds) == 0:
-        msg = "No GDP growth predictions available"
+    # The quarterly gdp_growth variable is carried on the model's MONTHLY index
+    # (Mariano-Murasawa mapping), and predicted_mean is defined at EVERY month: the value
+    # at a quarter's THIRD month is that quarter's growth estimate, while later months are
+    # rolling estimates that drift toward the NEXT quarter. So select the target quarter's
+    # third month by label. (The previous code used dropna().iloc[-1], which silently
+    # returns the wrong quarter whenever the monthly panel extends past the target quarter —
+    # the normal live T-0 case, where next-quarter monthly indicators have already arrived.)
+    q3_month = pd.Period(
+        year=target_quarter.year,
+        month=(target_quarter.quarter - 1) * 3 + 3,
+        freq="M",
+    )
+    gdp_pred = pred_mean[gdp_col]
+    if q3_month not in gdp_pred.index or pd.isna(gdp_pred.loc[q3_month]):
+        span = f"{gdp_pred.index[0]}..{gdp_pred.index[-1]}" if len(gdp_pred.index) else "empty"
+        msg = (
+            f"DFM nowcast: no gdp_growth prediction at the target quarter's third month "
+            f"{q3_month} (target {target_quarter}); prediction index spans {span}. "
+            f"statsmodels may have changed its prediction indexing."
+        )
         raise RuntimeError(msg)
 
-    nowcast_qoq = float(gdp_preds.iloc[-1])
-    se = float(gdp_ses.iloc[-1]) if len(gdp_ses) > 0 else np.nan
+    nowcast_qoq = float(gdp_pred.loc[q3_month])
+    gdp_se = pred_se[gdp_col]
+    se = float(gdp_se.loc[q3_month]) if q3_month in gdp_se.index else np.nan
 
     # Compute prediction intervals
     if np.isfinite(se) and se > 0:
@@ -508,6 +526,29 @@ def _extract_nowcast(
 
 
 # --- Core nowcast ---
+
+
+def _resolve_inputs(
+    target_quarter: pd.Period | None,
+    availability: DataAvailability | None,
+    gdp: pd.Series | None,
+    monthly_indicators: dict[str, DataSeries] | None,
+    quarterly_indicators: dict[str, pd.Series] | None,
+) -> tuple[pd.Period, DataAvailability, pd.Series, dict[str, DataSeries], dict[str, pd.Series]]:
+    """Fill in any inputs left as None: fetch data, detect the target quarter, derive availability."""
+    if gdp is None:
+        gdp = get_gdp(gdp_type="CVM", seasonal="SA").data.dropna()
+    if target_quarter is None:
+        target_quarter = detect_target_quarter(gdp)
+    if monthly_indicators is None:
+        monthly_indicators = _load_monthly_indicators()
+    if quarterly_indicators is None:
+        quarterly_indicators = _load_quarterly_indicators()
+    if availability is None:
+        availability = DataAvailability.from_live_data(
+            monthly_indicators, quarterly_indicators, target_quarter,
+        )
+    return target_quarter, availability, gdp, monthly_indicators, quarterly_indicators
 
 
 def nowcast(
@@ -534,27 +575,15 @@ def nowcast(
 
     Returns:
         NowcastResult with point estimates, intervals, and diagnostics.
-    """
-    # 1. Load data
-    if gdp is None:
-        gdp = get_gdp(gdp_type="CVM", seasonal="SA").data.dropna()
 
-    if target_quarter is None:
-        target_quarter = detect_target_quarter(gdp)
+    """
+    # 1. Resolve inputs (fetch data / detect target quarter / derive availability as needed)
+    target_quarter, availability, gdp, monthly_indicators, quarterly_indicators = _resolve_inputs(
+        target_quarter, availability, gdp, monthly_indicators, quarterly_indicators,
+    )
 
     gdp_truncated = gdp.loc[gdp.index < target_quarter]
     gdp_growth = compute_gdp_growth(gdp_truncated)
-
-    if monthly_indicators is None:
-        monthly_indicators = _load_monthly_indicators()
-    if quarterly_indicators is None:
-        quarterly_indicators = _load_quarterly_indicators()
-
-    # 2. Determine availability
-    if availability is None:
-        availability = DataAvailability.from_live_data(
-            monthly_indicators, quarterly_indicators, target_quarter,
-        )
 
     data_status = availability.monthly_status(target_quarter)
 

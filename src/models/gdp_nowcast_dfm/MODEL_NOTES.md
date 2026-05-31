@@ -136,15 +136,17 @@ The DFM handles the **ragged edge** natively — different indicators have diffe
 
 ## Ragged Edge Handling
 
-A key advantage of the DFM over the bridge model is how it handles the ragged edge. The model panel is constructed to extend up to **month 3 of the target quarter** (with NaN for any missing observations). The Kalman filter then:
+A key advantage of the DFM over the bridge model is how it handles the ragged edge. The model panel is constructed to extend to **at least month 3 of the target quarter** — and in a live run it extends *further*, because faster monthly indicators have already reported for the next quarter (with NaN for any missing observations). The Kalman filter then:
 
 1. **Filters forward**: Updates the factor estimates as each indicator's observations arrive
 2. **Smooths backward**: Refines historical factor estimates using all available data
 3. **Forecasts missing values**: Uses the factor dynamics + observation loadings to fill in NaN gaps
 
-The GDP growth nowcast for the target quarter is the smoothed estimate at the third month of the target quarter — even though the observed GDP value is NaN, the Kalman filter has inferred it from the common factor.
+The GDP growth nowcast for the target quarter is the smoothed estimate **at the third month of the target quarter** — even though the observed GDP value is NaN, the Kalman filter has inferred it from the common factor. This month must be selected **by label**, not as the last row of the prediction: `predicted_mean` is defined at every month, and the values *after* the target quarter's third month are rolling estimates that drift toward the next quarter.
 
 This is more elegant than the bridge model's two-stage approach (SARIMA-complete monthly indicators → aggregate to quarterly → run bridge regressions → combine). The DFM does all of this in one joint estimation step.
+
+> **Correction (2026-05-31): live nowcast was extracting the wrong month.** `_extract_nowcast` previously took `predicted_mean["gdp_growth"].dropna().iloc[-1]` — the *last* monthly prediction. That is correct only when the panel ends exactly at the target quarter's third month, which holds in the **backtest** (availability is truncated via the `at_t_minus_*` factory methods) but **not in live runs**: at T-0 the faster monthly indicators have already reported into the next quarter, so the panel — and the predictions — extend past month 3, and `iloc[-1]` returned a value drifting toward the *following* quarter. The code now selects the target quarter's third month by explicit label and raises if it is absent. Impact: **live point nowcasts were biased** toward whatever the latest monthly data implied (e.g. the 2026Q1 live nowcast moved from +0.87% to the correct +0.69% once fixed). **Backtest results are unaffected** — the truncated availability meant the panel ended at month 3, so `iloc[-1]` had coincided with the correct month there — and all empirical-performance numbers below remain valid.
 
 ---
 

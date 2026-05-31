@@ -86,6 +86,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="statsmodels")
 
 CHART_DIR = "./charts/GDP-Nowcast-Bridge/"
 N_BOOTSTRAP = 1000
+MIN_BOOTSTRAP_ROWS = 20  # min common-window quarters for the row-wise (correlated) bootstrap
 COVID_START = "2020Q1"
 COVID_END = "2021Q1"
 SHOW = False
@@ -180,9 +181,18 @@ class DataAvailability:
     ) -> DataAvailability:
         """Detect availability from actual data."""
         avail = cls()
+        # Strict T-0: the nowcast uses no data beyond the target quarter, so cap each
+        # monthly cutoff at the target quarter's third month even when later (next-quarter)
+        # observations exist. (No-op for the bridge — SARIMA completion reads the target
+        # quarter's own months by label — but kept consistent with the DFM and defensive.)
+        q3_month = pd.Period(
+            year=target_quarter.year,
+            month=(target_quarter.quarter - 1) * 3 + 3,
+            freq="M",
+        )
         for name, ds in monthly_indicators.items():
             last = ds.data.dropna().index[-1]
-            setattr(avail, name, last)
+            setattr(avail, name, min(last, q3_month))
 
         # Check quarterly indicators
         for q_name, series in quarterly_indicators.items():
@@ -514,10 +524,16 @@ def _bridge_nowcast(
     else:
         row["gdp_growth_L1"] = gdp_growth.iloc[-1]
 
-    row["covid"] = 1.0 if COVID_START <= str(target_quarter) <= COVID_END else 0.0
+    # Period comparison, matching _add_covid_dummy's convention (not string comparison).
+    row["covid"] = 1.0 if pd.Period(COVID_START) <= target_quarter <= pd.Period(COVID_END) else 0.0
     row["const"] = 1.0
 
     X_new = pd.DataFrame([row])
+    # Zero-fill supplies only structural terms (const, and the _L1 lag when the
+    # target quarter is the first observation). The contemporaneous indicator is
+    # never zero-filled: every caller guarantees target_quarter is in the index
+    # before calling, so `row[col]` above is always populated. See MODEL_NOTES.md,
+    # "Building the nowcast regressor row (and why the zero-fill is safe)".
     for col in bridge.coefficients.index:
         if col not in X_new.columns:
             X_new[col] = 0.0
@@ -896,7 +912,20 @@ def _combine_bridges(
     bridges: list[BridgeResult],
 ) -> tuple[float, dict[str, float]]:
     """Combine bridge nowcasts using inverse-MSE weights."""
-    active = [b for b in bridges if b.available and np.isfinite(b.mse_oos) and b.mse_oos > 0]
+    def weightable(b: BridgeResult) -> bool:
+        return b.available and np.isfinite(b.mse_oos) and b.mse_oos > 0
+
+    # Also require a finite point estimate: an available bridge can still produce a NaN
+    # nowcast if a regressor is undefined at the target quarter (e.g. the labour bridges'
+    # HMA labour-productivity trend when nowcasting a quarter beyond its support). Such a
+    # bridge would otherwise be included with full weight and poison the combination.
+    active = [b for b in bridges if weightable(b) and np.isfinite(b.nowcast_qoq)]
+    dropped = [b.name for b in bridges if weightable(b) and not np.isfinite(b.nowcast_qoq)]
+    if dropped:
+        logger.warning(
+            "Excluded %d bridge(s) with non-finite nowcast from the combination: %s",
+            len(dropped), ", ".join(dropped),
+        )
 
     if not active:
         msg = "No active bridges available for combination"
@@ -916,24 +945,44 @@ def _bootstrap_intervals(
     weights: dict[str, float],
     n_bootstrap: int = N_BOOTSTRAP,
 ) -> tuple[tuple[float, float], tuple[float, float]]:
-    """Bootstrap prediction intervals from bridge residuals."""
+    """Bootstrap prediction intervals from bridge residuals.
+
+    The combined nowcast error is e_c = Σ_i w_i e_i, a weighted sum over bridges that
+    all predict the SAME GDP quarter — so the per-bridge residuals e_i are positively
+    correlated. We use a row-wise (block) bootstrap: each draw picks one quarter t* and
+    sums every active bridge's residual AT THAT SAME QUARTER, Σ_i w_i e_i(t*). This keeps
+    Cov(e_i, e_j) intact, unlike an independent pooled resample which reproduces only
+    Σ_i w_i² Var(e_i) and drops the (positive) covariance term, yielding too-narrow bands.
+    """
     active = [b for b in bridges if b.name in weights]
-
-    pooled_residuals = []
-    for bridge in active:
-        w = weights[bridge.name]
-        pooled_residuals.extend((bridge.residuals * w).tolist())
-
-    pooled_residuals = np.array(pooled_residuals)
-    pooled_residuals = pooled_residuals[np.isfinite(pooled_residuals)]
-
     combined_nowcast = sum(b.nowcast_qoq * weights[b.name] for b in active)
 
     rng = np.random.default_rng(42)
-    bootstrap_draws = np.array([
-        combined_nowcast + rng.choice(pooled_residuals, size=len(active)).sum()
-        for _ in range(n_bootstrap)
-    ])
+
+    # Align residuals on the common window where every active bridge has a value, so each
+    # bootstrap row is one real quarter with the bridges' co-movement preserved.
+    resid_df = pd.DataFrame({b.name: b.residuals for b in active}).dropna(how="any")
+
+    if len(resid_df) >= MIN_BOOTSTRAP_ROWS:
+        w = np.array([weights[b.name] for b in active])  # ordered to match resid_df columns
+        residual_matrix = resid_df[[b.name for b in active]].to_numpy()
+        idx = rng.integers(0, len(residual_matrix), size=n_bootstrap)
+        bootstrap_draws = combined_nowcast + residual_matrix[idx] @ w
+    else:
+        # Thin overlap (a short-history bridge collapses the common window): fall back to
+        # the independent pooled resample. Correlation is NOT captured, so these bands
+        # understate uncertainty — warn so it is visible in the run log.
+        logger.warning(
+            "Bootstrap: only %d common-window quarters across %d active bridges "
+            "(< %d); falling back to independent pooled resample (intervals too narrow).",
+            len(resid_df), len(active), MIN_BOOTSTRAP_ROWS,
+        )
+        pooled = np.concatenate([(b.residuals * weights[b.name]).to_numpy() for b in active])
+        pooled = pooled[np.isfinite(pooled)]
+        bootstrap_draws = np.array([
+            combined_nowcast + rng.choice(pooled, size=len(active)).sum()
+            for _ in range(n_bootstrap)
+        ])
 
     ci_70 = (float(np.percentile(bootstrap_draws, 15)), float(np.percentile(bootstrap_draws, 85)))
     ci_90 = (float(np.percentile(bootstrap_draws, 5)), float(np.percentile(bootstrap_draws, 95)))

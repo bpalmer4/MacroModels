@@ -24,12 +24,24 @@ def compute_tty(qoq: float, gdp: pd.Series, target_quarter: pd.Period) -> float:
 
     Rolls the last published GDP level forward by the Q/Q nowcast, then compares
     it to the level four quarters earlier: ``(GDP_T / GDP_{T-4} - 1) × 100``.
+
+    Both reference levels are selected by LABEL (``target_quarter - 1`` and
+    ``target_quarter - 4``), not by position. Callers pass a GDP series ending at
+    ``target_quarter - 1`` (the next-unpublished-quarter invariant), so positional
+    ``iloc[-1]`` / ``iloc[-4]`` coincide today — but they would silently return the
+    wrong quarter if the series ever extended past the target. Fail loudly instead if
+    the required quarters are absent.
     """
-    last_gdp_level = gdp.iloc[-1]
-    projected = last_gdp_level * np.exp(qoq / 100)
+    prev_q = target_quarter - 1
     q_minus_4 = target_quarter - 4
-    gdp_4q_ago = gdp.loc[q_minus_4] if q_minus_4 in gdp.index else gdp.iloc[-4]
-    return float((projected / gdp_4q_ago - 1) * 100)
+    if prev_q not in gdp.index or q_minus_4 not in gdp.index:
+        msg = (
+            f"compute_tty: GDP series missing required quarters for target {target_quarter} "
+            f"(need {prev_q} and {q_minus_4}; index spans {gdp.index[0]}..{gdp.index[-1]})."
+        )
+        raise KeyError(msg)
+    projected = gdp.loc[prev_q] * np.exp(qoq / 100)
+    return float((projected / gdp.loc[q_minus_4] - 1) * 100)
 
 
 def compute_gdp_growth(gdp: pd.Series) -> pd.Series:

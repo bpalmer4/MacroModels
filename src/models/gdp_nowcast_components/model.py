@@ -219,7 +219,17 @@ def _contribute(asof: AsOf) -> tuple[dict[str, float], float, float]:
     """
     t = asof.target
     prev = t - 1
-    gdp_tm1 = float(asof.gdp[prev]) if prev in asof.gdp.index else float(asof.gdp.iloc[-1])
+    # Select the prior quarter's GDP level by LABEL (the contribution denominator). The
+    # previous `else asof.gdp.iloc[-1]` fallback would silently return the wrong period if
+    # prev were ever absent or the series extended past target; prev == last-published by
+    # construction, so it is always present — fail loudly if that invariant ever breaks.
+    if prev not in asof.gdp.index:
+        msg = (
+            f"components: GDP series missing prior quarter {prev} for target {t} "
+            f"(index ends at {asof.gdp.index[-1]})."
+        )
+        raise KeyError(msg)
+    gdp_tm1 = float(asof.gdp[prev])
 
     # Accounting-exact components (direct from real $m levels).
     gov_c = _level_contribution(asof.gov_c, t, gdp_tm1)
