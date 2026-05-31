@@ -571,6 +571,72 @@ def plot_average_vs_nowcast(result: NowcastResult) -> None:
     )
 
 
+def plot_input_distributions(result: NowcastResult) -> None:
+    """Boxplots of each input's published-contribution distribution vs the nowcast.
+
+    One horizontal box per stack component (statistical discrepancy included),
+    summarising the published-contribution distribution over the same trailing
+    ``_AVG_WINDOW_YEARS``-year window as the benchmark chart's 30-year average bar
+    — a contemporaneous economy, free of the high-inflation 1970s–80s volatility.
+    A diamond overlays the current nowcast value so it reads at a glance whether
+    each input sits inside or outside its normal range. COVID-era extremes fall
+    outside the whiskers and are suppressed, keeping the boxes robust. Same stack
+    colours, headers and footers as the contributions charts. mgplot has no
+    boxplot, so this layers matplotlib and finalises through mgplot.
+    """
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+
+    pub = result.pub.tail(_AVG_WINDOW_YEARS * 4)  # trailing 30 years, matching the benchmark bar
+    identity = list(_COMPONENT_PUB.values())
+
+    # Published-contribution distribution per component over the window, with the
+    # statistical discrepancy as published GDP minus the identity stack.
+    history = {name: pub[col].dropna() for name, col in _COMPONENT_PUB.items()}
+    history["Statistical discrepancy"] = (pub["gdp"] - pub[identity].sum(axis=1)).dropna()
+
+    # Central nowcast value per component (discrepancy is zeroed in the nowcast).
+    now = {name: (0.0 if np.isnan(result.contributions[name]) else result.contributions[name])
+           for name, _ in _STACK}
+
+    names = [name for name, _ in _STACK]
+    colours = dict(_STACK)
+    ypos = list(range(len(names) - 1, -1, -1))  # first component on top
+
+    _fig, ax = plt.subplots(figsize=(9, 5.5))
+    bp = ax.boxplot(
+        [history[name].to_numpy() for name in names],
+        positions=ypos, orientation="horizontal", widths=0.6,
+        patch_artist=True, showfliers=False, zorder=2,
+    )
+    for patch, name in zip(bp["boxes"], names, strict=True):
+        patch.set_facecolor(colours[name])
+        patch.set_alpha(0.75)
+    for median in bp["medians"]:
+        median.set_color("black")
+
+    for y, name in zip(ypos, names, strict=True):
+        ax.plot(now[name], y, marker="D", color="black", markeredgecolor="white",
+                markersize=8, linestyle="none", zorder=4,
+                label=f"Nowcast {result.target}" if y == ypos[0] else None)
+
+    ax.set_yticks(ypos)
+    ax.set_yticklabels([_split_label(name) for name in names])
+
+    mg.finalise_plot(
+        ax,
+        title=f"Input Distribution Boxplots vs Nowcast {result.target}",
+        xlabel="Percentage points (q/q)",
+        axvline={"x": 0, "color": "black", "linewidth": 0.6},
+        legend={"loc": "best", "fontsize": 8},
+        lheader=_pending_header(result),
+        rheader=f"Statistical discrepancy zeroed in nowcast, σ={result.disc_sigma:.2f}ppt",
+        rfooter="ABS 5206.0 + sources",
+        lfooter=(f"Australia. SA. CVM. Boxes = {_AVG_WINDOW_YEARS}-year published-contribution "
+                 f"history (COVID extremes suppressed). Diamond = nowcast. "),
+        show=SHOW,
+    )
+
+
 def run_nowcast() -> NowcastResult:
     """Live entry point: nowcast the next quarter, print the table, draw the charts."""
     result = nowcast()
@@ -580,6 +646,7 @@ def run_nowcast() -> NowcastResult:
     plot_contributions(result)
     plot_component_contributions(result)
     plot_average_vs_nowcast(result)
+    plot_input_distributions(result)
     plot_nowcast_charts(NowcastChartSpec(
         model_label="Components",
         target_quarter=result.target,
