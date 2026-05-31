@@ -2,7 +2,7 @@
 
 Nowcasts quarter-on-quarter GDP growth as the sum of expenditure components'
 contributions to growth, each read from its own source release the day before
-the National Accounts (T-1):
+the National Accounts (T-0):
 
     GDP growth (ppt) =  Household consumption  +  Government consumption
                      +  Investment (GFCF, private + public)
@@ -12,10 +12,16 @@ Four pieces are *accounting-exact* — real $m CVM levels that map straight onto
 the GDP identity (government consumption & GFCF from GFS Table 15; inventories
 from 5676.0; net exports from 5302.0). Two are *bridged* from indicators that
 only partially cover their NA aggregate (household consumption from the 5682.0
-CVM index; private GFCF from 5625.0 capex + 8755.0 construction) via a small OLS
-fitted on the ABS-published contribution history. The statistical discrepancy —
+CVM Quarterly Household Spending index; private GFCF from 5625.0 capex + 8755.0
+construction) via a small OLS fitted on the ABS-published contribution history.
+The statistical discrepancy —
 the residual that makes the components sum exactly to headline GDP — is unknown
-at T-1; it is zero in the central nowcast and sized into the uncertainty band.
+at T-0; it is zero in the central nowcast and sized into the uncertainty band.
+
+T-0 is the run timing — the complete information set the day before GDP is
+published, matching the sibling nowcast models' month-indexed cycle (T-3m … T-0).
+Inside the contribution formulas, T instead indexes the *target quarter* and T-1
+its predecessor (e.g. ``GDP_{T-1}`` is the last published quarter).
 
 The contribution math is a single as-of-parameterised path (:func:`_contribute`)
 shared by the live run and the backtest, so there is exactly one place where a
@@ -35,6 +41,8 @@ import mgplot as mg
 import numpy as np
 import pandas as pd
 
+from src.models.common.nowcast_charts import NowcastChartSpec, plot_nowcast_charts
+from src.models.common.nowcast_core import compute_tty, detect_target_quarter
 from src.models.gdp_nowcast_components import data as cd
 
 logger = logging.getLogger(__name__)
@@ -45,14 +53,14 @@ SHOW = False
 
 # Chart stack order, names, and colours. GFCF is split into private (bridged,
 # the noisy AI-capex-driven piece) and public (GFS, accounting-exact) so their
-# very different T-1 reliability is legible.
+# very different T-0 reliability is legible.
 _STACK = [
     ("Household consumption", "skyblue"),
     ("Government consumption", "lightgreen"),
     ("Private investment", "lightcoral"),
     ("Public investment", "firebrick"),
     ("Inventories", "orchid"),
-    ("Net exports", "orange"),
+    ("Net exports", "gold"),
     ("Statistical discrepancy", "silver"),
 ]
 
@@ -115,8 +123,13 @@ class NowcastResult:
     private_gfcf: float              # GFCF split (private), ppt
     public_gfcf: float               # GFCF split (public), ppt
     disc_sigma: float                # std of the statistical-discrepancy contribution (ppt)
-    band_70: float
+    band_70: float                   # symmetric ±band on the Q/Q nowcast (ppt)
     band_90: float
+    gdp_tty: float                   # through-the-year (annual) growth implied by the Q/Q nowcast
+    gdp_qoq_70: tuple[float, float]  # Q/Q 70% interval (gdp_qoq ∓ band_70)
+    gdp_qoq_90: tuple[float, float]  # Q/Q 90% interval
+    gdp_tty_70: tuple[float, float]  # annual 70% interval (Q/Q bounds rolled through compute_tty)
+    gdp_tty_90: tuple[float, float]  # annual 90% interval
     pub: pd.DataFrame = field(repr=False, default_factory=pd.DataFrame)
 
 
@@ -247,10 +260,12 @@ def _nan_sum(*xs: float) -> float:
 def _build_live(target_quarter: pd.Period | None) -> AsOf:
     """Assemble the live (latest-vintage) as-of set, with the re-referencing guard."""
     gdp = cd.gdp_level()
-    target = target_quarter if target_quarter is not None else gdp.index[-1] + 1
+    target = target_quarter if target_quarter is not None else detect_target_quarter(gdp)
 
-    # Accounting-exact source levels, each down-weighted onto the GDP vintage's
-    # basis if the September re-referencing straddle is active (else factor 1).
+    # Inventories and net exports take the re-referencing guard (down-weighted
+    # onto the GDP vintage's basis when the September straddle is active, else
+    # factor 1). Government levels come from GFS on their own basis, so the guard
+    # doesn't apply to them.
     return AsOf(
         target=target,
         gdp=gdp,
@@ -275,7 +290,7 @@ def build_asof(target: pd.Period, *, live_vintage: bool = False) -> AsOf:
     point-in-time household snapshot fetched via ``history=`` for ``target``.
     """
     prev = target - 1
-    hh_hist = cd.month_tag(target) if live_vintage else cd.month_tag(cd.gdp_level().index[-1] + 1)
+    hh_hist = cd.month_tag(target) if live_vintage else cd.month_tag(detect_target_quarter(cd.gdp_level()))
     hh = cd.household_spending_cvm_level(hh_hist)
     return AsOf(
         target=target,
@@ -319,6 +334,18 @@ def nowcast(target_quarter: pd.Period | None = None) -> NowcastResult:
     contributions, priv_gfcf, pub_gfcf = _contribute(asof)
     gdp_qoq = _nan_sum(*(v for k, v in contributions.items() if k != "Statistical discrepancy"))
     sigma = _discrepancy_sigma(asof.pub)
+    band_70, band_90 = 1.04 * sigma, 1.645 * sigma
+
+    # Re-express the central Q/Q nowcast and its symmetric band as annual (TTY)
+    # growth, using the same Q/Q→annual roll-forward as the sibling models.
+    tty = compute_tty(gdp_qoq, asof.gdp, asof.target)
+    qoq_70 = (gdp_qoq - band_70, gdp_qoq + band_70)
+    qoq_90 = (gdp_qoq - band_90, gdp_qoq + band_90)
+    tty_70 = (compute_tty(qoq_70[0], asof.gdp, asof.target),
+              compute_tty(qoq_70[1], asof.gdp, asof.target))
+    tty_90 = (compute_tty(qoq_90[0], asof.gdp, asof.target),
+              compute_tty(qoq_90[1], asof.gdp, asof.target))
+
     return NowcastResult(
         target=asof.target,
         contributions=contributions,
@@ -326,8 +353,13 @@ def nowcast(target_quarter: pd.Period | None = None) -> NowcastResult:
         private_gfcf=priv_gfcf,
         public_gfcf=pub_gfcf,
         disc_sigma=sigma,
-        band_70=1.04 * sigma,
-        band_90=1.645 * sigma,
+        band_70=band_70,
+        band_90=band_90,
+        gdp_tty=tty,
+        gdp_qoq_70=qoq_70,
+        gdp_qoq_90=qoq_90,
+        gdp_tty_70=tty_70,
+        gdp_tty_90=tty_90,
         pub=asof.pub,
     )
 
@@ -335,11 +367,22 @@ def nowcast(target_quarter: pd.Period | None = None) -> NowcastResult:
 # --- Output: text + chart ------------------------------------------------------
 
 
+def _pending_components(result: NowcastResult) -> list[str]:
+    """Identity components not yet released for the nowcast (statistical discrepancy excluded)."""
+    return [name for name, _ in _STACK
+            if name != "Statistical discrepancy" and np.isnan(result.contributions[name])]
+
+
+def _pending_header(result: NowcastResult) -> str:
+    """Chart lheader listing the components still awaiting release."""
+    pending = _pending_components(result)
+    return f"Still pending: {', '.join(pending)}" if pending else "All component sources in"
+
+
 def print_summary(result: NowcastResult) -> None:
     """Print the per-component contributions and the summed nowcast."""
     t = result.target
-    pending = [k for k, v in result.contributions.items()
-               if k != "Statistical discrepancy" and np.isnan(v)]
+    pending = _pending_components(result)
     print(f"\nComponents GDP nowcast — {t} (q/q, CVM, seasonally adjusted)")
     print("=" * 64)
     for name, _ in _STACK:
@@ -350,8 +393,11 @@ def print_summary(result: NowcastResult) -> None:
         print(f"  {name:<26} {shown}")
     print("-" * 64)
     status = "PARTIAL — sources pending" if pending else "complete (all sources in)"
-    print(f"  {'GDP growth (nowcast)':<26} {result.gdp_qoq:+6.2f} %   [{status}]")
+    print(f"  {'GDP growth Q/Q (nowcast)':<26} {result.gdp_qoq:+6.2f} %   [{status}]")
     print(f"  {'70% band':<26} ±{result.band_70:.2f} ppt   90% band ±{result.band_90:.2f} ppt")
+    print(f"  {'GDP growth TTY (annual)':<26} {result.gdp_tty:+6.2f} %")
+    print(f"  {'70% interval':<26} [{result.gdp_tty_70[0]:+.2f}%, {result.gdp_tty_70[1]:+.2f}%]   "
+          f"90% [{result.gdp_tty_90[0]:+.2f}%, {result.gdp_tty_90[1]:+.2f}%]")
     if pending:
         print(f"  Not yet released: {', '.join(pending)}.")
     print("  Statistical discrepancy assumed 0 in the central nowcast.\n")
@@ -394,16 +440,17 @@ def plot_contributions(result: NowcastResult) -> None:
     forecast_pos = result.target.ordinal  # mgplot positions bars by Period ordinal
     mg.finalise_plot(
         ax,
-        title="Contributions to Quarterly GDP Growth",
+        title=f"Contributions to Quarterly GDP Growth — Nowcast {result.target}",
         ylabel="Percentage points (q/q)",
         y0=True,
         legend={"loc": "best", "fontsize": 8, "ncol": 4},
         axvspan={"xmin": forecast_pos - 0.5, "xmax": forecast_pos + 0.5,
                  "color": "goldenrod", "alpha": 0.25, "zorder": 0},
+        lheader=_pending_header(result),
         rheader=f"Statistical discrepancy zeroed in nowcast, σ={result.disc_sigma:.2f}ppt",
         rfooter="ABS 5206.0/5519.0/5676.0/5302.0/5682.0/5625.0/8755.0",
         lfooter=(
-            f"Australia. SA. CVM. Final bar = T-1 components nowcast for {result.target} "
+            f"Australia. SA. CVM. Final bar = T-0 components nowcast for {result.target} "
             f"({result.gdp_qoq:+.2f}%). Dots = GDP growth. "
         ),
         show=SHOW,
@@ -440,6 +487,90 @@ def plot_component_contributions(result: NowcastResult) -> None:
         )
 
 
+_AVG_WINDOW_YEARS = 30  # rolling look-back window for one "normal" benchmark
+_PRE_COVID = (pd.Period("2000Q1", "Q-DEC"), pd.Period("2019Q4", "Q-DEC"))  # the other "normal"
+
+
+def _split_label(label: str) -> str:
+    """Break a label onto two lines at the space nearest its middle (for axis ticks)."""
+    spaces = [i for i, ch in enumerate(label) if ch == " "]
+    if not spaces:
+        return label
+    i = min(spaces, key=lambda j: abs(j - len(label) / 2))
+    return f"{label[:i]}\n{label[i + 1:]}"
+
+
+def plot_average_vs_nowcast(result: NowcastResult) -> None:
+    """Horizontal stacked bars: two definitions of "normal" vs the nowcast.
+
+    Three bars, top to bottom — the mean published contribution of each component
+    over (1) the last ``_AVG_WINDOW_YEARS`` years and (2) the pre-COVID 2000–2019
+    window, then (3) the nowcast quarter. Same stack colours as the contributions
+    chart; a black dot marks each bar's net (GDP growth). mgplot has no horizontal
+    stacked bar, so this layers matplotlib ``barh`` and finalises through mgplot.
+    """
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+
+    pub = result.pub
+    n = _AVG_WINDOW_YEARS * 4
+    identity = list(_COMPONENT_PUB.values())
+    pre_covid = (pub.index >= _PRE_COVID[0]) & (pub.index <= _PRE_COVID[1])
+
+    def window_avg(frame: pd.DataFrame) -> dict[str, float]:
+        """Mean contribution per component over the rows of ``frame``."""
+        out = {name: float(frame[col].mean()) for name, col in _COMPONENT_PUB.items()}
+        out["Statistical discrepancy"] = float((frame["gdp"] - frame[identity].sum(axis=1)).mean())
+        return out
+
+    avg_30 = window_avg(pub.tail(n))
+    avg_pc = window_avg(pub[pre_covid])
+    now = {name: (0.0 if np.isnan(result.contributions[name]) else result.contributions[name])
+           for name, _ in _STACK}
+    bars = [
+        (f"{_AVG_WINDOW_YEARS}-year average", avg_30),
+        (f"{_PRE_COVID[0].year}–{_PRE_COVID[1].year} average", avg_pc),
+        (f"Nowcast {result.target}", now),
+    ]
+
+    _fig, ax = plt.subplots(figsize=(9, 5.5))
+    ypos = list(range(len(bars) - 1, -1, -1))  # first bar on top
+    top = ypos[0]
+    data_min = data_max = 0.0
+    for y, (_label, comps) in zip(ypos, bars, strict=True):
+        pos = neg = 0.0
+        for name, colour in _STACK:
+            v = comps[name]
+            left = pos if v >= 0 else neg
+            ax.barh(y, v, height=0.6, left=left, color=colour, zorder=2,
+                    label=name if y == top else None)
+            pos, neg = (pos + v, neg) if v >= 0 else (pos, neg + v)
+        data_min, data_max = min(data_min, neg), max(data_max, pos)
+        ax.plot(sum(comps.values()), y, "o", color="black", markersize=6, zorder=3,
+                label="GDP growth" if y == top else None)
+
+    ax.set_yticks(ypos)
+    ax.set_yticklabels([_split_label(label) for label, _ in bars])
+    pad = 0.01 * (data_max - data_min)  # 1% breathing room at each end
+
+    mg.finalise_plot(
+        ax,
+        title=f"Contributions to GDP Growth: Two Benchmarks vs Nowcast {result.target}",
+        xlabel="Percentage points (q/q)",
+        ylim=(-0.5, top + 1.1),  # reserve a band above the top bar for the legend (inside axes)
+        xlim=(data_min - pad, data_max + pad),
+        axvline={"x": 0, "color": "black", "linewidth": 0.6},
+        axhspan={"ymin": ypos[-1] - 0.5, "ymax": ypos[-1] + 0.5,  # goldenrod backdrop on the nowcast row
+                 "color": "goldenrod", "alpha": 0.25, "zorder": 0},
+        legend={"loc": "upper center", "ncol": 4, "fontsize": 8},
+        lheader=_pending_header(result),
+        rheader=f"Statistical discrepancy zeroed in nowcast, σ={result.disc_sigma:.2f}ppt",
+        rfooter="ABS 5206.0 + component sources",
+        lfooter=(f"Australia. SA. CVM. Averages = mean published contribution "
+                 f"(30-year rolling; {_PRE_COVID[0].year}–{_PRE_COVID[1].year}). Dot = GDP growth. "),
+        show=SHOW,
+    )
+
+
 def run_nowcast() -> NowcastResult:
     """Live entry point: nowcast the next quarter, print the table, draw the charts."""
     result = nowcast()
@@ -448,6 +579,23 @@ def run_nowcast() -> NowcastResult:
     mg.clear_chart_dir()
     plot_contributions(result)
     plot_component_contributions(result)
+    plot_average_vs_nowcast(result)
+    plot_nowcast_charts(NowcastChartSpec(
+        model_label="Components",
+        target_quarter=result.target,
+        gdp=cd.gdp_level(),
+        gdp_qoq=result.gdp_qoq,
+        gdp_tty=result.gdp_tty,
+        gdp_qoq_70=result.gdp_qoq_70,
+        gdp_qoq_90=result.gdp_qoq_90,
+        gdp_tty_70=result.gdp_tty_70,
+        gdp_tty_90=result.gdp_tty_90,
+        accent="goldenrod",
+        show=SHOW,
+    ))
+    # Eight estimate-vs-NA scatter checks, drawn into the chart dir set above.
+    from src.models.gdp_nowcast_components import diagnostics  # noqa: PLC0415
+    diagnostics.plot_all_checks()
     return result
 
 

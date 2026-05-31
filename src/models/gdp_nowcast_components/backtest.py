@@ -51,7 +51,7 @@ def run_backtest(start: str = "2015Q1", end: str | None = None, gov_fallback: bo
     ``gov_fallback`` (default True) substitutes the ABS-published government
     consumption / public-GFCF contribution for quarters before the GFS workbook's
     Table 15 history reaches (currently 2022Q4). Government is accounting-exact at
-    T-1, so this is a faithful stand-in that unlocks the long household / GFCF /
+    T-0, so this is a faithful stand-in that unlocks the long household / GFCF /
     inventories evaluation window. Affected quarters are flagged ``gov_source``.
     """
     pub = cd.published_contributions()

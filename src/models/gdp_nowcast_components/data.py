@@ -3,9 +3,9 @@
 Every series returned here is a quarterly ``pd.Series`` on a ``Q-DEC``
 ``PeriodIndex``. The model assembles a GDP nowcast as the sum of expenditure
 components' contributions to quarter-on-quarter growth, each read the day before
-the National Accounts (T-1) from its source release:
+the National Accounts (T-0) from its source release:
 
-    Component             Source @ T-1                     Form
+    Component             Source @ T-0                     Form
     --------------------- -------------------------------- --------------------
     Household consumption 5682.0 t.5682015 (CVM index)     bridged
     Govt consumption      GFS Table 15 (CVM $m)            accounting-exact
@@ -114,7 +114,7 @@ def published_contributions() -> pd.DataFrame:
     return df.sort_index()
 
 
-# --- Accounting-exact component levels (source releases, T-1) -----------------
+# --- Accounting-exact component levels (source releases, T-0) -----------------
 
 
 @cache
@@ -122,7 +122,7 @@ def household_consumption_level() -> pd.Series:
     """Household final consumption expenditure, CVM SA (5206.0 $m level).
 
     The actual NA consumption aggregate — published only with GDP, so available
-    through ``target - 1`` at T-1. Used as the bridge target (predict its growth
+    through ``target - 1`` at T-0. Used as the bridge target (predict its growth
     from the HSI) and to convert that growth back to a contribution via the exact
     ``Δlevel / GDP_lag`` formula, the same path the accounting-exact components use.
     """
@@ -176,7 +176,7 @@ def government_gfcf_level() -> pd.Series:
     return _to_qdec(get_public_investment_gfs_qrtly().data)
 
 
-# --- Bridged component proxies (indicators, T-1) ------------------------------
+# --- Bridged component proxies (indicators, T-0) ------------------------------
 
 
 def household_spending_cvm_level(history_month: str | None = None) -> pd.Series:

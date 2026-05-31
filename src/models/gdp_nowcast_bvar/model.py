@@ -51,6 +51,8 @@ from src.data.construction import get_total_construction_growth_qrtly
 from src.data.gdp import get_gdp
 from src.data.surveys import get_nab_business_conditions_qrtly
 from src.data.wpi import get_wpi_growth_qrtly
+from src.models.common.nowcast_charts import NowcastChartSpec, plot_nowcast_charts
+from src.models.common.nowcast_core import compute_tty, print_qoq_tty_header
 
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -410,15 +412,6 @@ def _detect_target_quarter(
     return last_gdp, True, report
 
 
-def _compute_tty(gdp_qoq: float, gdp: pd.Series, target_quarter: pd.Period) -> float:
-    """Compute through-the-year growth from a single Q/Q nowcast."""
-    last_gdp_level = gdp.iloc[-1]
-    projected = last_gdp_level * np.exp(gdp_qoq / 100)
-    q_minus_4 = target_quarter - 4
-    gdp_4q_ago = gdp.loc[q_minus_4] if q_minus_4 in gdp.index else gdp.iloc[-4]
-    return (projected / gdp_4q_ago - 1) * 100
-
-
 # --- Core nowcast ---
 
 
@@ -524,14 +517,14 @@ def nowcast(
 
     # Convert to TTY
     gdp_truncated = gdp.loc[gdp.index < target_quarter]
-    tty = _compute_tty(cond_mean, gdp_truncated, target_quarter)
+    tty = compute_tty(cond_mean, gdp_truncated, target_quarter)
     tty_70 = (
-        _compute_tty(ci_70[0], gdp_truncated, target_quarter),
-        _compute_tty(ci_70[1], gdp_truncated, target_quarter),
+        compute_tty(ci_70[0], gdp_truncated, target_quarter),
+        compute_tty(ci_70[1], gdp_truncated, target_quarter),
     )
     tty_90 = (
-        _compute_tty(ci_90[0], gdp_truncated, target_quarter),
-        _compute_tty(ci_90[1], gdp_truncated, target_quarter),
+        compute_tty(ci_90[0], gdp_truncated, target_quarter),
+        compute_tty(ci_90[1], gdp_truncated, target_quarter),
     )
 
     result = NowcastResult(
@@ -559,17 +552,7 @@ def nowcast(
 
 def _print_summary(result: NowcastResult) -> None:
     """Print nowcast summary to terminal."""
-    print("\n" + "=" * 70)
-    print(f"  GDP NOWCAST (BVAR): {result.target_quarter}")
-    print("=" * 70)
-
-    print(f"\n  Q/Q growth:   {result.gdp_qoq:+.2f}%")
-    print(f"    70% CI:     [{result.gdp_qoq_70[0]:+.2f}%, {result.gdp_qoq_70[1]:+.2f}%]")
-    print(f"    90% CI:     [{result.gdp_qoq_90[0]:+.2f}%, {result.gdp_qoq_90[1]:+.2f}%]")
-
-    print(f"\n  TTY growth:   {result.gdp_tty:+.2f}%")
-    print(f"    70% CI:     [{result.gdp_tty_70[0]:+.2f}%, {result.gdp_tty_70[1]:+.2f}%]")
-    print(f"    90% CI:     [{result.gdp_tty_90[0]:+.2f}%, {result.gdp_tty_90[1]:+.2f}%]")
+    print_qoq_tty_header(result, "BVAR")
 
     print(f"\n  BVAR(p={result.n_lags}) on {result.n_vars} quarterly variables")
     print(f"  Sample: {result.panel.dropna().index[0]} to {result.panel.dropna().index[-1]}")
@@ -586,113 +569,6 @@ def _print_summary(result: NowcastResult) -> None:
     print("\n" + "=" * 70)
 
 
-# --- Plotting ---
-
-
-def _plot_fan_chart(
-    hist: pd.Series,
-    nowcast_value: float,
-    ci_70: tuple[float, float],
-    ci_90: tuple[float, float],
-    target_quarter: pd.Period,
-    title: str,
-    lfooter_value: str,
-) -> None:
-    """Plot a nowcast fan chart using mgplot layering."""
-    # If we're hindcasting, drop the target quarter from history so the
-    # nowcast line doesn't create a duplicate index point.
-    hist_excluding_target = hist.loc[hist.index < target_quarter]
-    recent = hist_excluding_target.iloc[-20:]
-
-    nowcast_idx = pd.PeriodIndex([recent.index[-1], target_quarter], freq="Q-DEC")
-    nowcast_line = pd.Series([recent.iloc[-1], nowcast_value], index=nowcast_idx)
-
-    band_90 = pd.DataFrame({
-        "lower": [recent.iloc[-1], ci_90[0]],
-        "upper": [recent.iloc[-1], ci_90[1]],
-    }, index=nowcast_idx)
-
-    band_70 = pd.DataFrame({
-        "lower": [recent.iloc[-1], ci_70[0]],
-        "upper": [recent.iloc[-1], ci_70[1]],
-    }, index=nowcast_idx)
-
-    recent = recent.rename("GDP growth")
-    nowcast_line = nowcast_line.rename("Nowcast")
-
-    ax = mg.fill_between_plot(band_90, color="green", alpha=0.1, label="90% CI")
-    mg.fill_between_plot(band_70, ax=ax, color="green", alpha=0.2, label="70% CI")
-    mg.line_plot(recent, ax=ax, color=["navy"], width=2)
-    mg.line_plot(nowcast_line, ax=ax, color=["green"], width=2, style="--", annotate=True, rounding=2)
-
-    mg.finalise_plot(
-        ax,
-        title=title,
-        ylabel="Per cent",
-        rfooter="Source: ABS 5206.0",
-        lfooter=f"Australia. BVAR nowcast: {lfooter_value}. {pd.Timestamp.now().strftime('%d %b %Y')}. ",
-        y0=True,
-        legend={"loc": "best", "fontsize": "x-small"},
-        show=SHOW,
-    )
-
-
-def _plot_nowcast(result: NowcastResult, gdp_growth_hist: pd.Series) -> None:
-    """Plot Q/Q nowcast vs GDP history with fan chart."""
-    _plot_fan_chart(
-        hist=gdp_growth_hist.dropna(),
-        nowcast_value=result.gdp_qoq,
-        ci_70=result.gdp_qoq_70,
-        ci_90=result.gdp_qoq_90,
-        target_quarter=result.target_quarter,
-        title=f"GDP Growth BVAR Nowcast (Q/Q): {result.target_quarter}",
-        lfooter_value=f"{result.gdp_qoq:+.2f}%",
-    )
-
-
-def _plot_nowcast_tty(result: NowcastResult, gdp: pd.Series) -> None:
-    """Plot TTY nowcast vs GDP TTY history with fan chart."""
-    tty_hist = ((gdp / gdp.shift(4)) - 1) * 100
-    _plot_fan_chart(
-        hist=tty_hist.dropna(),
-        nowcast_value=result.gdp_tty,
-        ci_70=result.gdp_tty_70,
-        ci_90=result.gdp_tty_90,
-        target_quarter=result.target_quarter,
-        title=f"GDP Growth BVAR Nowcast (TTY): {result.target_quarter}",
-        lfooter_value=f"{result.gdp_tty:+.2f}%",
-    )
-
-
-def _plot_growth(result: NowcastResult, gdp: pd.Series) -> None:
-    """Bar (Q/Q) + line (TTY) chart of GDP growth with nowcast appended."""
-    gdp_growth = (np.log(gdp).diff(1) * 100).dropna()
-    tty = ((gdp / gdp.shift(4)) - 1) * 100
-
-    # When hindcasting, replace the target quarter's actual with the nowcast
-    # rather than appending — otherwise we duplicate it.
-    gdp_growth = gdp_growth.loc[gdp_growth.index < result.target_quarter]
-    tty = tty.loc[tty.index < result.target_quarter]
-    gdp_growth.loc[result.target_quarter] = result.gdp_qoq
-    tty.loc[result.target_quarter] = result.gdp_tty
-
-    growth_df = pd.DataFrame({
-        "Annual Growth": tty,
-        "Quarterly Growth": gdp_growth,
-    }).iloc[-20:]
-
-    mg.growth_plot_finalise(
-        growth_df,
-        title=f"GDP Growth BVAR Nowcast: {result.target_quarter}",
-        ylabel="Per cent",
-        rfooter="Source: ABS 5206.0",
-        lfooter=f"Australia. BVAR Q/Q: {result.gdp_qoq:+.2f}%, TTY: {result.gdp_tty:+.2f}%. "
-                f"{pd.Timestamp.now().strftime('%d %b %Y')}. ",
-        legend={"loc": "best", "fontsize": "x-small"},
-        show=SHOW,
-    )
-
-
 # --- Live entry point ---
 
 
@@ -701,13 +577,22 @@ def run_nowcast() -> NowcastResult:
     result = nowcast()
 
     gdp = get_gdp(gdp_type="CVM", seasonal="SA").data.dropna()
-    gdp_growth = (np.log(gdp).diff(1) * 100)
 
     mg.set_chart_dir(CHART_DIR)
     mg.clear_chart_dir()
-    _plot_nowcast(result, gdp_growth)
-    _plot_nowcast_tty(result, gdp)
-    _plot_growth(result, gdp)
+    plot_nowcast_charts(NowcastChartSpec(
+        model_label="BVAR",
+        target_quarter=result.target_quarter,
+        gdp=gdp,
+        gdp_qoq=result.gdp_qoq,
+        gdp_tty=result.gdp_tty,
+        gdp_qoq_70=result.gdp_qoq_70,
+        gdp_qoq_90=result.gdp_qoq_90,
+        gdp_tty_70=result.gdp_tty_70,
+        gdp_tty_90=result.gdp_tty_90,
+        accent="green",
+        show=SHOW,
+    ))
 
     return result
 

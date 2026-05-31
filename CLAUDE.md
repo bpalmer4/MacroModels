@@ -20,6 +20,7 @@ uv sync                            # Install dependencies
 ./run-gdp-nowcast-bridge.sh        # Run GDP nowcast (bridge equations)
 ./run-gdp-nowcast-dfm.sh           # Run GDP nowcast (Dynamic Factor Model)
 ./run-gdp-nowcast-bvar.sh          # Run GDP nowcast (Bayesian VAR, T-0 only)
+./run-gdp-nowcast-components.sh    # Run GDP nowcast (expenditure-identity components, T-0 only)
 ./run-rstar-hlw.sh                 # Run HLW Bayesian r-star model
 uv run python -m src.models.gdp_nowcast_bridge.backtest  # Run nowcast backtest
 ```
@@ -46,6 +47,7 @@ src/
 │   ├── gdp_nowcast_bridge/        # GDP nowcasting via bridge equations (see MODEL_NOTES.md)
 │   ├── gdp_nowcast_dfm/            # GDP nowcasting via Dynamic Factor Model (see MODEL_NOTES.md)
 │   ├── gdp_nowcast_bvar/           # GDP nowcasting via Bayesian VAR, T-0 only (see MODEL_NOTES.md)
+│   ├── gdp_nowcast_components/     # GDP nowcasting via expenditure-identity components, T-0 only (see MODEL_NOTES.md)
 │   ├── rstar_hlw/                 # HLW Bayesian r-star model, AU data (see MODEL_NOTES.md)
 │   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition
 │   ├── dsge/                      # DSGE / HLW-style models (in development)

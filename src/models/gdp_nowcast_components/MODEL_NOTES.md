@@ -1,9 +1,13 @@
 # GDP Nowcast — Components (Expenditure Identity)
 
-A **T-1 nowcast**: run the day before the Quarterly National Accounts (5206.0),
-it reconstructs quarter-on-quarter GDP growth as the sum of expenditure
-components' **contributions to growth**, each read from its own source release
-that lands a day (or weeks) ahead of GDP.
+A **T-0 nowcast**: run the day before the Quarterly National Accounts (5206.0)
+are published, it reconstructs quarter-on-quarter GDP growth as the sum of
+expenditure components' **contributions to growth**, each read from its own
+source release that lands a day (or weeks) ahead of GDP. T-0 here matches the
+sibling nowcast models' month-indexed publication cycle (T-3m … T-0): it is the
+run timing, the complete information set the day before GDP. It is distinct from
+the quarter index `T` used in the contribution formula below, where `T` is the
+*target quarter* and `T-1` its predecessor.
 
 ```
 GDP growth (ppt) =  Household consumption  +  Government consumption
@@ -12,14 +16,14 @@ GDP growth (ppt) =  Household consumption  +  Government consumption
 ```
 
 Private and public GFCF are kept as **separate** stack segments (not merged into
-the ABS-style single GFCF bar) because their T-1 reliability is opposite: public
+the ABS-style single GFCF bar) because their T-0 reliability is opposite: public
 investment is accounting-exact from GFS (MAE 0.010) while private investment is
 the bridged, AI-capex-driven, import-offset-prone piece (MAE 0.200). Splitting
 keeps that difference legible.
 
 This is a structural accounting build-up — complementary to, not a competitor of,
 the statistical nowcasts (`gdp_nowcast_bridge`, `_dfm`, `_bvar`), which regress
-GDP growth on indicator panels. Its edge: at T-1 the two most volatile
+GDP growth on indicator panels. Its edge: at T-0 the two most volatile
 contributors (inventories, net exports) and government are **measured, not
 forecast**. Its output is interpretable — a stacked-ppt decomposition telling you
 *where* growth comes from, not just a headline number.
@@ -37,9 +41,9 @@ so the T-quarter source — out a day early — divides by the last published GD
 Inventories enter GDP as a flow, so they take a **second** difference of the
 level: `(Δlevel_T − Δlevel_{T-1}) / GDP_{T-1} × 100`.
 
-## Components and sources (at T-1)
+## Components and sources (at T-0)
 
-| Component | Source @ T-1 | Method | Backtest MAE (ex-COVID) |
+| Component | Source @ T-0 | Method | Backtest MAE (ex-COVID) |
 |---|---|---|---|
 | Household consumption | 5682.0 t.5682015 CVM index (~5 wk) | **growth bridge → level** | 0.232 |
 | Government consumption | GFS Table 15 CVM $m (~1 day) | accounting-exact | 0.009 |
@@ -55,12 +59,13 @@ level: `(Δlevel_T − Δlevel_{T-1}) / GDP_{T-1} × 100`.
   covering only the volatile, transaction-based ~⅔ of consumption (it maps to
   HFCE at slope ~0.59, not 1 — see `diagnostics.plot_source_vs_na`). It is
   handled the same way as the exact components: fit HFCE *growth* on HSI growth
-  over the **ex-COVID** history before T-1 (COVID broke the relationship), predict
+  over the **ex-COVID** history before the target quarter (COVID broke the
+  relationship), predict
   the target-quarter HFCE growth, roll the last HFCE level forward by it, and take
   `ΔHFCE / GDP_{t-1} × 100`. This uses the *actual* current consumption share via
   real levels — no embedded average share, no rounding — so consumption is no
   longer a special case. It remains an inference with moderate, irreducible error
-  (~±0.29 ppt 1σ): no T-1 source *is* household consumption.
+  (~±0.29 ppt 1σ): no T-0 source *is* household consumption.
 - **Private GFCF (contribution bridge)**: capex + construction miss IP products
   and some industries, so the published private-GFCF contribution is regressed on
   their growth (expanding window, no look-ahead). The weakest leg (capex maps to
@@ -103,14 +108,23 @@ live run and the backtest, so a component becomes a number in exactly one place.
 - `backtest.py` — replays the nowcast, reports headline + per-component error.
 
 ```bash
-./run-gdp-nowcast-components.sh                                    # live (T-1)
+./run-gdp-nowcast-components.sh                                    # live (T-0)
 uv run python -m src.models.gdp_nowcast_components.backtest        # backtest
 ```
 
-Output: a per-component text table + the **Contributions to Quarterly GDP
-Growth** chart (`charts/GDP-Nowcast-Components/`), matching the ABS 5206 chart
-with the unpublished quarter appended as the final bar. Backtest artefacts land
-in `model_outputs/gdp_nowcast_components/`.
+Output (`charts/GDP-Nowcast-Components/`): a per-component text table reporting
+both the Q/Q nowcast and its annual (TTY) re-expression, plus the
+component-specific **Contributions to Quarterly GDP Growth** stacked chart
+(matching the ABS 5206 chart with the unpublished quarter appended as the final
+bar) and the per-component history charts. It also emits the three **standard
+nowcast charts** shared with the sibling models (`Q/Q fan`, `TTY fan`, and the
+combined annual-line + quarterly-bars chart) via
+`src/models/common/nowcast_charts.py` (`plot_nowcast_charts`) and
+`src/models/common/nowcast_core.py` (`compute_tty`) — the same shared helpers the
+bridge/DFM/BVAR models use, with a goldenrod CI fan.
+The annual band is the symmetric Q/Q discrepancy band rolled through the same
+Q/Q→annual conversion. Backtest artefacts land in
+`model_outputs/gdp_nowcast_components/`.
 
 ## Backtest results (2015Q1–latest, pseudo real-time)
 

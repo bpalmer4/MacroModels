@@ -1,18 +1,23 @@
 """Diagnostics for the components GDP nowcast — regenerable, never hand-rendered.
 
-Six validation charts, one per component, each of which should sit on the 1:1:
+Eight validation charts (estimate on x, National Accounts on y):
 
-  * Bridged series (household, private investment): the **bridge-adjusted**
-    indicator vs NA — by the OLS calibration identity it lands on the 1:1
-    (slope 1.00) on the ex-COVID sample it was fit on.
   * Exact series (government, public, inventories, net exports): the **source**
-    vs NA — slope ~1 because the source *is* the NA input.
+    vs NA — slope ~1 because the source *is* the NA input. [4 charts]
+  * Bridged series (household, private investment) — **two each**:
+      - **raw source vs NA**: the indicator before calibration, whose fitted
+        slope reveals the natural relationship (e.g. HSI→HFCE ~0.59 — the HSI
+        only covers ~⅔ of consumption). See :func:`plot_source_vs_na`. [2 charts]
+      - **bridge-adjusted vs NA**: the OLS-calibrated indicator, which lands on
+        the 1:1 (slope 1.00) on the ex-COVID sample it was fit on. [2 charts]
 
 Everything is a change measure: growth (% q/q) for the strictly-positive levels;
 $m quarterly change for the flows that cross zero (inventories, net exports),
-where a growth rate is undefined. Estimate on x, National Accounts on y.
+where a growth rate is undefined.
 
-Run fresh:
+These eight are emitted as part of the live model's normal output
+(``model.run_nowcast`` → ``charts/GDP-Nowcast-Components/``). Run standalone to
+regenerate them into the same directory and print the fit table:
     uv run python -m src.models.gdp_nowcast_components.diagnostics
 """
 
@@ -145,12 +150,46 @@ def plot_one_to_one_checks() -> pd.DataFrame:
     return pd.DataFrame(out).set_index("chart")
 
 
+def plot_source_vs_na() -> pd.DataFrame:
+    """Two charts: the *raw* (uncalibrated) source vs NA for the bridged components.
+
+    Counterpart to the bridge-adjusted charts in :func:`plot_one_to_one_checks`.
+    These plot the indicator *before* calibration, so the fitted slope reveals the
+    natural relationship the bridge corrects to 1: the HSI is a CVM index covering
+    only ~⅔ of consumption, so it maps to HFCE at slope ~0.59; the capex +
+    construction total under-covers private GFCF (misses IP products / some
+    industries), so it too lands off the 1:1.
+    """
+    na = _na_lookup()
+    raw_private = _growth(cd.private_capex_level() + cd.private_construction_level())
+
+    specs = [
+        ("Household consumption — raw source vs NA", _growth(cd.household_spending_cvm_level()),
+         _growth(na("Households ;  Final consumption expenditure ;")),
+         "Raw HSI growth (% q/q)", "HFCE growth, 5206 (% q/q)", "growth, raw 5682 HSI"),
+        ("Private investment — raw source vs NA", raw_private,
+         _growth(na("Private ;  Gross fixed capital formation ;")),
+         "Raw capex+construction growth (% q/q)", "Private GFCF growth, 5206 (% q/q)",
+         "growth, raw 5625+8755"),
+    ]
+    out = []
+    for title, est, na_series, xlabel, ylabel, note in specs:
+        slope, r2, n = _scatter(title, est, na_series, xlabel, ylabel, note)
+        out.append({"chart": title, "slope": slope, "r2_ex_covid": r2, "n": n})
+    return pd.DataFrame(out).set_index("chart")
+
+
+def plot_all_checks() -> pd.DataFrame:
+    """Draw all eight scatter checks (six 1:1 + two raw-source) into the current dir."""
+    return pd.concat([plot_source_vs_na(), plot_one_to_one_checks()])
+
+
 def main() -> None:
-    """Regenerate the six 1:1 check charts and print the fit table."""
+    """Regenerate the eight scatter check charts and print the fit table."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     mg.set_chart_dir(CHART_DIR)
-    logger.info("One-to-one checks (estimate vs NA — should be slope ~1):\n%s",
-                plot_one_to_one_checks().round(2).to_string())
+    logger.info("Scatter checks (estimate vs NA — adjusted/exact ≈ slope 1, raw reveals natural slope):\n%s",
+                plot_all_checks().round(2).to_string())
     logger.info("\nCharts written to %s", CHART_DIR)
 
 

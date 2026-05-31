@@ -21,10 +21,10 @@ import numpy as np
 import pandas as pd
 
 from src.data.gdp import get_gdp
+from src.models.common.nowcast_core import compute_gdp_growth
 from src.models.gdp_nowcast_dfm.model import (
     DataAvailability,
     NowcastResult,
-    _compute_gdp_growth,
     _load_monthly_indicators,
     _load_quarterly_indicators,
     nowcast,
@@ -83,7 +83,7 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
     print("Loading data...")
     gdp_ds = get_gdp(gdp_type="CVM", seasonal="SA")
     gdp = gdp_ds.data.dropna()
-    gdp_growth = _compute_gdp_growth(gdp)
+    gdp_growth = compute_gdp_growth(gdp)
 
     monthly_indicators = _load_monthly_indicators()
     quarterly_indicators = _load_quarterly_indicators()

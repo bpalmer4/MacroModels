@@ -68,6 +68,14 @@ from src.data.inflation import get_genuine_monthly_cpi_index, get_monthly_cpi_in
 from src.data.series_specs import EMPLOYMENT_PERSONS
 from src.data.surveys import get_nab_business_conditions_monthly
 from src.data.wpi import get_wpi_growth_qrtly
+from src.models.common.nowcast_charts import NowcastChartSpec, plot_nowcast_charts
+from src.models.common.nowcast_core import (
+    compute_gdp_growth,
+    compute_tty,
+    detect_target_quarter,
+    print_qoq_tty_header,
+    truncate_monthly,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -406,13 +414,6 @@ def monthly_to_quarterly_completed(
 # --- Data truncation ---
 
 
-def _truncate_monthly(series: pd.Series, cutoff: pd.Period | None) -> pd.Series:
-    """Truncate a monthly series to data available through cutoff period."""
-    if cutoff is None:
-        return pd.Series(dtype=float)
-    return series.loc[series.index <= cutoff].copy()
-
-
 def _truncate_quarterly(series: pd.Series, target_quarter: pd.Period) -> pd.Series:
     """Truncate a quarterly series to exclude the target quarter and beyond."""
     return series.loc[series.index < target_quarter].copy()
@@ -745,13 +746,13 @@ def _prepare_monthly_series(
 
     Returns (bridge_series, sarima_series) or None if insufficient data.
     """
-    bridge_series = _truncate_monthly(monthly.dropna(), cutoff)
+    bridge_series = truncate_monthly(monthly.dropna(), cutoff)
 
     if len(bridge_series) < MIN_SARIMA_TRAINING:
         return None
 
     if sarima_override is not None:
-        sarima_series = _truncate_monthly(sarima_override.dropna(), cutoff)
+        sarima_series = truncate_monthly(sarima_override.dropna(), cutoff)
         if len(sarima_series) < MIN_SARIMA_TRAINING:
             return None
     else:
@@ -943,28 +944,6 @@ def _bootstrap_intervals(
 # --- GDP helpers ---
 
 
-def _detect_target_quarter(gdp: pd.Series) -> pd.Period:
-    """Auto-detect the next unpublished GDP quarter."""
-    last_published = gdp.dropna().index[-1]
-    return last_published + 1
-
-
-def _compute_gdp_growth(gdp: pd.Series) -> pd.Series:
-    """Compute Q/Q GDP growth as log difference x 100."""
-    return np.log(gdp).diff(1) * 100
-
-
-def _compute_tty(gdp_growth_qoq: float, gdp: pd.Series, target_quarter: pd.Period) -> float:
-    """Compute through-the-year growth from Q/Q nowcast."""
-    last_gdp = gdp.iloc[-1]
-    projected_gdp = last_gdp * np.exp(gdp_growth_qoq / 100)
-
-    q_minus_4 = target_quarter - 4
-    gdp_4q_ago = gdp.loc[q_minus_4] if q_minus_4 in gdp.index else gdp.iloc[-4]
-
-    return (projected_gdp / gdp_4q_ago - 1) * 100
-
-
 # --- Core nowcast function ---
 
 
@@ -995,11 +974,11 @@ def nowcast(
         gdp = get_gdp(gdp_type="CVM", seasonal="SA").data.dropna()
 
     if target_quarter is None:
-        target_quarter = _detect_target_quarter(gdp)
+        target_quarter = detect_target_quarter(gdp)
 
     # Truncate GDP to before target quarter (for backtesting)
     gdp = gdp.loc[gdp.index < target_quarter]
-    gdp_growth = _compute_gdp_growth(gdp)
+    gdp_growth = compute_gdp_growth(gdp)
 
     if monthly_indicators is None:
         monthly_indicators = _load_monthly_indicators()
@@ -1039,11 +1018,11 @@ def nowcast(
     ci_70_qoq, ci_90_qoq = _bootstrap_intervals(all_bridges, weights)
 
     # 6. Compute TTY
-    tty = _compute_tty(combined_qoq, gdp, target_quarter)
-    tty_70 = (_compute_tty(ci_70_qoq[0], gdp, target_quarter),
-              _compute_tty(ci_70_qoq[1], gdp, target_quarter))
-    tty_90 = (_compute_tty(ci_90_qoq[0], gdp, target_quarter),
-              _compute_tty(ci_90_qoq[1], gdp, target_quarter))
+    tty = compute_tty(combined_qoq, gdp, target_quarter)
+    tty_70 = (compute_tty(ci_70_qoq[0], gdp, target_quarter),
+              compute_tty(ci_70_qoq[1], gdp, target_quarter))
+    tty_90 = (compute_tty(ci_90_qoq[0], gdp, target_quarter),
+              compute_tty(ci_90_qoq[1], gdp, target_quarter))
 
     # 7. Assemble result
     result = NowcastResult(
@@ -1071,17 +1050,7 @@ def nowcast(
 
 def _print_summary(result: NowcastResult) -> None:
     """Print nowcast summary to terminal."""
-    print("\n" + "=" * 70)
-    print(f"  GDP NOWCAST: {result.target_quarter}")
-    print("=" * 70)
-
-    print(f"\n  Q/Q growth:   {result.gdp_qoq:+.2f}%")
-    print(f"    70% CI:     [{result.gdp_qoq_70[0]:+.2f}%, {result.gdp_qoq_70[1]:+.2f}%]")
-    print(f"    90% CI:     [{result.gdp_qoq_90[0]:+.2f}%, {result.gdp_qoq_90[1]:+.2f}%]")
-
-    print(f"\n  TTY growth:   {result.gdp_tty:+.2f}%")
-    print(f"    70% CI:     [{result.gdp_tty_70[0]:+.2f}%, {result.gdp_tty_70[1]:+.2f}%]")
-    print(f"    90% CI:     [{result.gdp_tty_90[0]:+.2f}%, {result.gdp_tty_90[1]:+.2f}%]")
+    print_qoq_tty_header(result)
 
     print("\n  Bridge contributions:")
     print(f"  {'Bridge':<30} {'Weight':>8} {'Nowcast':>10} {'Status':>12}")
@@ -1107,105 +1076,6 @@ def _print_summary(result: NowcastResult) -> None:
 
 
 # --- Plotting ---
-
-
-def _plot_fan_chart(
-    hist: pd.Series,
-    nowcast_value: float,
-    ci_70: tuple[float, float],
-    ci_90: tuple[float, float],
-    target_quarter: pd.Period,
-    title: str,
-    lfooter_value: str,
-) -> None:
-    """Plot a nowcast fan chart using mgplot layering."""
-    recent = hist.iloc[-20:]
-
-    nowcast_idx = pd.PeriodIndex([recent.index[-1], target_quarter], freq="Q-DEC")
-    nowcast_line = pd.Series([recent.iloc[-1], nowcast_value], index=nowcast_idx)
-
-    band_90 = pd.DataFrame({
-        "lower": [recent.iloc[-1], ci_90[0]],
-        "upper": [recent.iloc[-1], ci_90[1]],
-    }, index=nowcast_idx)
-
-    band_70 = pd.DataFrame({
-        "lower": [recent.iloc[-1], ci_70[0]],
-        "upper": [recent.iloc[-1], ci_70[1]],
-    }, index=nowcast_idx)
-
-    recent = recent.rename("GDP growth")
-    nowcast_line = nowcast_line.rename("Nowcast")
-
-    ax = mg.fill_between_plot(band_90, color="red", alpha=0.1, label="90% CI")
-    mg.fill_between_plot(band_70, ax=ax, color="red", alpha=0.2, label="70% CI")
-    mg.line_plot(recent, ax=ax, color=["navy"], width=2)
-    mg.line_plot(nowcast_line, ax=ax, color=["red"], width=2, style="--", annotate=True, rounding=2)
-
-    mg.finalise_plot(
-        ax,
-        title=title,
-        ylabel="Per cent",
-        rfooter="Source: ABS 5206.0",
-        lfooter=f"Australia. Nowcast: {lfooter_value}. {pd.Timestamp.now().strftime('%d %b %Y')}. ",
-        y0=True,
-        legend={"loc": "best", "fontsize": "x-small"},
-        show=SHOW,
-    )
-
-
-def _plot_nowcast(result: NowcastResult, gdp_growth_hist: pd.Series) -> None:
-    """Plot Q/Q nowcast vs GDP history with fan chart."""
-    _plot_fan_chart(
-        hist=gdp_growth_hist.dropna(),
-        nowcast_value=result.gdp_qoq,
-        ci_70=result.gdp_qoq_70,
-        ci_90=result.gdp_qoq_90,
-        target_quarter=result.target_quarter,
-        title=f"GDP Growth Bridge Model Nowcast (Q/Q): {result.target_quarter}",
-        lfooter_value=f"{result.gdp_qoq:+.2f}%",
-    )
-
-
-def _plot_nowcast_tty(result: NowcastResult, gdp: pd.Series) -> None:
-    """Plot TTY nowcast vs GDP TTY history with fan chart."""
-    tty_hist = ((gdp / gdp.shift(4)) - 1) * 100
-    _plot_fan_chart(
-        hist=tty_hist.dropna(),
-        nowcast_value=result.gdp_tty,
-        ci_70=result.gdp_tty_70,
-        ci_90=result.gdp_tty_90,
-        target_quarter=result.target_quarter,
-        title=f"GDP Growth Bridge Model Nowcast (TTY): {result.target_quarter}",
-        lfooter_value=f"{result.gdp_tty:+.2f}%",
-    )
-
-
-def _plot_growth(result: NowcastResult, gdp: pd.Series) -> None:
-    """Plot GDP growth in bar (Q/Q) + line (TTY) format with nowcast appended."""
-    gdp_growth = _compute_gdp_growth(gdp).dropna()
-    tty = ((gdp / gdp.shift(4)) - 1) * 100
-
-    # Append nowcast quarter
-    gdp_growth.loc[result.target_quarter] = result.gdp_qoq
-    tty.loc[result.target_quarter] = result.gdp_tty
-
-    # growth_plot_finalise: first column = line (TTY), second = bars (Q/Q)
-    growth_df = pd.DataFrame({
-        "Annual Growth": tty,
-        "Quarterly Growth": gdp_growth,
-    }).iloc[-20:]
-
-    mg.growth_plot_finalise(
-        growth_df,
-        title=f"GDP Growth Bridge Model Nowcast: {result.target_quarter}",
-        ylabel="Per cent",
-        rfooter="Source: ABS 5206.0",
-        lfooter=f"Australia. Nowcast Q/Q: {result.gdp_qoq:+.2f}%, TTY: {result.gdp_tty:+.2f}%. "
-                f"{pd.Timestamp.now().strftime('%d %b %Y')}. ",
-        legend={"loc": "best", "fontsize": "x-small"},
-        show=SHOW,
-    )
 
 
 def _plot_bridge_weights(result: NowcastResult) -> None:
@@ -1266,13 +1136,22 @@ def run_nowcast() -> NowcastResult:
 
     # Generate charts
     gdp = get_gdp(gdp_type="CVM", seasonal="SA").data.dropna()
-    gdp_growth = _compute_gdp_growth(gdp)
 
     mg.set_chart_dir(CHART_DIR)
     mg.clear_chart_dir()
-    _plot_nowcast(result, gdp_growth)
-    _plot_nowcast_tty(result, gdp)
-    _plot_growth(result, gdp)
+    plot_nowcast_charts(NowcastChartSpec(
+        model_label="Bridge Model",
+        target_quarter=result.target_quarter,
+        gdp=gdp,
+        gdp_qoq=result.gdp_qoq,
+        gdp_tty=result.gdp_tty,
+        gdp_qoq_70=result.gdp_qoq_70,
+        gdp_qoq_90=result.gdp_qoq_90,
+        gdp_tty_70=result.gdp_tty_70,
+        gdp_tty_90=result.gdp_tty_90,
+        accent="red",
+        show=SHOW,
+    ))
     _plot_bridge_weights(result)
 
     return result
