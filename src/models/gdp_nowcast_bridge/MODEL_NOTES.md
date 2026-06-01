@@ -113,7 +113,7 @@ The balance-on-goods deflation is approximate — conceptually you would deflate
 
 A second consumption bridge uses the **quarterly Chain Volume Measures** Total Household Spending series from 5682.0 table 5682015. This series is conceptually close to the 5206.0 Household Final Consumption Expenditure (HFCE) component of GDP, but published with the third monthly Household Spending Indicator release of each quarter — roughly five weeks after the reference quarter ends, ahead of the GDP publication.
 
-History begins 2014Q3 (~46 growth obs as of 2026), which is enough for a standard bridge regression. The loader (`get_household_spending_cvm_qrtly()`) always requests the most recent quarter-end-month snapshot via the `history=` parameter, so it returns data reliably regardless of which month the nowcast is run in.
+History begins 2014Q3 (~46 growth obs as of 2026), which is enough for a standard bridge regression. ABS ships the quarterly CVM table only in the quarter-end-month snapshot, so the loader (`get_household_spending_cvm_qrtly(history=...)`) **requires** that month: the request is grounded to the nowcast target quarter (e.g. 2026Q1 → `mar-2026`), derived from the GDP data — never inferred from today's date, which could point at an unpublished future vintage.
 
 This bridge complements the monthly retail bridge:
 - **Retail** captures fast-moving signals from the first two months of the quarter via SARIMA completion (~2 months lead, but a narrower consumption basket).

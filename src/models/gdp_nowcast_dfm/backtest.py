@@ -24,7 +24,6 @@ from src.data.gdp import get_gdp
 from src.models.common.nowcast_core import compute_gdp_growth
 from src.models.gdp_nowcast_dfm.model import (
     DataAvailability,
-    NowcastResult,
     _load_monthly_indicators,
     _load_quarterly_indicators,
     nowcast,
@@ -86,7 +85,10 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
     gdp_growth = compute_gdp_growth(gdp)
 
     monthly_indicators = _load_monthly_indicators()
-    quarterly_indicators = _load_quarterly_indicators()
+    # Household spending (5682.0) must be grounded to a target quarter at collection.
+    # This (soft) backtest loads the latest vintage once — one quarter past the last
+    # GDP print — then truncates per backtest quarter.
+    quarterly_indicators = _load_quarterly_indicators(gdp.index[-1] + 1)
 
     quarters = _get_backtest_quarters(config, gdp)
     print(f"Backtesting {len(quarters)} quarters: {quarters[0]} to {quarters[-1]}")
@@ -152,7 +154,7 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
 
     _print_backtest_summary(bt_results)
     _save_results(bt_results)
-    _plot_backtest(bt_results, gdp_growth)
+    _plot_backtest(bt_results)
 
     return bt_results
 
@@ -265,7 +267,7 @@ def _save_results(bt: BacktestResults) -> None:
 # --- Backtest charts ---
 
 
-def _plot_backtest(bt: BacktestResults, gdp_growth: pd.Series) -> None:
+def _plot_backtest(bt: BacktestResults) -> None:
     """Generate backtest evaluation charts."""
     mg.set_chart_dir(BACKTEST_CHART_DIR)
     mg.clear_chart_dir()

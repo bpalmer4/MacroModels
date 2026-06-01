@@ -33,6 +33,7 @@ import pandas as pd
 import readabs as ra
 from readabs import metacol as mc
 
+from src.models.common.nowcast_core import detect_target_quarter
 from src.models.gdp_nowcast_components import data as cd
 from src.models.gdp_nowcast_components.model import CHART_DIR
 
@@ -107,12 +108,17 @@ def _scatter(title: str, estimate: pd.Series, na: pd.Series,
     return slope, r2, len(nm)
 
 
+def _hh_target_month() -> str:
+    """Month tag of the current nowcast target quarter (data-derived, not date-derived)."""
+    return cd.month_tag(detect_target_quarter(cd.gdp_level()))
+
+
 def plot_one_to_one_checks() -> pd.DataFrame:
     """Six per-component charts that should each sit on the 1:1."""
     na = _na_lookup()
 
     # Bridged: household — adjusted = fitted line of HFCE growth on HSI growth (ex-COVID).
-    hsi = _growth(cd.household_spending_cvm_level())
+    hsi = _growth(cd.household_spending_cvm_level(_hh_target_month()))
     hfce_g = _growth(na("Households ;  Final consumption expenditure ;"))
     hh = _ex_covid(pd.DataFrame({"x": hsi, "y": hfce_g}).dropna())
     hb1, hb0 = np.polyfit(hh["x"], hh["y"], 1)
@@ -164,7 +170,7 @@ def plot_source_vs_na() -> pd.DataFrame:
     raw_private = _growth(cd.private_capex_level() + cd.private_construction_level())
 
     specs = [
-        ("Household consumption — raw source vs NA", _growth(cd.household_spending_cvm_level()),
+        ("Household consumption — raw source vs NA", _growth(cd.household_spending_cvm_level(_hh_target_month())),
          _growth(na("Households ;  Final consumption expenditure ;")),
          "Raw HSI growth (% q/q)", "HFCE growth, 5206 (% q/q)", "growth, raw 5682 HSI"),
         ("Private investment — raw source vs NA", raw_private,

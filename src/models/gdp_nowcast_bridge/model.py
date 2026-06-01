@@ -490,6 +490,16 @@ def _estimate_bridge(
         except (ValueError, np.linalg.LinAlgError):
             continue
 
+    if not oos_errors:
+        # No out-of-sample folds ran: min_train == len(df), so range(min_train, len(df))
+        # was empty. Happens when len(df) == MIN_BRIDGE_OBS (the OBS guard admits it, but
+        # the effective minimum for weighting is MIN_BRIDGE_OBS + 1). mse_oos stays inf and
+        # _combine_bridges silently drops this bridge — log it so a zero-weight bridge is visible.
+        logger.warning(
+            "Bridge '%s': %d obs gives no out-of-sample folds (need > %d); "
+            "bridge will be dropped from the combination (zero weight).",
+            bridge_name, len(df), MIN_BRIDGE_OBS,
+        )
     mse_oos = np.mean(oos_errors) if oos_errors else np.inf
 
     return BridgeResult(
@@ -678,14 +688,19 @@ def _load_monthly_indicators() -> dict[str, DataSeries]:
     return indicators
 
 
-def _load_quarterly_indicators() -> dict[str, pd.Series]:
+def _load_quarterly_indicators(target_quarter: pd.Period) -> dict[str, pd.Series]:
     """Load all quarterly indicator series (full history).
 
     Profits is the CPI-deflated (real) variant — every other quarterly
     indicator is already a volume measure, so deflating profits keeps the
     panel consistently real.
+
+    ``target_quarter`` is required: the household spending CVM table (5682.0) is
+    fetched by quarter-end-month snapshot, so ABS needs a specific quarter. We ground
+    the request to the target quarter's end month (e.g. 2026Q1 -> "mar-2026").
     """
     indicators = {}
+    hs_month = target_quarter.asfreq("M", how="end").strftime("%b-%Y").lower()
 
     loaders = {
         "cpi_quarterly": get_trimmed_mean_qrtly,
@@ -696,7 +711,7 @@ def _load_quarterly_indicators() -> dict[str, pd.Series]:
         "construction": get_total_construction_growth_qrtly,
         "capex": get_total_capex_growth_qrtly,
         "gov_consumption": get_gov_consumption_spliced_growth_qrtly,
-        "household_spending": get_household_spending_cvm_growth_qrtly,
+        "household_spending": lambda: get_household_spending_cvm_growth_qrtly(hs_month),
     }
     for name, loader in loaders.items():
         try:
@@ -1033,7 +1048,7 @@ def nowcast(
         monthly_indicators = _load_monthly_indicators()
 
     if quarterly_indicators is None:
-        quarterly_indicators = _load_quarterly_indicators()
+        quarterly_indicators = _load_quarterly_indicators(target_quarter)
 
     # 2. Determine data availability
     if availability is None:

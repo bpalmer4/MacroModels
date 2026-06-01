@@ -179,18 +179,16 @@ def government_gfcf_level() -> pd.Series:
 # --- Bridged component proxies (indicators, T-0) ------------------------------
 
 
-def household_spending_cvm_level(history_month: str | None = None) -> pd.Series:
+def household_spending_cvm_level(history_month: str) -> pd.Series:
     """Total household spending, CVM SA (5682.0 t.5682015 index), as a Q-DEC series.
 
-    Delegates to the shared loader, passing ``history_month`` straight through.
-    The quarterly CVM table only ships in the quarter-end-month snapshot, so the
-    target quarter's end month (e.g. ``"dec-2025"``) pulls the snapshot covering
-    it — a single targeted call, separate from any monthly 5682.0 fetch. Empty
-    series if the quarter isn't available (caller degrades gracefully).
+    Delegates to the shared loader. The quarterly CVM table only ships in the
+    quarter-end-month snapshot, so a concrete quarter is REQUIRED by ABS: pass the
+    target quarter's end month (e.g. ``"dec-2025"``). Empty series if the quarter
+    isn't available (caller degrades gracefully).
 
     Args:
-        history_month: quarter-end month as ``"mmm-yyyy"``, or ``None`` for the
-            most recent quarter-end month.
+        history_month: quarter-end month as ``"mmm-yyyy"`` (required).
 
     """
     return _to_qdec(get_household_spending_cvm_qrtly(history_month).data)

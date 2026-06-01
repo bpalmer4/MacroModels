@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## PRIORITY: Flag assumptions vs. verified facts
+
+Whenever a statement rests on an **assumption, inference, guess, or memory** rather than something just **fact-checked against the code, data, a file, or a source the user provided**, say so explicitly and mark it. The user relies on this distinction; presenting an assumption as fact causes false trust and is a serious failure.
+
+- **Never invent specifics** — dates, numbers, file paths, line numbers, release schedules, API behaviour, etc. If a value isn't verified, do not fill it in. State that it is unknown.
+- **Label clearly.** Prefix unverified claims with `ASSUMPTION:` (or `GUESS:` / `UNVERIFIED:`), e.g. "ASSUMPTION: GDP releases ~4 June — I have not verified this date." Keep verified facts unmarked.
+- **Prefer verifying.** If something can be checked (read the file, run the query, grep the code), check it rather than assume. Only fall back to a labelled assumption when verification isn't possible, and say what would confirm it.
+- **When in doubt, surface it.** It is always better to flag an uncertainty than to let the user discover it was a guess.
+
 ## Project Overview
 
 MacroModels is an Australian macroeconomic modeling project that estimates NAIRU (Non-Accelerating Inflation Rate of Unemployment), potential output, and output gaps using Bayesian state-space models. The models use PyMC for estimation and draw on Australian Bureau of Statistics (ABS) data.

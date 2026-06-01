@@ -203,6 +203,19 @@ The vanilla DFM is kept because:
 2. Its bias is concentrated in a specific known period (post-COVID productivity slump) and is already fading
 3. RMSE differences of ~0.1 pp on a small backtest sample are within sampling noise; correlation differences of the magnitudes seen here are not
 
+**UPDATE — productivity-adjusted labour enabled as a BIAS CORRECTION.** Netting the labour-productivity trend into the *monthly* employment & hours-worked growth cuts the 2022Q1–2025Q4 T-0 bias from +0.33 to ~+0.10 while preserving correlation (0.69 → 0.65) — it removes the level error without the mean-reversion that sank the earlier attempts. **The bias reduction is genuine:** re-tested with a low-look-ahead *trailing 4QMA* signal, bias still falls to +0.12.
+
+**But the RMSE / "beats-naive" result is largely look-ahead, not a real accuracy gain.** The production adjustment applies a *centered* HMA(13) computed over the full sample, and the backtest doesn't truncate productivity per target — so the historical adjustment effectively "knew" the 2022–24 slump in advance (RMSE 0.41 → 0.26, below naive 0.285). Re-running with an honest *trailing* 4QMA signal, RMSE only improves to ~0.34 — **above** naive 0.285 — and the soft 4QMA is still a touch optimistic (it sees the current quarter). So: treat this as a **de-biaser, not a benchmark-beating model.** Bias reduction survives the honest test; the RMSE win does not.
+
+The **live nowcast is real-time-sound** (centered HMA for the historical fit, which is legitimate; a 4Q-trailing-avg carry-forward at the edge — see `_productivity_adjust_labour`); the look-ahead is purely in the backtest *evaluation*. **Outstanding TODO — simple way forward (not yet done):** make the backtest honest about the productivity signal by recomputing the HMA on *only the data visible at each target*, instead of the full-sample centered trend. Recipe (≈half a day):
+- Add a `cutoff` param to `_labour_productivity_trend_monthly(cutoff=None)`: truncate ULC/hCOE to `<= cutoff` **before** the HMA, then recompute. `cutoff = None` = use all (live default).
+- Thread the target quarter through `_build_monthly_panel` → `_productivity_adjust_labour` and set `cutoff = target − 1` (productivity ships with GDP, so it's unavailable for the target quarter).
+- Effect: at each target the HMA endpoint becomes the real-time *asymmetric* value (not a centered trend that saw the future), and the 4Q-trailing-avg carry-forward genuinely engages — i.e. the live methodology. Expected: the bias fix should largely survive (the 4QMA proxy already showed +0.12); confirms it without look-ahead.
+- This is **also correct for live** (productivity already ends at T−1 there), so it does **not** change the live nowcast — only the backtest evaluation.
+- Still uses latest-*revised* levels (just truncated in time), so it's honest about *availability/construction* but not full data-revision vintage — acceptable pseudo-real-time. (Full revision vintage = separate, much larger data-engineering effort; see below.) Enabled via `PRODUCTIVITY_ADJUST_LABOUR` in `model.py`; set `False` to revert.
+
+**Endogenous productivity (ULC + hCOE in the panel) was tested and rejected — don't re-try it.** The intuitively cleaner alternative — add ULC and hourly-COE as panel variables and let the Kalman filter forecast productivity jointly with GDP (look-ahead-free), instead of the exogenous trend adjustment — does **nothing**. On 2022Q1–2025Q4 it leaves the bias unchanged from vanilla (T-0 bias +0.328 vs +0.330; RMSE 0.408 vs 0.412; corr +0.01 only). Reason: a linear DFM just treats ULC/hCOE as more series for the *common factor* to explain; it never learns to "net productivity out of labour." The bias comes from GDP over-loading the **activity factor** that employment/hours drive, and adding wage/cost variables doesn't break that linkage. The **exogenous** adjustment works precisely because it imposes the identity *output = labour + productivity* on the labour **input** (dampening the activity factor in the slump) — structure an unsupervised factor model won't discover. A genuinely clean endogenous version would need a *constrained/structural* model that hard-wires the labour−productivity identity into GDP's loading — a large build for uncertain gain. Conclusion: keep the exogenous adjustment.
+
 ### Caveats
 
 - **Pseudo real-time**: Uses latest-revised data, not vintage data as published at the time
@@ -239,7 +252,7 @@ The vanilla DFM is kept because:
 | Ragged edge | SARIMA pre-completion | Native (Kalman filter forecasts forward) |
 | Number of indicators | 8 monthly + 8 quarterly + production = 17 | 6 monthly + 5 quarterly = 11 |
 | Excluded indicators | — | Monthly CPI, business sales, inventories, gov. consumption, production bridge |
-| Productivity adjustment | Explicit HMA(13) trend as regressor on labour bridges | None — hurts correlation more than it helps bias |
+| Productivity adjustment | Explicit HMA(13) trend as regressor on labour bridges | HMA(13) trend netted into monthly employment+hours (`PRODUCTIVITY_ADJUST_LABOUR`, on) — see "Why Not Fix the Bias?" update |
 | COVID handling | Dummy variable 2020Q1–2021Q1 in each bridge | None — hurts correlation more than it helps bias |
 | Uncertainty | Bootstrap residual resampling | Kalman state covariance |
 | Best metric | RMSE, MAE | Correlation with actual, CI calibration, CRPS |

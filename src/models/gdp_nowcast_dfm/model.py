@@ -45,6 +45,7 @@ Usage:
 import logging
 import warnings
 from dataclasses import dataclass
+from functools import cache
 
 import mgplot as mg
 import numpy as np
@@ -54,10 +55,12 @@ from statsmodels.tsa.statespace.dynamic_factor_mq import DynamicFactorMQ
 from src.data import (
     get_building_approvals_monthly,
     get_goods_balance_real_monthly,
+    get_hourly_coe_growth_qrtly,
     get_hours_worked_monthly,
     get_household_spending_cvm_growth_qrtly,
     get_retail_turnover_real_monthly,
     get_trimmed_mean_qrtly,
+    get_ulc_growth_qrtly,
 )
 from src.data.abs_loader import load_series
 from src.data.business_indicators import (
@@ -67,6 +70,8 @@ from src.data.capex import get_total_capex_growth_qrtly
 from src.data.construction import get_total_construction_growth_qrtly
 from src.data.dataseries import DataSeries
 from src.data.gdp import get_gdp
+from src.data.henderson import hma as henderson_hma
+from src.data.productivity import get_labour_productivity_growth
 from src.data.series_specs import EMPLOYMENT_PERSONS
 from src.data.surveys import (
     get_consumer_sentiment_monthly,
@@ -121,6 +126,22 @@ PUBLICATION_LAGS = {
     "nab_conditions": 1,
     "consumer_sentiment": 1,  # Westpac-MI, mid-month for the same month
 }
+
+# Productivity-adjusted labour input. Net the labour-productivity trend into the monthly
+# employment & hours-worked growth, so a productivity slump discounts an otherwise-strong
+# labour signal (output growth = labour-input growth + productivity growth). Kept ON as a
+# BIAS CORRECTION: on the 2022Q1-2025Q4 backtest it cuts the T-0 bias +0.33 -> ~+0.10 while
+# preserving correlation (~0.69 -> 0.65). The bias reduction is genuine — it survives at +0.12
+# when re-tested with a low-look-ahead trailing-4QMA signal. NOTE: the RMSE "beats naive"
+# result is largely LOOK-AHEAD — the centered HMA(13) over the full sample (productivity not
+# truncated per target) effectively knows the slump in advance (RMSE 0.41 -> 0.26); on an
+# honest trailing signal RMSE only reaches ~0.34, ABOVE naive 0.285. So this is a de-biaser,
+# not a benchmark-beating accuracy gain. The live nowcast is real-time-sound (centered HMA for
+# the historical fit, 4Q-trailing-avg carry-forward at the edge — see _productivity_adjust_labour);
+# the look-ahead is only in the backtest *evaluation*. A vintage (per-target) backtest is TODO.
+# Set PRODUCTIVITY_ADJUST_LABOUR = False to revert to the vanilla DFM.
+PRODUCTIVITY_ADJUST_LABOUR = True
+PRODUCTIVITY_ADJUST_COLS = ("employment", "hours_worked")
 
 
 # --- Data availability ---
@@ -292,21 +313,26 @@ def _load_monthly_indicators() -> dict[str, DataSeries]:
     }
 
 
-def _load_quarterly_indicators() -> dict[str, pd.Series]:
+def _load_quarterly_indicators(target_quarter: pd.Period) -> dict[str, pd.Series]:
     """Load all quarterly indicator series (full history).
 
     Profits is trimmed-mean-deflated (real). Household spending CVM (5682.0
     table 5682015) starts 2014Q3 — short history but the DFM handles
     ragged-edge panels via missing-data EM.
+
+    ``target_quarter`` is required: the household spending CVM table is fetched by
+    quarter-end-month snapshot (ABS needs a specific quarter), so we ground the
+    request to the target quarter's end month (e.g. 2026Q1 -> "mar-2026").
     """
     indicators = {}
+    hs_month = target_quarter.asfreq("M", how="end").strftime("%b-%Y").lower()
     loaders = {
         "cpi_quarterly": get_trimmed_mean_qrtly,
         "wpi": get_wpi_growth_qrtly,
         "business_profits": get_company_profits_real_growth_qrtly,
         "construction": get_total_construction_growth_qrtly,
         "capex": get_total_capex_growth_qrtly,
-        "household_spending": get_household_spending_cvm_growth_qrtly,
+        "household_spending": lambda: get_household_spending_cvm_growth_qrtly(hs_month),
     }
     for name, loader in loaders.items():
         try:
@@ -331,6 +357,55 @@ def _monthly_to_growth(series: pd.Series) -> pd.Series:
         # For series that can be negative (e.g. trade balance), use simple difference
         return s.diff(1)
     return np.log(s).diff(1) * 100
+
+
+@cache
+def _labour_productivity_trend_monthly() -> pd.Series:
+    """HMA(13) labour-productivity trend as a monthly-rate series (PeriodIndex[M]).
+
+    Labour productivity growth (Δhcoe − Δulc, from ULC = HCOE / LP) is quarterly; we
+    smooth it with a Henderson MA(13) — as the bridge model does — then spread each
+    quarter's Q/Q trend evenly across its three months (value / 3) so it is expressed as a
+    monthly-rate growth that can be added directly to the monthly labour-input growth series.
+    """
+    ulc = get_ulc_growth_qrtly().data
+    hcoe = get_hourly_coe_growth_qrtly().data
+    lp = get_labour_productivity_growth(ulc, hcoe).data.dropna()
+    lp_trend_q = henderson_hma(lp, 13).reindex(lp.index).dropna()
+
+    monthly = {}
+    for quarter, value in lp_trend_q.items():
+        for offset in range(3):
+            month = pd.Period(year=quarter.year, month=(quarter.quarter - 1) * 3 + 1 + offset, freq="M")
+            monthly[month] = value / 3.0
+    return pd.Series(monthly).sort_index()
+
+
+def _productivity_adjust_labour(panel: pd.DataFrame) -> pd.DataFrame:
+    """Net the labour-productivity trend into the labour-input columns (in place).
+
+    A weak productivity trend discounts otherwise-strong employment/hours growth
+    (output growth = labour-input growth + productivity growth). No-op if disabled.
+
+    Carry-forward into the target quarter (whose months sit beyond the last quarterly
+    productivity reading) uses a two-stage smoother:
+      1. HMA(13) removes spikes from the raw productivity series (interior trend), then
+      2. a 4-quarter TRAILING average of that HMA trend sets the projected value.
+    The trailing average is causal (defined at the edge, no future data) so it sidesteps
+    the HMA endpoint's asymmetric end-weights, which extrapolate recent momentum and read
+    high (~+0.37/q vs a ~+0.21/q trailing mean at 2025Q4). Only the forward-filled target
+    months are affected; historical months — and the backtest, where the trend extends past
+    the target — are unchanged.
+    """
+    if not PRODUCTIVITY_ADJUST_LABOUR:
+        return panel
+    trend = _labour_productivity_trend_monthly()
+    pt = trend.reindex(panel.index)
+    pt = pt.fillna(trend.iloc[-12:].mean())  # 4Q trailing avg of the HMA trend (12 monthly obs)
+    for col in PRODUCTIVITY_ADJUST_COLS:
+        if col in panel.columns:
+            panel[col] = panel[col] + pt
+    return panel
 
 
 def _build_monthly_panel(
@@ -390,7 +465,8 @@ def _build_monthly_panel(
         covid_mask = (panel.index >= mask_start) & (panel.index <= mask_end)
         panel.loc[covid_mask, :] = np.nan
 
-    return panel
+    # Productivity-adjust the labour-input columns when enabled (see PRODUCTIVITY_ADJUST_LABOUR).
+    return _productivity_adjust_labour(panel)
 
 
 def _build_quarterly_panel(
@@ -544,7 +620,7 @@ def _resolve_inputs(
     if monthly_indicators is None:
         monthly_indicators = _load_monthly_indicators()
     if quarterly_indicators is None:
-        quarterly_indicators = _load_quarterly_indicators()
+        quarterly_indicators = _load_quarterly_indicators(target_quarter)
     if availability is None:
         availability = DataAvailability.from_live_data(
             monthly_indicators, quarterly_indicators, target_quarter,
@@ -718,6 +794,42 @@ def _plot_factors(result: NowcastResult) -> None:
     )
 
 
+def _plot_productivity_adjustment() -> None:
+    """Plot the labour-productivity HMA(13) trend that is netted into the labour inputs.
+
+    Documents the applied adjustment (see PRODUCTIVITY_ADJUST_LABOUR): the HMA(13) trend is
+    added to monthly employment & hours growth, so a negative trend discounts the labour
+    signal. Skipped when the adjustment is disabled.
+    """
+    if not PRODUCTIVITY_ADJUST_LABOUR:
+        return
+
+    ulc = get_ulc_growth_qrtly().data
+    hcoe = get_hourly_coe_growth_qrtly().data
+    lp = get_labour_productivity_growth(ulc, hcoe).data.dropna()
+    lp_trend = henderson_hma(lp, 13).reindex(lp.index)
+    lp_4qta = lp_trend.rolling(4).mean()  # 4Q trailing avg of HMA — the carry-forward line
+
+    df = pd.DataFrame({
+        "Productivity growth (raw)": lp,
+        "HMA(13) trend": lp_trend,
+        "4Q trailing avg of HMA (carry-forward)": lp_4qta,
+    })
+    mg.line_plot_finalise(
+        df,
+        title="DFM labour-productivity adjustment (HMA-13 + 4Q trailing avg)",
+        ylabel="% per quarter",
+        y0=True,
+        plot_from=pd.Period("2010Q1", "Q-DEC"),
+        color=["lightsteelblue", "navy", "darkorange"],
+        width=[1.0, 2.2, 2.2],
+        rfooter="Source: ABS 5206.0",
+        lfooter="Australia. Productivity = Δ hourly COE − Δ ULC. Carry-forward = 4Q trailing avg of HMA. "
+                f"{pd.Timestamp.now().strftime('%d %b %Y')}. ",
+        show=SHOW,
+    )
+
+
 # --- Live entry point ---
 
 
@@ -743,6 +855,7 @@ def run_nowcast() -> NowcastResult:
         show=SHOW,
     ))
     _plot_factors(result)
+    _plot_productivity_adjustment()
 
     return result
 

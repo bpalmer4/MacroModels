@@ -93,7 +93,10 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
     gdp_growth = compute_gdp_growth(gdp)
 
     monthly_indicators = _load_monthly_indicators()
-    quarterly_indicators = _load_quarterly_indicators()
+    # Household spending (5682.0) must be grounded to a target quarter at collection.
+    # This (soft) backtest loads the latest vintage once — one quarter past the last
+    # GDP print — then truncates per backtest quarter.
+    quarterly_indicators = _load_quarterly_indicators(gdp.index[-1] + 1)
 
     quarters = _get_backtest_quarters(config, gdp)
     print(f"Backtesting {len(quarters)} quarters: {quarters[0]} to {quarters[-1]}")

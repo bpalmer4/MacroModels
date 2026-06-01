@@ -28,16 +28,6 @@ _DID_TOTAL_CVM = (
 )
 
 
-def _latest_quarter_end_month() -> str:
-    """Return the most recent quarter-end month as 'mmm-yyyy' (lowercase)."""
-    today = pd.Timestamp.today()
-    current_q_end = pd.Period(today, freq="Q-DEC").asfreq("M", how="end")
-    if current_q_end > pd.Period(today, freq="M"):
-        # Quarter end is in the future; use the previous quarter end
-        current_q_end = (pd.Period(today, freq="Q-DEC") - 1).asfreq("M", how="end")
-    return current_q_end.strftime("%b-%Y").lower()
-
-
 def _empty_series() -> DataSeries:
     """Return an empty DataSeries placeholder when 5682015 cannot be loaded."""
     return DataSeries(
@@ -52,25 +42,21 @@ def _empty_series() -> DataSeries:
 
 
 @cache
-def get_household_spending_cvm_qrtly(history: str | None = None) -> DataSeries:
+def get_household_spending_cvm_qrtly(history: str) -> DataSeries:
     """Get Total Household Spending (quarterly, CVM, seasonally adjusted).
 
     The quarterly CVM table (5682015) only ships with the monthly 5682.0 release
-    that lands on a quarter-end month, so it is fetched via the `history`
-    snapshot. By default `history` is the most recent quarter-end month (so the
-    table is present even when called mid-quarter). A caller that already knows
-    its target quarter — e.g. the components nowcast running the day before GDP —
-    can pass that quarter's end month directly (e.g. ``"dec-2025"``) to pull the
-    snapshot covering it. Returns an empty DataSeries on any failure (so
-    downstream models can degrade gracefully).
+    that lands on a quarter-end month, so ABS requires the snapshot to be fetched by
+    a specific quarter-end month. ``history`` is REQUIRED and must be that quarter's
+    end month (e.g. ``"dec-2025"``) — there is deliberately no date-based default,
+    because the nowcast target quarter is derived from the GDP data and a date-based
+    guess can point at an unpublished future vintage. Returns an empty DataSeries on
+    any failure (so downstream models can degrade gracefully).
 
     Args:
-        history: quarter-end month as ``"mmm-yyyy"`` (lowercase) to fetch, or
-            ``None`` to use the most recent quarter-end month.
+        history: quarter-end month as ``"mmm-yyyy"`` (lowercase) to fetch.
 
     """
-    if history is None:
-        history = _latest_quarter_end_month()
     try:
         data, meta = ra.read_abs_cat(
             "5682.0", history=history, single_excel_only=_TABLE, verbose=False
@@ -99,12 +85,12 @@ def get_household_spending_cvm_qrtly(history: str | None = None) -> DataSeries:
     )
 
 
-def get_household_spending_cvm_growth_qrtly(history: str | None = None) -> DataSeries:
+def get_household_spending_cvm_growth_qrtly(history: str) -> DataSeries:
     """Get quarterly Total Household Spending CVM growth (log difference).
 
     Args:
-        history: quarter-end month as ``"mmm-yyyy"`` to fetch, or ``None`` for the
-            most recent quarter-end month. Passed through to
+        history: quarter-end month as ``"mmm-yyyy"`` to fetch (REQUIRED; ABS fetches
+            the quarterly CVM table by quarter-end-month snapshot). Passed through to
             :func:`get_household_spending_cvm_qrtly`.
 
     Returns:
