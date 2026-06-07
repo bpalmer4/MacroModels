@@ -83,7 +83,7 @@ def _run_variant(
 
 
 def main(
-    anchor_mode: AnchorMode = "unanchored",
+    anchor_mode: AnchorMode = "target",
     verbose: bool = False,
     variants: list[str] | None = None,
     estimate_only: bool = False,
@@ -102,7 +102,7 @@ def main(
 
     """
     if variants is None:
-        variants = ["default"]
+        variants = ["simple_excess_regime"]
     variants = sorted(set(variants))
 
     for name in variants:
@@ -137,7 +137,7 @@ def main(
         print("#" * 60 + "\n")
 
         all_results = [
-            load_results(prefix=_run_prefix(name, anchor_mode), rebuild_model=False)
+            load_results(prefix=_run_prefix(PRESETS[name].label, anchor_mode), rebuild_model=False)
             for name in variants
         ]
         plot_nairu_comparison(all_results)
@@ -151,16 +151,16 @@ if __name__ == "__main__":
         "--anchor",
         type=str,
         choices=["expectations", "target", "rba", "unanchored", "unanchored_raw"],
-        default="unanchored",
-        help="Expectations anchor mode (default: unanchored — RBA → phased 1993-1998 → unanchored model)",
+        default="target",
+        help="Expectations anchor mode (default: target — expectations → phased 1993-1998 → 2.5%% target)",
     )
     parser.add_argument(
         "--variant",
         type=str,
         nargs="+",
         choices=list(PRESETS.keys()),
-        default=["default"],
-        help="Model variant(s) to run (default: default)",
+        default=["simple_excess_regime"],
+        help="Model variant(s) to run (default: simple_excess_regime)",
     )
     parser.add_argument(
         "--estimate-only",

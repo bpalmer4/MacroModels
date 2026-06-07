@@ -22,6 +22,12 @@ def _price_phillips_likelihood(
 
     mu = pi_exp_quarterly + gamma_effective * u_gap
 
+    if "π_exp_gap" in obs:
+        # Excess expectations: effective anchor = (1-beta) x anchor + beta x actual.
+        # Computed as a quarterly-space difference so beta=1 exactly reproduces
+        # quarterly(unanchored expectations) wherever the excess is non-zero.
+        excess_quarterly = quarterly(obs["π_exp"] + obs["π_exp_gap"]) - pi_exp_quarterly
+        mu = mu + mc["beta_pi"] * excess_quarterly
     if "Δ4ρm_1" in obs:
         mu = mu + mc["rho_pi"] * obs["Δ4ρm_1"]
     if "ξ_2" in obs:
@@ -55,6 +61,8 @@ def price_inflation_equation(
             "gamma_pi": {"mu": -1.5, "sigma": 1.0},
             "epsilon_pi": {"sigma": 0.25},
         }
+        if "π_exp_gap" in obs:
+            settings["beta_pi"] = {"mu": 0.5, "sigma": 0.3}
         if "Δ4ρm_1" in obs:
             settings["rho_pi"] = {"mu": 0.0, "sigma": 0.1}
         if "ξ_2" in obs:
@@ -63,6 +71,8 @@ def price_inflation_equation(
         _price_phillips_likelihood(obs, nairu, mc, gamma_effective=mc["gamma_pi"])
 
     parts = ["pi = quarterly(pi_exp) + gamma x u_gap"]
+    if "π_exp_gap" in obs:
+        parts.insert(1, "beta x excess_exp")
     if "Δ4ρm_1" in obs:
         parts.append("rho x d4pm")
     if "ξ_2" in obs:
@@ -93,6 +103,8 @@ def price_inflation_regime_equation(
             "gamma_pi_covid": {"mu": -2.5, "sigma": 1.0},
             "epsilon_pi": {"sigma": 0.25},
         }
+        if "π_exp_gap" in obs:
+            settings["beta_pi"] = {"mu": 0.5, "sigma": 0.3}
         if "Δ4ρm_1" in obs:
             settings["rho_pi"] = {"mu": 0.0, "sigma": 0.1}
         if "ξ_2" in obs:
@@ -106,6 +118,8 @@ def price_inflation_regime_equation(
         _price_phillips_likelihood(obs, nairu, mc, gamma_effective=gamma_effective)
 
     parts = ["pi = quarterly(pi_exp) + gamma_regime x u_gap"]
+    if "π_exp_gap" in obs:
+        parts.insert(1, "beta x excess_exp")
     if "Δ4ρm_1" in obs:
         parts.append("rho x d4pm")
     if "ξ_2" in obs:

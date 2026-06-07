@@ -33,6 +33,8 @@ def wage_growth_equation(
             "lambda_wg": {"mu": -4.0, "sigma": 2.0},
             "epsilon_wg": {"sigma": 1.0},
         }
+        if wage_expectations and "π_exp_gap" in obs:
+            settings["beta_wg"] = {"mu": 0.5, "sigma": 0.3}
         if wage_price_passthrough:
             settings["phi_wg"] = {"mu": 0.0, "sigma": 0.2}
         mc = set_model_coefficients(model, settings, constant)
@@ -40,7 +42,12 @@ def wage_growth_equation(
         u_gap = (obs["U"] - nairu) / obs["U"]
         mu = mc["alpha_wg"] + mc["gamma_wg"] * u_gap + mc["lambda_wg"] * obs["ΔU_1_over_U"]
         if wage_expectations:
-            mu = mu + quarterly(obs["π_exp"])
+            pi_exp_quarterly = quarterly(obs["π_exp"])
+            mu = mu + pi_exp_quarterly
+            if "π_exp_gap" in obs:
+                # Excess expectations (see phillips_price.py for rationale)
+                excess_quarterly = quarterly(obs["π_exp"] + obs["π_exp_gap"]) - pi_exp_quarterly
+                mu = mu + mc["beta_wg"] * excess_quarterly
         if wage_price_passthrough:
             mu = mu + mc["phi_wg"] * obs["Δ4dfd"]
 
@@ -54,6 +61,8 @@ def wage_growth_equation(
     parts = ["dulc = alpha"]
     if wage_expectations:
         parts.append("pi_exp")
+        if "π_exp_gap" in obs:
+            parts.append("beta x excess_exp")
     parts.append("gamma x u_gap + lambda x dU/U")
     if wage_price_passthrough:
         parts.append("phi x d4dfd")
@@ -87,6 +96,8 @@ def wage_growth_regime_equation(
             "lambda_wg": {"mu": -4.0, "sigma": 2.0},
             "epsilon_wg": {"sigma": 1.0},
         }
+        if wage_expectations and "π_exp_gap" in obs:
+            settings["beta_wg"] = {"mu": 0.5, "sigma": 0.3}
         if wage_price_passthrough:
             settings["phi_wg"] = {"mu": 0.0, "sigma": 0.2}
         mc = set_model_coefficients(model, settings, constant)
@@ -100,7 +111,12 @@ def wage_growth_regime_equation(
 
         mu = mc["alpha_wg"] + gamma_effective * u_gap + mc["lambda_wg"] * obs["ΔU_1_over_U"]
         if wage_expectations:
-            mu = mu + quarterly(obs["π_exp"])
+            pi_exp_quarterly = quarterly(obs["π_exp"])
+            mu = mu + pi_exp_quarterly
+            if "π_exp_gap" in obs:
+                # Excess expectations (see phillips_price.py for rationale)
+                excess_quarterly = quarterly(obs["π_exp"] + obs["π_exp_gap"]) - pi_exp_quarterly
+                mu = mu + mc["beta_wg"] * excess_quarterly
         if wage_price_passthrough:
             mu = mu + mc["phi_wg"] * obs["Δ4dfd"]
 
@@ -114,6 +130,8 @@ def wage_growth_regime_equation(
     parts = ["dulc = alpha"]
     if wage_expectations:
         parts.append("pi_exp")
+        if "π_exp_gap" in obs:
+            parts.append("beta x excess_exp")
     parts.append("gamma_regime x u_gap + lambda x dU/U")
     if wage_price_passthrough:
         parts.append("phi x d4dfd")

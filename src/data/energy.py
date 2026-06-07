@@ -28,15 +28,47 @@ import pandas as pd
 from src.data.dataseries import DataSeries
 
 # World Bank Pink Sheet URL (monthly data)
-# WARNING: This URL may change as new data is added
+# Fallback only: the live URL changes with each vintage, so _resolve_pink_sheet_url()
+# scrapes the landing page for the current link (same approach as
+# ~/ABS/notebooks/World Bank Commodity Prices.ipynb) and falls back to this
+# pinned URL if scraping fails. Pinned 2026-06: 2026 vintage, data to 2026-05.
 PINK_SHEET_URL = (
     "https://thedocs.worldbank.org/en/doc/"
-    "18675f1d1639c7a34d463f59263ba0a2-0050012025/related/"
+    "74e8be41ceb20fa0da750cda2f6b9e4e-0050012026/related/"
     "CMO-Historical-Data-Monthly.xlsx"
 )
 
+# Landing page listing the current Pink Sheet documents
+PINK_SHEET_LANDING_PAGE = "https://www.worldbank.org/en/research/commodity-markets"
+
 
 # --- Shared infrastructure ---
+
+
+@cache
+def _resolve_pink_sheet_url() -> str:
+    """Find the current Pink Sheet monthly-data URL on the World Bank landing page.
+
+    The document URL changes with each vintage. Falls back to the pinned
+    PINK_SHEET_URL (with a warning) if the page cannot be scraped.
+    """
+    import re  # noqa: PLC0415 — scraping-only dependencies
+    import urllib.request  # noqa: PLC0415
+
+    pattern = r'https://thedocs\.worldbank\.org/en/doc/[^"\']+/CMO-Historical-Data-Monthly\.xlsx'
+    try:
+        req = urllib.request.Request(  # noqa: S310 — fixed https URL
+            PINK_SHEET_LANDING_PAGE, headers={"User-Agent": "Mozilla/5.0"},
+        )
+        with urllib.request.urlopen(req) as response:  # noqa: S310
+            html = response.read().decode("utf-8")
+        match = re.search(pattern, html)
+        if match:
+            return match.group(0)
+        print("WARNING: Pink Sheet link not found on landing page; using pinned URL.")
+    except OSError as e:
+        print(f"WARNING: could not scrape Pink Sheet landing page ({e}); using pinned URL.")
+    return PINK_SHEET_URL
 
 
 @cache
@@ -48,7 +80,7 @@ def _get_commodity_data() -> pd.DataFrame:
 
     """
     commodities: pd.DataFrame = pd.read_excel(
-        PINK_SHEET_URL,
+        _resolve_pink_sheet_url(),
         sheet_name="Monthly Prices",
         header=None,
         na_values=["N/A", "missing", "-", "…", "..."],

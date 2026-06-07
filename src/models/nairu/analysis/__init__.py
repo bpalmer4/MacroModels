@@ -25,6 +25,7 @@ from src.models.nairu.analysis.plot_posteriors_kde import plot_posteriors_kde
 from src.models.nairu.analysis.plot_potential_growth import plot_potential_growth
 from src.models.nairu.analysis.plot_potential_growth_comparison import plot_potential_growth_comparison
 from src.models.nairu.analysis.plot_potential_growth_smoothing import plot_potential_growth_smoothing
+from src.models.nairu.analysis.plot_target_consistent_u import plot_target_consistent_unemployment
 from src.models.nairu.analysis.plot_taylor_rule import plot_taylor_rule
 from src.models.nairu.analysis.plot_unemployment_gap import plot_unemployment_gap
 from src.models.nairu.analysis.posterior_predictive import posterior_predictive_checks
@@ -54,6 +55,7 @@ __all__ = [
     "plot_potential_growth",
     "plot_potential_growth_comparison",
     "plot_potential_growth_smoothing",
+    "plot_target_consistent_unemployment",
     "plot_taylor_rule",
     "plot_unemployment_gap",
     "posterior_predictive_checks",

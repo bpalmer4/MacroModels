@@ -8,7 +8,7 @@ Bayesian state-space model for jointly estimating NAIRU, potential output, and o
 |-----------|--------|-------------|
 | NAIRU | Gaussian random walk (default) | Student-t(nu=4) variant for fat tails |
 | Potential Output | Cobb-Douglas + Gaussian innovations (default) | SkewNormal variant available |
-| Phillips Curves | Single slope (default) | Regime-switching variant (3 regimes) |
+| Phillips Curves | Regime-switching, 3 regimes (default preset) | Single-slope variants; excess-expectations term (default preset) |
 | Identification | 2 state + N observation equations | Joint estimation with proper uncertainty |
 | Scenario Analysis | Model-consistent projection | 4-quarter horizon with policy scenarios |
 
@@ -31,7 +31,6 @@ nairu/
 ├── forecast.py               # Deterministic scenario analysis
 ├── forecast_bayesian.py      # Monte Carlo scenario analysis
 ├── forecast_plots.py         # Forecast visualisation
-├── pipeline.py               # CLI entry point and orchestration
 ├── MODEL_NOTES.md            # This file
 │
 ├── equations/                # One file per equation, standard API
@@ -82,10 +81,10 @@ nairu/
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       pipeline.py                           │
+│                         run.py                              │
 │                                                             │
-│   Orchestrates: estimate → analyse → forecast               │
-│   CLI: python -m src.models.nairu.pipeline               │
+│   Orchestrates: estimate → validate → analyse → forecast    │
+│   CLI: python -m src.models.nairu.run                       │
 └──────────────────────────┬──────────────────────────────────┘
                            │
          ┌─────────────────┼─────────────────────┐
@@ -140,11 +139,14 @@ nairu/
 
 ### Preset Variants
 
-| Preset | NAIRU | Regimes | Extra Equations | Import Control |
-|--------|-------|---------|-----------------|----------------|
-| `default` | Gaussian | No | — | No |
-| `simple` | Gaussian | No | — | Yes |
-| `complex` | Student-t | Yes | Exchange rate, import price, participation, employment, net exports | Yes |
+| Preset | NAIRU | Regimes | Excess Expectations | Extra Equations | Import Control |
+|--------|-------|---------|---------------------|-----------------|----------------|
+| `default` | Gaussian | No | No | — | No |
+| `simple` | Gaussian | No | No | — | Yes |
+| `simple_excess` | Gaussian | No | Yes | — | Yes |
+| `simple_regime` | Gaussian | Yes | No | — | Yes |
+| `simple_excess_regime` *(run.py default)* | Gaussian | Yes | Yes | — | Yes |
+| `complex` | Student-t | Yes | No | Exchange rate, import price, participation, employment, net exports | Yes |
 
 ### Creating Custom Variants
 
@@ -261,9 +263,9 @@ instead of the residual.
 | `--anchor` | Pre-1993 | 1993→1998 | Post-1998 |
 |------------|----------|-----------|-----------|
 | `rba` | RBA PIE_RBAQ | phased | **2.5% target** |
-| `target` | model expectations (target-anchored series) | phased | **2.5% target** |
+| `target` *(default)* | model expectations (target-anchored series) | phased | **2.5% target** |
 | `expectations` | model expectations (target-anchored series) — full series, no phasing | | |
-| `unanchored` *(default)* | RBA PIE_RBAQ | phased | **unanchored model median** |
+| `unanchored` | RBA PIE_RBAQ | phased | **unanchored model median** |
 | `unanchored_raw` | unanchored model median — full series, no phasing | | |
 
 - "phased" = linear interpolation between pre-1993 source and post-1998 destination across 1992Q4–1998Q4.
@@ -300,6 +302,45 @@ The difference is consistent with the price Phillips slope γ_π ≈ −0.82: a 
 - `target` / `expectations` → `get_model_expectations()` + optional `apply_anchor_mode()`
 - `unanchored` → `_build_rba_to_unanchored()` — RBA pre-1993, phased to unanchored post-1998
 - `unanchored_raw` → `get_model_expectations_unanchored()` — unanchored series unmodified
+
+### Excess expectations (`excess_expectations` config option)
+
+Bridges the two research questions above: keeps the target-locked anchor (policy
+relevance) but adds an estimated pass-through from de-anchored expectations
+(explanatory power). Designed for `--anchor target`; presets `simple_excess` and
+`simple_excess_regime` (the run.py default).
+
+```
+pi = quarterly(pi_exp) + beta x excess_exp + gamma x u_gap + controls + e
+
+excess_exp_t = unanchored model median_t − π_exp_t   (zero through 1992Q4)
+```
+
+- `excess_exp` is built in `observations.py:_build_excess_expectations()` as the
+  unanchored model median less the anchor actually fed to the Phillips curves.
+  It is zeroed through `PHASE_START` (1992Q4): pre-target the anchor is itself an
+  expectations model, so any difference is estimator noise, not excess over target.
+- The beta term is computed as a quarterly-space difference
+  (`quarterly(π_exp + excess) − quarterly(π_exp)`), so the effective anchor is
+  exactly `(1−beta) x anchor + beta x actual` in quarterly units.
+- **Nesting**: beta = 0 recovers the pure `target` model; beta = 1 reproduces the
+  unanchored expectations model post-1998. beta is the estimated *degree of
+  de-anchoring* (priors: Normal(0.5, 0.3) on `beta_pi`, `beta_wg`, `beta_hcoe`).
+- **Interpretation**: the NAIRU remains target-consistent (conditional on
+  expectations at target). At U = NAIRU, inflation settles at
+  `2.5 + beta x excess` until expectations re-anchor — the beta term quantifies
+  how much de-anchoring is costing relative to target.
+- **Identification**: the excess series is two-sided — ≈ +0.4 around 2008,
+  −0.4 to −0.6 through 2016–2019, +0.84 at 2022Q4, +0.2 at the 2025 endpoint.
+  The negative 2016–19 episode identifies beta in a window where GSCPI and
+  import-price controls are quiet.
+- **Known wrinkle**: at 1993Q1–Q2 the series reads −0.29/−0.56 then flips sign —
+  residual estimator disagreement leaking through the switch-on. Two observations
+  out of ~130; left as-is.
+- Wage equations get the same term (own betas) when `wage_expectations` is on.
+- The `r_gap` fed to the IS curve still uses the locked anchor (`cash_rate −
+  π_exp − r*`), overstating the ex-ante real rate when expectations drift above
+  target. Deliberately unchanged in the first pass; candidate refinement.
 
 ---
 
@@ -413,11 +454,11 @@ NAIRU + Output Gap Model [simple]
 NAIRU + Output Gap Model [complex]
 ```
 
-Charts are saved to `charts/{config.chart_dir_name}/`:
+Charts are saved to `charts/nairu_{label}_{anchor}/`:
 ```
-charts/nairu_simple/
-charts/nairu_complex/
-charts/nairu_default/
+charts/nairu_simple_excess_regime_target/
+charts/nairu_simple_target/
+charts/nairu_complex_unanchored/
 ```
 
 ---
@@ -426,14 +467,14 @@ charts/nairu_default/
 
 ### Full Pipeline
 ```bash
-python -m src.models.nairu.pipeline -v
-python -m src.models.nairu.pipeline -v --variant simple
-python -m src.models.nairu.pipeline -v --variant simple complex
+python -m src.models.nairu.run -v                     # default: simple_excess_regime, target anchor
+python -m src.models.nairu.run -v --variant simple
+python -m src.models.nairu.run -v --variant simple complex --anchor unanchored
 ```
 
 ### Estimation Only
 ```bash
-python -m src.models.nairu.estimate --start 1980Q1 -v
+python -m src.models.nairu.run -v --estimate-only
 ```
 
 ### From Python

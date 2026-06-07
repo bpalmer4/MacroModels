@@ -46,12 +46,22 @@ def plot_expectations_input(
     π_exp = π_exp[π_exp.index >= START]
     π4 = π4[π4.index >= START]
 
+    # Actual expectations (anchor + excess) when the excess term is in the model —
+    # the wedge between this line and π_exp is what the beta term prices
+    π_exp_actual = None
+    if results.config.excess_expectations and "π_exp_gap" in results.obs:
+        gap = pd.Series(results.obs["π_exp_gap"], index=results.obs_index)
+        π_exp_actual = (π_exp + gap[gap.index >= START]).rename(
+            "Actual expectations (anchor + excess)")
+
     ax = mg.line_plot(
         π_exp,
         color="navy",
         width=2,
         annotate=True,
     )
+    if π_exp_actual is not None:
+        mg.line_plot(π_exp_actual, ax=ax, color="mediumpurple", width=1.5, style="--", annotate=True)
     mg.line_plot(π4, ax=ax, color="darkorange", width=1.2, annotate=True)
 
     mg.finalise_plot(

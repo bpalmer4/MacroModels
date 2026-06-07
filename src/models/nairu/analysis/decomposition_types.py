@@ -14,6 +14,7 @@ class DecompositionBase:
 
     observed: pd.Series
     anchor: pd.Series
+    excess: pd.Series  # beta x excess expectations (zero unless excess_expectations)
     demand: pd.Series
     residual: pd.Series
     fitted: pd.Series
@@ -28,6 +29,7 @@ class InflationDecomposition(DecompositionBase):
     supply_gscpi: pd.Series
     has_import_price: bool = True
     has_gscpi: bool = True
+    has_excess: bool = False
 
     @property
     def supply_total(self) -> pd.Series:
@@ -38,6 +40,7 @@ class InflationDecomposition(DecompositionBase):
         """Convert to DataFrame with all components."""
         return pd.DataFrame({
             "observed": self.observed, "anchor": self.anchor,
+            "excess": self.excess,
             "demand": self.demand, "supply_import": self.supply_import,
             "supply_gscpi": self.supply_gscpi, "supply_total": self.supply_total,
             "residual": self.residual, "fitted": self.fitted,
@@ -51,11 +54,13 @@ class WageInflationDecomposition(DecompositionBase):
     price_passthrough: pd.Series
     has_price_passthrough: bool = False
     has_expectations: bool = False
+    has_excess: bool = False
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert to DataFrame with all components."""
         return pd.DataFrame({
             "observed": self.observed, "anchor": self.anchor,
+            "excess": self.excess,
             "demand": self.demand, "price_passthrough": self.price_passthrough,
             "residual": self.residual, "fitted": self.fitted,
         }, index=self.index)
@@ -69,11 +74,13 @@ class HCOEInflationDecomposition(DecompositionBase):
     productivity: pd.Series
     has_price_passthrough: bool = False
     has_expectations: bool = False
+    has_excess: bool = False
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert to DataFrame with all components."""
         return pd.DataFrame({
             "observed": self.observed, "anchor": self.anchor,
+            "excess": self.excess,
             "demand": self.demand, "price_passthrough": self.price_passthrough,
             "productivity": self.productivity,
             "residual": self.residual, "fitted": self.fitted,

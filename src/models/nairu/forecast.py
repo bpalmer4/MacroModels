@@ -24,6 +24,7 @@ import pandas as pd
 from scipy import stats
 
 from src.models.common.extraction import get_scalar_var
+from src.models.nairu.observations import PHASE_END
 from src.models.nairu.results import NAIRUResults, load_results
 from src.utilities.rate_conversion import annualize, quarterly
 
@@ -337,6 +338,21 @@ def forecast(  # noqa: C901, PLR0912, PLR0915
 
     pi_exp_qtr = quarterly(obs["π_exp"][-1])
 
+    # Excess expectations channel (excess_expectations variants).
+    # The gap decays toward zero (re-anchoring) at an AR(1) rate estimated
+    # from the target-era gap series itself.
+    has_excess = "beta_pi" in trace.posterior and "π_exp_gap" in obs
+    if has_excess:
+        beta_pi_excess = get_coef("beta_pi")
+        gap_series = obs["π_exp_gap"][obs_index > PHASE_END]
+        gap_T = float(obs["π_exp_gap"][-1])
+        denom = float(np.sum(gap_series[:-1] ** 2))
+        rho_gap = float(np.clip(np.sum(gap_series[1:] * gap_series[:-1]) / denom, 0.0, 0.99)) if denom > 0 else 0.0
+    else:
+        beta_pi_excess = 0.0
+        gap_T = 0.0
+        rho_gap = 0.0
+
     # Potential growth (Cobb-Douglas drift)
     alpha = float(obs["alpha_capital"][-1])
     g_K = float(obs["capital_growth"][-1])
@@ -438,6 +454,10 @@ def forecast(  # noqa: C901, PLR0912, PLR0915
         # Phillips curve
         u_gap_ratio = u_gap_fcst / unemployment_fcst[t]
         inflation_fcst[t] = pi_exp_qtr + gamma_pi * u_gap_ratio + import_effect + eps_pi
+        if has_excess:
+            gap_t = gap_T * rho_gap ** (t + 1)
+            excess_qtr = quarterly(obs["π_exp"][-1] + gap_t) - pi_exp_qtr
+            inflation_fcst[t] = inflation_fcst[t] + beta_pi_excess * excess_qtr
 
     # --- Package ---
     cols = [f"s{i}" for i in range(n_samples)]

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from src.models.common.extraction import get_scalar_var, get_vector_var
-from src.models.nairu.analysis._decomposition_helpers import get_regime_gamma
+from src.models.nairu.analysis._decomposition_helpers import get_excess_contribution, get_regime_gamma
 from src.models.nairu.analysis.decomposition_types import HCOEInflationDecomposition
 from src.utilities.rate_conversion import quarterly
 
@@ -42,15 +42,17 @@ def decompose_hcoe_inflation(
     mfp_growth = pd.Series(obs["mfp_growth"], index=obs_index)
 
     anchor = alpha_hcoe + theta_hcoe * quarterly(pi_exp)
+    excess, has_excess = get_excess_contribution(trace, obs, obs_index, "beta_hcoe")
     demand = gamma_hcoe * (U - nairu) / U + lambda_hcoe * delta_u_over_u
     price_passthrough = phi_hcoe * dfd_growth
     productivity = psi_hcoe * mfp_growth
-    fitted = anchor + demand + price_passthrough + productivity
+    fitted = anchor + excess + demand + price_passthrough + productivity
     residual = hcoe_observed - fitted
 
     return HCOEInflationDecomposition(
-        observed=hcoe_observed, anchor=anchor, demand=demand,
+        observed=hcoe_observed, anchor=anchor, excess=excess, demand=demand,
         price_passthrough=price_passthrough, productivity=productivity,
         residual=residual, fitted=fitted, index=obs_index,
         has_price_passthrough=has_phi, has_expectations=has_exp,
+        has_excess=has_excess,
     )

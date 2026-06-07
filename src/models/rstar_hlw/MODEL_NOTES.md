@@ -6,7 +6,16 @@ A Bayesian (PyMC + NumPyro NUTS) implementation of the Holston-Laubach-Williams 
 
 The original goal: estimate r* for Australia with proper Bayesian uncertainty bands and feed the posterior into the NAIRU model's IS curve, replacing its deterministic Cobb-Douglas r*.
 
-Eight specifications were tried (Resolutions A–H below): canonical HLW with a latent z-state; canonical + bond observation; a deterministic blend of structural and market anchors; soft-anchor variants; an open-economy IS curve; hierarchical and time-varying priors on the blend weight α.
+The eight specifications (Resolutions A–H below) were not designed upfront as a sweep. They were built one at a time, each as the previous one's failure clarified what the problem actually was:
+
+- **A** (canonical HLW) came back with a dead z-state and r* ≈ g. That raised three competing diagnoses: missing market information, a mis-specified IS curve, or a latent that cannot be identified at all.
+- **B** tested the first — add the indexed-bond observation. The model simply relabelled the bond yield as r*; the HLW machinery became decorative.
+- **C** accepted the diagnosis B implied and replaced the unidentifiable latent with a deterministic blend of the two observable anchors, weighted by a single scalar α. Clean — but the answer turned out to be whatever the α-prior said.
+- **D** tested the second diagnosis — maybe A failed because the closed-economy IS curve was missing the SOE channels. It wasn't: same dead z with the open-economy block wired in.
+- **E** and **F** checked whether C's deterministic identity was over-constraining the answer, by giving the IS curve room (an AR(1) z) to disagree with the blend — alone (E) and with the SOE block (F). It declined both times.
+- **G** and **H** were the last degrees of freedom: hand the α-prior's shape to the data (G), then let α drift over time (H). The data handed the shape straight back, and pulled α_t flat.
+
+What began as "estimate r* for Australia" became "understand why r* cannot be estimated from Australian data" — and the resolutions are the record of that shift, not a menu of alternatives.
 
 Across the eight, the same pattern returned. **Each spec gave back the structural assumption it imposed**, plus a Monte Carlo whisker. The IS curve does not pin r* in Australian data. The rate channel is too weak: a_r ≈ −0.04 against σ_IS ≈ 0.70 and an in-sample r-gap sd of ~2pp — a signal-to-noise ratio of about 0.11. The signal sits more than an order of magnitude below the noise floor. The IS curve cannot resolve r* out of the data independently of whatever structural assumption is imposed on it.
 
@@ -26,7 +35,7 @@ The rest of these notes work through the eight resolutions individually, the cro
 
 ## Sample, data, and the indexed-yield fill
 
-**Sample**: 1986Q3 → 2025Q4 (158 contiguous quarters), aligned with the start of the indexed bond yield series. Pre-1993 Australia had no inflation target and a different monetary regime — including 1983Q1–1992Q4 worsens identification. The HLW-NAIRU integration plan is to use HLW r* from 1993Q1 onward and fall back to the Cobb-Douglas r* before that.
+**Sample**: 1986Q3 → 2026Q1 (159 contiguous quarters as at the June 2026 run; the end advances with each quarterly re-run). The start is pinned by the indexed bond yield series — `observations.py` joins all series and drops incomplete quarters, so the 1980Q1 CLI default start is a no-op and the effective floor is 1986Q3. Pre-1993 Australia had no inflation target and a different monetary regime — including 1983Q1–1992Q4 worsens identification. The HLW-NAIRU integration plan is to use HLW r* from 1993Q1 onward and fall back to the Cobb-Douglas r* before that.
 
 **Data inputs**
 
@@ -145,6 +154,8 @@ Same r* identity as C but with a hierarchical prior on α: a, b ~ Uniform(0.25, 
 **What we learnt**: even when the prior shape is handed over to the data, the data hands it back with effectively no information added — both hyperparameters straddle 1 with very wide HDIs. An earlier version of G used `HalfNormal(1)` as the hyperprior on (a, b); HalfNormal(1) puts ~58% of its mass below 1, mildly favouring U-shaped Betas, and produced a strongly bimodal α posterior (densities ~4.4 / 0.6 / 8.4). Switching to the neutral `Uniform(0.25, 2)` flattened the bimodality. **Endpoint stacking only appears when the (hyper)prior allows Beta shape parameters below 1**, putting the Beta in U-shape territory — it's a constraint structure × diffuse-signal interaction, not a data preference for extreme α.
 
 G is the implementation default in `estimate.py` — not because it is "the answer", but because among the blend variants it makes the analyst's α choice as data-driven as possible. The median r* path is essentially identical to C.
+
+G is the end point of the sequence, not the winner of a horse race: by the time it was built, A–F had established that the data would not adjudicate, so the remaining honest move was to make the one analyst-chosen quantity (α) as data-driven as the framework allows — and document that the data declines even that.
 
 #### The G story — the honest answer
 

@@ -52,6 +52,9 @@ class ModelConfig:
         okun_gap_form: Use gap-to-gap Okun's Law instead of simple change form
         wage_expectations: Include inflation expectations in wage equations
         wage_price_passthrough: Include demand deflator pass-through in wages
+        excess_expectations: Add beta x (actual - target) expectations term to
+            the Phillips curves (intended for the "target" anchor: beta=0 is
+            the pure target model, beta=1 the unanchored expectations model)
 
         # Supply-side controls in Phillips curve
         include_import_price_control: Include lagged import price growth
@@ -96,6 +99,7 @@ class ModelConfig:
     okun_gap_form: bool = False
     wage_expectations: bool = True
     wage_price_passthrough: bool = False
+    excess_expectations: bool = False
 
     # Supply-side controls in Phillips curve
     include_import_price_control: bool = True
@@ -193,6 +197,8 @@ class ModelConfig:
             controls.append("GSCPI")
         if controls:
             lines.append(f"  Phillips controls: {', '.join(controls)}")
+        if self.excess_expectations:
+            lines.append("  Excess expectations: beta x (actual - target) in Phillips curves")
 
         return "\n".join(lines)
 
@@ -200,6 +206,15 @@ class ModelConfig:
 # --- Preset Configurations ---
 
 SIMPLE = ModelConfig(label="simple")
+
+# SIMPLE plus the excess-expectations term (run with --anchor target)
+SIMPLE_EXCESS = ModelConfig(label="simple_excess", excess_expectations=True)
+
+# Regime-switching counterparts (Phillips slopes: pre-GFC / GFC / post-COVID)
+SIMPLE_REGIME = ModelConfig(label="simple_regime", regime_switching=True)
+SIMPLE_EXCESS_REGIME = ModelConfig(
+    label="simple_excess_regime", excess_expectations=True, regime_switching=True,
+)
 
 COMPLEX = ModelConfig(
     label="complex",
@@ -219,5 +234,8 @@ COMPLEX = ModelConfig(
 PRESETS: dict[str, ModelConfig] = {
     "default": ModelConfig(),
     "simple": SIMPLE,
+    "simple_excess": SIMPLE_EXCESS,
+    "simple_regime": SIMPLE_REGIME,
+    "simple_excess_regime": SIMPLE_EXCESS_REGIME,
     "complex": COMPLEX,
 }

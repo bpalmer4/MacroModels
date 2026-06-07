@@ -24,7 +24,7 @@ _CONFIG = {
         "target_line": 2.5,
         "lheader": "",
         "lfooter": "Australia. Decomposition based on augmented Phillips curve.",
-        "eq": lambda d: eq_unscaled(d.has_import_price, d.has_gscpi),
+        "eq": lambda d: eq_unscaled(d.has_import_price, d.has_gscpi, d.has_excess),
     },
     WageInflationDecomposition: {
         "kind": "Wage-ULC Inflation",
@@ -33,7 +33,7 @@ _CONFIG = {
         "target_line": None,
         "lheader": "ULC = Unit Labour Costs.",
         "lfooter": "Australia. Decomposition based on augmented wage Phillips curve.",
-        "eq": lambda d: wage_eq_unscaled(d.has_price_passthrough, d.has_expectations),
+        "eq": lambda d: wage_eq_unscaled(d.has_price_passthrough, d.has_expectations, d.has_excess),
     },
     HCOEInflationDecomposition: {
         "kind": "Wage-HCOE Inflation",
@@ -42,7 +42,7 @@ _CONFIG = {
         "target_line": None,
         "lheader": "HCOE = Hourly Compensation of Employees.",
         "lfooter": "Australia. Decomposition based on hourly compensation Phillips curve.",
-        "eq": lambda d: hcoe_eq_unscaled(d.has_price_passthrough, d.has_expectations),
+        "eq": lambda d: hcoe_eq_unscaled(d.has_price_passthrough, d.has_expectations, d.has_excess),
     },
 }
 
@@ -58,10 +58,16 @@ def plot_decomposition(decomp: DecompositionBase, *, rfooter: str = "", show: bo
     else:
         label = "Baseline (α + expectations)" if decomp.has_expectations else "Baseline (α)"
         cols = {label: df["anchor"]}
-    colors = ["#cccccc", "orange"]
+    colors = ["#cccccc"]
+
+    # Excess expectations (beta x actual minus anchor)
+    if decomp.has_excess:
+        cols["Excess expectations"] = df["excess"]
+        colors.append("mediumpurple")
 
     # Demand
     cols["Demand" if isinstance(decomp, InflationDecomposition) else "Demand (labor market)"] = df["demand"]
+    colors.append("orange")
 
     # Type-specific middle columns
     if isinstance(decomp, InflationDecomposition):

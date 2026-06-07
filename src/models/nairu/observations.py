@@ -132,6 +132,26 @@ def _phase_between(early: pd.Series, late: pd.Series) -> pd.Series:
     return result
 
 
+def _build_excess_expectations(anchor: pd.Series) -> pd.Series:
+    """Build the excess-expectations series: unanchored model less the anchor in use.
+
+    Zero through PHASE_START: pre-1993 the anchor is itself an expectations
+    model, so any difference from the unanchored median is estimator noise,
+    not excess over target. From 1993Q1 the full difference against the
+    (possibly phasing) anchor — during 1993-1998 this grows as the anchor
+    glides to the 2.5% target; post-1998 it is unanchored minus 2.5.
+
+    Used by the excess_expectations config option, which adds a
+    beta x excess term to the Phillips curves. With the "target" anchor this
+    nests both anchoring views: beta=0 is the pure target model, beta=1
+    reproduces the unanchored expectations model post-1998.
+    """
+    unanchored = get_model_expectations_unanchored().data.astype(float)
+    excess = unanchored - anchor
+    excess[excess.index <= PHASE_START] = 0.0  # also zeroes pre-1983 NaNs
+    return excess
+
+
 def _build_rba_to_unanchored() -> pd.Series:
     """Build RBA-raw → Unanchored phased series.
 
@@ -222,7 +242,7 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
     start: str | None = None,
     end: str | None = None,
     hma_term: int = HMA_TERM,
-    anchor_mode: AnchorMode = "unanchored",
+    anchor_mode: AnchorMode = "target",
     verbose: bool = False,  # noqa: ARG001 — reserved for future use
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, str, pd.DataFrame]:
     """Build observation dictionary for model.
@@ -239,9 +259,9 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
         hma_term: Henderson MA smoothing term (default 13)
         anchor_mode: How to anchor expectations
             - "expectations": Use full estimated (target-anchored) expectations series
-            - "target": Phase from expectations to 2.5% target (1993-1998)
+            - "target" (default): Phase from expectations to 2.5% target (1993-1998)
             - "rba": RBA PIE_RBAQ, phased to 2.5% target (policy-counterfactual)
-            - "unanchored" (default): RBA PIE_RBAQ phased to unanchored model post-1998
+            - "unanchored": RBA PIE_RBAQ phased to unanchored model post-1998
             - "unanchored_raw": unanchored model series, no phase-in
         verbose: Print sample info
 
@@ -297,6 +317,11 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
     else:
         π_exp_raw = _load("π_exp", get_model_expectations())
         π_exp = apply_anchor_mode(π_exp_raw, anchor_mode)
+
+    # Excess expectations (unanchored model less the anchor in use, zero pre-1993).
+    # Only enters the model when config.excess_expectations is set.
+    print(f"  {'π_exp_gap':<{_NAME_WIDTH}s}Excess expectations: unanchored model − π_exp anchor (zero pre-1993)")
+    π_exp_gap = _build_excess_expectations(π_exp)
 
     # Interest rates
     cash_rate = _load("cash_rate", get_cash_rate_qrtly())
@@ -380,6 +405,7 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
         "π": π,
         "π4": π4,
         "π_exp": π_exp,
+        "π_exp_gap": π_exp_gap,
         # Unemployment
         "U": U,
         "U_1": U_1,
@@ -442,7 +468,7 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
     observed["ξ_2"] = observed["ξ_2"].fillna(0.0)
 
     # Forward-fill housing wealth growth (5232.0 lags other releases)
-    # Δhw_1 is only used in stage3 forward sampling, not in estimation
+    # Δhw_1 is only used in forecast forward sampling, not in estimation
     observed["Δhw_1"] = observed["Δhw_1"].ffill()
 
     # Charting version: same start date, extends to latest available per series

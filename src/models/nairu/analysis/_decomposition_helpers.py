@@ -2,11 +2,33 @@
 
 import arviz as az
 import mgplot as mg
+import numpy as np
 import pandas as pd
 from matplotlib.axes import Axes
 
 from src.models.common.extraction import get_scalar_var
 from src.models.nairu.config import REGIME_COVID_START, REGIME_GFC_START
+from src.utilities.rate_conversion import quarterly
+
+
+def get_excess_contribution(
+    trace: az.InferenceData,
+    obs: dict[str, np.ndarray],
+    obs_index: pd.PeriodIndex,
+    beta_var: str,
+) -> tuple[pd.Series, bool]:
+    """Excess-expectations contribution: beta x (q(π_exp + gap) − q(π_exp)).
+
+    Returns (zeros, False) when the variant has no excess term, including
+    results saved before the excess_expectations option existed.
+    """
+    if beta_var not in trace.posterior or "π_exp_gap" not in obs:
+        return pd.Series(0.0, index=obs_index), False
+    beta = get_scalar_var(beta_var, trace).median()
+    pi_exp = pd.Series(obs["π_exp"], index=obs_index)
+    gap = pd.Series(obs["π_exp_gap"], index=obs_index)
+    excess = beta * (quarterly(pi_exp + gap) - quarterly(pi_exp))
+    return excess, True
 
 
 def get_regime_gamma(trace: az.InferenceData, obs_index: pd.PeriodIndex, prefix: str) -> pd.Series:
@@ -37,25 +59,34 @@ def _supply_terms(has_import: bool, has_gscpi: bool) -> str:
     return r" + \underbrace{" + inner + r"}_{\mathrm{blue}}"
 
 
-def eq_unscaled(has_import: bool, has_gscpi: bool) -> str:
+def _excess_term(has_excess: bool) -> str:
+    if not has_excess:
+        return ""
+    return r" + \underbrace{\beta\,\pi^{xs}_t}_{\mathrm{purple}}"
+
+
+def eq_unscaled(has_import: bool, has_gscpi: bool, has_excess: bool = False) -> str:
     return (r"$\pi_t = \underbrace{\pi^e_t}_{\mathrm{grey}}"
-            r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
+            + _excess_term(has_excess)
+            + r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
             + _supply_terms(has_import, has_gscpi)
             + r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$")
 
 
-def wage_eq_unscaled(has_phi: bool, has_exp: bool) -> str:
+def wage_eq_unscaled(has_phi: bool, has_exp: bool, has_excess: bool = False) -> str:
     eq = (r"$\Delta ulc_t = \underbrace{\alpha + \pi^e_t}_{\mathrm{grey}}" if has_exp
           else r"$\Delta ulc_t = \underbrace{\alpha}_{\mathrm{grey}}")
+    eq += _excess_term(has_excess)
     eq += r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
     if has_phi:
         eq += r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"
     return eq + r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
 
 
-def hcoe_eq_unscaled(has_phi: bool, has_exp: bool) -> str:
+def hcoe_eq_unscaled(has_phi: bool, has_exp: bool, has_excess: bool = False) -> str:
     eq = (r"$\Delta hcoe_t = \underbrace{\alpha + \pi^e_t}_{\mathrm{grey}}" if has_exp
           else r"$\Delta hcoe_t = \underbrace{\alpha}_{\mathrm{grey}}")
+    eq += _excess_term(has_excess)
     eq += r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t} + \lambda\frac{\Delta U_{t-1}}{U_t}}_{\mathrm{orange}}"
     if has_phi:
         eq += r" + \underbrace{\phi\Delta_4 dfd_t}_{\mathrm{blue}}"

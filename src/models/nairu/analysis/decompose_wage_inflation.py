@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from src.models.common.extraction import get_scalar_var, get_vector_var
-from src.models.nairu.analysis._decomposition_helpers import get_regime_gamma
+from src.models.nairu.analysis._decomposition_helpers import get_excess_contribution, get_regime_gamma
 from src.models.nairu.analysis.decomposition_types import WageInflationDecomposition
 from src.utilities.rate_conversion import quarterly
 
@@ -40,14 +40,16 @@ def decompose_wage_inflation(
     dfd_growth = pd.Series(obs["Δ4dfd"], index=obs_index)
 
     anchor = alpha_wg + theta_wg * quarterly(pi_exp)
+    excess, has_excess = get_excess_contribution(trace, obs, obs_index, "beta_wg")
     demand = gamma_wg * (U - nairu) / U + lambda_wg * delta_u_over_u
     price_passthrough = phi_wg * dfd_growth
-    fitted = anchor + demand + price_passthrough
+    fitted = anchor + excess + demand + price_passthrough
     residual = ulc_observed - fitted
 
     return WageInflationDecomposition(
-        observed=ulc_observed, anchor=anchor, demand=demand,
+        observed=ulc_observed, anchor=anchor, excess=excess, demand=demand,
         price_passthrough=price_passthrough, residual=residual,
         fitted=fitted, index=obs_index,
         has_price_passthrough=has_phi, has_expectations=has_exp,
+        has_excess=has_excess,
     )

@@ -64,6 +64,8 @@ def build_model(obs: dict[str, np.ndarray], config: ModelConfig) -> pm.Model:  #
         strip_keys.add("Δ4ρm_1")
     if not config.include_gscpi_control:
         strip_keys.add("ξ_2")
+    if not config.excess_expectations:
+        strip_keys.add("π_exp_gap")
     if strip_keys:
         obs = {k: v for k, v in obs.items() if k not in strip_keys}
 
@@ -251,7 +253,7 @@ def save_results(
 def run_estimate(
     start: str | None = "1980Q1",
     end: str | None = None,
-    anchor_mode: AnchorMode = "unanchored",
+    anchor_mode: AnchorMode = "target",
     config: ModelConfig | None = None,
     sampler_config: SamplerConfig | None = None,
     output_dir: Path | str | None = None,
@@ -283,6 +285,12 @@ def run_estimate(
             chains=5,
             cores=5,
             target_accept=0.90,
+        )
+
+    if config.excess_expectations and anchor_mode in ("unanchored", "unanchored_raw"):
+        print(
+            "WARNING: excess_expectations with an unanchored anchor double-counts "
+            "expectations drift — intended for anchor_mode='target'."
         )
 
     # Build observations

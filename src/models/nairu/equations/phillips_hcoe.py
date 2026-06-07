@@ -34,6 +34,8 @@ def hourly_coe_equation(
             "psi_hcoe": {"mu": 1.0, "sigma": 0.5, "lower": 0},
             "epsilon_hcoe": {"sigma": 0.75},
         }
+        if wage_expectations and "π_exp_gap" in obs:
+            settings["beta_hcoe"] = {"mu": 0.5, "sigma": 0.3}
         if wage_price_passthrough:
             settings["phi_hcoe"] = {"mu": 0.0, "sigma": 0.2}
         mc = set_model_coefficients(model, settings, constant)
@@ -46,7 +48,12 @@ def hourly_coe_equation(
             + mc["psi_hcoe"] * obs["mfp_growth"]
         )
         if wage_expectations:
-            mu = mu + quarterly(obs["π_exp"])
+            pi_exp_quarterly = quarterly(obs["π_exp"])
+            mu = mu + pi_exp_quarterly
+            if "π_exp_gap" in obs:
+                # Excess expectations (see phillips_price.py for rationale)
+                excess_quarterly = quarterly(obs["π_exp"] + obs["π_exp_gap"]) - pi_exp_quarterly
+                mu = mu + mc["beta_hcoe"] * excess_quarterly
         if wage_price_passthrough:
             mu = mu + mc["phi_hcoe"] * obs["Δ4dfd"]
 
@@ -60,6 +67,8 @@ def hourly_coe_equation(
     parts = ["dhcoe = alpha"]
     if wage_expectations:
         parts.append("pi_exp")
+        if "π_exp_gap" in obs:
+            parts.append("beta x excess_exp")
     parts.append("gamma x u_gap + lambda x dU/U")
     if wage_price_passthrough:
         parts.append("phi x d4dfd")
@@ -94,6 +103,8 @@ def hourly_coe_regime_equation(
             "psi_hcoe": {"mu": 1.0, "sigma": 0.5, "lower": 0},
             "epsilon_hcoe": {"sigma": 0.75},
         }
+        if wage_expectations and "π_exp_gap" in obs:
+            settings["beta_hcoe"] = {"mu": 0.5, "sigma": 0.3}
         if wage_price_passthrough:
             settings["phi_hcoe"] = {"mu": 0.0, "sigma": 0.2}
         mc = set_model_coefficients(model, settings, constant)
@@ -112,7 +123,12 @@ def hourly_coe_regime_equation(
             + mc["psi_hcoe"] * obs["mfp_growth"]
         )
         if wage_expectations:
-            mu = mu + quarterly(obs["π_exp"])
+            pi_exp_quarterly = quarterly(obs["π_exp"])
+            mu = mu + pi_exp_quarterly
+            if "π_exp_gap" in obs:
+                # Excess expectations (see phillips_price.py for rationale)
+                excess_quarterly = quarterly(obs["π_exp"] + obs["π_exp_gap"]) - pi_exp_quarterly
+                mu = mu + mc["beta_hcoe"] * excess_quarterly
         if wage_price_passthrough:
             mu = mu + mc["phi_hcoe"] * obs["Δ4dfd"]
 
@@ -126,6 +142,8 @@ def hourly_coe_regime_equation(
     parts = ["dhcoe = alpha"]
     if wage_expectations:
         parts.append("pi_exp")
+        if "π_exp_gap" in obs:
+            parts.append("beta x excess_exp")
     parts.append("gamma_regime x u_gap + lambda x dU/U")
     if wage_price_passthrough:
         parts.append("phi x d4dfd")

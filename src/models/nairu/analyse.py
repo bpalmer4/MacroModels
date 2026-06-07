@@ -28,6 +28,7 @@ from src.models.nairu.analysis import (
     plot_potential_growth,
     plot_potential_growth_comparison,
     plot_potential_growth_smoothing,
+    plot_target_consistent_unemployment,
     plot_taylor_rule,
     plot_unemployment_gap,
 )
@@ -67,6 +68,8 @@ def run_analyse(
 
     # --- Core estimates ---
     plot_nairu(results, rfooter=rfooter, show=show_plots)
+    if config.excess_expectations:
+        plot_target_consistent_unemployment(results, rfooter=rfooter, show=show_plots)
     plot_unemployment_gap(results, rfooter=rfooter, show=show_plots)
     plot_output_gap(results, rfooter=rfooter, show=show_plots)
     plot_gdp_vs_potential(results, rfooter=rfooter, show=show_plots)

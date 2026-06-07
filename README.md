@@ -38,29 +38,27 @@ uv sync
 ### NAIRU + Output Gap (Bayesian)
 
 ```bash
-# Default run: the policy-relevant NAIRU — simple variant, expectations
+# Default run: the policy-relevant NAIRU — simple_excess_regime variant
+# (excess-expectations term + regime-switching Phillips slopes), expectations
 # folding to the 2.5% target over 1993–1998
-./run-nairu.sh --anchor target --variant simple
-
-# Full estimation: data → sample → analyse → charts (~3 min)
 ./run-nairu.sh -v
 
-# Re-run analysis and scenario forecasts (uses saved trace)
-./run-nairu-stage2.sh -v
+# Re-run validate/analyse/forecast from the saved trace (no re-estimation)
+./run-nairu.sh -v --skip-estimate
 
-# Scenario analysis only (deterministic + Monte Carlo forward sampling)
-./run-nairu-stage3.sh
+# Estimation only (skip validate/analyse/forecast)
+./run-nairu.sh -v --estimate-only
 
-# Model variants: simple (core equations) or complex (all features)
-./run-nairu.sh -v --variant simple
-./run-nairu.sh -v --variant complex
-./run-nairu.sh -v --variant both      # Run both and generate comparison chart
+# Other variants: simple (core equations), simple_excess, simple_regime,
+# complex (all features); other anchors via --anchor
+./run-nairu.sh -v --variant simple_excess
+./run-nairu.sh -v --variant complex --anchor unanchored
+
+# Multiple variants in one run also produces comparison charts
+./run-nairu.sh -v --variant simple_excess simple_excess_regime
 
 # Or via Python directly
-uv run python -m src.models.nairu.model -v          # Stage 1: estimation
-uv run python -m src.models.nairu.stage2 -v          # Stage 2: analysis
-uv run python -m src.models.nairu.stage3             # Stage 3a: deterministic scenarios
-uv run python -m src.models.nairu.stage3_forward_sampling  # Stage 3b: Monte Carlo forecasts
+uv run python -m src.models.nairu.run -v
 ```
 
 ### Inflation Expectations (Bayesian)
@@ -99,7 +97,7 @@ uv run python -m src.models.cobb_douglas.model -v
 
 ### HLW r\* (Bayesian)
 
-Resolution G (blend + hierarchical Beta) is the default and the standard specification to run; the other resolutions are diagnostic comparators.
+Resolution G (blend + hierarchical Beta) is the default and the standard specification to run. It is the end point of a sequence of specifications (A–H) built while diagnosing why canonical HLW fails to identify r\* on Australian data; the earlier resolutions are retained as diagnostic comparators — see the model notes for the full journey.
 
 ```bash
 # Default: Resolution G (blend + hierarchical Beta)
@@ -170,7 +168,7 @@ src/
 └── models/
     ├── common/                 # Shared model utilities (diagnostics, extraction, timeseries)
     ├── expectations/           # Inflation expectations signal extraction
-    ├── nairu/                  # NAIRU + Output Gap model (stages 1–3)
+    ├── nairu/                  # NAIRU + Output Gap model (estimate → validate → analyse → forecast)
     │   └── analysis/           # Plotting and diagnostics modules
     ├── cobb_douglas/           # Cobb-Douglas MFP decomposition
     ├── rstar_hlw/              # HLW Bayesian r* model (AU data)
