@@ -146,6 +146,22 @@ Same r* identity as C but with a hierarchical prior on α: a, b ~ Uniform(0.25, 
 
 G is the implementation default in `estimate.py` — not because it is "the answer", but because among the blend variants it makes the analyst's α choice as data-driven as possible. The median r* path is essentially identical to C.
 
+#### The G story — the honest answer
+
+What is Australia's r*, the real neutral interest rate? Resolution G gives the honest answer: the data cannot tell you.
+
+r* in G is a blend of two anchors — trend growth (structural) and the real bond yield (market) — with the weight α left for the data to pin down. It doesn't pin it down. The α posterior is nearly flat from 0 to 1, so the model splits into two stories: draws either track trend growth or the bond yield, with little in between. The bimodal draw-cloud chart shows the split and the current level of each mode.
+
+The blended median is the average of those two stories, not a value the model actually settles on — almost no single posterior draw sits at it. Quoting it as "the estimate" overstates what the data identifies.
+
+Why so weak? The IS curve's rate channel sits an order of magnitude below the quarterly noise (a_r ≈ −0.04 against σ_IS ≈ 0.70 — see "The story" above), so the model returns the prior with a thin layer of likelihood: the Buncic-Pagan-Robinson non-identification result, on Australian data.
+
+So which anchor? The data won't say, but two outside pieces of evidence lean to the bond/market reading: the post-GFC decade (a low yield-anchored r* fits the low-inflation outcome better than a high growth-anchored one), and RBA commentary describing the policy stance as having eased materially with no change in the cash rate (see the Bullock cross-validation section below) — only a yield-anchored r* can move that fast; trend growth can't.
+
+On the bond-market reading, neutral nominal is the mode-conditional r* plus inflation expectations, and the policy stance should be judged against that — this is why the international comparison chart plots the bond-market mode rather than the blended median. But the real finding isn't a number. It's that anyone quoting a single confident r* for Australia is showing you their prior, not the data.
+
+A corollary: the market-anchored r* moves. When it rises, the gap between the cash rate and neutral narrows without the central bank doing anything — a stance that looks mildly restrictive can drift toward neutral within quarters. Of course, what goes up can also come down.
+
 ### Resolution H — blend with time-varying α_t (logit-RW)
 
 Same r* identity as C but with α_t a time-varying latent on the logit scale: logit_α_0 ~ N(0, 2); logit_α_t = logit_α_{t−1} + σ_a · ε_α_t with σ_a fixed at 0.05 (which permits ~1pp/quarter drift at α=0.5); α_t = sigmoid(logit_α_t).

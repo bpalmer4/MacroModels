@@ -108,6 +108,7 @@ from src.data.household import (
     get_saving_ratio_qrtly,
 )
 from src.data.household_spending import (
+    get_household_spending_cvm_growth_latest,
     get_household_spending_cvm_growth_qrtly,
     get_household_spending_cvm_qrtly,
 )
@@ -305,6 +306,7 @@ __all__ = [
     "get_retail_real_growth_qrtly",
     # Household spending (5682.0 quarterly CVM)
     "get_household_spending_cvm_qrtly",
+    "get_household_spending_cvm_growth_latest",
     "get_household_spending_cvm_growth_qrtly",
     # Building approvals
     "get_building_approvals_monthly",

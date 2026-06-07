@@ -12,7 +12,7 @@ Australian macroeconomic modelling. Includes both Bayesian state-space estimatio
 - **HLW r\***: Bayesian (PyMC) Holston-Laubach-Williams model estimating the natural rate of interest for Australia — see [`MODEL_NOTES.md`](src/models/rstar_hlw/MODEL_NOTES.md)
 - **DSGE**: Dynamic stochastic general equilibrium model *(in development)*
 
-The NAIRU model uses expectations output as an input. Run the expectations model first if updating from scratch. The NAIRU model derives r\* deterministically from the Cobb-Douglas production function (r\* ≈ potential growth).
+**Run order:** the NAIRU model and the HLW r\* model both read the expectations model's saved output (`output/expectations/`) as an input — **run the expectations model first** whenever updating after new data. The NAIRU model derives r\* deterministically from the Cobb-Douglas production function (r\* ≈ potential growth).
 
 ### GDP nowcasting
 
@@ -38,6 +38,10 @@ uv sync
 ### NAIRU + Output Gap (Bayesian)
 
 ```bash
+# Default run: the policy-relevant NAIRU — simple variant, expectations
+# folding to the 2.5% target over 1993–1998
+./run-nairu.sh --anchor target --variant simple
+
 # Full estimation: data → sample → analyse → charts (~3 min)
 ./run-nairu.sh -v
 
@@ -95,6 +99,8 @@ uv run python -m src.models.cobb_douglas.model -v
 
 ### HLW r\* (Bayesian)
 
+Resolution G (blend + hierarchical Beta) is the default and the standard specification to run; the other resolutions are diagnostic comparators.
+
 ```bash
 # Default: Resolution G (blend + hierarchical Beta)
 ./run-rstar-hlw.sh -v
@@ -114,6 +120,8 @@ uv run python -m src.models.rstar_hlw.run -v
 The IS curve does not independently pin r\* in Australian data (the rate channel is too weak); each specification largely returns the structural assumption it imposes. The value is a diagnostic framework and an honest cross-resolution uncertainty band rather than a single point estimate — see the [`MODEL_NOTES.md`](src/models/rstar_hlw/MODEL_NOTES.md).
 
 ### GDP Nowcasting
+
+**Timing:** don't run the nowcasts until about one month before the GDP release. Earlier in the cycle almost no indicators for the target quarter are published — the BVAR declines to nowcast at all, and the bridge/DFM intervals are mostly prior.
 
 ```bash
 # Bridge equations (high-frequency monthly indicators)

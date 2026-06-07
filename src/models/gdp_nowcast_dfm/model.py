@@ -57,7 +57,7 @@ from src.data import (
     get_goods_balance_real_monthly,
     get_hourly_coe_growth_qrtly,
     get_hours_worked_monthly,
-    get_household_spending_cvm_growth_qrtly,
+    get_household_spending_cvm_growth_latest,
     get_retail_turnover_real_monthly,
     get_trimmed_mean_qrtly,
     get_ulc_growth_qrtly,
@@ -322,17 +322,18 @@ def _load_quarterly_indicators(target_quarter: pd.Period) -> dict[str, pd.Series
 
     ``target_quarter`` is required: the household spending CVM table is fetched by
     quarter-end-month snapshot (ABS needs a specific quarter), so we ground the
-    request to the target quarter's end month (e.g. 2026Q1 -> "mar-2026").
+    request to the target quarter's end month (e.g. 2026Q1 -> "mar-2026"), falling
+    back one quarter when that issue is not yet published (T-0 straight after a GDP
+    release).
     """
     indicators = {}
-    hs_month = target_quarter.asfreq("M", how="end").strftime("%b-%Y").lower()
     loaders = {
         "cpi_quarterly": get_trimmed_mean_qrtly,
         "wpi": get_wpi_growth_qrtly,
         "business_profits": get_company_profits_real_growth_qrtly,
         "construction": get_total_construction_growth_qrtly,
         "capex": get_total_capex_growth_qrtly,
-        "household_spending": lambda: get_household_spending_cvm_growth_qrtly(hs_month),
+        "household_spending": lambda: get_household_spending_cvm_growth_latest(target_quarter),
     }
     for name, loader in loaders.items():
         try:

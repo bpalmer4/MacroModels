@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 import readabs as ra
 from readabs import metacol as mc
+from readabs.download_cache import HttpError
 
 from src.data.dataseries import DataSeries
 
@@ -70,7 +71,8 @@ def get_household_spending_cvm_qrtly(history: str) -> DataSeries:
             return _empty_series()
         series_id = match[mc.id].iloc[0]
         series = data[_TABLE][series_id].dropna()
-    except (KeyError, ValueError, OSError):
+    except (KeyError, ValueError, OSError, HttpError):
+        # HttpError: ABS returns 503 (not 404) for an unpublished snapshot month.
         return _empty_series()
 
     return DataSeries(
@@ -83,6 +85,26 @@ def get_household_spending_cvm_qrtly(history: str) -> DataSeries:
         cat="5682.0",
         stype="Seasonally Adjusted",
     )
+
+
+def get_household_spending_cvm_growth_latest(target_quarter: pd.Period) -> DataSeries:
+    """Get quarterly CVM growth from the target quarter's snapshot, with fallback.
+
+    The target quarter's end-month snapshot (e.g. 2026Q2 -> "jun-2026") is not
+    published until ~5 weeks after the quarter ends, so a T-0 nowcast run straight
+    after a GDP release falls back to the previous quarter-end snapshot (growth
+    history through the prior quarter).
+
+    Args:
+        target_quarter: nowcast target quarter; its end month is tried first.
+
+    """
+    target_month = target_quarter.asfreq("M", how="end").strftime("%b-%Y").lower()
+    ds = get_household_spending_cvm_growth_qrtly(target_month)
+    if len(ds.data) == 0:
+        prev_month = (target_quarter - 1).asfreq("M", how="end").strftime("%b-%Y").lower()
+        ds = get_household_spending_cvm_growth_qrtly(prev_month)
+    return ds
 
 
 def get_household_spending_cvm_growth_qrtly(history: str) -> DataSeries:

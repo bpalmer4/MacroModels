@@ -69,16 +69,20 @@ def plot_r_star(results: RStarResults, show: bool = False) -> None:
     pi_exp = pd.Series(results.obs["pi_exp"], index=results.obs_index)
     real_cash = cash - pi_exp
 
+    median.name = "r* (median)"
+    real_cash.name = "Real cash rate"
     ax = mg.fill_between_plot(
         pd.DataFrame({"lower": q05, "upper": q95}),
         color="navy",
         alpha=0.12,
+        label="r*: 90% credible band",
     )
     mg.fill_between_plot(
         pd.DataFrame({"lower": q25, "upper": q75}),
         color="navy",
         alpha=0.22,
         ax=ax,
+        label="r*: 50% credible band",
     )
     mg.line_plot(median, ax=ax, color=["navy"], width=2, annotate=True, rounding=1)
     mg.line_plot(
@@ -90,9 +94,9 @@ def plot_r_star(results: RStarResults, show: bool = False) -> None:
         title="Natural Rate of Interest (r*) and Real Cash Rate",
         ylabel="Per cent per annum",
         lfooter=LFOOTER,
-        rfooter=RFOOTER + "Real cash rate = cash rate − π_exp. 50% and 90% credible bands on r*.",
+        rfooter=RFOOTER + "Real cash rate = cash rate − π_exp.",
         y0=True,
-        legend=False,
+        legend={"loc": "best", "fontsize": "small"},
         show=show,
     )
 
@@ -115,6 +119,40 @@ def plot_output_gap(results: RStarResults, show: bool = False) -> None:
         rfooter="log-difference x 100. 50% and 90% credible bands.",
         show=show,
     )
+
+
+def _mode_conditional_r_star(
+    results: RStarResults,
+    low_thresh: float = 0.05,
+    high_thresh: float = 0.95,
+) -> tuple[pd.Series, pd.Series, int, int, int]:
+    """Median r* paths conditional on the two α modes (Resolution G).
+
+    Returns ``(low_med, high_med, n_low, n_high, n_samples)``: the median r*
+    among draws with α < ``low_thresh`` (bond-market mode: r* tracks
+    indexed_10y − k) and α > ``high_thresh`` (trend-growth mode: r* tracks g),
+    plus the draw counts. Empty Series where a mode has no draws.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    posterior = results.trace.posterior
+    r_star_stacked = posterior["r_star"].stack(sample=("chain", "draw"))
+    # PyMC time dim is auto-named (e.g. 'r_star_dim_0'); pick whichever is not 'sample'.
+    time_dim = next(d for d in r_star_stacked.dims if d != "sample")
+    r_star_arr = r_star_stacked.transpose(time_dim, "sample").values
+    alpha_arr = posterior["alpha_rstar"].stack(sample=("chain", "draw")).values
+
+    low_mask = alpha_arr < low_thresh
+    high_mask = alpha_arr > high_thresh
+    low_med = (
+        pd.Series(np.median(r_star_arr[:, low_mask], axis=1), index=results.obs_index)
+        if low_mask.any() else pd.Series(dtype=float)
+    )
+    high_med = (
+        pd.Series(np.median(r_star_arr[:, high_mask], axis=1), index=results.obs_index)
+        if high_mask.any() else pd.Series(dtype=float)
+    )
+    return low_med, high_med, int(low_mask.sum()), int(high_mask.sum()), r_star_arr.shape[1]
 
 
 def plot_r_star_bimodal_decomposition(
@@ -143,55 +181,38 @@ def plot_r_star_bimodal_decomposition(
     Together they show what G's posterior actually says: r* is *either* g
     *or* indexed_10y − k, not a 50/50 blend.
     """
-    import matplotlib.pyplot as plt  # noqa: PLC0415
     import numpy as np  # noqa: PLC0415
 
     posterior = results.trace.posterior
     r_star_stacked = posterior["r_star"].stack(sample=("chain", "draw"))
     # PyMC time dim is auto-named (e.g. 'r_star_dim_0'); pick whichever is not 'sample'.
     time_dim = next(d for d in r_star_stacked.dims if d != "sample")
-    r_star = r_star_stacked.transpose(time_dim, "sample")
-    alpha = posterior["alpha_rstar"].stack(sample=("chain", "draw"))
-
-    r_star_arr = r_star.values  # shape (T, n_samples)
-    alpha_arr = alpha.values    # shape (n_samples,)
+    r_star_arr = r_star_stacked.transpose(time_dim, "sample").values  # shape (T, n_samples)
     n_samples = r_star_arr.shape[1]
-    dates = results.obs_index.to_timestamp()
 
     rng = np.random.default_rng(seed)
     sample_idx = rng.choice(n_samples, size=min(n_draws, n_samples), replace=False)
 
-    fig, ax = plt.subplots(figsize=(10, 5.5))
+    # Thin translucent draw paths (legend-suppressed)
+    draws = pd.DataFrame(r_star_arr[:, sample_idx], index=results.obs_index)
+    ax = mg.line_plot(
+        draws, color="navy", alpha=0.07, width=0.4,
+        annotate=False, label_series=False, dropna=False,
+    )
 
-    for idx in sample_idx:
-        ax.plot(dates, r_star_arr[:, idx], color="navy", alpha=0.07, linewidth=0.4)
-
-    low_mask = alpha_arr < low_thresh
-    high_mask = alpha_arr > high_thresh
-    n_low = int(low_mask.sum())
-    n_high = int(high_mask.sum())
+    low_med, high_med, n_low, n_high, _ = _mode_conditional_r_star(results, low_thresh, high_thresh)
 
     if n_low > 0:
-        low_med = np.median(r_star_arr[:, low_mask], axis=1)
-        ax.plot(
-            dates, low_med, color="darkorange", linewidth=2.5,
-            label=f"α near 0 mode (n={n_low}/{n_samples} draws)  →  r* tracks indexed_10y − k",
-        )
+        low_med.name = f"α near 0 mode (n={n_low}/{n_samples} draws)  →  r* tracks indexed_10y − k"
+        mg.line_plot(low_med, ax=ax, color=["darkorange"], width=2.5, annotate=True, rounding=1)
     if n_high > 0:
-        high_med = np.median(r_star_arr[:, high_mask], axis=1)
-        ax.plot(
-            dates, high_med, color="steelblue", linewidth=2.5,
-            label=f"α near 1 mode (n={n_high}/{n_samples} draws)  →  r* tracks trend growth g",
-        )
-
-    ax.set_ylabel("Per cent per annum")
-    ax.legend(loc="best", fontsize=9, framealpha=0.9)
-    ax.axhline(0, color="black", linewidth=0.5, alpha=0.3)
-    ax.grid(True, alpha=0.3)
+        high_med.name = f"α near 1 mode (n={n_high}/{n_samples} draws)  →  r* tracks trend growth g"
+        mg.line_plot(high_med, ax=ax, color=["steelblue"], width=2.5, annotate=True, rounding=1)
 
     mg.finalise_plot(
         ax,
         title="r* posterior under bimodal α (Resolution G)",
+        ylabel="Per cent per annum",
         lheader=(
             f"{len(sample_idx)} thin lines = posterior draws of r*. "
             f"Bimodal α posterior → draws cluster near g (upper) or "
@@ -199,6 +220,9 @@ def plot_r_star_bimodal_decomposition(
         ),
         lfooter=LFOOTER,
         rfooter=RFOOTER + "Mode lines: median r* | α < 0.05 (orange), α > 0.95 (blue).",
+        y0=True,
+        legend={"loc": "best", "fontsize": 9, "framealpha": 0.9},
+        figsize=(10, 5.5),
         show=show,
     )
 
@@ -284,21 +308,34 @@ def plot_r_star_decomposition(results: RStarResults, show: bool = False) -> None
     )
 
 
-def plot_world_rstar_overlay(results: RStarResults, show: bool = False) -> None:
-    """Median r*_AU vs the NY Fed HLW r* estimates for US, Euro Area, Canada.
+def plot_world_rstar_overlay(
+    results: RStarResults, show: bool = False, bond_mode: bool = False,
+) -> None:
+    """r*_AU vs the NY Fed HLW r* estimates for US, Euro Area, Canada.
 
     Always pulls fresh data from the NY Fed (force_download=True) so the
     comparison reflects the latest published HLW estimates rather than a
     stale cached file. The chart starts at the AU sample start.
+
+    With ``bond_mode=True`` (Resolution G), the Australian line is the
+    bond-market mode median (α near 0: r* tracks indexed_10y − k) rather than
+    the overall posterior median, which is misleading under G's bimodal α.
     """
-    au = results.r_star_median()
+    if bond_mode:
+        au, _, _, _, _ = _mode_conditional_r_star(results)
+        au_label = "r* (Australia, bond-market mode)"
+        au_note = " AU r* = bond-market mode median (α < 0.05)."
+    else:
+        au = results.r_star_median()
+        au_label = "r* (Australia)"
+        au_note = ""
     components = get_world_rstar(force_download=True)
 
     df = pd.DataFrame({
-        "r* (Australia)": au,
-        "US":             components["US"],
-        "Euro Area":      components["Euro Area"],
-        "Canada":         components["Canada"],
+        au_label:    au,
+        "US":        components["US"],
+        "Euro Area": components["Euro Area"],
+        "Canada":    components["Canada"],
     })
     df = df.loc[df.index >= au.index[0]]
 
@@ -313,7 +350,7 @@ def plot_world_rstar_overlay(results: RStarResults, show: bool = False) -> None:
         rounding=1,
         y0=True,
         lfooter=LFOOTER,
-        rfooter=RFOOTER + "Foreign r* = NY Fed HLW (US, Euro Area, Canada).",
+        rfooter=RFOOTER + "Foreign r* = NY Fed HLW (US, Euro Area, Canada)." + au_note,
         legend=True,
         show=show,
     )
@@ -505,6 +542,6 @@ def run_analyse(
         if not is_resolution_h:
             # plot_alpha_posterior assumes scalar alpha — skip for H.
             plot_alpha_posterior(results, show=show)
-    plot_world_rstar_overlay(results, show=show)
+    plot_world_rstar_overlay(results, show=show, bond_mode=is_resolution_g)
 
     print(f"Charts saved to: {chart_dir}")
