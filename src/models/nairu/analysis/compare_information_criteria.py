@@ -22,8 +22,9 @@ Comparability caveat
 LOO/WAIC are only comparable across models conditioned on the *same* observed
 data. The ``simple*`` family shares the same five observation equations over the
 same 167 quarters → a pooled comparison is valid. ``complex`` adds five more
-likelihood terms and ends one quarter earlier, so its pooled ELPD is NOT
-comparable to the simple family. Every variant shares the price Phillips curve
+likelihood terms (different observed data), so its pooled ELPD is NOT comparable
+to the simple family — even though it shares the same 167-quarter sample once the
+extra series are current. Every variant shares the price Phillips curve
 (``observed_price_inflation``) — the equation the excess-expectations term
 modifies — so the simple family is also compared on that term alone, and all
 variants are reported per-observation on it for reference.
@@ -58,8 +59,13 @@ JOINT_FAMILY = [
     "nairu_simple_excess_regime_tprice_target",
 ]
 # Price-equation reference adds models that are NOT joint-comparable:
-# nohcoe has 4 equations; complex has 10 and ends a quarter earlier.
-PRICE_REFERENCE = [*JOINT_FAMILY, "nairu_simple_excess_nohcoe_target", "nairu_complex_target"]
+# nohcoe has 4 equations; complex/complex_excess have 10.
+PRICE_REFERENCE = [
+    *JOINT_FAMILY,
+    "nairu_simple_excess_nohcoe_target",
+    "nairu_complex_target",
+    "nairu_complex_excess_target",
+]
 PRICE_LL = "observed_price_inflation"
 THIN = 10  # 50k draws -> 5k; ample for stable LOO/WAIC, keeps memory sane
 

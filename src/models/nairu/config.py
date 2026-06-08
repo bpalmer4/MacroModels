@@ -261,6 +261,25 @@ COMPLEX = ModelConfig(
     wage_expectations=True,
 )
 
+# COMPLEX plus the excess-expectations term (run with --anchor target). Isolates
+# the excess effect within the complex family, mirroring simple -> simple_excess,
+# so the complex-vs-simple comparison is not confounded by complex lacking the
+# single most important feature in the simple-family ranking.
+COMPLEX_EXCESS = ModelConfig(
+    label="complex_excess",
+    student_t_nairu=True,
+    regime_switching=True,
+    okun_gap_form=True,
+    include_import_price_control=True,
+    include_exchange_rate=True,
+    include_import_price=True,
+    include_participation=True,
+    include_employment=True,
+    include_net_exports=True,
+    wage_expectations=True,
+    excess_expectations=True,
+)
+
 # Registry of named presets
 PRESETS: dict[str, ModelConfig] = {
     "default": ModelConfig(),
@@ -274,4 +293,5 @@ PRESETS: dict[str, ModelConfig] = {
     "simple_excess_tprice": SIMPLE_EXCESS_TPRICE,
     "simple_excess_regime_tprice": SIMPLE_EXCESS_REGIME_TPRICE,
     "complex": COMPLEX,
+    "complex_excess": COMPLEX_EXCESS,
 }

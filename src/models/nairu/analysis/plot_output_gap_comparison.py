@@ -8,7 +8,7 @@ from src.models.common.extraction import get_vector_var
 from src.models.nairu.results import NAIRUResults
 
 START = pd.Period("2000Q1", freq="Q")
-COLORS = ["darkblue", "darkorange", "darkgreen", "darkred"]
+COLORS = ["darkblue", "darkorange", "darkgreen", "darkred", "magenta", "black"]
 
 
 def plot_output_gap_comparison(

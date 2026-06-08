@@ -363,9 +363,12 @@ uv run python -m src.models.nairu.analysis.compare_information_criteria
 **Comparability.** LOO/WAIC are only pooled-comparable across models conditioned
 on the *same* observed data. The `simple*` family shares the same five
 observation equations over the same 167 quarters → valid pooled comparison.
-`complex` adds five more likelihood terms and ends a quarter earlier, so it is
+`complex` adds five more likelihood terms (different observed data), so it is
 compared only on the shared price equation (`observed_price_inflation`),
-per-observation. Each variant has several observation likelihoods, so every
+per-observation. (It shares the same 167-quarter sample as the simple family
+once the extra series are current — earlier vintages where a slow-updating
+national-accounts series truncated complex to n=166 were a data-vintage
+artifact, not a property of the model.) Each variant has several observation likelihoods, so every
 (equation, time) contribution is stacked into one exchangeable obs vector for
 the joint criterion; `reff` is recovered from the log-likelihood's own ESS.
 
@@ -381,10 +384,36 @@ the joint criterion; `reff` is recovered from the log-likelihood's own ESS.
 - The **excess-expectations term is the decisive feature** (plain→excess: +6.9
   joint elpd, ~2× its dse; +3.9 on the price equation alone). It also wins the
   price-only comparison and gives the best per-observation price fit of all
-  variants — `complex` is worst on inflation (0.222 vs 0.254 elpd/obs).
+  variants — `complex` is worst on inflation (0.225 vs 0.254 elpd/obs, n=167).
 - **Regime-switching adds little once excess is in**: `simple_excess_regime` is
   statistically tied with `simple_excess` (Δ inside dse) but carries more
   parameters. Regime-switching *alone* beats plain `simple`, by less than excess does.
+
+**Six-model comparison incl. the complex family (shared price Phillips curve,
+n=167):** the joint table above is the 5-equation simple family only; `complex`
+and `complex_excess` carry 10 observation equations and cannot enter it, so all
+six are compared on the one equation they share — `observed_price_inflation`.
+LOO and WAIC give the identical ordering:
+
+| Rank | Variant | elpd_loo | Δ vs best | dse | per-obs | max-k |
+|------|---------|---------:|----------:|----:|--------:|------:|
+| 1 | `simple_excess` | 42.4 | 0.0 | — | 0.254 | 0.75 |
+| 2 | `simple_excess_regime` | 41.6 | −0.79 | 0.76 | 0.249 | 1.03 |
+| 3 | `complex_excess` | 40.1 | −2.30 | 1.87 | 0.240 | 0.93 |
+| 4 | `simple_regime` | 39.3 | −3.15 | 2.16 | 0.235 | 0.91 |
+| 5 | `simple` | 38.5 | −3.95 | 2.35 | 0.230 | 0.69 |
+| 6 | `complex` | 37.6 | −4.82 | 2.79 | 0.225 | 0.71 |
+
+- **Excess is decisive inside the complex family too**: `complex` → `complex_excess`
+  lifts price-eq elpd by +2.5 (0.225 → 0.240 per-obs), the same direction as
+  `simple` → `simple_excess`. The original plain-`complex` run was handicapped by
+  lacking the term.
+- **But complexity still does not pay**: even with excess, `complex_excess` (0.240)
+  trails the far simpler `simple_excess` (0.254) by ~2.3 elpd, and plain `complex`
+  is the worst of all six. The five extra equations + Student-t NAIRU + gap-form
+  Okun add parameters and a more unemployment-responsive NAIRU, but no inflation
+  fit. WAIC's penalty agrees: `simple_excess` has the lowest effective-parameter
+  count (`p_waic` 12.3) of the six as well as the best score.
 
 **Recent-surge fit (2021Q1–2026Q1, in-sample price-eq log-density — answers
 "explains the inflation we've seen", and rewards flexibility, ≠ LOO):**

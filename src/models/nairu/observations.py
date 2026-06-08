@@ -474,6 +474,30 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
     # Charting version: same start date, extends to latest available per series
     chart_obs = observed.copy()
 
+    # Truncation warning: the complete-case dropna() below sets the estimation
+    # sample to the last period for which EVERY column is present. A slow-updating
+    # series (e.g. a national-accounts item) that lags the core labour-force data
+    # silently clips the sample — this is what historically truncated `complex` to
+    # n=166. Key the check on a reference series that defines the modeller's
+    # intended endpoint (the unemployment rate, released early) and flag every
+    # column that ends before it, since those are what force the truncation.
+    ref_col = "U"  # unemployment rate — early release, defines intended sample end
+    if ref_col in observed.columns and observed[ref_col].last_valid_index() is not None:
+        ref_end = observed[ref_col].last_valid_index()
+        laggards = {}
+        for col in observed.columns:
+            last = observed[col].last_valid_index()
+            if last is None or last < ref_end:
+                laggards[col] = last
+        if laggards:
+            detail = ", ".join(f"{c} (last {v})" for c, v in laggards.items())
+            print(
+                f"WARNING: {len(laggards)} series end before the reference series "
+                f"'{ref_col}' ({ref_end}); the complete-case sample will truncate to "
+                f"the earliest of these, dropping otherwise-usable quarters. "
+                f"Laggards: {detail}"
+            )
+
     # Drop missing (sampling version: complete cases only)
     observed = observed.dropna()
 

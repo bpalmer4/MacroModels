@@ -7,7 +7,10 @@ from src.models.common.extraction import get_vector_var
 from src.models.nairu.results import NAIRUResults
 
 START = pd.Period("2000Q1", freq="Q")
-COLORS = ["darkblue", "darkorange", "darkgreen", "darkred"]
+# Distinct hues for up to six variants; kept clear of the brown unemployment
+# overlay and the purple 2-variant band. Lines track within ~0.3pp in recent
+# years, so contrast between adjacent variants matters.
+COLORS = ["darkblue", "darkorange", "darkgreen", "darkred", "magenta", "black"]
 
 
 def plot_nairu_comparison(
@@ -53,7 +56,7 @@ def plot_nairu_comparison(
     U = pd.Series(results_list[0].obs["U"], index=results_list[0].obs_index)
     U = U[U.index >= START]
     U.name = "Unemployment Rate"
-    mg.line_plot(U, ax=ax, color="brown", width=1.0, zorder=3)
+    mg.line_plot(U, ax=ax, color="brown", width=1.0, style="--", zorder=3)
 
     rfooter = "NAIRU-" + "-".join(r.config.label for r in results_list)
     mg.finalise_plot(
