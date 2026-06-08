@@ -101,10 +101,12 @@ def build_model(obs: dict[str, np.ndarray], config: ModelConfig) -> pm.Model:  #
         if config.regime_switching:
             desc = price_inflation_regime_equation(
                 obs, model, latents, constant=config.price_inflation_const,
+                student_t_price=config.student_t_price,
             )
         else:
             desc = price_inflation_equation(
                 obs, model, latents, constant=config.price_inflation_const,
+                student_t_price=config.student_t_price,
             )
         descriptions.append(f"Price Phillips: {desc}")
 

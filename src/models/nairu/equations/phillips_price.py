@@ -15,6 +15,7 @@ def _price_phillips_likelihood(
     nairu: pt.TensorVariable,
     mc: dict[str, Any],
     gamma_effective: pt.TensorVariable,
+    student_t: bool = False,
 ) -> None:
     """Shared likelihood for price Phillips curve."""
     u_gap = (obs["U"] - nairu) / obs["U"]
@@ -33,12 +34,24 @@ def _price_phillips_likelihood(
     if "ξ_2" in obs:
         mu = mu + mc["xi_gscpi"] * obs["ξ_2"] ** 2 * np.sign(obs["ξ_2"])
 
-    pm.Normal(
-        "observed_price_inflation",
-        mu=mu,
-        sigma=mc["epsilon_pi"],
-        observed=obs["π"],
-    )
+    if student_t:
+        # Estimated degrees of freedom — weakly-informative prior (mean ~20);
+        # small nu_pi => fat tails, large nu_pi => Gaussian.
+        nu_pi = pm.Gamma("nu_pi", alpha=2.0, beta=0.1)
+        pm.StudentT(
+            "observed_price_inflation",
+            nu=nu_pi,
+            mu=mu,
+            sigma=mc["epsilon_pi"],
+            observed=obs["π"],
+        )
+    else:
+        pm.Normal(
+            "observed_price_inflation",
+            mu=mu,
+            sigma=mc["epsilon_pi"],
+            observed=obs["π"],
+        )
 
 
 def price_inflation_equation(
@@ -46,6 +59,7 @@ def price_inflation_equation(
     model: pm.Model,
     latents: dict[str, Any],
     constant: dict[str, Any] | None = None,
+    student_t_price: bool = False,
 ) -> str:
     """Anchor-augmented Phillips Curve for price inflation (single slope).
 
@@ -68,7 +82,9 @@ def price_inflation_equation(
         if "ξ_2" in obs:
             settings["xi_gscpi"] = {"mu": 0.0, "sigma": 0.1}
         mc = set_model_coefficients(model, settings, constant)
-        _price_phillips_likelihood(obs, nairu, mc, gamma_effective=mc["gamma_pi"])
+        _price_phillips_likelihood(
+            obs, nairu, mc, gamma_effective=mc["gamma_pi"], student_t=student_t_price,
+        )
 
     parts = ["pi = quarterly(pi_exp) + gamma x u_gap"]
     if "π_exp_gap" in obs:
@@ -86,6 +102,7 @@ def price_inflation_regime_equation(
     model: pm.Model,
     latents: dict[str, Any],
     constant: dict[str, Any] | None = None,
+    student_t_price: bool = False,
 ) -> str:
     """Anchor-augmented Phillips Curve for price inflation (regime-switching).
 
@@ -115,7 +132,9 @@ def price_inflation_regime_equation(
             + mc["gamma_pi_gfc"] * obs["regime_gfc"]
             + mc["gamma_pi_covid"] * obs["regime_covid"]
         )
-        _price_phillips_likelihood(obs, nairu, mc, gamma_effective=gamma_effective)
+        _price_phillips_likelihood(
+            obs, nairu, mc, gamma_effective=gamma_effective, student_t=student_t_price,
+        )
 
     parts = ["pi = quarterly(pi_exp) + gamma_regime x u_gap"]
     if "π_exp_gap" in obs:

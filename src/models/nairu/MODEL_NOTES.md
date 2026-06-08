@@ -11,6 +11,7 @@ Bayesian state-space model for jointly estimating NAIRU, potential output, and o
 | Phillips Curves | Regime-switching, 3 regimes (default preset) | Single-slope variants; excess-expectations term (default preset) |
 | Identification | 2 state + N observation equations | Joint estimation with proper uncertainty |
 | Scenario Analysis | Model-consistent projection | 4-quarter horizon with policy scenarios |
+| Model Selection | LOO/WAIC + Pareto-k | `simple_excess` best full-sample fit; `simple_excess_regime` best all-rounder & default (see [Model Comparison](#model-comparison-loo--waic)) |
 
 ---
 
@@ -50,6 +51,7 @@ nairu/
 │
 └── analysis/                 # Plotting and diagnostics modules
     ├── __init__.py
+    ├── compare_information_criteria.py # LOO/WAIC variant ranking + Pareto-k
     ├── decomposition_types.py          # Decomposition data structures
     ├── _decomposition_helpers.py       # Shared decomposition utilities
     ├── decompose_inflation.py          # Price inflation decomposition
@@ -71,6 +73,7 @@ nairu/
     ├── plot_potential_growth.py        # Potential growth charts
     ├── plot_potential_growth_comparison.py  # Cross-variant growth comparison
     ├── plot_potential_growth_smoothing.py   # Growth smoothing charts
+    ├── plot_target_consistent_u.py     # Policy NAIRU: U needed to hit target now
     ├── plot_taylor_rule.py             # Taylor rule charts
     ├── plot_unemployment_gap.py        # Unemployment gap charts
     ├── posterior_predictive.py         # Posterior predictive checks
@@ -341,6 +344,112 @@ excess_exp_t = unanchored model median_t − π_exp_t   (zero through 1992Q4)
 - The `r_gap` fed to the IS curve still uses the locked anchor (`cash_rate −
   π_exp − r*`), overstating the ex-ante real rate when expectations drift above
   target. Deliberately unchanged in the first pass; candidate refinement.
+
+---
+
+## Model Comparison (LOO / WAIC)
+
+`analysis/compare_information_criteria.py` ranks the variants by out-of-sample
+predictive fit. The saved traces do **not** carry a `log_likelihood` group, so
+the module rebuilds each model and evaluates the likelihood at the existing
+posterior draws via `pm.compute_log_likelihood` (no re-sampling — faithful to
+the traces on disk), caches the slim log-lik to `model_outputs/nairu_*_loglik.nc`,
+and writes `model_outputs/nairu_loo_waic_comparison.txt`.
+
+```bash
+uv run python -m src.models.nairu.analysis.compare_information_criteria
+```
+
+**Comparability.** LOO/WAIC are only pooled-comparable across models conditioned
+on the *same* observed data. The `simple*` family shares the same five
+observation equations over the same 167 quarters → valid pooled comparison.
+`complex` adds five more likelihood terms and ends a quarter earlier, so it is
+compared only on the shared price equation (`observed_price_inflation`),
+per-observation. Each variant has several observation likelihoods, so every
+(equation, time) contribution is stacked into one exchangeable obs vector for
+the joint criterion; `reff` is recovered from the log-likelihood's own ESS.
+
+**Full-sample ranking (joint LOO and WAIC agree):**
+
+| Rank | Variant | elpd_loo | Δ vs best | dse |
+|------|---------|---------:|----------:|----:|
+| 1 | `simple_excess` | −658.5 | 0.0 | — |
+| 2 | `simple_excess_regime` | −660.8 | −2.2 | 3.2 |
+| 3 | `simple_regime` | −661.1 | −2.6 | 3.7 |
+| 4 | `simple` | −665.5 | −6.9 | 3.3 |
+
+- The **excess-expectations term is the decisive feature** (plain→excess: +6.9
+  joint elpd, ~2× its dse; +3.9 on the price equation alone). It also wins the
+  price-only comparison and gives the best per-observation price fit of all
+  variants — `complex` is worst on inflation (0.222 vs 0.254 elpd/obs).
+- **Regime-switching adds little once excess is in**: `simple_excess_regime` is
+  statistically tied with `simple_excess` (Δ inside dse) but carries more
+  parameters. Regime-switching *alone* beats plain `simple`, by less than excess does.
+
+**Recent-surge fit (2021Q1–2026Q1, in-sample price-eq log-density — answers
+"explains the inflation we've seen", and rewards flexibility, ≠ LOO):**
+
+| Rank | Variant | recent elpd | per-quarter |
+|------|---------|------------:|------------:|
+| 1 | `simple_regime` | 8.50 | 0.405 |
+| 2 | `simple_excess_regime` | 8.13 | 0.387 |
+| 3 | `simple_excess` | 7.64 | 0.364 |
+| 4 | `simple` | 6.98 | 0.332 |
+| 5 | `complex` | 6.77 | 0.338 |
+
+- The order **flips**: the regime-switching slope (a steeper COVID-era γ) is what
+  captures the *magnitude* of the 2022 surge, while the excess β term improves the
+  *structural, whole-sample* fit. `simple_excess_regime` carries both mechanisms
+  → 2nd on both metrics, the best all-rounder and the run.py default.
+
+**Pareto-k reliability.** >99% of points are good (k≤0.5). The only unreliable
+point (k>0.7, up to ~1) is **2022Q2 in every model** — the post-COVID inflation
+surge (quarterly CPI 1.5% against unemployment 3.9%), a genuine influential
+outlier the slack channel can't explain. Because it is the same quarter across
+all variants it cancels in the pairwise `delta`/`dse`, so the ranking holds. For
+an exact LOO term on that point, `reloo` (refit leaving 2022Q2 out); not expected
+to change the ordering.
+
+**Caveats.** The comparison thins to 5k of the 50k draws (LOO/WAIC stable to
+this; full resolution available). Differences among the top simple variants are
+modest relative to their standard errors.
+
+### Model-selection probes (2026-06-08) — both null
+
+Three experimental presets were estimated and folded into the comparison:
+
+- **`simple_excess_studentt`, `simple_excess_regime_studentt`** (Student-t(ν=4)
+  NAIRU innovations on the excess family). **No effect** — joint elpd within
+  ~0.2–0.5 of the Gaussian twins (inside dse), and it did **not** fix the 2022Q2
+  high-k point (max k still ~1.9 joint). Reason: the influential point is in the
+  *price* likelihood (the inflation surge), so a fatter *NAIRU* innovation can't
+  absorb it. Not adopted. The right lever for that outlier would be a fat-tailed
+  **price-inflation likelihood** (StudentT on `observed_price_inflation`) — untried.
+- **`simple_excess_nohcoe`** (drop the collinear hourly-COE wage curve). The
+  motivating hypothesis — that HCOE collinearity dilutes the weak ULC wage β —
+  is **refuted**: `beta_wg` is unchanged (0.460 → 0.463, CI still straddles 0),
+  so weak wage identification is structural, not collinearity. It does post the
+  best price-eq fit (0.259 elpd/obs) and cleanest Pareto-k (max k 0.65). A
+  per-quarter decomposition confirms this gain is **not** an outlier artefact:
+  of the +0.94 total price elpd, only +0.025 is at 2022Q2 and +0.13 across the
+  whole COVID block — ~87% comes from the 155 non-COVID quarters (119 of 167
+  quarters improve), a small diffuse whole-sample effect (mean |Δ| ≈ 0.02/qtr).
+  But it is a fit-only gain (≈0.9 elpd over 167 obs) at the cost of a wage
+  channel — not a clear adopt.
+
+- **`simple_excess_tprice`, `simple_excess_regime_tprice`** (Student-t price
+  likelihood with estimated `nu_pi`). The targeted lever for the 2022 outlier.
+  **Improves reliability but not fit.** Price-eq Pareto-k cleans up fully (max k
+  0.75→0.61 and 1.03→0.62, zero points >0.7), but joint LOO is slightly *worse*
+  than the Gaussian twins (Δ −0.4 to −1.5) and price-eq fit is unchanged
+  (Δ≈0.03). Reason: estimated `nu_pi` ≈ 21 (90% CI [8, 52], P(ν<10)≈0.10) —
+  barely off its prior mean of 20, so the data don't demand fat tails (one
+  outlier in 167), and the extra parameter costs penalised fit. Use only as a
+  reliability device (a `reloo` alternative), not for fit.
+
+Net: none of the five probes beats `simple_excess`/`simple_excess_regime`; the
+ranking and default stand. The 2022Q2 high-k point is genuinely just hard data —
+no richer NAIRU-innovation or error model exploits it.
 
 ---
 

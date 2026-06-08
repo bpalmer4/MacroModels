@@ -55,6 +55,9 @@ class ModelConfig:
         excess_expectations: Add beta x (actual - target) expectations term to
             the Phillips curves (intended for the "target" anchor: beta=0 is
             the pure target model, beta=1 the unanchored expectations model)
+        student_t_price: Use a Student-t price-inflation likelihood (estimated
+            degrees of freedom nu_pi) instead of Gaussian — robust to inflation
+            outliers like the 2022 surge; large nu_pi recovers the Gaussian
 
         # Supply-side controls in Phillips curve
         include_import_price_control: Include lagged import price growth
@@ -100,6 +103,7 @@ class ModelConfig:
     wage_expectations: bool = True
     wage_price_passthrough: bool = False
     excess_expectations: bool = False
+    student_t_price: bool = False
 
     # Supply-side controls in Phillips curve
     include_import_price_control: bool = True
@@ -216,6 +220,33 @@ SIMPLE_EXCESS_REGIME = ModelConfig(
     label="simple_excess_regime", excess_expectations=True, regime_switching=True,
 )
 
+# --- Experimental variants (model-selection probes) ---
+# Student-t NAIRU innovations on the excess family: robustness to the 2022Q2
+# inflation-surge outlier (Pareto-k flagged it in the Gaussian variants).
+SIMPLE_EXCESS_STUDENTT = ModelConfig(
+    label="simple_excess_studentt", excess_expectations=True, student_t_nairu=True,
+)
+SIMPLE_EXCESS_REGIME_STUDENTT = ModelConfig(
+    label="simple_excess_regime_studentt",
+    excess_expectations=True, regime_switching=True, student_t_nairu=True,
+)
+# Drop the (collinear) hourly-COE wage curve to see if it sharpens the weakly
+# identified ULC wage beta. NOTE: 4 obs equations, so NOT joint-LOO-comparable
+# to the 5-equation family — compare on the shared price equation only.
+SIMPLE_EXCESS_NOHCOE = ModelConfig(
+    label="simple_excess_nohcoe", excess_expectations=True, include_hourly_coe=False,
+)
+# Student-t price-inflation likelihood (estimated nu_pi): the targeted lever for
+# the 2022 inflation-surge outlier (which lives in the price likelihood). Tests
+# whether fat-tailed inflation errors improve fit collectively, not just at 2022.
+SIMPLE_EXCESS_TPRICE = ModelConfig(
+    label="simple_excess_tprice", excess_expectations=True, student_t_price=True,
+)
+SIMPLE_EXCESS_REGIME_TPRICE = ModelConfig(
+    label="simple_excess_regime_tprice",
+    excess_expectations=True, regime_switching=True, student_t_price=True,
+)
+
 COMPLEX = ModelConfig(
     label="complex",
     student_t_nairu=True,
@@ -237,5 +268,10 @@ PRESETS: dict[str, ModelConfig] = {
     "simple_excess": SIMPLE_EXCESS,
     "simple_regime": SIMPLE_REGIME,
     "simple_excess_regime": SIMPLE_EXCESS_REGIME,
+    "simple_excess_studentt": SIMPLE_EXCESS_STUDENTT,
+    "simple_excess_regime_studentt": SIMPLE_EXCESS_REGIME_STUDENTT,
+    "simple_excess_nohcoe": SIMPLE_EXCESS_NOHCOE,
+    "simple_excess_tprice": SIMPLE_EXCESS_TPRICE,
+    "simple_excess_regime_tprice": SIMPLE_EXCESS_REGIME_TPRICE,
     "complex": COMPLEX,
 }
