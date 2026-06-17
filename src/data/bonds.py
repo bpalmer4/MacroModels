@@ -8,7 +8,12 @@ Provides quarterly bond yields and derived breakeven inflation:
 
 
 from src.data.dataseries import DataSeries
-from src.data.rba_loader import get_bond_yield_10y, get_indexed_bond_yield
+from src.data.rba_loader import (
+    get_bond_yield_10y,
+    get_cgs_yield,
+    get_corporate_bond_yield,
+    get_indexed_bond_yield,
+)
 
 # --- Public API ---
 
@@ -164,6 +169,47 @@ def get_breakeven_inflation(*, monthly: bool = False) -> DataSeries:
         units="%",
         description=f"Breakeven Inflation (10y nominal - indexed, {freq_label})",
         table="F2",
+        series_id="derived",
+    )
+
+
+def get_corporate_spread(
+    *, rating: str = "A", maturity: int = 5, monthly: bool = False,
+) -> DataSeries:
+    """Corporate credit spread = corporate bond yield − matched-maturity CGS yield.
+
+    A proxy for the external finance premium: how much more non-financial
+    corporates pay over the government at the same maturity. Built from RBA F3
+    (corporate yields, 2005+) minus RBA F2 (CGS yields). Quarterly by default.
+
+    Args:
+        rating: "A" (default) or "BBB".
+        maturity: Tenor in years (3, 5, 7, or 10) matched on both legs.
+        monthly: If True, monthly; else quarterly (period-end).
+
+    Returns:
+        DataSeries with the credit spread (percentage points), 2005+.
+
+    """
+    corp = get_corporate_bond_yield(rating=rating, maturity=maturity).data
+    cgs = get_cgs_yield(maturity=maturity).data
+
+    freq = "M" if monthly else "Q"
+    freq_label = "monthly" if monthly else "quarterly"
+    corp.index = corp.index.to_period(freq)
+    cgs.index = cgs.index.to_period(freq)
+    corp = corp.groupby(corp.index).last()
+    cgs = cgs.groupby(cgs.index).last()
+
+    spread = (corp - cgs).dropna()
+    spread.name = "corporate_spread"
+
+    return DataSeries(
+        data=spread,
+        source="Bloomberg; RBA",
+        units="ppt",
+        description=f"Corporate {rating} {maturity}y credit spread to CGS ({freq_label})",
+        table="F3-F2",
         series_id="derived",
     )
 

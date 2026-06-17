@@ -1,18 +1,25 @@
 # DSGE Models Overview
 
-This directory contains state-space models for estimating latent macroeconomic variables (NAIRU, r*, output gap) for Australia. **Only the NK model is a true DSGE** (forward-looking, solved via Blanchard-Kahn). The others are backward-looking unobserved components models.
+This directory contains state-space models for estimating latent macroeconomic variables (NAIRU, r*, output gap) for Australia, plus forward-looking DSGEs. **Four models are true DSGEs** (forward-looking, solved via Blanchard-Kahn): the original `NK`, the `NK-TwoStar` linear probe, the financial-accelerator `FA-NK`, and `FA-NK-wage` (FA-NK + sticky wages + Galí unemployment). The HLW-family models are backward-looking unobserved-components models.
+
+The DSGE work culminates in `FA-NK` (`fa_nk_model.py`), a financial-accelerator model that carries **two natural rates** - a goods-market safe rate and a return on capital - with an **endogenous external-finance-premium wedge** between them. This is the structural answer to the "great divergence" question: post-GFC the safe rate and the return on capital decoupled, and a one-r* model cannot represent that. See `nk_twostar_model.py` for the reduced-form probe that motivated the proper build.
+
+Two extensions: a **Tier-1 labour block** (structural marginal cost, behind `FANKModel(labour_block=True)`) and **`FA-NK-wage`** (`fa_nk_wage_model.py`), which adds sticky wages and Galí-2011 unemployment. Key honest findings across the family: the financial wedge is essentially an exogenous shock that tracks the **global financial cycle** (not QE narrowly - see `omega_global_test.py`); the labour block **unsticks κ_p**; the **Taylor block is weakly identified** (φ_π pins at its cap unless unemployment is observed); and a **credible NAIRU is out of reach** here (no NAIRU random-walk state - use `src/models/nairu/`).
 
 ## Summary Table
 
 | Model | Type | Phillips Curve | Outputs | Status |
 |-------|------|----------------|---------|--------|
+| **FA-NK** | True DSGE + financial accelerator | κ_p × y_gap (or structural mc if labour_block) | Two r* (safe, capital), endogenous EFP wedge | Determinate, estimable; χ small (wedge ~exogenous), Taylor block weakly identified |
+| **FA-NK-wage** | FA-NK + sticky wages + Galí unemployment | κ_p × mc, κ_w × μ_w | + unemployment gap, real wage, U* | Determinate; best-identified (κ_w found, φ_y interior); but NAIRU not credible |
+| NK-TwoStar | True DSGE + reduced-form wedge | κ_p × y_gap | Output gap, bolted-on wedge | Probe only; wedge has signal (σ_k≈0.14), φ_π at determinacy floor |
 | NK | True DSGE (Blanchard-Kahn) | κ_p × y_gap | Output gap | Many params at bounds |
 | HLW | State-space | κ_p × y_gap | Output gap, r* | Reasonable estimates |
 | HLW-NAIRU | State-space | γ × (U-NAIRU)/U | Output gap, r*, NAIRU | Over-parameterized |
 | NAIRU-Phillips | State-space | γ × (U-NAIRU)/U | NAIRU | NAIRU too high |
 | HLW-NAIRU-Phillips | State-space | γ × (U-NAIRU)/U | r*, NAIRU | Not plausible |
 
-**None of these models work particularly well.** This is common for state-space macro models due to identification issues, short samples, and structural breaks.
+**The HLW-family and original NK models do not work particularly well** - common for state-space macro models given identification issues, short samples, and structural breaks. `FA-NK` is the deliberate proper rebuild: it is determinate and estimable and reproduces the divergence, though it has its own open issues (see below).
 
 ---
 
@@ -36,6 +43,10 @@ plot_nairu.py          # NAIRU visualization
 
 ### Models (each contains SPEC for generic estimation)
 ```
+fa_nk_model.py                # Financial-accelerator NK DSGE (two r*, EFP wedge; labour_block flag)
+fa_nk_wage_model.py           # FA-NK + sticky wages + Galí (2011) unemployment / U*
+omega_global_test.py          # Tests whether the financial shock ω tracks global QE / FCI
+nk_twostar_model.py           # NK DSGE + reduced-form wedge (linear probe)
 nk_model.py                   # New Keynesian (true DSGE)
 hlw_model.py                  # Holston-Laubach-Williams style
 hlw_nairu_model.py            # HLW extended with NAIRU
@@ -177,9 +188,55 @@ Each model defines a `ModelSpec` with:
 
 ---
 
+## 0a. FA-NK Model (Financial-Accelerator DSGE) — the proper "two r*" model
+
+**Run:** `uv run python -m src.models.dsge.fa_nk_model` (determinacy check → estimate → smoothed series → save + plot). Writes `model_outputs/fa_nk_states.csv`, `model_outputs/fa_nk_params.txt`, and seven charts to `charts/dsge-fa-nk/`: actual safe rate vs cost of capital vs natural rate (re-levelled to per cent), EFP wedge, shock decompositions of the EFP wedge and the output gap, financial-block internals, and IRFs to a financial and a monetary shock. No run script yet.
+
+Note on the rates chart: the safe rate and cost of capital are *actual* rates (`R−π` and `R−π+EFP`), not natural rates - an earlier draft mislabelled them. The model's natural rate of interest (the smoother, ε_d-driven `r^n ≈ ε_d/σ`) is shown as a third, dashed line. The time-varying divergence lives in the actual rates (the EFP), not the natural rate.
+
+A Bernanke-Gertler-Gilchrist-style financial accelerator embedded in the NK DSGE, kept lean (`mc = ξ·y` closure, no separate labour block). It carries two natural rates that emerge from optimisation, not by assumption:
+
+- **safe rate** `R − E[π']` (household consumption Euler)
+- **return on capital** `r^k` (firms' capital, via Tobin's Q)
+- **wedge** = the external-finance premium `EFP = χ·leverage + ω`, where leverage = `q + k − n`. This is the endogenous "great divergence" object - it widens with leverage or a financial shock and transmits by depressing investment through Q.
+
+**State vector** `[ε_d, ε_s, ω, R₋₁, k, n, q₋₁]` (7 states), **controls** `[c, q, π]` (3 forward). Determinate Blanchard-Kahn solve. A financial shock produces the textbook accelerator: EFP up, q crash, net-worth erosion, investment collapse, output/inflation down, policy eases.
+
+**Estimation:** 4 observables `[output_gap, inflation, cash_rate, credit_spread]` (= 4 shocks, no stochastic singularity). Sample **1993Q1+**; the credit spread (`src/data/bonds.py:get_corporate_spread`, RBA F3 corporate yield − matched F2 CGS yield) only starts 2005Q1, so it is left missing (NaN) before then and the Kalman filter uses 4 observables from 2005 and 3 before — no truncation to the spread's start. **GFC kept** (its spread blowout identifies the financial block), **COVID excluded**.
+
+**Findings (first estimation):**
+- **χ ≈ 0.017** - the accelerator is real but *weak*: the wedge is mostly an exogenous financial shock, not endogenous leverage amplification. The EFP-wedge shock decomposition confirms this directly - the financial shock ω accounts for almost the entire wedge, with demand/supply/monetary contributions negligible.
+- The smoothed EFP tracks the GFC credit-spread spike (+2.65 dev at 2009Q1); r\*_safe falls through the 2010s to −2.09 by 2019 (the divergence), r\*_capital spikes at the GFC.
+- **The Taylor block is weakly identified.** With the original bounds φ_π, φ_y, κ_p pegged at their ceilings; widening the bounds shows them teleporting to different corners (φ_y to 0 or to whatever ceiling) at near-identical likelihood - a flat-ridge non-identification, the textbook reason DSGEs use Bayesian priors. The production run uses economically-reasonable caps (φ_π≤3, φ_y≤1) as effectively-imposed priors. χ (≈0.012-0.024) and the financial block are stable by contrast. (φ_π *does* come off its cap once unemployment is observed - see FA-NK-wage.)
+- **Sample is not the driver:** estimated on the same 1993+ sample as the probe (via missing-spread handling), the FA-NK gives essentially the 2005+ values, so the probe-vs-FA-NK difference is structural.
+
+**Open threads:** Bayesian re-estimation with priors on the Taylor block - the one real remaining unlock for the policy-block weak identification.
+
+---
+
+## 0a-2. Labour block (Tier 1) and FA-NK-wage (Tier 2 + Galí unemployment)
+
+**Run:** `FANKModel(labour_block=True)` / `run_fa_nk_labour()` (Tier 1); `uv run python -m src.models.dsge.fa_nk_wage_model`, `run_wage(observe_u=True)`, `produce_ustar()` (Tier 2).
+
+**Tier 1 - structural marginal cost.** Replaces the leaner `mc = ξ·y` with a flexible-wage labour block: `l = (y−α·k)/(1−α)`, `w = c/σ + φ_l·l`, `mc = w + l − y`. Hours and the wage are static functions of `(c, k, q)`, so **no new states**. *Result:* **unsticks κ_p** (settles ~1.93 interior vs the leaner model running to its ceiling - the crude `ξ·y` closure was causing the peg), at slightly worse fit; bound-hitting shifts to the supply shock; does not touch the Taylor block.
+
+**Tier 2 (`FA-NK-wage`) - sticky wages + Galí unemployment.** Adds Calvo (Erceg-Henderson-Levin) wages: the real wage becomes a state, wage inflation `π_w` a forward variable, plus a wage-markup shock - 9 states, 4 forward, 5 shocks, determinate. Unemployment via Galí (2011): `u = μ_w/φ_l` (wage markup over the inverse Frisch). NAIRU recovered post-hoc as `U* = observed U − u_gap`. *Results:* best-identified DSGE in the family (κ_w≈0.45 identified, φ_y interior); IRFs textbook (wage-markup shock → u up & wage inflation down; monetary tightening → u up). **But U\* is not credible** - it swings wildly because there is no smooth NAIRU random-walk state and (when free) unemployment is unobserved. Observing unemployment (`observe_u=True`) centres U\* at a plausible ~5.7% and notably **brings φ_π off its cap (≈1.33)**, but U\* stays too volatile and the wage Phillips curve collapses (κ_w→0). **For a credible NAIRU use `src/models/nairu/`** (it has the NAIRU random-walk state this DSGE lacks).
+
+---
+
+## 0b. NK-TwoStar Model (linear probe)
+
+**Run:** `uv run python -m src.models.dsge.nk_twostar_model`.
+
+A diagnostic stepping-stone, *not* the proper model. The original NK DSGE with the Taylor rule re-anchored to a time-varying r\*_goods (real indexed 10y bond yield) and a **bolted-on, reduced-form** wedge term `−σ_k·ω` in the IS curve, where `ω = trend-growth − bond-yield` (the divergence as observed data). Sample 1993Q1+, COVID excluded.
+
+**Purpose:** test whether the wedge has any signal before committing to the proper (microfounded) build. **It did:** after cleaning (COVID excluded, a GDP-growth bug fixed, wages demeaned), `σ_k ≈ 0.14` and the wedge state traced the divergence (peak ~2019, ≈0 by 2025). Separately, **φ_π pinned at its determinacy floor (1.01)** - profiled and likelihood-ratio-significant, i.e. the data wants a *passive* rule the determinate DSGE cannot represent. The non-collapsing wedge is what justified building `FA-NK`.
+
+---
+
 ## 1. NK Model (True DSGE)
 
-**The only forward-looking model, solved via Blanchard-Kahn.**
+**The original forward-looking model, solved via Blanchard-Kahn.**
 
 **Structure:**
 - IS curve: ŷ = E[ŷ'] - σ(i - E[π'] - r*) + ε_demand
@@ -272,3 +329,5 @@ For reliable NAIRU/output gap estimation, consider the **Bayesian state-space mo
 
 - Holston, Laubach, Williams (2017): "Measuring the Natural Rate of Interest"
 - Blanchard & Kahn (1980): "The Solution of Linear Difference Models under Rational Expectations"
+- Bernanke, Gertler, Gilchrist (1999): "The Financial Accelerator in a Quantitative Business Cycle Framework" (the FA-NK external-finance-premium mechanism)
+- Lubik & Schorfheide (2004): "Testing for Indeterminacy" (relevant to the φ_π determinacy-floor finding)

@@ -31,6 +31,9 @@ uv sync                            # Install dependencies
 ./run-gdp-nowcast-bvar.sh          # Run GDP nowcast (Bayesian VAR, T-0 only)
 ./run-gdp-nowcast-components.sh    # Run GDP nowcast (expenditure-identity components, T-0 only)
 ./run-rstar-hlw.sh                 # Run HLW Bayesian r-star model
+uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
+uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
+uv run python -m src.models.dsge.nk_twostar_model    # Run NK two-star linear probe
 uv run python -m src.models.gdp_nowcast_bridge.backtest  # Run nowcast backtest
 ```
 
@@ -59,7 +62,10 @@ src/
 │   ├── gdp_nowcast_components/     # GDP nowcasting via expenditure-identity components, T-0 only (see MODEL_NOTES.md)
 │   ├── rstar_hlw/                 # HLW Bayesian r-star model, AU data (see MODEL_NOTES.md)
 │   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition
-│   ├── dsge/                      # DSGE / HLW-style models (in development)
+│   ├── dsge/                      # DSGE + HLW-style models (see MODELS_EXPLAINED.md)
+│   │                              #   fa_nk_model.py: financial-accelerator DSGE, two r* + endogenous EFP wedge (labour_block flag)
+│   │                              #   fa_nk_wage_model.py: FA-NK + sticky wages + Galí unemployment / U*
+│   │                              #   nk_twostar_model.py: NK + reduced-form wedge (linear probe)
 │   ├── expectations/              # Inflation expectations model
 │   └── common/                    # Shared model utilities (diagnostics, extraction, timeseries)
 │

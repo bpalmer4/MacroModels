@@ -230,6 +230,58 @@ def get_indexed_bond_yield() -> DataSeries:
     )
 
 
+def get_cgs_yield(maturity: int = 5) -> DataSeries:
+    """Get a Commonwealth Government Securities yield at a given maturity.
+
+    Args:
+        maturity: Tenor in years (2, 3, 5, or 10).
+
+    Returns:
+        DataSeries with monthly CGS yield (%)
+
+    """
+    col = f"FCMYGBAG{maturity}"
+    series = _load_f2_series(col)
+    return DataSeries(
+        data=series,
+        source="RBA",
+        units="%",
+        description=f"{maturity}-year Government Bond Yield",
+        table="F2",
+        series_id=col,
+    )
+
+
+# --- Corporate Bond Yields (F3) ---
+
+F3_URL = "https://www.rba.gov.au/statistics/tables/xls/f03hist.xlsx"
+
+
+def get_corporate_bond_yield(rating: str = "A", maturity: int = 5) -> DataSeries:
+    """Get non-financial corporate bond yield from RBA F3 (2005-present).
+
+    Args:
+        rating: "A" or "BBB".
+        maturity: Target tenor in years (3, 5, 7, or 10).
+
+    Returns:
+        DataSeries with monthly corporate bond yield (%)
+
+    """
+    col = f"FNFY{rating}{maturity}M"
+    df = pd.read_excel(F3_URL, sheet_name="Data", skiprows=10, index_col=0)
+    df.index = pd.to_datetime(df.index)
+    series = df[col].dropna()
+    return DataSeries(
+        data=series,
+        source="Bloomberg; RBA",
+        units="%",
+        description=f"Non-financial corporate {rating}-rated bond yield, {maturity}y target tenor",
+        table="F3",
+        series_id=col,
+    )
+
+
 # --- Exchange Rates ---
 
 

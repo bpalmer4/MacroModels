@@ -10,7 +10,7 @@ Australian macroeconomic modelling. Includes both Bayesian state-space estimatio
 - **Inflation Expectations**: Bayesian signal extraction model estimating latent expectations from surveys and market data — see [`MODEL_NOTES.md`](src/models/expectations/MODEL_NOTES.md)
 - **Cobb-Douglas MFP**: Deterministic growth accounting decomposing output into capital, labour, and productivity
 - **HLW r\***: Bayesian (PyMC) Holston-Laubach-Williams model estimating the natural rate of interest for Australia — see [`MODEL_NOTES.md`](src/models/rstar_hlw/MODEL_NOTES.md)
-- **DSGE**: Dynamic stochastic general equilibrium model *(in development)*
+- **DSGE** — **experimental, work in progress; none usable yet.** A family of forward-looking DSGE models (New Keynesian; financial-accelerator `FA-NK` with two natural rates and an endogenous external-finance-premium wedge; sticky-wage `FA-NK-wage` with Galí unemployment; and a reduced-form `NK-TwoStar` probe) built to explore the post-GFC "great divergence". They are research and diagnostic builds, not production tools: they estimate but the policy block is weakly identified, and the r\* and NAIRU they produce are not yet credible. For credible r\* and NAIRU use the HLW r\* and NAIRU models above. See [`MODELS_EXPLAINED.md`](src/models/dsge/MODELS_EXPLAINED.md).
 
 **Run order:** the NAIRU model and the HLW r\* model both read the expectations model's saved output (`output/expectations/`) as an input — **run the expectations model first** whenever updating after new data. The NAIRU model derives r\* deterministically from the Cobb-Douglas production function (r\* ≈ potential growth).
 
@@ -176,5 +176,5 @@ src/
     ├── gdp_nowcast_dfm/        # GDP nowcast — Dynamic Factor Model
     ├── gdp_nowcast_bvar/       # GDP nowcast — Bayesian VAR (T-0 only)
     ├── gdp_nowcast_components/ # GDP nowcast — expenditure-identity components (T-0 only)
-    └── dsge/                   # DSGE model (in development)
+    └── dsge/                   # DSGE models — experimental, work in progress, NOT usable yet (see MODELS_EXPLAINED.md)
 ```
