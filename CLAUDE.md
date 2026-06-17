@@ -34,6 +34,7 @@ uv sync                            # Install dependencies
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
 uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
 uv run python -m src.models.dsge.nk_twostar_model    # Run NK two-star linear probe
+uv run python -m src.models.dsge.fa_nk_bayes         # Bayesian re-estimation (Taylor-block priors); --smoke for quick check, --extract-only for posterior r*/EFP bands
 uv run python -m src.models.gdp_nowcast_bridge.backtest  # Run nowcast backtest
 ```
 
@@ -66,6 +67,7 @@ src/
 │   │                              #   fa_nk_model.py: financial-accelerator DSGE, two r* + endogenous EFP wedge (labour_block flag)
 │   │                              #   fa_nk_wage_model.py: FA-NK + sticky wages + Galí unemployment / U*
 │   │                              #   nk_twostar_model.py: NK + reduced-form wedge (linear probe)
+│   │                              #   fa_nk_bayes.py: Bayesian re-estimation (black-box Op + priors, DEMetropolis-Z); identifies the Taylor block (φ_π≈2.6)
 │   ├── expectations/              # Inflation expectations model
 │   └── common/                    # Shared model utilities (diagnostics, extraction, timeseries)
 │
