@@ -20,6 +20,17 @@ import pandas as pd
 REGIME_GFC_START = pd.Period("2008Q4")
 REGIME_COVID_START = pd.Period("2021Q1")
 
+# Default growth weight in the operational IS-curve r*. The deterministic r* fed
+# to the model is a fixed convex blend of the Cobb-Douglas growth anchor and the
+# real bond-yield anchor:  r* = α·growth + (1-α)·yield.  α = 0.35 (35% growth /
+# 65% yield) is imposed, not estimated: the rate channel cannot identify α (the
+# free-α posterior mean was ~0.35, a ~9% contraction off a flat prior), but the
+# weak signal and the economics both lean toward the yield anchor, and a yield
+# lean fixes the perverse Cobb-Douglas r* profile (high in the 2010s, low now).
+# The NAIRU/output-gap estimates are near-insulated from this choice (<0.08pp);
+# it mainly shapes the r* level and the rate-gap / monetary-stance narrative.
+DEFAULT_RSTAR_ALPHA = 0.35
+
 
 @dataclass
 class ModelConfig:
@@ -108,6 +119,25 @@ class ModelConfig:
     # Supply-side controls in Phillips curve
     include_import_price_control: bool = True
     include_gscpi_control: bool = True
+
+    # IS-curve r* anchor
+    #   rstar_blend=False (default): rate gap uses the deterministic Cobb-Douglas
+    #     growth r* (obs["det_r_star"]) as before.
+    #   rstar_blend=True: r* = α_rstar·(growth anchor) + (1-α_rstar)·(yield anchor − k),
+    #     with α_rstar a free Beta parameter the model estimates. α=1 recovers
+    #     the growth anchor, α=0 the (term-premium-adjusted) real bond yield.
+    #   rstar_blend_alpha_prior: (a, b) for Beta(a, b) on α_rstar. (1, 1) is the
+    #     flat/uninformative default — keep it for the identification test so the
+    #     posterior reflects the likelihood, not the prior.
+    #   rstar_blend_k: fixed term-premium constant subtracted from the yield anchor.
+    #   rstar_blend_alpha_fixed: if set (not None), α_rstar is FIXED at this value
+    #     instead of estimated. Use to impose a chosen point on the growth-vs-yield
+    #     axis (1.0 = pure Cobb-Douglas growth, 0.0 = pure yield, 0.5 = even blend)
+    #     once it is accepted that the data cannot identify α.
+    rstar_blend: bool = False
+    rstar_blend_alpha_prior: tuple[float, float] = (1.0, 1.0)
+    rstar_blend_alpha_fixed: float | None = None
+    rstar_blend_k: float = 0.0
 
     # Per-equation fixed constants (None = use equation defaults)
     # nairu_const default depends on student_t_nairu (set in __post_init__)
@@ -203,6 +233,12 @@ class ModelConfig:
             lines.append(f"  Phillips controls: {', '.join(controls)}")
         if self.excess_expectations:
             lines.append("  Excess expectations: beta x (actual - target) in Phillips curves")
+        if self.rstar_blend:
+            a, b = self.rstar_blend_alpha_prior
+            lines.append(
+                f"  IS r* blend: alpha_rstar x growth + (1-alpha_rstar) x (yield - {self.rstar_blend_k}), "
+                f"alpha_rstar ~ Beta({a}, {b})"
+            )
 
         return "\n".join(lines)
 
@@ -245,6 +281,25 @@ SIMPLE_EXCESS_TPRICE = ModelConfig(
 SIMPLE_EXCESS_REGIME_TPRICE = ModelConfig(
     label="simple_excess_regime_tprice",
     excess_expectations=True, regime_switching=True, student_t_price=True,
+)
+
+# DEFAULT production variant: simple_excess with the fixed 35/65 growth/yield r*
+# blend. The blend is applied globally in observations.py (config.DEFAULT_RSTAR_ALPHA);
+# the "_rstar_blend" label records it in chart footers, filenames, and the chart dir.
+SIMPLE_EXCESS_RSTAR_BLEND = ModelConfig(
+    label="simple_excess_rstar_blend",
+    excess_expectations=True,
+)
+
+# Experiment: ESTIMATE the blend weight alpha_rstar (flat Beta(1,1)) instead of
+# fixing it — the identification probe for "does the model find alpha?". Sets
+# rstar_blend=True to override the global fixed blend with a free in-model blend
+# of the pure growth anchor and the yield anchor. (Finding: alpha not identified.)
+SIMPLE_EXCESS_RSTAR_EST = ModelConfig(
+    label="simple_excess_rstar_est",
+    excess_expectations=True,
+    rstar_blend=True,
+    rstar_blend_alpha_prior=(1.0, 1.0),
 )
 
 COMPLEX = ModelConfig(
@@ -292,6 +347,8 @@ PRESETS: dict[str, ModelConfig] = {
     "simple_excess_nohcoe": SIMPLE_EXCESS_NOHCOE,
     "simple_excess_tprice": SIMPLE_EXCESS_TPRICE,
     "simple_excess_regime_tprice": SIMPLE_EXCESS_REGIME_TPRICE,
+    "simple_excess_rstar_blend": SIMPLE_EXCESS_RSTAR_BLEND,
+    "simple_excess_rstar_est": SIMPLE_EXCESS_RSTAR_EST,
     "complex": COMPLEX,
     "complex_excess": COMPLEX_EXCESS,
 }

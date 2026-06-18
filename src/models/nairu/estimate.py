@@ -128,7 +128,13 @@ def build_model(obs: dict[str, np.ndarray], config: ModelConfig) -> pm.Model:  #
 
     # IS curve (ordering matters — must come after wage ULC, before HCOE)
     if config.include_is_curve:
-        desc = is_equation(obs, model, latents, constant=config.is_curve_const)
+        desc = is_equation(
+            obs, model, latents, constant=config.is_curve_const,
+            rstar_blend=config.rstar_blend,
+            rstar_blend_alpha_prior=config.rstar_blend_alpha_prior,
+            rstar_blend_alpha_fixed=config.rstar_blend_alpha_fixed,
+            rstar_blend_k=config.rstar_blend_k,
+        )
         descriptions.append(f"IS curve: {desc}")
 
     # Hourly COE Phillips curve

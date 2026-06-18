@@ -22,7 +22,9 @@ def plot_potential_growth_comparison(
     modeled_growth = potential.diff(4).dropna()
     modeled_median = modeled_growth.quantile(0.5, axis=1)
 
-    det_r_star = pd.Series(results.obs["det_r_star"], index=results.obs_index)
+    # Pure Cobb-Douglas growth anchor (det_r_star is now a growth/yield blend).
+    growth_key = "rstar_growth" if "rstar_growth" in results.obs else "det_r_star"
+    det_r_star = pd.Series(results.obs[growth_key], index=results.obs_index)
     common_idx = modeled_median.index.intersection(det_r_star.index)
     common_idx = common_idx[common_idx >= START]
 

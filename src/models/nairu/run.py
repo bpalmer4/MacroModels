@@ -102,7 +102,7 @@ def main(
 
     """
     if variants is None:
-        variants = ["simple_excess_regime"]
+        variants = ["simple_excess_rstar_blend"]
     variants = sorted(set(variants))
 
     for name in variants:
@@ -159,8 +159,8 @@ if __name__ == "__main__":
         type=str,
         nargs="+",
         choices=list(PRESETS.keys()),
-        default=["simple_excess_regime"],
-        help="Model variant(s) to run (default: simple_excess_regime)",
+        default=["simple_excess_rstar_blend"],
+        help="Model variant(s) to run (default: simple_excess_rstar_blend)",
     )
     parser.add_argument(
         "--estimate-only",

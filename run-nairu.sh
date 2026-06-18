@@ -6,7 +6,8 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 uv run python -m src.models.nairu.run "$@"
 
-# Default: --variant simple_excess_regime --anchor target
+# Default: --variant simple_excess_rstar_blend --anchor target
+#   (simple_excess with the fixed 35/65 growth/yield r* blend)
 # Typical usage:
 #   ./run-nairu.sh --variant complex
 #   ./run-nairu.sh --variant simple complex

@@ -47,7 +47,7 @@ def plot_equilibrium_rates(
 
     mg.finalise_plot(
         ax,
-        title="Neutral Interest Rate vs RBA Cash Rate",
+        title="Average Growth Rate as Proxy for\nNeutral Interest Rate vs RBA Cash Rate",
         ylabel="Per cent per annum",
         legend={"loc": "upper right", "fontsize": "x-small"},
         lfooter=f"Australia. Neutral rate = trend potential GDP growth + inflation target ({pi_target}%).",

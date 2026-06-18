@@ -28,6 +28,7 @@ from src.models.nairu.analysis import (
     plot_potential_growth,
     plot_potential_growth_comparison,
     plot_potential_growth_smoothing,
+    plot_rstar,
     plot_target_consistent_unemployment,
     plot_taylor_rule,
     plot_unemployment_gap,
@@ -82,6 +83,7 @@ def run_analyse(
     if cash_rate_monthly is not None:
         plot_taylor_rule(results, cash_rate_monthly=cash_rate_monthly, rfooter=rfooter, show=show_plots)
         plot_equilibrium_rates(results, cash_rate_monthly=cash_rate_monthly, rfooter=rfooter, show=show_plots)
+    plot_rstar(results, rfooter=rfooter, show=show_plots)
 
     # --- Phillips curves ---
     plot_phillips_curves(results, rfooter=rfooter, show=show_plots)

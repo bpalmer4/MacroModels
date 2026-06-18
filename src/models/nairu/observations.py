@@ -67,10 +67,11 @@ from src.data import (
     get_unemployment_speed_limit_qrtly,
     hma,
 )
+from src.data.bonds import get_indexed_yield_filled
 from src.data.expectations_model import get_model_expectations, get_model_expectations_unanchored
 from src.data.expectations_rba import get_rba_expectations
 from src.data.rba_loader import get_inflation_expectations as get_rba_raw_expectations
-from src.models.nairu.config import REGIME_COVID_START, REGIME_GFC_START
+from src.models.nairu.config import DEFAULT_RSTAR_ALPHA, REGIME_COVID_START, REGIME_GFC_START
 
 # --- Constants ---
 
@@ -380,12 +381,30 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
     # Net exports ratio change
     Δnx_ratio = _load("Δnx_ratio", get_net_exports_ratio_change_qrtly())
 
-    # Compute r*
-    r_star = _load("r_star", compute_r_star(
+    # Growth anchor: the Cobb-Douglas potential-growth r* (α·g_K + (1-α)·g_L + g_MFP).
+    r_star_growth = _load("rstar_growth", compute_r_star(
         capital_growth, lf_growth, mfp_growth, alpha, hma_term,
     ))
 
-    # Real rate gap
+    # Yield anchor: real indexed 10y bond yield. Filled with the growth anchor
+    # where missing (pre-1986 inception, latest-quarter lag) so the blend below
+    # reduces to growth there and never truncates the sample (the documented
+    # "fall back to Cobb-Douglas" rule from rstar_hlw/MODEL_NOTES.md).
+    yield_anchor = _load("yield_anchor", get_indexed_yield_filled())
+
+    # Operational r* fed to the IS curve / rate gaps: a fixed convex blend of the
+    # two anchors,  r* = DEFAULT_RSTAR_ALPHA·growth + (1-DEFAULT_RSTAR_ALPHA)·yield
+    # (35% growth / 65% yield). α is imposed (the data cannot identify it); see
+    # config.DEFAULT_RSTAR_ALPHA. Estimated/free-α variants override this in the
+    # IS equation via the rstar_blend flag (which blends rstar_growth + yield_anchor).
+    yield_for_blend = yield_anchor.reindex(r_star_growth.index).fillna(r_star_growth)
+    r_star = DEFAULT_RSTAR_ALPHA * r_star_growth + (1 - DEFAULT_RSTAR_ALPHA) * yield_for_blend
+    print(
+        f"  {'det_r_star':<{_NAME_WIDTH}s}Operational r* "
+        f"({DEFAULT_RSTAR_ALPHA:.2f} growth / {1 - DEFAULT_RSTAR_ALPHA:.2f} yield blend)"
+    )
+
+    # Real rate gap (built from the blended r*)
     r_gap = cash_rate - π_exp - r_star
     r_gap_1 = r_gap.shift(1)
     print(f"  {'r_gap_1':<{_NAME_WIDTH}s}Lagged real rate gap (cash_rate - π_exp - r*)")
@@ -423,7 +442,9 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
         "alpha_capital": alpha,
         # Rates
         "cash_rate": cash_rate,
-        "det_r_star": r_star,
+        "det_r_star": r_star,          # operational r* (35/65 growth/yield blend)
+        "rstar_growth": r_star_growth,  # pure Cobb-Douglas growth anchor (reference)
+        "yield_anchor": yield_anchor,   # real bond-yield anchor (reference)
         # Unit labor costs
         "Δulc": Δulc,
         "Δulc_1": Δulc_1,
@@ -466,6 +487,12 @@ def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not gen
     # Fill GSCPI with 0 for periods outside its data range (pre-1998, post-2024)
     # This must be done before dropna() to avoid truncating the sample
     observed["ξ_2"] = observed["ξ_2"].fillna(0.0)
+
+    # Fill the yield anchor with the growth anchor where the indexed bond yield
+    # is missing (pre-1986 inception, latest-quarter lag). Done before dropna()
+    # so the optional r* blend never truncates the estimation sample; those
+    # quarters then carry no information about α_rstar.
+    observed["yield_anchor"] = observed["yield_anchor"].fillna(observed["det_r_star"])
 
     # Forward-fill housing wealth growth (5232.0 lags other releases)
     # Δhw_1 is only used in forecast forward sampling, not in estimation
