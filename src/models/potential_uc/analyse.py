@@ -7,6 +7,11 @@ import numpy as np
 import pandas as pd
 
 from src.data.henderson import hma
+from src.models.potential_uc.decompose import (
+    GrowthDecomposition,
+    decompose_potential_growth,
+    print_decomposition,
+)
 from src.models.potential_uc.results import (
     DEFAULT_CHART_BASE,
     PotentialResults,
@@ -82,13 +87,14 @@ def print_diagnostics(results: PotentialResults) -> None:
         # stationary. What matters instead is how much of output's deviation
         # from potential that definition actually accounts for.
         gdp = pd.Series(results.obs["log_gdp"], index=results.obs_index)
-        gap = results.output_gap_median()
+        # Not `gap`: that name is already bound to the time x draw DataFrame above.
+        gap_median = results.output_gap_median()
         deviation = gdp - results.potential_median()
         print("\nHow much of the cycle the inflation-defined gap explains")
         print("-" * 70)
-        print(f"  {'sd of gap':<28} {gap.std():6.2f}")
+        print(f"  {'sd of gap':<28} {gap_median.std():6.2f}")
         print(f"  {'sd of GDP less potential':<28} {deviation.std():6.2f}")
-        print(f"  {'variance share':<28} {gap.var() / deviation.var():6.1%}")
+        print(f"  {'variance share':<28} {gap_median.var() / deviation.var():6.1%}")
     else:
         # cycle_ar off: the gap is the bare identity, so there is no AR root.
         print("\nNo AR(2) cycle restriction in this run: gap = log_gdp - y*.")
@@ -364,6 +370,155 @@ def plot_potential_growth(results: PotentialResults) -> None:
     )
 
 
+def plot_growth_accounting(decomposition: GrowthDecomposition) -> None:
+    """Potential growth split into trend hours and trend productivity.
+
+    A post-modelling accounting split, not a re-estimation: `y*` is exactly the
+    model's own path. Trend hours is a Henderson trend of measured labour
+    input, so it carries no band; trend productivity is the residual `y* - h*`
+    taken draw by draw, so it inherits the whole of the model's uncertainty
+    about potential. Showing the band on productivity alone is the honest
+    presentation of where the uncertainty actually sits.
+    """
+    prod = decomposition.productivity_posterior
+
+    ax = mg.fill_between_plot(_band(prod), **_BAND_KWARGS)
+    mg.line_plot(
+        pd.DataFrame({
+            "Potential growth": decomposition.potential_growth,
+            "Trend hours": decomposition.hours_growth,
+            "Trend productivity": decomposition.productivity_growth,
+        }).dropna(),
+        ax=ax,
+        color=["black", "darkorange", "seagreen"],
+        width=[2, 1.5, 1.5],
+        style=["-", "--", "--"],
+        annotate=True,
+        rounding=1,
+    )
+    mg.finalise_plot(
+        ax,
+        title="Potential growth: hours and productivity",
+        ylabel="Year-ended per cent",
+        y0=True,
+        legend={"loc": "best", "fontsize": "small"},
+        rfooter=_RFOOTER,
+        lfooter="Australia. Accounting split. Productivity is the residual. ",
+        show=False,
+    )
+
+
+def plot_growth_wedge(decomposition: GrowthDecomposition) -> None:
+    """Potential growth against trend hours, with productivity as the wedge.
+
+    The same decomposition as `plot_growth_accounting`, presented so that the
+    residual is not mistaken for a measurement.
+
+    Drawing trend productivity as its own line invites the reader to treat it
+    as an estimate of trend productivity growth. It is not: it is
+    `potential growth − trend hours`, and potential growth is nearly a straight
+    slow drift (sd 0.68 against 0.96 for the residual). So wherever trend hours
+    moves faster than the speed limit does, the productivity line is the hours
+    line upside down. Over 1994-2007 the two correlate −0.86, over 2020-2026
+    −0.99. That is a property of residuals, not an artefact of any one episode,
+    which is why it cannot be fixed by shading a period or truncating the
+    sample.
+
+    Shown as a wedge, the identity does the explaining. The 2023 migration
+    surge reads as trend hours crossing above potential growth, so the residual
+    turns negative — which is the true statement — rather than as a productivity
+    line plunging to −1.5, which is not.
+
+    `interpolate=True` is correct here, unlike in `plot_growth_vs_potential`:
+    the mask flips exactly where the two drawn curves cross, so there is no
+    third variable whose zero sits somewhere else.
+    """
+    data = pd.DataFrame({
+        "Potential growth": decomposition.potential_growth,
+        "Trend hours": decomposition.hours_growth,
+    }).dropna()
+
+    ax = mg.line_plot(
+        data,
+        color=["black", "darkorange"],
+        width=[2, 2],
+        style=["-", "--"],
+        annotate=True,
+        rounding=1,
+    )
+
+    # Read the x-coordinates back from the drawn line, so the fill lands on
+    # whatever internal index mgplot mapped the PeriodIndex onto.
+    x = np.asarray(ax.get_lines()[0].get_xdata(), dtype=float)
+    potential = data["Potential growth"].to_numpy()
+    hours = data["Trend hours"].to_numpy()
+
+    ax.fill_between(
+        x, potential, hours, where=potential >= hours, interpolate=True,
+        color="seagreen", alpha=0.30, label="Trend productivity (positive)",
+    )
+    ax.fill_between(
+        x, potential, hours, where=potential < hours, interpolate=True,
+        color="indianred", alpha=0.30, label="Trend productivity (negative)",
+    )
+
+    mg.finalise_plot(
+        ax,
+        title="Potential growth and labour input",
+        ylabel="Year-ended per cent",
+        y0=True,
+        legend={"loc": "best", "fontsize": "small"},
+        rfooter=_RFOOTER,
+        lfooter="Australia. The wedge is trend productivity, the residual. ",
+        show=False,
+    )
+
+
+def plot_growth_contributions(decomposition: GrowthDecomposition) -> None:
+    """Period-average contributions to potential growth, stacked.
+
+    The four components add to potential growth exactly, so the composition is
+    why the speed limit moved. Blocks rather than quarters, because the split
+    is only informative at low frequency: at quarterly frequency the hours
+    trend and the productivity residual are near mirror images of each other.
+    """
+    blocks = decomposition.block_means()
+
+    ax = mg.bar_plot(
+        blocks,
+        stacked=True,
+        annotate=False,
+        color=["cornflowerblue", "darkorange", "seagreen", "indianred"],
+    )
+    # Negative contributions stack below the axis, so the top of the bar is not
+    # the total. Mark the total explicitly rather than let it be misread. The
+    # block labels are strings, so the marker series is put on a RangeIndex,
+    # which is where bar_plot places the bars.
+    totals = blocks.sum(axis=1).rename("Potential growth (total)")
+    totals.index = pd.RangeIndex(len(totals))
+    mg.line_plot(
+        totals,
+        ax=ax,
+        color=["black"],
+        style="None",
+        marker="_",
+        markersize=40,
+        # mgplot annotates the last point only, which here collides with the
+        # final bar for no gain: the numbers are in the printed table.
+        annotate=False,
+    )
+    mg.finalise_plot(
+        ax,
+        title="Contributions to potential growth",
+        ylabel="Year-ended per cent, period average",
+        y0=True,
+        legend={"loc": "best", "fontsize": "small"},
+        rfooter=_RFOOTER,
+        lfooter="Australia. Components add to potential growth exactly. ",
+        show=False,
+    )
+
+
 def plot_trend_hours_components(results: PotentialResults) -> None:
     """Trend participation and trend hours per labour-force participant."""
     data = pd.DataFrame({
@@ -416,8 +571,16 @@ def run_analysis(
     output_dir: Path | str | None = None,
     prefix: str = "potential_uc",
     chart_dir: Path | str = CHART_DIR,
+    decompose: bool = True,
 ) -> PotentialResults:
-    """Load results, print diagnostics, and write every chart."""
+    """Load results, print diagnostics, and write every chart.
+
+    `decompose` adds the post-modelling accounting split of potential growth
+    into hours and productivity (see `decompose.py`). It loads labour force
+    data, so it is the only part of the analysis that touches ABS sources; pass
+    False to chart from the trace alone. It is skipped for the `labour`
+    specification, which estimates that split internally.
+    """
     results = load_results(output_dir=output_dir, prefix=prefix)
 
     print_diagnostics(results)
@@ -436,6 +599,12 @@ def run_analysis(
 
     if results.spec in ("inflation", "core", "target"):
         plot_trend_growth(results)
+        if decompose:
+            decomposition = decompose_potential_growth(results)
+            print_decomposition(decomposition)
+            plot_growth_accounting(decomposition)
+            plot_growth_wedge(decomposition)
+            plot_growth_contributions(decomposition)
     else:
         plot_trend_productivity_growth(results)
         plot_potential_growth(results)

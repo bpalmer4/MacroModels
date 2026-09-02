@@ -88,27 +88,32 @@ def _extend_tail_by_arima(series: pd.Series, periods: int) -> pd.Series:
     return pd.concat([series, pd.Series(forecast, index=index)])
 
 
-def smooth_population(log_pop: pd.Series, terms: int) -> pd.Series:
-    """Henderson-smooth log population, ARIMA-extending the tail first.
+def smooth_log_level(log_level: pd.Series, terms: int) -> pd.Series:
+    """Henderson-smooth a log level series, ARIMA-extending the tail first.
 
     Henderson's end weights are asymmetric, which drags the trend's last point
-    toward the interior of the series — on this data it pulled 2026Q2 growth to
-    1.62 against a recent run-rate near 1.75. That endpoint feeds current trend
-    hours growth, hence current potential growth and the current output gap, so
-    the drag is not cosmetic: it biases the estimated gap upward.
+    toward the interior of the series — on population it pulled 2026Q2 growth
+    to 1.62 against a recent run-rate near 1.75. That endpoint feeds current
+    trend hours growth, hence current potential growth and the current output
+    gap, so the drag is not cosmetic: it biases the estimated gap upward.
 
     Extending the series forward by half the filter width means the last real
     observation is smoothed with symmetric weights. The start needs no such
-    treatment: population is available from 1978Q2 while the model sample
+    treatment: the labour force series run from 1978 while the model sample
     starts in 1993Q1, so smoothing the full history and trimming afterwards
     already gives the first in-sample quarter a full symmetric window.
 
     This mirrors the `arima_extend=True` handling used in the 6202 labour force
     notebook's breakeven-employment chart, for the same reason.
     """
-    log_pop = log_pop.dropna()
-    extended = _extend_tail_by_arima(log_pop, periods=(terms - 1) // 2)
-    return hma(extended, terms).reindex(log_pop.index)
+    log_level = log_level.dropna()
+    extended = _extend_tail_by_arima(log_level, periods=(terms - 1) // 2)
+    return hma(extended, terms).reindex(log_level.index)
+
+
+def smooth_population(log_pop: pd.Series, terms: int) -> pd.Series:
+    """Henderson-smooth log population. See `smooth_log_level`."""
+    return smooth_log_level(log_pop, terms)
 
 
 def _inflation(pi_basis: str) -> tuple[pd.Series, str]:

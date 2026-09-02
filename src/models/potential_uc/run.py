@@ -61,6 +61,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prefix", default="potential_uc", help="Output filename prefix")
     parser.add_argument("--analyse-only", action="store_true", help="Skip estimation")
     parser.add_argument("--no-analyse", action="store_true", help="Estimate without charting")
+    parser.add_argument(
+        "--no-decompose", action="store_true",
+        help="Skip the hours/productivity accounting split (avoids loading labour force data)",
+    )
     parser.add_argument("--verbose", action="store_true")
 
     return parser.parse_args()
@@ -105,7 +109,11 @@ def main() -> None:
         )
 
     if not args.no_analyse:
-        run_analysis(output_dir=config.output_dir, prefix=args.prefix)
+        run_analysis(
+            output_dir=config.output_dir,
+            prefix=args.prefix,
+            decompose=not args.no_decompose,
+        )
 
 
 if __name__ == "__main__":

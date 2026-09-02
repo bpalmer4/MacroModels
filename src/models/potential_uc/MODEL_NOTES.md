@@ -128,6 +128,62 @@ The lockdown quarter reads −0.56 because inflation barely moved. The seven-poi
 
 ---
 
+## Growth accounting: hours and productivity (`decompose.py`)
+
+A **post-modelling** split of potential growth. It does not re-estimate anything: `y*` is exactly the path above, and the split is an identity in logs,
+
+```
+g_Y*  =  g_POP*  +  g_PR*  +  g_HPP*  +  g_LP*
+```
+
+with hours per labour-force participant (`HPP`) absorbing the unemployment margin, so the identity closes in three labour terms without a NAIRU. Trend productivity is the **residual** `lp* = y* − h*`, taken draw by draw, so it inherits the whole of the model's uncertainty about potential. Trend hours is filtered data and carries no band.
+
+### The components do not get the same filter
+
+Population keeps the Henderson-7 treatment `observations.py` already gives it. It is measured and acyclical, and its swings are genuine labour supply: growth ran 0.20% in 2021Q2 to 2.95% in 2023Q3 on the border closure and the migration rebound. HP would smooth that away as cycle, which is exactly backwards.
+
+Participation and hours per participant are cyclical and get HP(1600). A Henderson MA cannot low-pass them at any width: on log hours a 7-term filter books a −6.2 to +7.3 per cent pandemic swing as *trend*, and even 31 terms still books −0.5 to +4.5. Under HP(1600) trend hours growth runs 0.67% in 2021 and 3.67% in 2023 — the border closure and the migration surge, not the lockdown.
+
+### Contributions to potential growth, period averages (year-ended %)
+
+| | Population | Participation | Hours per participant | Productivity | Total |
+|---|---|---|---|---|---|
+| 1994-1999 | 1.27 | −0.01 | 0.33 | 2.39 | 3.98 |
+| 2000-2009 | 1.64 | 0.36 | −0.15 | 1.34 | 3.19 |
+| 2010-2019 | 1.62 | −0.01 | −0.34 | 1.25 | 2.52 |
+| 2020-2026 | 1.70 | 0.40 | 0.09 | −0.08 | 2.10 |
+
+The two-point fall in the speed limit since the late 1990s is almost entirely the productivity column. The population contribution is flat at 1.3 to 1.7 throughout.
+
+### Two presentations of the same split
+
+`potential-growth-hours-and-productivity` draws all three as lines. `potential-growth-and-labour-input` draws potential growth and trend hours only, with productivity as the shaded wedge between them, which is exact because the three add up.
+
+The wedge version exists because the line version invites a wrong inference. Trend productivity is `potential growth − trend hours`, and potential growth is nearly a straight slow drift, so wherever trend hours moves faster than the speed limit does, the productivity line is the hours line upside down:
+
+| corr(trend hours growth, trend productivity growth) | |
+|---|---|
+| full sample | −0.711 |
+| 1994-2019 | −0.391 |
+| 1994-2007 | **−0.864** |
+| 2020-2026 | **−0.994** |
+
+sd of the residual is 0.96, against 0.68 for potential growth and 0.59 for trend hours: the residual is the most volatile line on a chart whose subject is the smoothest one.
+
+Note the 1994-2007 figure. This is a property of residuals, not an artefact of the pandemic, so it cannot be fixed by shading an episode or truncating the sample — both would imply the rest of the line can be read as a measurement. The wedge makes the same numbers say the right thing: the 2023 migration surge appears as trend hours crossing above potential growth, so the residual turns negative, rather than as a productivity line plunging to −1.5.
+
+### What it cannot say
+
+1. **Trend productivity is a residual, not an estimate.** Any error in the hours trend lands on it in full. Nothing here is independent evidence about productivity.
+2. **The 2023 trough is an artefact of the smooth `y*`.** Trend hours growth jumps to 3.7% on the migration surge while potential growth is held near 2.1% by `sigma_g`. The residual must absorb the difference, so trend productivity growth prints below −1% in 2023. Read that as the model's smoothness prior refusing the labour supply surge, not as a productivity collapse.
+3. **Quarter-to-quarter movements in the residual are not news about productivity.** Trend hours and the residual are near mirror images; see the correlations above. The block averages carry the low-frequency story, and the wedge chart is the safe way to show the quarterly path.
+4. **HP has an endpoint problem.** Refitting the hours trend with the last four quarters withheld moves 2025Q2 trend hours growth from 2.75 to 2.34 as those quarters arrive.
+5. **Trend hours is not a supply concept.** It is a filter of measured labour input. Nothing here identifies the hours consistent with inflation at target.
+
+Run with `./run-potential-uc.sh`; `--no-decompose` skips it, which is also the only way to run `--analyse-only` without touching ABS sources. Skipped automatically for the `labour` spec, which estimates the split internally.
+
+---
+
 ## Limitations
 
 1. **`c` is attenuated and cannot be otherwise.** Conventional Phillips slope estimates of 0.3 to 0.4 imply `c` near 2.5 to 3. This model returns 0.468. The gap between the two is the McLeay-Tenreyro attenuation, and no amount of respecification recovers it from a target-era sample. The implied gap should therefore be read as a **lower bound** on the true one.
@@ -162,6 +218,7 @@ potential_uc/
 ├── run.py               CLI entry point
 ├── compare.py           overlay saved runs
 ├── realtime.py          pseudo-real-time revisions (raises for non-core specs)
+├── decompose.py         post-modelling hours/productivity growth accounting
 ├── sigma_sweep.py       sweep imposed settings (untested on this spec)
 ├── MODEL_NOTES.md       this file
 └── equations/
@@ -178,7 +235,7 @@ potential_uc/
     └── participation.py       participation observation (`labour`)
 ```
 
-Charts are written to `charts/PotentialUC/`: `potential-growth`, `output-gap`, and `gdp-and-potential-output` and `actual-growth-versus-potential` on full and recent windows.
+Charts are written to `charts/PotentialUC/`: `potential-growth`, `output-gap`, `potential-growth-hours-and-productivity`, `potential-growth-and-labour-input`, `contributions-to-potential-growth`, and `gdp-and-potential-output` and `actual-growth-versus-potential` on full and recent windows.
 
 ## Commands
 
@@ -187,6 +244,7 @@ Charts are written to `charts/PotentialUC/`: `potential-growth`, `output-gap`, a
 ./run-potential-uc.sh --analyse-only   # recharts from the saved trace
 ./run-potential-uc.sh --anchor 2.25    # move the anchor
 ./run-potential-uc.sh --ratio-ystar 0.25   # looser potential
+./run-potential-uc.sh --analyse-only --no-decompose  # charts from the trace alone, no ABS access
 ```
 
 ---
