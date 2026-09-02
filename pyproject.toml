@@ -82,6 +82,7 @@ lint.ignore = [
     "RUF022",  # __all__ not sorted - prefer categorical grouping for readability
     "TC001",   # move application import into TYPE_CHECKING block - too aggressive
     "TC002",   # move third-party import into TYPE_CHECKING block - too aggressive
+    "CPY001",  # missing copyright notice - not used in this project
 
     # --- specifically for Jupyter notebooks.
     "B018",    # Found useless attribute access (often at cell end for output) 
@@ -90,6 +91,14 @@ lint.ignore = [
     "INP001",  # implicit-namespace-package - not relevant for Jupyter notebooks
     "PLR0913", # Too many arguments - not relevant for Jupyter notebooks
 ]
+
+[tool.mypy]
+# `src` has no __init__.py but its subpackages do, so mypy would otherwise name
+# src/data/surveys.py both "data.surveys" and "src.data.surveys" and refuse to
+# check anything. Pin the package base to the repo root, matching the
+# `from src.data...` imports used throughout.
+mypy_path = "."
+explicit_package_bases = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

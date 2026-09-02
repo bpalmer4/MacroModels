@@ -89,6 +89,12 @@ N_BOOTSTRAP = 1000
 MIN_BOOTSTRAP_ROWS = 20  # min common-window quarters for the row-wise (correlated) bootstrap
 COVID_START = "2020Q1"
 COVID_END = "2021Q1"
+# Quarters excluded from bootstrap resampling. Wider than the COVID_START/COVID_END
+# regression dummy above, which is a different decision: the dummy marks the quarters
+# whose *level* needs a shift, whereas 2021Q3 (-1.6pp) and 2021Q4 (+2.2pp) still carry
+# combined residuals ~6x the quiet-year spread and would otherwise set the 90% band.
+BOOTSTRAP_EXCLUDE_START = "2020Q1"
+BOOTSTRAP_EXCLUDE_END = "2021Q4"
 SHOW = False
 
 # SARIMA candidate orders (p, d, q) — kept small for 1-2 month forecasts
@@ -956,6 +962,20 @@ def _combine_bridges(
     return combined, weights
 
 
+def _bootstrap_eligible(index: pd.Index) -> np.ndarray:
+    """Mask selecting quarters the bootstrap may resample (i.e. excluding COVID).
+
+    Args:
+        index: Quarterly PeriodIndex of residuals.
+
+    Returns:
+        Boolean array, True for quarters outside the excluded COVID window.
+
+    """
+    excluded = (index >= BOOTSTRAP_EXCLUDE_START) & (index <= BOOTSTRAP_EXCLUDE_END)
+    return ~np.asarray(excluded)
+
+
 def _bootstrap_intervals(
     bridges: list[BridgeResult],
     weights: dict[str, float],
@@ -979,6 +999,12 @@ def _bootstrap_intervals(
     # bootstrap row is one real quarter with the bridges' co-movement preserved.
     resid_df = pd.DataFrame({b.name: b.residuals for b in active}).dropna(how="any")
 
+    # Drop the COVID quarters before counting rows: their combined residuals run 1.4-4.3pp
+    # against a sub-0.55pp spread elsewhere, so resampling them makes the 90% band report
+    # the odds of a COVID-scale repeat rather than this quarter's uncertainty. Bands are
+    # therefore conditional on no shock of that size.
+    resid_df = resid_df.loc[_bootstrap_eligible(resid_df.index)]
+
     if len(resid_df) >= MIN_BOOTSTRAP_ROWS:
         w = np.array([weights[b.name] for b in active])  # ordered to match resid_df columns
         residual_matrix = resid_df[[b.name for b in active]].to_numpy()
@@ -993,7 +1019,10 @@ def _bootstrap_intervals(
             "(< %d); falling back to independent pooled resample (intervals too narrow).",
             len(resid_df), len(active), MIN_BOOTSTRAP_ROWS,
         )
-        pooled = np.concatenate([(b.residuals * weights[b.name]).to_numpy() for b in active])
+        pooled = np.concatenate([
+            (b.residuals.loc[_bootstrap_eligible(b.residuals.index)] * weights[b.name]).to_numpy()
+            for b in active
+        ])
         pooled = pooled[np.isfinite(pooled)]
         bootstrap_draws = np.array([
             combined_nowcast + rng.choice(pooled, size=len(active)).sum()

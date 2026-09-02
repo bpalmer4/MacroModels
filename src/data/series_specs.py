@@ -45,6 +45,20 @@ PARTICIPATION_RATE = ReqsTuple(
     zip_file="",
 )
 
+# Published Original only — population carries no meaningful seasonality, and
+# ABS back-revises the whole history on Census rebasing rather than stepping it,
+# so the series has no benchmark breaks to patch.
+CIVILIAN_POP_15 = ReqsTuple(
+    cat="6202.0",
+    table="62020001",
+    did="Civilian population aged 15 years and over ;  Persons ;",
+    stype="O",
+    unit="",
+    seek_yr_growth=False,
+    calc_growth=False,
+    zip_file="",
+)
+
 EMPLOYMENT_PERSONS = ReqsTuple(
     cat="6202.0",
     table="62020001",
@@ -302,7 +316,10 @@ AWE_FULL_TIME_ADULTS = ReqsTuple(
 WPI_TOTAL = ReqsTuple(
     cat="6345.0",
     table="634501",
-    did="Quarterly Index ;  Total hourly rates of pay excluding bonuses ;  Australia ;  Private and Public ;  All industries ;",
+    did=(
+        "Quarterly Index ;  Total hourly rates of pay excluding bonuses ;  "
+        "Australia ;  Private and Public ;  All industries ;"
+    ),
     stype="O",
     unit="Index Numbers",
     seek_yr_growth=False,

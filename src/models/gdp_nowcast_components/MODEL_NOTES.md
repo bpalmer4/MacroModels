@@ -23,9 +23,10 @@ keeps that difference legible.
 
 This is a structural accounting build-up — complementary to, not a competitor of,
 the statistical nowcasts (`gdp_nowcast_bridge`, `_dfm`, `_bvar`), which regress
-GDP growth on indicator panels. Its edge: at T-0 the two most volatile
-contributors (inventories, net exports) and government are **measured, not
-forecast**. Its output is interpretable — a stacked-ppt decomposition telling you
+GDP growth on indicator panels. Its edge: at T-0 net exports and government are
+**measured, not forecast**, and inventories — the other volatile contributor — is
+anchored on a measured prior-quarter flow. Its output is interpretable — a
+stacked-ppt decomposition telling you
 *where* growth comes from, not just a headline number.
 
 ## Contribution formula
@@ -38,23 +39,38 @@ contribution_T (ppt) = Δ(component_T) / GDP_{T-1} × 100
 
 `GDP_{T-1}` is the last *published* real GDP (the denominator is lagged by index,
 so the T-quarter source — out a day early — divides by the last published GDP).
-Inventories enter GDP as a flow, so they take a **second** difference of the
-level: `(Δlevel_T − Δlevel_{T-1}) / GDP_{T-1} × 100`.
+Inventories enter GDP as a flow, so their contribution is a difference *of
+flows*: `(flow_T − flow_{T-1}) / GDP_{T-1} × 100`. Only `flow_T` needs a proxy.
+`flow_{T-1}` is the NA changes-in-inventories published with last quarter's
+accounts, so it is read from 5206 rather than differenced out of the 5676 stock:
+proxying it too injected the 5676 coverage gap (farm and public excluded) a
+second time with the opposite sign, so one bad stock reading cost two quarters.
+`flow_T` is the 5676 stock change put on the NA basis by an OLS fitted strictly
+before `T` (the two series measure different aggregates, so the raw stock change
+is not commensurate with `flow_{T-1}`).
 
 ## Components and sources (at T-0)
 
 | Component | Source @ T-0 | Method | Backtest MAE (ex-COVID) |
 |---|---|---|---|
-| Household consumption | 5682.0 t.5682015 CVM index (~5 wk) | **growth bridge → level** | 0.232 |
-| Government consumption | GFS Table 15 CVM $m (~1 day) | accounting-exact | 0.009 |
-| Private GFCF | 5625.0 capex + 8755.0 construction (~1–3 wk) | **contribution bridge** | 0.200 |
-| Public GFCF | GFS Table 15 CVM $m (~1 day) | accounting-exact | 0.010 |
-| Inventories | 5676.0 t.5676001 CVM $m level (~1 day) | accounting-exact | 0.210 |
-| Net exports | 5302.0 t.530205 CVM $m (~1 day) | accounting-exact | 0.082 |
+| Household consumption | 5682.0 t.5682015 CVM index (~5 wk) | **growth bridge → level** | 0.220 |
+| Government consumption | GFS Table 15 CVM $m (~1 day) | accounting-exact | 0.015 |
+| Private GFCF | 5625.0 capex + 8755.0 construction (~1–3 wk) | **contribution bridge** | 0.217 |
+| Public GFCF | GFS Table 15 CVM $m (~1 day) | accounting-exact | 0.018 |
+| Inventories | 5676.0 t.5676001 CVM $m level (~1 day) + 5206 NA flow @ T-1 | **flow bridge, NA-anchored** | 0.223 |
+| Net exports | 5302.0 t.530205 CVM $m (~1 day) | accounting-exact | 0.070 |
 
 - **Accounting-exact**: real $m CVM levels that map straight onto the GDP
   identity. Government consumption tracks the published NA contribution almost
-  perfectly (MAE 0.009) — confirming GFS Table 15 is CVM and needs no deflator.
+  perfectly (MAE 0.015) — confirming GFS Table 15 is CVM and needs no deflator.
+- **Inventories (flow bridge, NA-anchored)**: the 5676 private non-farm stock is
+  the only T-0 source, but it is a partial-coverage proxy (farm and public
+  excluded), and the contribution differences two flows. Anchoring the T-1 flow
+  on the published NA number is what does the work: on a like-for-like vintage it
+  cut the component's RMSE from 0.357 to 0.260 over 2023+ and 0.264 to 0.178 over
+  2024+. Rescaling the T flow onto the NA basis adds a little more (to 0.249 and
+  0.170). Bridging *without* anchoring achieves nothing (0.351 / 0.265), which is
+  what identifies the T-1 term rather than the proxy's scale as the fault.
 - **Household consumption (growth bridge → level)**: the HSI is a CVM *index*
   covering only the volatile, transaction-based ~⅔ of consumption (it maps to
   HFCE at slope ~0.59, not 1 — see `diagnostics.plot_source_vs_na`). It is
@@ -130,20 +146,28 @@ Q/Q→annual conversion. Backtest artefacts land in
 
 ```
 Headline (summed nowcast vs published GDP growth, ppt):
-  ex-COVID      n= 31  MAE=0.553  RMSE=0.766  bias=+0.191
+  ex-COVID      n= 32  MAE=0.477  RMSE=0.672  bias=+0.044
 ```
 
 Read alongside the per-component table above:
 
-- The **accounting-exact** pieces are tight (government 0.009, net exports 0.082).
-- **Inventories** (0.210) is the noisiest exact component — the 5676 private
-  non-farm Δlevel is a partial-coverage proxy (farm + public excluded), and
-  second-differencing a CVM level amplifies noise.
-- **Household consumption** (0.232) and **private GFCF** (0.200) are the bridged
-  pieces and carry the most error. The level-path consumption bridge (ex-COVID)
-  lowered household MAE from 0.257 and trimmed its over-prediction bias
-  (0.129 → 0.111); the residual headline bias (+0.19) now sits mostly in private
-  GFCF and inventories.
+- The **accounting-exact** pieces are tight (government 0.015, net exports 0.070).
+- **Inventories** (0.223) is no longer the drag it was. The NA-anchored flow
+  bridge (above) is what fixed it; the headline gain is larger than the
+  component's own, because the old formula's error was serially correlated by
+  construction. On a like-for-like vintage the headline went from RMSE 0.578 to
+  0.434 over 2023+, and the ex-COVID headline bias collapsed from +0.191 to
+  +0.044 — most of that bias had been the inventories term.
+- **Household consumption** (0.220) and **private GFCF** (0.217) are the bridged
+  pieces and now carry the most error. The level-path consumption bridge
+  (ex-COVID) lowered household MAE from 0.257 and trimmed its over-prediction
+  bias; the residual headline bias now sits mostly in private GFCF.
+- Read the headline number over the **whole** 2015Q1 window with care: the
+  early years fit the private-GFCF bridge on a handful of quarters (it needs only
+  `len(names) + 5`), so 2016-2019 headline RMSE is 0.746 against 0.396 over
+  2024+. That era reflects an expanding window starting cold, not current
+  accuracy. Comparisons against the sibling nowcasts must use a common window
+  *and* a common vintage.
 
 ### Caveats
 
@@ -159,8 +183,11 @@ Read alongside the per-component table above:
 
 ## Open improvement avenues
 
-1. **Inventories** — try the all-sector NA-matched changes series, or smooth the
-   second difference; it's the weakest exact component.
+1. **Inventories** — done: the T-1 flow now comes from the NA all-sector
+   changes series and the T flow is bridged onto that basis. What is left is a
+   small under-prediction (bias -0.10 over 2023+), which is the farm and public
+   coverage gap being carried by the bridge's intercept rather than measured.
+   A farm-inventories proxy (ABS crop estimates) is the only obvious lead on it.
 2. **Household consumption** — now a growth-bridge→level path (ex-COVID), which is
    about as far as the HSI can be pushed: it sees only ~⅔ of consumption, so the
    leg is an irreducible moderate-error inference (~±0.29 ppt 1σ). Per-category

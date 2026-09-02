@@ -73,6 +73,9 @@ _CONTRIB_DIDS = {
     "gdp": "GROSS DOMESTIC PRODUCT: Contributions to growth ;",
 }
 
+# The NA inventories flow ($m, CVM SA) that enters the expenditure identity.
+_NA_INV_FLOW_DID = "Changes in inventories ;"
+
 _STYPE = "Seasonally Adjusted"
 
 
@@ -137,6 +140,24 @@ def household_consumption_level() -> pd.Series:
 def inventories_level() -> pd.Series:
     """Private non-farm inventory level, CVM SA (5676.0 t.5676001 $m)."""
     return _to_qdec(get_inventories_qrtly().data)
+
+
+@cache
+def na_inventories_flow() -> pd.Series:
+    """NA changes in inventories, CVM SA ($m flow, all sectors).
+
+    This is the quantity that enters the GDP expenditure identity, and it is
+    published *with* the accounts — so at T-0 it is known through ``target - 1``
+    but not for ``target`` itself. The 5676 private non-farm stock (out a day
+    early) proxies only the target-quarter change; the prior quarter's flow
+    should be read from here rather than proxied, since proxying it injects the
+    5676 coverage gap (farm and public inventories are excluded) a second time
+    with the opposite sign.
+    """
+    d, m = ra.read_abs_cat("5206.0", single_excel_only=_CONTRIB_TABLE, verbose=False)
+    m = m[m[mc.table] == _CONTRIB_TABLE]
+    row = m[(m[mc.did] == _NA_INV_FLOW_DID) & (m[mc.stype] == _STYPE)].iloc[0]
+    return _to_qdec(d[_CONTRIB_TABLE][row[mc.id]])
 
 
 @cache

@@ -5,8 +5,11 @@ Table H3 (Monthly Activity Indicators). These are soft data that lead hard
 activity indicators at turning points.
 """
 
+from io import BytesIO
+
 import pandas as pd
 import readabs as ra
+import requests
 
 from src.data.dataseries import DataSeries
 
@@ -23,10 +26,17 @@ def _load_h3_series(col: str) -> pd.Series:
         Series with monthly PeriodIndex
 
     """
-    df = pd.read_excel(H3_URL, sheet_name="Data", skiprows=10, index_col=0)
+    # Fetch via requests (certifi trust store) rather than letting pandas use
+    # urllib: the macOS system CA bundle lacks the RBA's current root.
+    response = requests.get(H3_URL, timeout=60)
+    response.raise_for_status()
+    df = pd.read_excel(BytesIO(response.content), sheet_name="Data", skiprows=10, index_col=0)
     df.index = pd.to_datetime(df.index)
     s = df[col].dropna()
-    s.index = s.index.to_period("M")
+    dates = s.index
+    if not isinstance(dates, pd.DatetimeIndex):
+        raise TypeError(f"H3 sheet index did not parse as dates: {type(dates).__name__}")
+    s.index = dates.to_period("M")
     return s
 
 

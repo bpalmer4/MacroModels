@@ -1,0 +1,1788 @@
+
+
+<!DOCTYPE html>
+<html lang="en-au" xml:lang="en-au" xmlns="http://www.w3.org/1999/xhtml" class="no-js">
+<head>
+	<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+	<meta charset="utf-8" />
+
+
+	<script src="/assets/js/rba.external.min.js"></script>
+	<!-- Google Tag Manager -->
+	<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+			new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+			j=d.createElement(s),dl=l!=='dataLayer'?'&l='+l:'';j.async=true;j.src=
+			'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+	})(window,document,'script','dataLayer', 'GTM-' + 'P2F2TKD' +  '');</script>
+	<!-- End Google Tag Manager -->
+
+
+	<title>Statistical Tables | RBA</title>
+
+	<link rel="schema.dcterms" href="https://purl.org/dc/terms/" />
+	
+	
+	<meta name="dcterms.identifier" content="https://www.rba.gov.au/statistics/tables/index.html" />
+	
+	<meta name="dcterms.title" content="Statistical Tables" />
+	
+	<meta name="description" content="&nbsp;" />
+	<meta name="dcterms.description" content="&nbsp;" />
+
+	
+	
+	
+	
+	<meta name="dcterms.modified" content="2026-07-31" />
+
+	<meta name="dcterms.publisher" content="scheme=AGLSTERMS.AglsAgent; corporateName=Reserve Bank of Australia" />
+	<meta name="dcterms.contributor" content="contact=Media and Communications, Communications Department" />
+	
+	<meta name="dcterms.creator" content="scheme=AGLSTERMS.AglsAgent; corporateName=Reserve Bank of Australia" />
+	
+
+	
+	
+
+	<meta name="dcterms.language" content="en-AU" />
+	<meta name="dcterms.coverage" content="Australia" />
+	<meta name="dcterms.rights" content="You may download, display, print or reproduce material on this website in unaltered form for your personal, non-commercial use within your organisation, with proper attribution given to the Reserve Bank of Australia. Other than for any use under the Copyright Act 1968, all rights reserved." />
+
+	<meta name="AGLSTERMS.category" content="document" />
+	
+	<meta name="AGLSTERMS.availability" content="email=RBAInfo@rba.gov.au" />
+
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta name="format-detection" content="telephone=no" />
+
+	
+	
+	
+	
+	
+	
+
+	<!-- Google / Search Engine Tags -->
+	<meta itemprop="name" content="Statistical Tables">
+	<meta itemprop="description" content="&nbsp;">
+	<meta itemprop="image" content="https://www.rba.gov.au/assets/images/logos/logo-rba-social-600x315.png?v=2">
+
+	<!-- Social Media Tags -->
+	<meta property="fb:app_id" content="1531460963826648" />
+
+	<meta property="og:site_name" content="Reserve Bank of Australia" />
+	<meta property="og:url" content="https://www.rba.gov.au/statistics/tables/index.html" />
+	<meta property="og:type" content="article" />
+	<meta property="og:title" content="Statistical Tables" />
+	<meta property="og:description" content="&nbsp;" />
+	<meta property="og:image" content="https://www.rba.gov.au/assets/images/logos/logo-rba-social-600x315.png?v=2" />
+
+	<meta name="twitter:site" content="@RBAInfo" />
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content="Statistical Tables">
+	<meta name="twitter:description" content="&nbsp;">
+	<meta name="twitter:image" content="https://www.rba.gov.au/assets/images/logos/logo-rba-social-600x315.png?v=2" />
+
+	
+	
+
+	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="apple-touch-icon" href="/assets/images/logos/favicon-152.png" />
+	<meta name="msapplication-TileColor" content="#ffffff" />
+	<meta name="msapplication-TileImage" content="/assets/images/logos/favicon-144.png" />
+	<link rel="stylesheet" type="text/css" href="/assets/css/rba.main.min.css?v=20260821" />
+	<link rel="stylesheet" type="text/css" href="/assets/css/rba.print.min.css?v=20250401" media="print" />
+	
+
+	<meta name="dcterms.subject" content="scheme=JEL; E5 &ndash; Monetary Policy, Central Banking, and the Supply of Money and Credit" />
+	<meta name="dcterms.contributor" content="contact=Economic Group" />
+
+	<meta name="dcterms.created" content="2001-03-28" />
+
+	<meta name="AGLSTERMS.function" content="Monetary policy" />
+	<meta name="AGLSTERMS.mandate" content="Reserve Bank Act 1959 (Cth)" />
+
+	<meta name="AGLSTERMS.aggregationLevel" content="collection" />
+	<meta name="AGLSTERMS.documentType" content="index" />
+
+	<style>
+		.list-contents.with-links .title {padding-right: 100px}
+		.list-contents .links {min-width: 70px}
+	</style>
+
+</head>
+<body>
+<div class="page">
+
+	
+
+
+<header class="header-global">
+
+	<noscript class="note-disabled-js">
+		<details>
+			<summary>It appears JavaScript is currently blocked</summary>
+			<p>Check your browser settings and network. This website requires JavaScript for some content and functionality.</p>
+		</details><span class="padding-fix"></span>
+	</noscript>
+
+	<a id="top" href="#content" class="anchor-skip-to-content">Skip to content</a>
+
+	<div class="container">
+		<div class="site-logo--container" data-nosnippet>
+			<a href="https://www.rba.gov.au/" aria-label="Reserve Bank of Australia - logo" class="site-logo">
+			<img src="/assets/images/logos/logo-rba-black.svg?v=2024" alt="" aria-hidden="true" width="400" height="45" />
+			<span class="sr-only">Reserve Bank of Australia</span>
+			</a>
+			<button class="button-nav-small" aria-expanded="false"><span>Menu</span></button>
+		</div>
+
+		<div class="form-search-header--container">
+			<form id="form-header-search" class="form-search-header" action="/s/search.html" method="get" role="search" aria-label="Search RBA website">
+				<label for="form-header-search-q" id="form-header-search-q-label" class="sr-only">What are you looking for?</label>
+				<input type="text" placeholder="What are you looking for?" value="" name="query" id="form-header-search-q" class="query js-site-search-query" maxlength="256" size="13" aria-labelledby="form-header-search-q-label" />
+				<button type="submit" class="submit">Search</button>
+				<input type="hidden" name="collection" value="rboa~sp-search" />
+			</form>
+		</div>
+	</div>
+
+</header>
+
+<nav aria-label="Charter Functions">
+	<div class="nav-main-functions--container">
+		<ul class="nav-main-functions">
+			<li><a href="/monetary-policy/"	class="ga-link-header-nav-main-monetary-policy">Monetary Policy</a></li>
+			<li><a href="/mkt-operations/" class="ga-link-header-nav-main-market-operations">Market Operations</a></li>
+			<li><a href="/payments-and-infrastructure/" class="ga-link-header-nav-main-payments-and-infrastructure">Payments &amp; Infrastructure</a></li>
+			<li><a href="/fin-stability/" class="ga-link-header-nav-main-financial-stability">Financial Stability</a></li>
+			<li><a href="/banknotes/" class="ga-link-header-nav-main-banknotes">Banknotes</a></li>
+			<li><a href="/fin-services/" class="ga-link-header-nav-main-financial-services">Financial Services</a></li>
+			<li><a href="/about-rba/" class="ga-link-header-nav-main-about-us">About Us</a></li>
+		</ul>
+	</div>
+</nav>
+
+<nav aria-label="Outputs and Utilities">
+	<div class="nav-main-outputs--container">
+		<ul class="nav-main-outputs">
+			<li><a href="/media-releases/" class="ga-link-header-nav-sub-media-releases">Media Releases</a></li>
+			<li><a href="/speeches/" class="ga-link-header-nav-sub-speeches">Speeches</a></li>
+			<li><a href="/publications/" class="ga-link-header-nav-sub-publications">Publications</a></li>
+			<li><a href="/statistics/" class="ga-link-header-nav-sub-statistics">Statistics</a></li>
+			<li><a href="/chart-pack/" class="ga-link-header-nav-sub-chart-pack">Chart Pack</a></li>
+			<li><a href="/research/" class="ga-link-header-nav-sub-research">Research</a></li>
+			<li><a href="/about-rba/archives/" class="ga-link-header-nav-sub-archives">Archives</a></li>
+			<li><a href="/education/" class="ga-link-header-nav-sub-education">Education</a></li>
+			<li><a href="/careers/" class="ga-link-header-nav-sub-careers">Careers</a></li>
+			<li><a href="/qa/" class="ga-link-header-nav-sub-q-and-a"><abbr title="Questions and Answers">Q&amp;A</abbr></a></li>
+			<li><a href="/contact/" class="ga-link-header-nav-sub-contacts">Contact Us</a></li>
+		</ul>
+	</div>
+</nav>
+
+
+<nav aria-label="Breadcrumbs" class="nav-breadcrumbs">
+	<div id="breadcrumbs"></div>
+</nav>
+
+
+	<div id="wrapper"><div class="bg-main">
+
+		<div class="page-width page-with-nav page-layout">
+
+			<div class="column-nav">
+
+								<nav aria-label="Statistics section navigation">
+					<div class="nav-list">
+						<header class="title">In Statistics</header>
+						<ul>
+							<li><a href="/statistics/frequency/">Statistical Releases</a>
+								<ul class="js-hidden">
+									<li><a href="/statistics/frequency/fin-agg/" rel="nofollow">Financial Aggregates</a>								
+										<ul class="js-hidden">
+											<li><a href="/statistics/frequency/fin-agg/2026/">2026</a></li>
+											<li><a href="/statistics/frequency/fin-agg/2025/">2025</a></li>
+											<li><a href="/statistics/frequency/fin-agg/2024/">2024</a></li>
+											<li><a href="/statistics/frequency/fin-agg/2023/">2023</a></li>
+											<li><a href="/statistics/frequency/fin-agg/2022/">2022</a></li>
+											<li><a href="/statistics/frequency/fin-agg/2021/">2021</a></li>
+											<li><a href="#nav-finagg-2011-2020">2011&ndash;2020</a>
+												<ul id="nav-finagg-2011-2020">
+													<li><a href="/statistics/frequency/fin-agg/2020/">2020</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2019/">2019</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2018/">2018</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2017/">2017</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2016/">2016</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2015/">2015</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2014/">2014</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2013/">2013</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2012/">2012</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2011/">2011</a></li>
+												</ul>
+											</li>
+											<li><a href="#nav-finagg-2001-2010">2001&ndash;2010</a>
+												<ul id="nav-finagg-2001-2010">
+													<li><a href="/statistics/frequency/fin-agg/2010/">2010</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2009/">2009</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2008/">2008</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2007/">2007</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2006/">2006</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2005/">2005</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2004/">2004</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2003/">2003</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2002/">2002</a></li>
+													<li><a href="/statistics/frequency/fin-agg/2001/">2001</a></li>
+												</ul>
+											</li>
+										</ul>									
+									</li>
+									<li><a href="/statistics/frequency/commodity-prices/" rel="nofollow">Index of Commodity Prices</a>
+										<ul class="js-hidden">
+											<li><a href="/statistics/frequency/commodity-prices/2026/">2026</a></li>
+											<li><a href="/statistics/frequency/commodity-prices/2025/">2025</a></li>
+											<li><a href="/statistics/frequency/commodity-prices/2024/">2024</a></li>
+											<li><a href="/statistics/frequency/commodity-prices/2023/">2023</a></li>
+											<li><a href="/statistics/frequency/commodity-prices/2022/">2022</a></li>
+											<li><a href="/statistics/frequency/commodity-prices/2021/">2021</a></li>
+											<li><a href="#nav-icp-2011-2020">2011&ndash;2020</a>
+												<ul id="nav-icp-2011-2020">
+													<li><a href="/statistics/frequency/commodity-prices/2020/">2020</a></li>
+													<li><a href="/statistics/frequency/commodity-prices/2019/">2019</a></li>
+													<li><a href="/statistics/frequency/commodity-prices/2018/">2018</a></li>
+													<li><a href="/statistics/frequency/commodity-prices/2017/">2017</a></li>
+													<li><a href="/statistics/frequency/commodity-prices/2016/">2016</a></li>
+													<li><a href="/statistics/frequency/commodity-prices/2015/">2015</a></li>
+													<li><a href="/statistics/frequency/commodity-prices/2014/">2014</a></li>
+													<li><a href="/statistics/frequency/commodity-prices/2013/">2013</a></li>
+													<li><a href="/statistics/frequency/commodity-prices/2012/">2012</a></li>
+													<li><a href="/statistics/frequency/commodity-prices/2011/">2011</a></li>
+													<li><a href="/statistics/frequency/commodity-prices/2010/">2010</a></li>
+												</ul>
+											</li>
+										</ul>									
+									</li>
+									<li><a href="/statistics/frequency/retail-payments/" rel="nofollow">Retail Payments</a>
+										<ul class="js-hidden">
+											<li><a href="/statistics/frequency/retail-payments/2026/">2026</a></li>
+											<li><a href="/statistics/frequency/retail-payments/2025/">2025</a></li>
+											<li><a href="/statistics/frequency/retail-payments/2024/">2024</a></li>
+											<li><a href="/statistics/frequency/retail-payments/2023/">2023</a></li>
+											<li><a href="/statistics/frequency/retail-payments/2022/">2022</a></li>
+											<li><a href="/statistics/frequency/retail-payments/2021/">2021</a></li>
+											<li><a href="/statistics/frequency/retail-payments/2020/">2020</a></li>
+										</ul>
+									</li>
+									<li><a href="/statistics/frequency/exchange-rates.html">Exchange Rates</a></li>
+									<li><a href="/statistics/frequency/twi/" rel="nofollow">Weights for the TWI</a>
+										<ul class="js-hidden">
+											  <li><a href="/statistics/frequency/twi/2021-2030.html">2021-2025</a></li>
+											  <li><a href="/statistics/frequency/twi/2011-2020.html">2011-2020</a></li>
+											  <li><a href="/statistics/frequency/twi/2001-2010.html">2001-2010</a></li>
+											  <li><a href="/statistics/frequency/twi/1997-2000.html">1997-2000</a></li>
+	  									</ul>									
+									</li>
+									<li><a href="/statistics/frequency/weights-icp.html">Weights for the <abbr title="Index of Commodity Prices">ICP</abbr></a></li>
+									<li><a href="/statistics/cash-rate/assumptions/index.html">Cash Rate Assumption Method</a></li>
+								</ul>
+							</li>
+							<li><a href="/statistics/tables/" data-default-action="enforce" rel="nofollow">Economic and Financial Statistics</a>
+								<ul id="nav-economic-and-financial" class="js-hidden">
+									<li><a href="/statistics/tables/">Statistical Tables</a></li>
+									<li><a href="/statistics/historical-data.html">Historical Data</a></li>
+									<li><a href="/statistics/discontinued-data.html">Discontinued Data</a></li>
+									<li><a href="/statistics/tables/frequency-statistical-releases.html">Frequency of Statistical Tables</a></li>
+									<li><a href="/statistics/tables/changes-to-tables.html">Changes to Statistical Tables</a></li>
+									<li><a href="/statistics/tables/hist-series-breaks.html">Historical Series Breaks</a></li>
+									<li><a href="/statistics/glossary-statistical-data.html">Glossary for Statistical Data</a></li>
+									<li><a href="/statistics/other-data-sources.html">Other Data Sources</a></li>
+									<li><a href="/contact/specific-enquiries.html#statistical">Statistical Table Enquiries</a></li>
+								</ul>
+							</li>
+							<li><a href="/statistics/balance-sheet/">Reserve Bank of Australia Balance Sheet</a></li>
+							<li><a href="/statistics/cash-rate/">Cash Rate Target</a></li>
+							<li><a href="/statistics/interest-rates/">Lenders&#39; Interest Rates</a></li>
+							<li><a href="/chart-pack/">Chart Pack</a></li>
+							<li><a href="/statistics/frequency/reserve-assets.html">Official Reserve Assets</a></li>
+							<li><a href="/statistics/gold-verification/">Gold Verification Audit Report</a>
+								<ul class="js-hidden">
+									<li><a href="/statistics/gold-verification/2025/index.html">2025</a></li>
+									<li><a href="/statistics/gold-verification/2022/index.html">2022</a></li>
+								</ul>
+
+							</li>
+							
+							<!--
+	NOTE: This navigation is included as a sub-item in other main navigation items.
+		  The parameter SNAPSHOT_DIR_PREFIX is set if snapshots are included elsewhere (as includes).
+ -->
+<li><a href="/snapshots/">Snapshots</a>
+	<ul class="js-hidden">
+		<li><a href="/snapshots/economy-indicators-snapshot/">Economic Indicators Snapshot</a></li>
+		<li><a href="/snapshots/economy-composition-snapshot/">Composition of the Australian Economy Snapshot</a></li>
+		<li><a href="/snapshots/how-australians-pay-snapshot/">How Australians Pay Snapshot</a></li>
+	</ul>
+</li>
+
+
+							<li><a href="/calculator/">Inflation Calculator</a></li>
+							<li><a href="/statistics/historical-forecasts.html">Historical Forecasts</a></li>
+						</ul>
+					</div>
+				</nav>
+
+
+			</div>
+
+			<section>
+				<div id="content" tabindex="-1" role="main" class="column-content content-style">
+
+					<h1 class="page-title">Statistical Tables</h1>
+										
+					<p>
+						This page lists statistical tables for a range of economic and financial data produced
+						by the Reserve Bank of Australia and other organisations.
+						These tables are subject to revisions and may be withdrawn or discontinued at any time (in whole
+						or in part). Any changes will be announced in the <a href="/statistics/tables/changes-to-tables.html">Changes to Statistical Tables</a> section.
+					</p>
+					<div class="box-note">
+						<h2>Delayed publishing</h2>
+						<p>
+							Over the coming months, there may be delays in the publication of the
+Financial Aggregates and some RBA statistical tables owing to the
+decommissioning of the Direct to APRA (D2A) reporting system for financial
+institutions. See <a href="/statistics/tables/frequency-statistical-releases.html">Frequency of Statistical Releases</a>
+for a list of tables affected.
+						</p>
+					</div>
+
+					<div class="js-page-contents" data-parent="#tables-list"></div>
+
+					<form id="form-quicksearch" class="no-js-hidden do-not-print form-quicksearch" role="search" aria-controls="tables-list">
+						<span class="form-label-col"><label for="quicksearch-input">Search tables</label></span>
+						<span class="form-field-col"><input type="text" name="q" id="quicksearch-input" placeholder="Enter keyphrase here" /></span>
+					</form>
+
+					<div id="quicksearch-message" class="hidden">No entries found.</div>
+
+
+					<div id="tables-list">
+
+						<h2 id="rba">Reserve Bank of Australia</h2>
+						<ul class="list-contents with-links">
+							<li>
+								<div class="title searchable">
+									<a href="/statistics/tables/xls/a01.xlsx">RBA Balance Sheet &ndash; A1</a>
+								</div>
+								<div class="links"><div class="item"><a href="/statistics/tables/csv/a1-data.csv" target="_blank">Data</a></div></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/a02hist.xlsx">Changes in Monetary Policy and Administered Rates &ndash; A2</a>
+								</div>
+								<div class="links"><div class="item"><a href="/statistics/tables/csv/a2-data.csv" target="_blank">Data</a></div></div>
+							</li>
+
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/a03.xlsx">Monetary Policy Operations &ndash; Current &ndash; A3</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li>
+											<a href="/statistics/tables/csv/a3-es-balances-and-repo-agreements.csv"
+												target="_blank">A3 &ndash; ES Balances and Repo Agreements</a>
+										</li>
+										<li>
+											<a href="/statistics/tables/csv/a3-daily-open-market-operations.csv" target="_blank">A3 &ndash; Daily Open Market Operations</a>
+										</li>
+										<li>
+											<a href="/statistics/tables/csv/a3-long-dated-open-mkt-operations.csv"
+												target="_blank">A3 &ndash; Long-dated Open Market Operations</a>
+										</li>
+										<li>
+											<a href="/statistics/tables/csv/a3-omo-outright-transaction-detail.csv"
+												target="_blank">A3 &ndash; Open Market Operations Outright Transaction Details</a>
+										</li>
+										<li>
+											<a href="/statistics/tables/csv/a3-omo-repo-transaction-details.csv" target="_blank">A3 &ndash; Open Market Operations Repo Transaction Details</a>
+										</li>
+										<li>
+											<a href="/statistics/tables/csv/a3-omo-repo-unwinds.csv" target="_blank">A3 &ndash; Open Market Operations Repo Unwinds</a>
+										</li>
+										<li>
+											<a href="/mkt-operations/announcements/long-dated-open-market-operations-results.html">Long-dated Open Market Operations Results</a>
+										</li>
+										<li>
+											<a href="/statistics/tables/csv/a3-short-dated-liquidity-mgmt.csv">A3 &ndash; Short-Dated Liquidity Management</a>
+										</li>
+										<li>
+											<a href="/statistics/tables/csv/a3-us-dollar-repo-operations.csv" target="_blank">A3 &ndash; US Dollar Repo Operations</a>
+										</li>
+										<li>
+											<a href="/statistics/tables/csv/a3-term-funding-facility.csv" target="_blank">A3 &ndash; Term Funding Facility</a>
+										</li>
+										<li>
+											<a href="/statistics/tables/csv/a3-term-funding-facility-unwinds.csv" target="_blank">A3 &ndash; Term Funding Facility Unwinds</a>
+										</li>
+
+									</ul>
+								</div>
+							</li>
+							<li>
+								<div class="title searchable">
+									<a href="/statistics/tables/xls/a03hist.xlsx">Holdings of Australian Government Securities and Semis &ndash; A3.1</a>
+								</div>
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/a3.1-summary.csv" target="_blank">A3.1 &ndash; Summary</a>	</li>
+										<li><a href="/statistics/tables/csv/a3.1-ags---bonds.csv" target="_blank">A3.1 &ndash; AGS - Bonds</a>	</li>
+										<li><a href="/statistics/tables/csv/a3.1-ags---notes.csv" target="_blank">A3.1 &ndash; AGS - Notes</a>	</li>
+										<li><a href="/statistics/tables/csv/a3.1-nswtc.csv" target="_blank">A3.1 &ndash; NSWTC</a>	</li>
+										<li><a href="/statistics/tables/csv/a3.1-tcv.csv" target="_blank">A3.1 &ndash; TCV</a>	</li>
+										<li><a href="/statistics/tables/csv/a3.1-qtc.csv" target="_blank">A3.1 &ndash; QTC</a>	</li>
+										<li><a href="/statistics/tables/csv/a3.1-watc.csv" target="_blank">A3.1 &ndash; WATC</a>	</li>
+										<li><a href="/statistics/tables/csv/a3.1-safa.csv" target="_blank">A3.1 &ndash; SAFA</a>	</li>
+										<li><a href="/statistics/tables/csv/a3.1-tasc.csv" target="_blank">A3.1 &ndash; TASC</a>	</li>
+										<li><a href="/statistics/tables/csv/a3.1-nt.csv" target="_blank">A3.1 &ndash; NT</a>	</li>
+										<li><a href="/statistics/tables/csv/a3.1-act.csv" target="_blank">A3.1 &ndash; ACT</a>	</li>
+									</ul>
+								</div>
+							</li>
+							<li>
+								<div class="title searchable">
+									<a href="/statistics/tables/xls/a03-2hist.xlsx">Securities Lending Repurchase and Switch Transactions in Australian Government Securities and Semis &ndash; A3.2</a>
+								</div>
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/a3.2-rba-securities-lending.csv" target="_blank">A3.2 &ndash; RBA Securities Lending</a></li>
+										<li><a href="/statistics/tables/csv/a3.2-rba-switches.csv" target="_blank">A3.2 &ndash; RBA Switches</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/a04hist.xlsx">Foreign Exchange Transactions and Holdings of Official Reserve Assets &ndash; A4</a>
+								</div>
+								<div class="links"><div class="item">
+										<a href="/statistics/tables/csv/a4-data.csv" target="_blank">Data</a>
+								</div></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/a05hist.xlsx">Daily Foreign Exchange Market Intervention Transactions &ndash; A5</a>
+								</div>
+								<div class="links"><div class="item">
+										<a href="/statistics/tables/csv/a5-data.csv" target="_blank">Data</a></div>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/a06hist.xlsx">Banknotes on Issue by Denomination &ndash; A6</a>
+								</div>
+								<div class="data">
+
+									<ul>
+										<li><a href="/statistics/tables/csv/a6-data-prior-to-1984.csv" target="_blank">A6 &ndash; Data prior to 1984</a></li>
+										<li><a href="/statistics/tables/csv/a6-data-from-1984.csv" target="_blank">A6 &ndash; Data from 1984</a></li>
+									</ul>
+
+
+								</div>
+							</li>
+							<li>
+								<div class="title searchable">
+									<a href="/statistics/tables/xls/a07hist.xlsx">Detected Australian Counterfeits by Denomination &ndash; A7</a>
+								</div>
+								<div class="links"><div class="item"><a href="/statistics/tables/csv/a7-data.csv" target="_blank">Data</a></div></div>
+							</li>							
+						</ul>
+
+
+						<h2 id="al">Assets and Liabilities</h2>
+						<ul class="list-contents with-links">
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/b01hist.xlsx">Assets of Financial Institutions &ndash; B1</a>
+								</div>
+								<div class="links"><div class="item">
+										<a href="/statistics/tables/csv/b1-data.csv" target="_blank">Data</a></div>
+								</div>
+							</li>
+
+							<li class="without-links">
+								<div class="title">Authorised Deposit-taking Institutions (ADIs) &amp; Registered Financial Corporations&nbsp;(RFCs)</div>
+								<ul class="list-contents with-links">
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b02hist.xlsx">Banks &ndash; Off-balance Sheet Business &ndash; B2</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b2-data.csv" target="_blank">B2 &ndash; Data</a></li>
+												<li><a href="/statistics/tables/csv/b2-series-breaks.csv" target="_blank">B2 &ndash; Series breaks</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b03hist.xlsx">Repurchase Agreements and Stock Lending by Banks and RFCs &ndash; B3</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b3-repo-and-securities-lending.csv" target="_blank">B3 &ndash; Repo and Securities Lending</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b10hist.xlsx">Finance Companies &amp; General Financiers &ndash; Selected Assets &amp; Liabilities &ndash; B10</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b10-data.csv" target="_blank">B10 &ndash; Data</a></li>
+												<li><a href="/statistics/tables/csv/b10-series-breaks.csv" target="_blank">B10 &ndash; Series breaks</a></li>
+											</ul>
+										</div>
+									</li>
+								</ul>
+							</li>
+
+
+							<li class="without-links">
+								<div id="international-banking" class="title">International Banking Statistics &ndash; Banks &amp; RFCs</div>
+								<ul class="list-contents with-links">
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b11-1-hist.xlsx">Assets &amp; Liabilities
+												of Australian-located Operations &ndash; B11.1</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b11.1-assets.csv" target="_blank">B11.1 &ndash; Assets</a></li>
+												<li><a href="/statistics/tables/csv/b11.1-liabilities.csv" target="_blank">B11.1 &ndash; Liabilities</a></li>
+												<li><a href="/statistics/tables/csv/b11.1-series-breaks.csv" target="_blank">B11.1 &ndash; Series breaks</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b11-2-hist.xlsx">Consolidated Exposures
+												&ndash; Immediate and Ultimate Risk Basis &ndash; B11.2</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b11.2-exposures-in-aud-terms.csv" target="_blank">B11.2 &ndash; Exposures in AUD Terms</a></li>
+												<li><a href="/statistics/tables/csv/b11.2-exposures-in-usd-terms.csv" target="_blank">B11.2 &ndash; Exposures in USD Terms</a></li>
+												<li><a href="/statistics/tables/csv/b11.2-series-breaks.csv" target="_blank">B11.2 &ndash; Series breaks</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b12-1-hist.xlsx">Assets of
+												Australian-located Operations &ndash; B12.1</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b12.1-data.csv" target="_blank">B12.1 &ndash; Data</a></li>
+												<li><a href="/statistics/tables/csv/b12.1-series-breaks.csv" target="_blank">B12.1 &ndash; Series breaks</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b12-1-1-hist.xlsx">Assets of
+												Australian-located Operations by Country &ndash; B12.1.1</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b12.1.1-africa-and-middle-east.csv" target="_blank">B12.1.1 &ndash; Africa and Middle East</a></li>
+												<li><a href="/statistics/tables/csv/b12.1.1-asia-and-pacific.csv" target="_blank">B12.1.1 &ndash; Asia and Pacific</a></li>
+												<li><a href="/statistics/tables/csv/b12.1.1-developed-countries.csv" target="_blank">B12.1.1 &ndash; Developed Countries</a></li>
+												<li><a href="/statistics/tables/csv/b12.1.1-developing-europe.csv" target="_blank">B12.1.1 &ndash; Developing Europe</a></li>
+												<li><a href="/statistics/tables/csv/b12.1.1-latin-america-and-caribbean.csv" target="_blank">B12.1.1 &ndash; Latin America and Caribbean</a></li>
+												<li><a href="/statistics/tables/csv/b12.1.1-offshore-centres.csv" target="_blank">B12.1.1 &ndash; Offshore Centres</a></li>
+												<li><a href="/statistics/tables/csv/b12.1.1-series-breaks.csv" target="_blank">B12.1.1 &ndash; Series breaks</a></li>
+												<li><a href="/statistics/tables/csv/b12.1.1-summary.csv" target="_blank">B12.1.1 &ndash; Summary</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b12-2-hist.xlsx">Liabilities of
+												Australian-located Operations &ndash; B12.2</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b12.2-data.csv" target="_blank">B12.2 &ndash; Data</a></li>
+												<li><a href="/statistics/tables/csv/b12.2-series-breaks.csv" target="_blank">B12.2 &ndash; Series breaks</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b12-2-1-hist.xlsx">Liabilities of
+												Australian-located Operations by Country &ndash; B12.2.1</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b12.2.1-africa-and-middle-east.csv" target="_blank">B12.2.1 &ndash; Africa and Middle East</a></li>
+												<li><a href="/statistics/tables/csv/b12.2.1-asia-and-pacific.csv" target="_blank">B12.2.1 &ndash; Asia and Pacific</a></li>
+												<li><a href="/statistics/tables/csv/b12.2.1-developed-countries.csv" target="_blank">B12.2.1 &ndash; Developed Countries</a></li>
+												<li><a href="/statistics/tables/csv/b12.2.1-developing-europe.csv" target="_blank">B12.2.1 &ndash; Developing Europe</a></li>
+												<li><a href="/statistics/tables/csv/b12.2.1-latin-america-and-caribbean.csv" target="_blank">B12.2.1 &ndash; Latin America and Caribbean</a></li>
+												<li><a href="/statistics/tables/csv/b12.2.1-offshore-centres.csv" target="_blank">B12.2.1 &ndash; Offshore Centres</a></li>
+												<li><a href="/statistics/tables/csv/b12.2.1-series-breaks.csv" target="_blank">B12.2.1 &ndash; Series breaks</a></li>
+												<li><a href="/statistics/tables/csv/b12.2.1-summary.csv" target="_blank">B12.2.1 &ndash; Summary</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b13-1-hist.xlsx">Consolidated Exposures
+												&ndash; Immediate Risk Basis &ndash; B13.1</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b13.1-data.csv" target="_blank">B13.1 &ndash; Data</a></li>
+												<li><a href="/statistics/tables/csv/b13.1-series-breaks.csv" target="_blank">B13.1 &ndash; Series breaks</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b13-1-1-hist.xlsx">Consolidated Exposures
+												&ndash; Immediate Risk Basis &ndash; International Claims by Country &ndash; B13.1.1</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b13.1.1-africa-and-middle-east.csv" target="_blank">B13.1.1 &ndash; Africa and Middle East</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.1-asia-and-pacific.csv" target="_blank">B13.1.1 &ndash; Asia and Pacific</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.1-developed-countries.csv" target="_blank">B13.1.1 &ndash; Developed Countries</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.1-developing-europe.csv" target="_blank">B13.1.1 &ndash; Developing Europe</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.1-latin-america-and-caribbean.csv" target="_blank">B13.1.1 &ndash; Latin America and Caribbean</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.1-offshore-centres.csv" target="_blank">B13.1.1 &ndash; Offshore Centres</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.1-series-breaks.csv" target="_blank">B13.1.1 &ndash; Series breaks</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.1-summary.csv" target="_blank">B13.1.1 &ndash; Summary</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b13-1-2-hist.xlsx">Consolidated Exposures
+												&ndash; Immediate Risk Basis &ndash; Foreign Claims by Country &ndash; B13.1.2</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b13.1.2-africa-and-middle-east.csv" target="_blank">B13.1.2 &ndash; Africa and Middle East</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.2-asia-and-pacific.csv" target="_blank">B13.1.2 &ndash; Asia and Pacific</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.2-developed-countries.csv" target="_blank">B13.1.2 &ndash; Developed Countries</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.2-developing-europe.csv" target="_blank">B13.1.2 &ndash; Developing Europe</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.2-latin-america-and-caribbean.csv" target="_blank">B13.1.2 &ndash; Latin America and Caribbean</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.2-offshore-centres.csv" target="_blank">B13.1.2 &ndash; Offshore Centres</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.2-series-breaks.csv" target="_blank">B13.1.2 &ndash; Series breaks</a></li>
+												<li><a href="/statistics/tables/csv/b13.1.2-summary.csv" target="_blank">B13.1.2 &ndash; Summary</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b13-2-hist.xlsx">Consolidated Exposures
+												&ndash; Ultimate Risk Basis &ndash; B13.2</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b13.2-data.csv" target="_blank">B13.2 &ndash; Data</a></li>
+												<li><a href="/statistics/tables/csv/b13.2-series-breaks.csv" target="_blank">B13.2 &ndash; Series breaks</a></li>
+											</ul>
+										</div>
+									</li>
+
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/xls/b13-2-1-hist.xlsx">Consolidated Exposures
+												&ndash; Ultimate Risk Basis &ndash; Foreign Claims by Country &ndash; B13.2.1</a>
+										</div>
+										<div class="data">
+											<ul>
+												<li><a href="/statistics/tables/csv/b13.2.1-africa-and-middle-east.csv" target="_blank">B13.2.1 &ndash; Africa and Middle East</a></li>
+												<li><a href="/statistics/tables/csv/b13.2.1-asia-and-pacific.csv" target="_blank">B13.2.1 &ndash; Asia and Pacific</a></li>
+												<li><a href="/statistics/tables/csv/b13.2.1-developed-countries.csv" target="_blank">B13.2.1 &ndash; Developed Countries</a></li>
+												<li><a href="/statistics/tables/csv/b13.2.1-developing-europe.csv" target="_blank">B13.2.1 &ndash; Developing Europe</a></li>
+												<li><a href="/statistics/tables/csv/b13.2.1-latin-america-and-caribbean.csv" target="_blank">B13.2.1 &ndash; Latin America and Caribbean</a></li>
+												<li><a href="/statistics/tables/csv/b13.2.1-offshore-centres.csv" target="_blank">B13.2.1 &ndash; Offshore Centres</a></li>
+												<li><a href="/statistics/tables/csv/b13.2.1-series-breaks.csv" target="_blank">B13.2.1 &ndash; Series breaks</a></li>
+												<li><a href="/statistics/tables/csv/b13.2.1-summary.csv" target="_blank">B13.2.1 &ndash; Summary</a></li>
+											</ul>
+										</div>
+									</li>
+								</ul>
+							</li>
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/b20hist.xlsx">Renminbi-denominated Deposits and Loans of Australian-resident Financial Institutions &ndash; B20</a>
+								</div>
+								<div class="links"><div class="item">
+									<a href="/statistics/tables/csv/b20-data.csv" target="_blank">Data</a></div>
+								</div>
+							</li>
+						</ul>
+
+						<h2 id="payments-system">Payments System</h2>
+
+						<ul class="list-contents with-links">
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c01hist.xlsx">Credit and Charge Cards – Seasonally Adjusted Series &ndash; C1</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c1-data.csv" target="_blank">C1 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/c1-series-breaks.csv" target="_blank">C1 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c01-1-hist.xlsx">Credit and Charge Cards – Original Series – Aggregate Data &ndash; C1.1</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c1.1-aggregate.csv" target="_blank">C1.1 &ndash; Aggregate</a></li>
+										<li><a href="/statistics/tables/csv/c1.1-device-present.csv" target="_blank">C1.1 &ndash; Device present</a></li>
+										<li><a href="/statistics/tables/csv/c1.1-device-not-present.csv" target="_blank">C1.1 &ndash; Device not present</a></li>
+										<li><a href="/statistics/tables/csv/c1.1-series-breaks.csv" target="_blank">C1.1 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c01-2-hist.xlsx">Credit and Charge Cards – Original Series – Personal and Commercial Cards &ndash; C1.2</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c1.2-data.csv" target="_blank">C1.2 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/c1.2-series-breaks.csv" target="_blank">C1.2 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c02hist.xlsx">Debit Cards – Seasonally Adjusted Series &ndash; C2</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c2-data.csv" target="_blank">C2 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/c2-series-breaks.csv" target="_blank">C2 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c02-1-hist.xlsx">Debit Cards – Original Series &ndash; C2.1</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c2.1-aggregate.csv" target="_blank">C2.1 &ndash; Aggregate</a></li>
+										<li><a href="/statistics/tables/csv/c2.1-device-present.csv" target="_blank">C2.1 &ndash; Device present</a></li>
+										<li><a href="/statistics/tables/csv/c2.1-device-not-present.csv" target="_blank">C2.1 &ndash; Device not present</a></li>
+										<li><a href="/statistics/tables/csv/c2.1-series-breaks.csv" target="_blank">C2.1 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c02-2-hist.xlsx">Prepaid Cards – Original Series &ndash; C2.2</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c2.2-aggregate.csv" target="_blank">C2.2 &ndash; Aggregate</a></li>
+										<li><a href="/statistics/tables/csv/c2.2-by-card-type.csv" target="_blank">C2.2 &ndash; By card type</a></li>
+										<li><a href="/statistics/tables/csv/c2.2-series-breaks.csv" target="_blank">C2.2 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c03hist.xlsx">Average Merchant Fees for Debit, Credit and Charge Cards &ndash; C3</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c3-data.csv" target="_blank">C3 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/c3-series-breaks.csv" target="_blank">C3 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c04hist.xlsx">ATMs – Seasonally Adjusted Series &ndash; C4</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c4-data.csv" target="_blank">C4 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/c4-series-breaks.csv" target="_blank">C4 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c04-1-hist.xlsx">ATMs – Original Series &ndash; C4.1</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c4.1-data.csv" target="_blank">C4.1 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/c4.1-series-breaks.csv" target="_blank">C4.1 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c05hist.xlsx">Cheques – Seasonally Adjusted Series &ndash; C5</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c5-data.csv" target="_blank">C5 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/c5-series-breaks.csv" target="_blank">C5 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c05-1-hist.xlsx">Cheques – Original Series &ndash; C5.1</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c5.1-data.csv" target="_blank">C5.1 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/c5.1-series-breaks.csv" target="_blank">C5.1 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c06hist.xlsx">
+										Direct Entry and NPP – Seasonally Adjusted Series &ndash; C6</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c6-data.csv" target="_blank">C6 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/c6-series-breaks.csv" target="_blank">C6 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c06-1-hist.xlsx">Direct Entry and NPP – Original Series &ndash; C6.1</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c6.1-data.csv" target="_blank">C6.1 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/c6.1-series-breaks.csv" target="_blank">C6.1 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c07hist.xlsx">Real-time Gross Settlement Statistics &ndash; C7</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/c7-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/c09hist.xlsx">Domestic Banking Fees Charged &ndash; C9</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/c9-data.csv" target="_blank">C9 &ndash; Data</a></li>
+									</ul>
+								</div>
+							</li>
+
+						</ul>
+
+
+						<h2 id="money-credit">Money and Credit Statistics</h2>
+						<ul class="list-contents with-links">
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/d01hist.xlsx">Growth in Selected Financial Aggregates &ndash; D1</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/d1-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a class="js-with-disclaimer" data-disclaimer="These data are for the levels of financial aggregates and are not adjusted for series breaks. The levels data reported in this table should not be used to calculate growth rates. It is recommended to use the data published in Table D1 for growth rates, which are adjusted for breaks. Please read the notes for further information."
+									   href="/statistics/tables/xls/d02hist.xlsx">Lending and Credit Aggregates &ndash; D2</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a class="js-with-disclaimer" data-disclaimer="These data are for the levels of financial aggregates and are not adjusted for series breaks. The levels data reported in this table should not be used to calculate growth rates. It is recommended to use the data published in Table D1 for growth rates, which are adjusted for breaks. Please read the notes for further information."
+											   href="/statistics/tables/csv/d2-data.csv" target="_blank">D2 &ndash; Data</a></li>
+										<li><a class="js-with-disclaimer" data-disclaimer="These data are for the levels of financial aggregates and are not adjusted for series breaks. The levels data reported in this table should not be used to calculate growth rates. It is recommended to use the data published in Table D1 for growth rates, which are adjusted for breaks. Please read the notes for further information."
+											   href="/statistics/tables/csv/d2-series-breaks.csv" target="_blank">D2 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a class="js-with-disclaimer" data-disclaimer="These data are for the levels of financial aggregates and are not adjusted for series breaks. The levels data reported in this table should not be used to calculate growth rates. It is recommended to use the data published in Table D1 for growth rates, which are adjusted for breaks. Please read the notes for further information."
+									   href="/statistics/tables/xls/d03hist.xlsx">Monetary Aggregates &ndash; D3</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a class="js-with-disclaimer" data-disclaimer="These data are for the levels of financial aggregates and are not adjusted for series breaks. The levels data reported in this table should not be used to calculate growth rates. It is recommended to use the data published in Table D1 for growth rates, which are adjusted for breaks. Please read the notes for further information."
+											   href="/statistics/tables/csv/d3-data.csv" target="_blank">D3 &ndash; Data</a></li>
+										<li><a class="js-with-disclaimer" data-disclaimer="These data are for the levels of financial aggregates and are not adjusted for series breaks. The levels data reported in this table should not be used to calculate growth rates. It is recommended to use the data published in Table D1 for growth rates, which are adjusted for breaks. Please read the notes for further information."
+											   href="/statistics/tables/csv/d3-series-breaks.csv" target="_blank">D3 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/d04hist.xlsx">Debt Securities Outstanding &ndash; D4</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/d4-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/d05hist.xlsx">Bank Lending Classified by Sector &ndash; D5</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/d5-data.csv" target="_blank">D5 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/d5-series-breaks.csv" target="_blank">D5 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/d09hist.xls">Rural Debt by Lender &ndash; D9</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/d9-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/d10hist.xlsx">Margin Lending &ndash; D10</a>
+								</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/d10-data.csv" target="_blank">D10 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/d10-series-breaks.csv" target="_blank">D10 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/d11hist.xlsx">Monetary Statistics (IMF Framework) &ndash; Central Bank Survey &ndash; D11</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/d11-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+								<a href="/statistics/tables/xls/d12hist.xlsx">Monetary Statistics (IMF Framework) &ndash; Authorised Deposit-taking Institutions Survey &ndash; D12</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/d12-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/d13hist.xlsx">Monetary Statistics (IMF Framework) &ndash; Consolidated Survey &ndash; D13</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/d13-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/d14hist.xlsx">Lending to Business &ndash; Business Finance Outstanding by Business Size and Interest Rate Type &ndash; D14</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/d14-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/d14-1-hist.xlsx">Lending to Business &ndash; Business Finance Outstanding by Business Size and Industry &ndash; D14.1</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/d14.1-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+
+
+						</ul>
+
+
+						<h2 id="house-bus-fin">Household and Business Finances</h2>
+						<ul class="list-contents with-links">
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/e01hist.xlsx">Household and Business Balance Sheets &ndash; E1</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/e1-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/e02hist.xlsx">Household Finances &ndash; Selected Ratios &ndash; E2</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/e2-data.csv" target="_blank">Data</a></span></div>
+
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/e03hist.xls">Household Balance Sheets &ndash; Distribution &ndash; E3</a>
+								</div>
+
+								<div class="links">&nbsp;</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/e3-2014.csv" target="_blank">E3 &ndash;2014</a></li>
+										<li><a href="/statistics/tables/csv/e3-2010.csv" target="_blank">E3 &ndash;2010</a></li>
+										<li><a href="/statistics/tables/csv/e3-2006.csv" target="_blank">E3 &ndash;2006</a></li>
+										<li><a href="/statistics/tables/csv/e3-2002.csv" target="_blank">E3 &ndash;2002</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/e04hist.xls">Household Gearing &ndash; Distribution &ndash; E4</a>
+								</div>
+
+								<div class="links">&nbsp;</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/e4-2014.csv" target="_blank">E4 &ndash;2014</a></li>
+										<li><a href="/statistics/tables/csv/e4-2010.csv" target="_blank">E4 &ndash;2010</a></li>
+										<li><a href="/statistics/tables/csv/e4-2006.csv" target="_blank">E4 &ndash;2006</a></li>
+										<li><a href="/statistics/tables/csv/e4-2002.csv" target="_blank">E4 &ndash;2002</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/e05hist.xls">Household Financial Assets &ndash; Distribution &ndash; E5</a>
+								</div>
+
+								<div class="links">&nbsp;</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/e5-2014.csv" target="_blank">E5 &ndash;2014</a></li>
+										<li><a href="/statistics/tables/csv/e5-2010.csv" target="_blank">E5 &ndash;2010</a></li>
+										<li><a href="/statistics/tables/csv/e5-2006.csv" target="_blank">E5 &ndash;2006</a></li>
+										<li><a href="/statistics/tables/csv/e5-2002.csv" target="_blank">E5 &ndash;2002</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/e06hist.xls">Household Non-Financial Assets &ndash; Distribution &ndash; E6</a>
+								</div>
+
+								<div class="links">&nbsp;</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/e6-2014.csv" target="_blank">E6 &ndash;2014</a></li>
+										<li><a href="/statistics/tables/csv/e6-2010.csv" target="_blank">E6 &ndash;2010</a></li>
+										<li><a href="/statistics/tables/csv/e6-2006.csv" target="_blank">E6 &ndash;2006</a></li>
+										<li><a href="/statistics/tables/csv/e6-2002.csv" target="_blank">E6 &ndash;2002</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/e07hist.xls">Household Debt &ndash; Distribution &ndash; E7</a>
+								</div>
+
+								<div class="links">&nbsp;</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/e7-2014.csv" target="_blank">E7 &ndash;2014</a></li>
+										<li><a href="/statistics/tables/csv/e7-2010.csv" target="_blank">E7 &ndash;2010</a></li>
+										<li><a href="/statistics/tables/csv/e7-2006.csv" target="_blank">E7 &ndash;2006</a></li>
+										<li><a href="/statistics/tables/csv/e7-2002.csv" target="_blank">E7 &ndash;2002</a></li>
+									</ul>
+								</div>
+							</li>
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/e13hist.xlsx" target="_blank"
+									   title="Opening in a new window, to XLS file.">Housing Loan Payments &ndash; E13</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/e13-data.csv" target="_blank">Data</a></span></div>
+							</li>
+						</ul>
+
+
+						<h2 id="interest-rates">Interest Rates</h2>
+						<ul class="list-contents with-links">
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/f01d.xlsx">Interest Rates and Yields &ndash; Money Market &ndash; Daily &ndash; F1</a>
+								</div>
+
+								<div class="links">&nbsp;</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/f1-data.csv" target="_blank">F1 &ndash; Data</a></li>
+										<li><a href="/statistics/tables/csv/f1-use-of-expert-judgement.csv" target="_blank">F1 &ndash; Use of Expert Judgement</a></li>
+									</ul>
+								</div>
+
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/f01hist.xlsx">Interest Rates and Yields &ndash; Money Market &ndash; Monthly &ndash; F1.1</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/f1.1-data.csv" target="_blank">Data</a></span></div>
+
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/f02d.xlsx">Capital Market Yields &ndash; Government Bonds &ndash; Daily &ndash; F2</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/f2-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/f02hist.xlsx">Capital Market Yields &ndash; Government Bonds &ndash; Monthly &ndash; F2.1</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/f2.1-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA for addressing specific research topics. They are not accorded any special status by the RBA and are provided as a convenience for the public. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+									   href="/statistics/tables/xls/f03hist.xlsx">Aggregate Measures of Australian Corporate Bond Yields &ndash; F3</a>
+								</div>
+
+								<div class="links"><span class="item"><a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA for addressing specific research topics. They are not accorded any special status by the RBA and are provided as a convenience for the public. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+																		 href="/statistics/tables/csv/f3-data.csv" target="_blank">Data</a></span></div>
+
+								<ul>
+									<li>
+										<div class="title">
+											<a href="/statistics/tables/pdf/f03.pdf" target="_blank">Bonds Used to Construct Aggregate Measures of Australian Corporate Bond Yields &ndash; F3</a>
+										</div>
+									</li>
+								</ul>
+							</li>
+
+							<li>
+								<div class="title">
+									<a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for deposit rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+										href="/statistics/tables/xls/f04hist.xlsx">Advertised Deposit Rates &ndash; F4</a>
+								</div>
+
+								<div class="links">&nbsp;</div>
+
+								<div class="data">
+									<ul>
+										<li><a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for deposit rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+												href="/statistics/tables/csv/f4-data.csv" target="_blank">F4 &ndash; Data</a></li>
+										<li><a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for deposit rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+												href="/statistics/tables/csv/f4-series-breaks.csv" target="_blank">F4 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+							<li>
+								<div class="title">
+									<a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for deposit rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+										href="/statistics/tables/xls/f04-1-hist.xlsx">Paid Deposit Rates &ndash; F4.1</a>
+								</div>
+
+								<div class="links">
+									<span class="item">
+										<a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for deposit rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+										   href="/statistics/tables/csv/f4.1-data.csv" target="_blank">Data</a>
+									</span>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for lending rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+									   href="/statistics/tables/xls/f05hist.xlsx">Indicator Lending Rates &ndash; F5</a>
+								</div>
+
+								<div class="links">&nbsp;</div>
+
+								<div class="data">
+									<ul>
+										<li><a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for lending rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+											   href="/statistics/tables/csv/f5-data.csv" target="_blank">F5 &ndash; Data</a></li>
+										<li><a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for lending rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+											   href="/statistics/tables/csv/f5-series-breaks.csv" target="_blank">F5 &ndash; Series breaks</a></li>
+									</ul>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for lending rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+									   href="/statistics/tables/xls/f06hist.xlsx">Housing Lending Rates &ndash; F6</a>
+								</div>
+
+								<div class="links">
+									<span class="item">
+										<a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for lending rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+										   href="/statistics/tables/csv/f6-data.csv" target="_blank">Data</a>
+									</span>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for lending rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+									   href="/statistics/tables/xls/f07hist.xlsx">Business Lending Rates &ndash; F7</a>
+								</div>
+
+								<div class="links">
+									<span class="item">
+										<a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for lending rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+										   href="/statistics/tables/csv/f7-data.csv" target="_blank">Data</a>
+									</span>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for lending rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+									   href="/statistics/tables/xls/f08hist.xlsx">Personal Lending Rates &ndash; F8</a>
+								</div>
+
+								<div class="links">
+									<span class="item">
+										<a class="js-with-disclaimer" data-disclaimer="These data have been constructed by the RBA to help the public better understand developments in the Australian economy. They are not accorded any special status by the RBA and are provided as a convenience for the public. Due to the nature of the data sources, the rates in this table are indicative only and are likely to be regularly revised. The RBA continuously reviews a variety of sources for lending rate data and may make changes to the series provided in this table as a result. The RBA does not provide comments or recommendations on the appropriateness of its use for any particular purpose. Please read the notes for further information on each individual series."
+										   href="/statistics/tables/csv/f8-data.csv" target="_blank">Data</a>
+									</span>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/f16.xlsx">Indicative Mid Rates of Selected Australian Government Securities &ndash; F16</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/f16-data.csv" target="_blank">Data</a></span></div>
+							</li>
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/f16-1-semis-hist.xlsx">Indicative Mid Rates of Selected Australian Semi-Government Securities &ndash; F16.1</a>
+								</div>
+
+								<div class="links">&nbsp;</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/f16.1-nsw.csv" target="_blank">F16.1 &ndash; NSW</a></li>
+										<li><a href="/statistics/tables/csv/f16.1-vic.csv" target="_blank">F16.1 &ndash; VIC</a></li>
+										<li><a href="/statistics/tables/csv/f16.1-qld.csv" target="_blank">F16.1 &ndash; QLD</a></li>
+										<li><a href="/statistics/tables/csv/f16.1-wa.csv" target="_blank">F16.1 &ndash; WA</a></li>
+										<li><a href="/statistics/tables/csv/f16.1-sa.csv" target="_blank">F16.1 &ndash; SA</a></li>
+										<li><a href="/statistics/tables/csv/f16.1-tas.csv" target="_blank">F16.1 &ndash; TAS</a></li>
+										<li><a href="/statistics/tables/csv/f16.1-nt.csv" target="_blank">F16.1 &ndash; NT</a></li>
+										<li><a href="/statistics/tables/csv/f16.1-act.csv" target="_blank">F16.1 &ndash; ACT</a></li>
+									</ul>
+								</div>
+							</li>
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/f17hist.xlsx">Zero-coupon Interest Rates &ndash; Analytical Series &ndash; 2017 to Current &ndash; F17</a>
+								</div>
+
+								<div class="links">&nbsp;</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/f17-discount-factors.csv" target="_blank">F17 &ndash; Discount Factors</a></li>
+										<li><a href="/statistics/tables/csv/f17-forward-rates.csv" target="_blank">F17 &ndash; Forward Rates</a></li>
+										<li><a href="/statistics/tables/csv/f17-yields.csv" target="_blank">F17 &ndash; Yields</a></li>
+									</ul>
+								</div>
+							</li>
+
+						</ul>
+
+						<h2 id="exchange-rates">Exchange Rates</h2>
+						<ul class="list-contents with-links">
+							<li>
+								<div class="title">
+									<a href="/statistics/frequency/exchange-rates.html">Exchange Rates &ndash; Daily &ndash; Current</a>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls-hist/2023-current.xls">Exchange Rates &ndash; Daily - 2023 to Current &ndash; F11.1</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/f11.1-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/historical-data.html#exchange-rates">Exchange Rates &ndash; Historical &ndash; Daily and Monthly &ndash; F11</a>
+								</div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/f09hist.xlsx">Foreign Exchange Turnover Against Australian Dollars &ndash; F9</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/f9-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/f10hist.xlsx">Foreign Exchange Turnover Against All Currencies &ndash; F10</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/f10-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/f15hist.xlsx">Real Exchange Rate Measures &ndash; F15</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/f15-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/f12hist.xlsx">US Dollar Exchange Rates &ndash; F12</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/f12-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+						</ul>
+
+
+						<h2 id="inflation-expectations">Inflation and Inflation Expectations</h2>
+						<ul class="list-contents with-links">
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/g01hist.xlsx">Consumer Price Inflation &ndash; G1</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/g1-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/g02hist.xlsx">Consumer Price Inflation &ndash; Expenditure Groups &ndash; G2</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/g2-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/g03hist.xlsx">Inflation Expectations &ndash; G3</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/g3-data.csv" target="_blank">Data</a></span></div>
+							</li>
+							<li id="g4">
+								<div class="title">
+									<a href="/statistics/tables/xls/g04hist.xlsx">Consumer Price Inflation &ndash; Monthly Collection &ndash; G4</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/g4-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+						</ul>
+
+
+						<h2 id="output-labour">Output and Labour</h2>
+						<ul class="list-contents with-links">
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/h01hist.xlsx">Gross Domestic Product and Income &ndash; H1</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/h1-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/h02hist.xlsx">Demand and Income &ndash; H2</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/h2-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/h03hist.xlsx">Monthly Activity Indicators &ndash; H3</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/h3-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/h04hist.xlsx">Labour Costs and Productivity &ndash; H4</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/h4-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/h05hist.xlsx">Labour Force &ndash; H5</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/h5-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+						</ul>
+
+
+						<h2 id="intl-trade-ext-fin">International Trade and External Finance</h2>
+						<ul class="list-contents with-links">
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/i01hist.xlsx">International Trade and Balance of Payments &ndash; I1</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/i1-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/i02hist.xlsx">Commodity Prices &ndash; I2</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/i2-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/i03hist.xlsx">Balance of Payments &ndash; Financial Account &ndash; I3</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/i3-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/i04hist.xlsx">Australia&#39;s Gross Foreign Assets and Liabilities &ndash; I4</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/i4-data.csv" target="_blank">Data</a></span></div>
+							</li>
+
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/i05hist.xlsx">Australia&#39;s Net Foreign Liabilities &ndash; I5</a>
+								</div>
+
+								<div class="links"><span class="item"><a href="/statistics/tables/csv/i5-data.csv" target="_blank">Data</a></span></div>
+							</li>
+						</ul>
+
+
+						<h2 id="market-economists-forecasts">Market Economists&#146; Forecasts</h2>
+						<ul class="list-contents with-links">
+							<li>
+								<div class="title">
+									<a href="/statistics/tables/xls/j01hist.xlsx">Market Economists&#146; Forecasts &ndash; J1</a>
+								</div>
+
+								<div class="links">&nbsp;</div>
+
+								<div class="data">
+									<ul>
+										<li><a href="/statistics/tables/csv/j1-cash-rate.csv" target="_blank">J1 &ndash; Cash Rate</a></li>
+										<li><a href="/statistics/tables/csv/j1-dfd-growth.csv" target="_blank">J1 &ndash; DFD Growth</a></li>
+										<li><a href="/statistics/tables/csv/j1-exchange-rate.csv" target="_blank">J1 &ndash; Exchange Rate</a></li>
+										<li><a href="/statistics/tables/csv/j1-gdp-growth.csv" target="_blank">J1 &ndash; GDP Growth</a></li>
+										<li><a href="/statistics/tables/csv/j1-headline-inflation.csv" target="_blank">J1 &ndash; Headline Inflation</a></li>
+										<li><a href="/statistics/tables/csv/j1-historical---brent-oil-price.csv" target="_blank">J1 &ndash; Historical &ndash; Brent Oil Price</a></li>
+										<li><a href="/statistics/tables/csv/j1-historical---twi.csv" target="_blank">J1 &ndash; Historical &ndash; TWI</a></li>
+										<li><a href="/statistics/tables/csv/j1-net-exports.csv" target="_blank">J1 &ndash; Net Exports</a></li>
+										<li><a href="/statistics/tables/csv/j1-star-variables.csv" target="_blank">J1 &ndash; Star Variables</a></li>
+										<li><a href="/statistics/tables/csv/j1-terms-of-trade.csv" target="_blank">J1 &ndash; Terms of Trade</a></li>
+										<li><a href="/statistics/tables/csv/j1-underlying-inflation.csv" target="_blank">J1 &ndash; Underlying Inflation</a></li>
+										<li><a href="/statistics/tables/csv/j1-unemployment-rate.csv" target="_blank">J1 &ndash; Unemployment Rate</a></li>
+										<li><a href="/statistics/tables/csv/j1-wpi-growth.csv" target="_blank">J1 &ndash; WPI Growth</a></li>
+									</ul>
+								</div>
+
+							</li>
+						</ul>
+					</div>
+				</div>
+			</section>
+
+		</div>
+
+	
+
+<footer class="global-footer">
+
+	<div class="page-width content-tools"><a href="#top" class="anchor-back-to-top"><svg class="icon" width="32" height="32" aria-hidden="true"><use xlink:href="/assets/images/icons.svg?#icon-arrow-up"></use></svg> Back to top</a></div>
+
+	<section class="footer-main-content">
+
+		<div class="page-width">
+
+			<div class="subscription-options">
+				<section class="signup">
+					<h2 class="heading">Sign up for email and SMS alerts</h2>
+					<a class="anchor-signup ga-link-footer-subscribe" href="/updates/email-and-sms-service.html">Subscribe</a>
+				</section>
+
+				<nav aria-label="Social Media" class="footer-social-media">
+
+					<h2 class="heading"><a class="ga-link-footer-social-follow-us" href="/updates/social-media.html">Follow us</a></h2>
+
+					<ul class="list">
+						<li class="item">
+							<a class="ga-link-footer-social-facebook facebook" href="https://www.facebook.com/ReserveBankAU"
+							   target="_blank" rel="noopener noreferrer" aria-label="Follow RBA on Facebook, opening in a new window.">
+								<svg class="icon" width="40" height="40" aria-hidden="true"><use xlink:href="/assets/images/icons.svg?#icon-facebook"></use></svg>
+								<span class="name">Facebook</span>
+							</a>
+						</li>
+						<li class="item">
+							<a class="ga-link-footer-social-twitter x" href="https://www.x.com/RBAInfo"
+							   target="_blank" rel="noopener noreferrer" aria-label="Follow RBA on X, opening in a new window.">
+								<svg class="icon" width="40" height="40" aria-hidden="true"><use xlink:href="/assets/images/icons.svg?#icon-x"></use></svg>
+								<span class="name">X</span>
+							</a>
+						</li>
+						<li class="item">
+							<a class="ga-link-footer-social-linkedin linkedin" href="https://www.linkedin.com/company/reserve-bank-of-australia"
+							   target="_blank" rel="noopener noreferrer" aria-label="Follow RBA on LinkedIn, opening in a new window.">
+								<svg class="icon" width="40" height="40" aria-hidden="true"><use xlink:href="/assets/images/icons.svg?#icon-linkedin"></use></svg>
+								<span class="name">LinkedIn</span>
+							</a>
+						</li>
+						<li class="item">
+							<a class="ga-link-footer-social-youtube youtube" href="https://www.youtube.com/RBAInfo"
+							   target="_blank" rel="noopener noreferrer" aria-label="Follow RBA on YouTube, opening in a new window.">
+								<svg class="icon" width="40" height="40" aria-hidden="true"><use xlink:href="/assets/images/icons.svg?#icon-youtube"></use></svg>
+								<span class="name">YouTube</span>
+							</a>
+						</li>
+						<li class="item">
+							<a class="ga-link-footer-social-instagram instagram" href="https://www.instagram.com/reservebankau/"
+							   target="_blank" rel="noopener noreferrer" aria-label="Follow RBA on Instagram, opening in a new window.">
+								<svg class="icon" width="40" height="40" aria-hidden="true"><use xlink:href="/assets/images/icons.svg?#icon-instagram"></use></svg>
+								<span class="name">Instagram</span>
+							</a>
+						</li>
+						<li class="item">
+							<a class="ga-link-footer-social-flickr flickr" href="https://www.flickr.com/photos/reservebankofaustralia/albums"
+							   target="_blank" rel="noopener noreferrer" aria-label="Follow RBA on Flickr, opening in a new window.">
+								<svg class="icon" width="40" height="40" aria-hidden="true"><use xlink:href="/assets/images/icons.svg?#icon-flickr"></use></svg>
+								<span class="name">Flickr</span>
+							</a>
+						</li>
+					</ul>
+				</nav>
+			</div>
+
+			<nav aria-label="Affiliate sites" class="affiliate-sites">
+				<h2 class="heading">Affiliate sites</h2>
+
+				<ul class="list">
+					<li class="item"><a class="ga-link-footer-affiliate-banknotes" href="https://banknotes.rba.gov.au" target="_blank" aria-label="Banknotes website, opening in a new window.">Banknotes</a></li>
+					<li class="item"><a class="ga-link-footer-affiliate-unreserved" href="https://unreserved.rba.gov.au" target="_blank" aria-label="Unreserved website, opening in a new window.">Unreserved</a></li>
+					<li class="item"><a class="ga-link-footer-affiliate-museum" href="https://museum.rba.gov.au" target="_blank" aria-label="Museum website, opening in a new window.">Museum</a></li>
+					<li class="item"><a class="ga-link-footer-affiliate-cfr" href="https://www.cfr.gov.au" target="_blank" aria-label="Council of Financial Regulators website, opening in a new window.">Council of Financial Regulators</a></li>
+					<li class="item"><a class="ga-link-footer-affiliate-afxc" href="https://afxc.rba.gov.au" target="_blank" aria-label="Australian Foreign Exchange Committee website, opening in a new window.">Australian Foreign Exchange Committee</a></li>
+					<li class="item"><a class="ga-link-footer-affiliate-hccoombs" href="https://hccoombscentre.gov.au" target="_blank" aria-label="H.C. Coombs Centre website, opening in a new window.">H.C. Coombs Centre</a></li>
+				</ul>
+
+				<p class="box-foundation-for-children">
+					The Reserve Bank of Australia supports the
+					<a class="no-wrap ga-link-footer-foundation-for-children" href="http://www.foundationforchildren.com.au" target="_blank" aria-label="Foundation for Children website, opening in a new window.">Foundation for Children</a>.
+				</p>
+			</nav>
+
+			<small class="copyright">
+				The materials on this webpage are subject to copyright and their use is subject to the terms and conditions set out in the
+				<a class="no-wrap ga-link-footer-copyright-and-disclaimer-notice" href="/copyright/">Copyright and Disclaimer Notice</a>.
+				<span class="div">&copy; Reserve Bank of Australia, <span class="no-wrap">2001&ndash;2026.</span> <span class="no-wrap">All rights reserved.</span></span>
+			</small>
+
+			<small class="acknowledgement-of-country">
+				The Reserve Bank of Australia acknowledges the Aboriginal and Torres Strait Islander Peoples of Australia as the Traditional Custodians of this land, and recognises their continuing connection to country.
+				We pay our respects to their Elders, past and present. Aboriginal and Torres Strait Islander peoples should be aware that this website may contain the names, images and voices of people who are now deceased.
+			</small>
+
+		</div>
+
+	</section>
+
+	<nav aria-label="References" class="nav-references">
+
+		<div class="page-width">
+
+			<h2 class="heading">References</h2>
+
+			<div class="container">
+
+				<ul class="list">
+					<li class="item"><a class="ga-link-footer-reference-for-media" href="/media/">For Media</a></li>
+					<li class="item"><a class="ga-link-footer-reference-judicial-notice" href="/judicial-notice/">Judicial Notice</a></li>
+					<li class="item"><a class="ga-link-footer-reference-privacy" href="/privacy/">Privacy</a></li>
+					<li class="item"><a class="ga-link-footer-reference-accessibility" href="/accessibility/">Accessibility</a></li>
+					<li class="item"><a class="ga-link-footer-reference-procurement" href="/procurement/">Procurement</a></li>
+					<li class="item"><a class="ga-link-footer-reference-glossary" href="/glossary/">Glossary</a></li>
+					<li class="item"><a class="ga-link-footer-reference-schedules-events" href="/schedules-events/">Schedules &amp; Events</a></li>
+				</ul>
+
+				<ul class="list secondary">
+					<li class="item"><a class="ga-link-footer-reference-report-a-vulnerability report-vulnerability" href="/vulnerability-disclosure-program/">Report a Vulnerability</a></li>
+					<li class="item"><a class="ga-link-footer-reference-scams scams" href="/scams/">Scams</a></li>
+					<li class="item"><a class="ga-link-footer-reference-pid pid" href="/pid/"
+										title="Public Interest Disclosure">
+						<svg class="logo" width="100" height="40" aria-hidden="true"><use xlink:href="/assets/images/logos.svg?#logo-pid"></use></svg>
+						<span class="name">Public Interest Disclosure</span></a>
+					</li>
+					<li class="item"><a class="ga-link-footer-reference-access-to-information access-to-information" href="/information/"
+										title="Access to Information">
+						<svg class="logo" width="100" height="40" aria-hidden="true"><use xlink:href="/assets/images/logos.svg?#logo-access-to-information"></use></svg>
+						<span class="name">Access to Information</span></a>
+					</li>
+				</ul>
+
+			</div>
+
+		</div>
+
+	</nav>
+
+</footer>
+
+	</div></div>
+
+		<script src="/assets/js/libs/rba.libs.min.js?v=20260218"></script>
+	<script src="/assets/js/rba.main.min.js?v=20260320"></script>
+	<script src="/assets/js/libs/rba.libs.site-search-form.min.js?v=20210924"></script>
+
+	
+
+	
+
+	
+
+	
+
+	
+	<!-- LinkedIn Demographic Tool -->
+	<script type="text/javascript">
+		_linkedin_partner_id = "1286042";
+		window._linkedin_data_partner_ids = window._linkedin_data_partner_ids || [];
+		window._linkedin_data_partner_ids.push(_linkedin_partner_id);
+	</script>
+	<script type="text/javascript">
+		(function(){var s = document.getElementsByTagName("script")[0];
+			var b = document.createElement("script");
+			b.type = "text/javascript";b.async = true;
+			b.src = "https://snap.licdn.com/li.lms-analytics/insight.min.js";
+			s.parentNode.insertBefore(b, s);})();
+	</script>
+	<noscript>
+		<img height="1" width="1" style="display:none;" alt="" src="https://px.ads.linkedin.com/collect/?pid=1286042&fmt=gif" />
+	</noscript>
+	<!-- end of LinkedIn -->
+	
+	<script src="/assets/js/libs/jquery/jquery.quicksearch.min.js?v=2026-02-19"></script>
+	<script src="/assets/js/rba.page.statistical-tables.min.js?v=2019-07-19"></script>
+</div>
+</body></html>

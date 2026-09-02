@@ -31,6 +31,7 @@ uv sync                            # Install dependencies
 ./run-gdp-nowcast-bvar.sh          # Run GDP nowcast (Bayesian VAR, T-0 only)
 ./run-gdp-nowcast-components.sh    # Run GDP nowcast (expenditure-identity components, T-0 only)
 ./run-rstar-hlw.sh                 # Run HLW Bayesian r-star model
+./run-potential-uc.sh              # Run UC potential output model (hours x productivity)
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
 uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
 uv run python -m src.models.dsge.nk_twostar_model    # Run NK two-star linear probe
@@ -62,6 +63,9 @@ src/
 │   ├── gdp_nowcast_bvar/           # GDP nowcasting via Bayesian VAR, T-0 only (see MODEL_NOTES.md)
 │   ├── gdp_nowcast_components/     # GDP nowcasting via expenditure-identity components, T-0 only (see MODEL_NOTES.md)
 │   ├── rstar_hlw/                 # HLW Bayesian r-star model, AU data (see MODEL_NOTES.md)
+│   ├── potential_uc/              # UC potential output: trend hours x trend productivity,
+│   │                              #   identified by an anchored Phillips curve (see MODEL_NOTES.md).
+│   │                              #   Self-contained: imports only src/data, no other model.
 │   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition
 │   ├── dsge/                      # DSGE + HLW-style models (see MODELS_EXPLAINED.md)
 │   │                              #   fa_nk_model.py: financial-accelerator DSGE, two r* + endogenous EFP wedge (labour_block flag)

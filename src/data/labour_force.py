@@ -11,6 +11,7 @@ import readabs as ra
 from src.data.abs_loader import get_abs_data, load_series
 from src.data.dataseries import DataSeries
 from src.data.series_specs import (
+    CIVILIAN_POP_15,
     EMPLOYMENT_PERSONS,
     HOURS_WORKED,
     HOURS_WORKED_INDEX,
@@ -189,6 +190,34 @@ def get_labour_force_growth_qrtly() -> DataSeries:
         description="Labour force growth (quarterly, log difference)",
         cat=lf.cat,
         table=lf.table,
+    )
+
+
+def get_civilian_population_qrtly() -> DataSeries:
+    """Get civilian population aged 15+ from the LFS (quarterly mean).
+
+    Cat 6202.0 table 62020001, published Original only — population carries no
+    meaningful seasonality. Aggregated by quarterly mean (a stock).
+
+    Unlike the Modellers' Database population measures, this releases with the
+    monthly LFS rather than alongside GDP.
+
+    Returns:
+        DataSeries with quarterly civilian population 15+ ('000)
+
+    """
+    monthly = load_series(CIVILIAN_POP_15)
+    quarterly = ra.monthly_to_qtly(monthly.data, q_ending="DEC", f="mean")
+
+    return DataSeries(
+        data=quarterly,
+        source=monthly.source,
+        units=monthly.units,
+        description="Civilian population aged 15+ (quarterly mean from monthly LFS, cat 6202.0)",
+        series_id=monthly.series_id,
+        table=monthly.table,
+        cat=monthly.cat,
+        stype=monthly.stype,
     )
 
 

@@ -85,6 +85,7 @@ _DEFAULT_SIGMA = 0.2       # fallback discrepancy sigma (ppt) when history is to
 _COVID_START = pd.Period("2020Q1", "Q-DEC")
 _COVID_END = pd.Period("2021Q2", "Q-DEC")
 _MIN_CONS_OBS = 8          # minimum ex-COVID training quarters for the consumption bridge
+_MIN_INV_OBS = 8           # minimum training quarters for the inventories flow bridge
 
 
 # --- As-of information set -----------------------------------------------------
@@ -97,14 +98,16 @@ class AsOf:
     ``gdp`` runs through ``target - 1`` (last published quarter); every component
     level runs through ``target`` (its source is out a day early); ``pub`` (the
     ABS-published contributions used for bridge fitting and the chart history)
-    runs through ``target - 1``.
+    and ``inv_flow`` (published with the accounts, so known only to the last
+    published quarter) run through ``target - 1``.
     """
 
     target: pd.Period
     gdp: pd.Series
     gov_c: pd.Series
     gov_gfcf: pd.Series
-    inv: pd.Series
+    inv: pd.Series         # 5676 private non-farm stock (CVM $m) — the target-quarter proxy
+    inv_flow: pd.Series    # NA changes in inventories (CVM $m) — bridge target & prior flow
     nx: pd.Series
     hh: pd.Series          # 5682 Household Spending Indicator (CVM index) — the predictor
     hfce: pd.Series        # NA household final consumption (CVM $m) — bridge target & prior level
@@ -136,21 +139,58 @@ class NowcastResult:
 # --- Contribution primitives (shared) -----------------------------------------
 
 
+def _at(series: pd.Series, period: pd.Period) -> float:
+    """Value of ``series`` at ``period``, as a float.
+
+    Goes via the integer position rather than ``series[period]``: pandas-stubs
+    types a ``Series`` generically, so a ``Period`` key is not an accepted
+    overload. ``get_loc`` returns an int for a unique index; anything else means
+    the caller handed us a duplicated or unsorted index, which is a bug.
+    """
+    loc = series.index.get_loc(period)
+    if not isinstance(loc, int):
+        msg = f"components: {period} is not a unique entry in the series index"
+        raise KeyError(msg)
+    return float(series.to_numpy()[loc])
+
+
 def _level_contribution(level: pd.Series, target: pd.Period, gdp_tm1: float) -> float:
     """(level_T - level_{T-1}) / GDP_{T-1} * 100 — for flow components (C, G, NX)."""
     prev = target - 1
     if target in level.index and prev in level.index:
-        return float((level[target] - level[prev]) / gdp_tm1 * 100)
+        return float((_at(level, target) - _at(level, prev)) / gdp_tm1 * 100)
     return float("nan")
 
 
-def _inventory_contribution(level: pd.Series, target: pd.Period, gdp_tm1: float) -> float:
-    """(Δlevel_T - Δlevel_{T-1}) / GDP_{T-1} * 100 — inventories enter GDP as a flow."""
-    flow = level.diff()
+def _inventory_contribution(
+    level: pd.Series, na_flow: pd.Series, target: pd.Period, gdp_tm1: float
+) -> float:
+    """(flow_T - flow_{T-1}) / GDP_{T-1} * 100 — inventories enter GDP as a flow.
+
+    Only the *target* quarter's flow needs proxying. ``flow_{T-1}`` is the NA
+    changes-in-inventories published with last quarter's accounts, so it is read
+    from ``na_flow`` rather than differenced out of the 5676 stock: proxying it
+    too would inject the 5676 coverage gap (farm and public excluded) a second
+    time with the opposite sign, which is what made a single bad stock reading
+    cost two quarters.
+
+    ``flow_T`` is the 5676 stock change put on the NA basis by an OLS fitted over
+    the overlap strictly before ``target`` — the two series measure different
+    aggregates, so the raw stock change is not commensurate with ``flow_{T-1}``.
+    """
     prev = target - 1
-    if target in flow.index and prev in flow.index:
-        return float((flow[target] - flow[prev]) / gdp_tm1 * 100)
-    return float("nan")
+    d_stock = level.diff()
+    if target not in d_stock.index or prev not in na_flow.index:
+        return float("nan")
+
+    df = pd.concat([na_flow.rename("y"), d_stock.rename("x")], axis=1).dropna()
+    df = df.loc[df.index < target]
+    if len(df) < _MIN_INV_OBS:
+        return float("nan")
+
+    b1, b0 = np.polyfit(df["x"].to_numpy(), df["y"].to_numpy(), 1)
+    flow_t = b0 + b1 * _at(d_stock, target)
+    return float((flow_t - _at(na_flow, prev)) / gdp_tm1 * 100)
 
 
 def _growth(level: pd.Series) -> pd.Series:
@@ -205,7 +245,7 @@ def _consumption_contribution(asof: AsOf, gdp_tm1: float) -> float:
 
     b1, b0 = np.polyfit(df["x"].to_numpy(), df["y"].to_numpy(), 1)
     pred_growth = b0 + b1 * x_t
-    hfce_prev = float(asof.hfce[prev])
+    hfce_prev = _at(asof.hfce, prev)
     d_hfce = hfce_prev * (np.exp(pred_growth / 100) - 1)  # predicted ΔHFCE in CVM $m
     return d_hfce / gdp_tm1 * 100
 
@@ -229,13 +269,15 @@ def _contribute(asof: AsOf) -> tuple[dict[str, float], float, float]:
             f"(index ends at {asof.gdp.index[-1]})."
         )
         raise KeyError(msg)
-    gdp_tm1 = float(asof.gdp[prev])
+    gdp_tm1 = _at(asof.gdp, prev)
 
     # Accounting-exact components (direct from real $m levels).
     gov_c = _level_contribution(asof.gov_c, t, gdp_tm1)
     gov_gfcf = _level_contribution(asof.gov_gfcf, t, gdp_tm1)
-    inv = _inventory_contribution(asof.inv, t, gdp_tm1)
     nx = _level_contribution(asof.nx, t, gdp_tm1)
+
+    # Inventories: NA flow anchor for T-1, bridged 5676 stock change for T.
+    inv = _inventory_contribution(asof.inv, asof.inv_flow, t, gdp_tm1)
 
     # Consumption: exact level path — predict HFCE growth from the HSI, then Δlevel/GDP_lag.
     hh = _consumption_contribution(asof, gdp_tm1)
@@ -282,6 +324,7 @@ def _build_live(target_quarter: pd.Period | None) -> AsOf:
         gov_c=cd.government_consumption_level(),
         gov_gfcf=cd.government_gfcf_level(),
         inv=cd.inventories_reref(gdp),
+        inv_flow=cd.na_inventories_flow().loc[: target - 1],
         nx=cd.net_exports_reref(gdp),
         hh=cd.household_spending_cvm_level(cd.month_tag(target)),
         hfce=cd.household_consumption_level(),
@@ -308,6 +351,7 @@ def build_asof(target: pd.Period, *, live_vintage: bool = False) -> AsOf:
         gov_c=cd.government_consumption_level().loc[:target],
         gov_gfcf=cd.government_gfcf_level().loc[:target],
         inv=cd.inventories_level().loc[:target],
+        inv_flow=cd.na_inventories_flow().loc[:prev],
         nx=cd.net_exports_level().loc[:target],
         hh=hh.loc[:target] if len(hh) else hh,
         hfce=cd.household_consumption_level().loc[:prev],
@@ -434,7 +478,7 @@ def _chart_frame(result: NowcastResult) -> tuple[pd.DataFrame, pd.Series]:
     now_row = {name: (0.0 if np.isnan(result.contributions[name]) else result.contributions[name])
                for name, _ in _STACK}
     comp = pd.concat([hist, pd.DataFrame(now_row, index=[result.target])])
-    gdp_dots.loc[result.target] = result.gdp_qoq
+    gdp_dots = pd.concat([gdp_dots, pd.Series({result.target: result.gdp_qoq})])
 
     comp = comp.loc[CHART_START:]
     gdp_dots = gdp_dots.loc[CHART_START:]
@@ -482,7 +526,7 @@ def plot_component_contributions(result: NowcastResult) -> None:
     for name, col in _COMPONENT_PUB.items():
         series = pub[col].loc[CHART_START:].dropna().copy()
         now = result.contributions[name]
-        series.loc[result.target] = 0.0 if np.isnan(now) else now
+        series = pd.concat([series, pd.Series({result.target: 0.0 if np.isnan(now) else now})])
         series.name = name
         mg.bar_plot_finalise(
             series,

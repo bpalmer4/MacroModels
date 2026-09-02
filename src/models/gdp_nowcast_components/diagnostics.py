@@ -83,7 +83,7 @@ def _na_inventory_changes() -> pd.Series:
 
 
 def _scatter(title: str, estimate: pd.Series, na: pd.Series,
-             xlabel: str, ylabel: str, note: str) -> tuple[float, float, int]:
+             *, xlabel: str, ylabel: str, note: str) -> tuple[float, float, int]:
     """Scatter estimate (x) vs NA (y); 45° = match. Returns ex-COVID (slope, R², n)."""
     both = pd.DataFrame({"x": estimate, "y": na}).dropna()
     nm = _ex_covid(both)
@@ -151,7 +151,7 @@ def plot_one_to_one_checks() -> pd.DataFrame:
     ]
     out = []
     for title, est, na_series, xlabel, ylabel, note in specs:
-        slope, r2, n = _scatter(title, est, na_series, xlabel, ylabel, note)
+        slope, r2, n = _scatter(title, est, na_series, xlabel=xlabel, ylabel=ylabel, note=note)
         out.append({"chart": title, "slope": slope, "r2_ex_covid": r2, "n": n})
     return pd.DataFrame(out).set_index("chart")
 
@@ -180,7 +180,7 @@ def plot_source_vs_na() -> pd.DataFrame:
     ]
     out = []
     for title, est, na_series, xlabel, ylabel, note in specs:
-        slope, r2, n = _scatter(title, est, na_series, xlabel, ylabel, note)
+        slope, r2, n = _scatter(title, est, na_series, xlabel=xlabel, ylabel=ylabel, note=note)
         out.append({"chart": title, "slope": slope, "r2_ex_covid": r2, "n": n})
     return pd.DataFrame(out).set_index("chart")
 
