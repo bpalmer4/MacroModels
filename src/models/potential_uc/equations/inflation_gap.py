@@ -29,6 +29,10 @@ inflation on the gap. No IS curve and no policy rule. And no cycle dynamics:
 `e_c` is white noise, so nothing is imposed about how the unexplained part of
 output behaves over time, which is the opposite of assuming an AR(2) cycle.
 
+The second line is contemporaneous, which asserts that inflation accompanies
+the gap rather than following it. Letting inflation lead was tried and did not
+earn its keep; see "Explored but did not work" in MODEL_NOTES.md.
+
 One identification point. `sigma_ystar` and `sigma_e` compete for the same
 variation, since a quarterly wiggle in GDP can be a shift in potential or a
 residual. That is the Stock-Watson pile-up problem in its proper form, and one

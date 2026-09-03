@@ -21,6 +21,8 @@ from src.models.potential_uc.results import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from matplotlib.axes import Axes
+
 CHART_DIR = DEFAULT_CHART_BASE / "PotentialUC"
 
 _RFOOTER = "Source: ABS 5206.0, 6202.0, 6401.0"
@@ -31,6 +33,13 @@ _GAP_HEADER = "A positive output gap is consistent with inflation"
 _LFOOTER = "Australia. Unobserved-components model. "
 # Points per quarter used when shading the growth-versus-potential chart.
 _FILL_SUBDIVISIONS = 20
+
+# Quarters excluded from the output gap composition chart's vertical scale.
+# The 2020 lockdown deviations are around -7 and -5 against a range of roughly
+# +/-2 for every other quarter in the sample, so leaving them in the scale
+# hides the target-period story the chart exists to show. 2021Q3 (the Delta
+# lockdown, -2.1) is deliberately not here: it fits.
+_OFF_SCALE = ("2020Q2", "2020Q3")
 
 _BAND_KWARGS: dict[str, Any] = {
     "color": "cornflowerblue",
@@ -174,6 +183,104 @@ def plot_output_gap(results: PotentialResults) -> None:
         lfooter=_LFOOTER,
         show=False,
     )
+
+
+def plot_gap_composition(results: PotentialResults) -> None:
+    """Split GDP's deviation from potential into the explained gap and the noise.
+
+    The `inflation` specification writes output as
+
+        log_gdp_t = y*_t + gap_t + e_c,   gap_t = c · (pi_t - anchor)
+
+    so the deviation of GDP from potential is exactly the inflation-defined gap
+    plus the residual, with nothing else in it: y* has no sub-components and
+    `e_c` is white noise by construction. Stacked bars make that additivity
+    visible; the line is the total they sum to.
+
+    The residual bar is the arithmetic residual of the two plotted medians
+    (median deviation less median gap) rather than the median of the residual
+    posterior, so the bars sum to the line exactly. The two differ by at most
+    0.01 percentage points on the current trace, medians not being additive.
+    """
+    if results.spec != "inflation":
+        raise ValueError(
+            f"gap composition is only meaningful for the 'inflation' specification, not {results.spec!r}: "
+            "elsewhere the gap is the identity log_gdp - y*, so the residual is identically zero",
+        )
+
+    gdp = pd.Series(results.obs["log_gdp"], index=results.obs_index)
+    deviation = results.potential_posterior().rsub(gdp, axis=0).median(axis=1)
+    gap = results.output_gap_median()
+
+    components = pd.DataFrame({
+        "Explained gap": gap,
+        "Noise": deviation - gap,
+    })
+
+    # The 2020 lockdown quarters are an order of magnitude larger than anything
+    # else and would compress the rest of the sample into a fifth of the chart.
+    # They are excluded from the scale rather than from the data: the bars are
+    # still drawn, they run off the top and bottom, and the footnote says so.
+    off_scale = [q for q in (pd.Period(p, "Q") for p in _OFF_SCALE) if q in components.index]
+    ax = _plot_gap_composition_axes(components, deviation)
+    mg.finalise_plot(
+        ax,
+        title="Output gap composition",
+        ylabel="Per cent of potential",
+        ylim=_scale_excluding(components, deviation, off_scale),
+        y0=True,
+        legend={"loc": "best", "fontsize": "small"},
+        rfooter=_rfooter(results),
+        lfooter=_LFOOTER + "Bars sum to the line by construction. ",
+        lheader=_off_scale_note(deviation, off_scale),
+        show=False,
+    )
+
+
+def _off_scale_note(deviation: pd.Series, off_scale: list[pd.Period]) -> str:
+    """Name the quarters the vertical scale leaves out, with their values."""
+    if not off_scale:
+        return ""
+    quarters = ", ".join(f"{q} {deviation.loc[q]:.1f}" for q in off_scale)
+    return f"Scaled to exclude the lockdown quarters ({quarters}), which run off the chart"
+
+
+def _scale_excluding(
+    components: pd.DataFrame,
+    deviation: pd.Series,
+    off_scale: list[pd.Period],
+) -> tuple[float, float]:
+    """Return y limits covering the bars and the line, ignoring `off_scale`.
+
+    A stacked bar reaches the sum of its positive parts above zero and the sum
+    of its negative parts below, which is wider than the total the line shows
+    whenever the two components have opposite signs. Both are measured.
+    """
+    kept = components.drop(index=off_scale)
+    top = max(kept.clip(lower=0).sum(axis=1).max(), deviation.drop(index=off_scale).max())
+    bottom = min(kept.clip(upper=0).sum(axis=1).min(), deviation.drop(index=off_scale).min())
+    # Round outward to a half point so the ticks land on round numbers.
+    return float(np.floor(bottom * 2 - 0.5) / 2), float(np.ceil(top * 2 + 0.5) / 2)
+
+
+def _plot_gap_composition_axes(components: pd.DataFrame, deviation: pd.Series) -> Axes:
+    """Draw the stacked component bars with the total overlaid as a line."""
+    ax = mg.bar_plot(
+        components,
+        stacked=True,
+        color=["darkorange", "slategrey"],
+        annotate=False,
+        width=1.0,
+    )
+    mg.line_plot(
+        deviation.rename("GDP less potential"),
+        ax=ax,
+        color=["black"],
+        width=1.5,
+        annotate=True,
+        rounding=1,
+    )
+    return ax
 
 
 def plot_growth_vs_potential(
@@ -591,6 +698,8 @@ def run_analysis(
     plot_potential(results, tag="full")
     plot_potential(results, plot_from="2015Q1", tag="recent")
     plot_output_gap(results)
+    if results.spec == "inflation":
+        plot_gap_composition(results)
 
     # Two windows: the full sample, and one that excludes the COVID swing,
     # which otherwise dominates the scale and hides the recent story.

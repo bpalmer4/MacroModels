@@ -17,6 +17,22 @@ Three estimated quantities: `c`, `sigma_e`, and the initial level of the drift. 
 
 ---
 
+## What this model does
+
+Two ideas, and that is the whole model.
+
+**A prior: potential output is a slow-moving trend.** Actual output jumps about from quarter to quarter for all sorts of reasons. The economy's capacity to produce does not. So we assume potential moves slowly relative to GDP.
+
+That gives the trend its shape but not its position. A slow-moving line can be drawn high or low through the same data, and nothing about being slow-moving says which is right.
+
+**A definition: potential output is the level of output consistent with inflation at target.** That is what puts the line in the right place. When inflation runs above 2.5% the economy is running beyond its capacity; when it runs below, it has room to spare.
+
+Between 2015 and 2019 inflation sat under target for five years. This model reads that as an economy running below capacity throughout. A statistical filter, knowing nothing about inflation, reads the same five years as running above it. That difference is the definition doing its work, and it is the reason for building the model this way.
+
+The composition chart shows how much of the distance between GDP and potential inflation accounts for, and how much it does not. Mostly it does not, and that is the honest answer rather than a failure: inflation tells us where potential sits, not what output does from one quarter to the next.
+
+---
+
 ## The question
 
 Can potential output be identified from inflation alone?
@@ -190,7 +206,7 @@ Run with `./run-potential-uc.sh`; `--no-decompose` skips it, which is also the o
 2. **Four fifths of the cycle is unexplained.** `sigma_e` = 0.98 against a gap sd of 0.47. The model does not claim to measure the Australian business cycle; it claims to measure the part of it that inflation identifies.
 3. **Everything is conditional on the anchor.** 2.5% from 1993. Genuine re-anchoring in either direction would be booked as a gap. This was the single most fragile assumption in the earlier specifications and it has not been removed, only made more visible.
 4. **The imposed variances still do most of the smoothing.** `sigma_ystar` = 0.078 is not estimated, and it is what makes potential a smooth line rather than something that follows output.
-5. **No lag between the gap and inflation.** The relationship is contemporaneous. Attempts to estimate a lag profile did not converge; see the iteration log.
+5. **No lag between the gap and inflation.** The relationship is contemporaneous, and two attempts to relax that failed differently. Estimating a lag profile did not converge (item 9). Fixing a four-quarter lead in advance did converge, and put about 30% weight on it, but left `sigma_e` unchanged at 0.98 on a matched sample while costing the last four quarters of the gap (item 12). The turning-point evidence that motivated it is the kind item 7 shows does not survive prewhitening.
 6. **The two diagnostic modules have not been exercised on this specification.** `realtime.py` raises for any spec other than `core` and has not been rewired. `sigma_sweep.py` should work: its grids already cover `ratio_ystar`, `ratio_g`, `sigma_c` and `anchor`, which are exactly this spec's imposed settings, and a spec-name branch that would have sent it down the labour path has been fixed. It has not been run against this spec, so treat that as untested rather than working.
 
 ---
@@ -235,7 +251,9 @@ potential_uc/
     └── participation.py       participation observation (`labour`)
 ```
 
-Charts are written to `charts/PotentialUC/`: `potential-growth`, `output-gap`, `potential-growth-hours-and-productivity`, `potential-growth-and-labour-input`, `contributions-to-potential-growth`, and `gdp-and-potential-output` and `actual-growth-versus-potential` on full and recent windows.
+Charts are written to `charts/PotentialUC/`: `potential-growth`, `output-gap`, `output-gap-composition`, `potential-growth-hours-and-productivity`, `potential-growth-and-labour-input`, `contributions-to-potential-growth`, and `gdp-and-potential-output` and `actual-growth-versus-potential` on full and recent windows.
+
+`output-gap-composition` splits GDP less potential into the part inflation accounts for and the residual, as stacked bars summing to the line. Its vertical scale excludes 2020Q2 and 2020Q3, which run off the chart and are named in the header; every other quarter fits. The `inflation` spec only, since elsewhere the gap is the identity `log_gdp - y*` and the residual is identically zero.
 
 ## Commands
 
@@ -274,6 +292,14 @@ The package began as a conventional multivariate UC model and was progressively 
 **10. Defining potential outright, with no residual.** `y* = log_gdp − c·d`. `c` = 0.378, and it was shown to equal, to three decimals, the OLS slope of `(ΔGDP − g)` on `Δ(deviation)`, a regression whose correlation is 0.132. The specification asserted innovations of N(0, 0.078) while producing innovations with sd **0.917**, a posterior predictive check failing by a factor of twelve. Freeing `sigma_ystar` gave 0.965 and widened `c` from ±0.02 to ±0.50, confirming the diagnosis but leaving potential still tracking GDP.
 
 **11. Fitting GDP with a residual: the current model.** Adding `log_gdp = y* + gap + e_c` restored potential to a proper state, returned `sigma_ystar` to its imposed 0.078, and produced `c` = 0.468 [0.26, 0.69] with `sigma_e` = 0.981. Potential growth is a plausible 2.14% with no pandemic collapse, and the variance share gives the amplitude answer directly.
+
+**12. Letting inflation lead the gap: converges, but buys nothing.** Item 9 failed to *estimate* a lag; this asked the narrower question of whether one helps at a lag chosen in advance. The gap became `c·[w·(pi_t − 2.5) + (1−w)·(pi_{t+4} − 2.5)]`, scale and shape separated so that `c` keeps its units and a single `w ~ Beta(1,1)` carries the timing. Note the direction: if inflation *follows* the gap, the extra term is a **lead** of inflation, not a lag. k = 4 rather than 3 because `pi_basis` is "annual", so `d_t` and `d_{t+3}` share a quarter of CPI (corr 0.70) and only k ≥ 4 avoids the overlap (corr 0.55).
+
+Unlike item 9 it sampled cleanly: `r_hat` 1.0, `ess_bulk` ≈ 9,300. The weight came back **0.71 [0.44, 0.95]**, so the model does put about 30% on inflation four quarters ahead, with P(w < 0.9) = 0.89. But on a matched 130-quarter sample (1993Q1-2025Q2, both specifications fitting the same quarters) `sigma_e` went **0.994 → 0.983**, well inside either credible interval. The residual does not shrink, which was the test. `c` rose 0.46 → 0.56, which is arithmetic rather than news: blending two imperfectly correlated regressors shrinks the amplitude and the scale compensates. The gap path crosses zero about two quarters earlier in 2021 and reaches the same peak height, then is indistinguishable from 2023Q3 on.
+
+The motivation was turning-point timing: in both large episodes the residual peaks four quarters before the inflation-defined gap (2007Q3 against 2008Q3; 2021Q4 against 2022Q4). **Item 7 is the warning against that evidence** — it is exactly the kind of pattern between two persistent series that did not survive prewhitening. The honest reading is that the lead is visible at two turning points and invisible in the other 122 quarters, and 130 quarters of mostly quiet inflation cannot separate the two.
+
+Not adopted. The cost is the sample end: the last k quarters have no `pi_{t+k}`, so the gap is undefined for the four quarters of most interest, and no fit gain pays for that. The alternatives were worse — falling back to the contemporaneous term alone in the tail changes the definition of the gap exactly where it matters, and carrying an inflation forecast imports a judgement into an estimate meant to rest on data. Traces retained: `potential_uc_lead4`, and `potential_uc_lead0_short` for the matched-sample comparison.
 
 **Next, in priority order:**
 1. **Rewire `realtime.py` to the `inflation` spec, then run it.** Endpoint revision is the test that discriminates, and this specification has never been through it. Item 6 of the log is what it did to the earlier one.
