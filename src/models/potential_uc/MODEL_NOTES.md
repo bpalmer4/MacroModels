@@ -31,6 +31,37 @@ Between 2015 and 2019 inflation sat under target for five years. This model read
 
 The composition chart shows how much of the distance between GDP and potential inflation accounts for, and how much it does not. Mostly it does not, and that is the honest answer rather than a failure: inflation tells us where potential sits, not what output does from one quarter to the next.
 
+### The advantage over a filter is positioning, not shape
+
+The gap here is not centred on the middle of the data. It is centred on the inflation target, and the target is a fulcrum the data are free to sit off. Mean deviation from the 2.5 anchor, with the implied mean gap at the posterior `c` of 0.468:
+
+| period | mean (pi − 2.5) | implied mean gap |
+|---|---|---|
+| 1993-1999 | −0.27 | −0.13 |
+| 2000-2007 | +0.32 | +0.15 |
+| 2008-2014 | +0.40 | +0.19 |
+| 2015-2019 | −0.76 | −0.36 |
+| 2020-2026 | +0.95 | +0.45 |
+| **full sample** | **+0.17** | **+0.08** |
+
+The full-sample +0.08 is the point. It is near zero as an **outcome**, not zero by construction. An HP cycle cannot produce anything else, over the whole sample or over any long stretch of it, because it is a residual from a trend fitted to pass through the middle of the data: a run of years below capacity has to be paid back by a run above. 2015-2019 is where the two methods part company. This model books five years as a sustained shortfall; the filter books them as a wander that averages out against the neighbouring periods.
+
+Two qualifications, neither of which is an objection to the claim.
+
+**The level correction is modest, and correctly so.** Sub-period mean deviations are a few tenths of a percentage point, and `c` shrinks them further, so 2015-2019 comes out at −0.36 rather than the −1.9 you would get by inverting a Phillips slope. That shrinkage is not an understatement to be corrected: `c·d` is a conditional mean, and shrinking toward zero is the right response to a signal that explains a fifth of the variation. See "Where the identification comes from". The fulcrum fixes the sign and timing of the level firmly, and the magnitude of the correction more weakly.
+
+**Iteration log item 6 is this mechanism at full stretch, not a failure of it.** The real-time estimate of −5.45% in 2019Q4 is five years of undershoot against a fixed anchor with no other channel to express it. That is why endpoint revision matters more here than it would for a filter: the positioning is what the model contributes, so the test is how much of it survives to the sample end, and it will show up as a level shift rather than as the tilt an HP trend gives.
+
+---
+
+## The motive
+
+The traditional pieces of the New Keynesian synthesis are either analytically challenging or impossible to estimate on Australian data. The IS curve cannot be identified: the `rstar_hlw` work found the rate channel too weak to pin r\* independently, with each specification largely returning the structural assumption it imposed. The Phillips curve has been corrupted by the RBA acting, which is the whole point of an inflation target and is documented for this package in iteration log items 2 and 3. The policy rule fares no better: in the `dsge` family the Taylor block was only pinned down once informative priors were imposed on it.
+
+So rather than estimate the system, think about the problem differently: **peel off individual elements of the synthesis and answer them with simpler and less compromised models.** This package is one such peeling. It takes potential output and the output gap, and answers them without an IS curve, without a Phillips curve and without a policy rule, using the one thing policy cannot corrupt because policy is what defines it.
+
+That is also why the model looks thin. The pieces are absent by design, not missing.
+
 ---
 
 ## The question
@@ -94,11 +125,13 @@ Adding `e_c` fixes all of it. Trend and gap no longer have to exhaust output, so
 
 Converged: all `r_hat` = 1.00, `ess_bulk` 9,574 to 13,945.
 
-| Parameter | mean | 94% HDI |
+| Parameter | mean | 90% |
 |---|---|---|
-| `c` | **0.468** | [0.264, 0.690] |
-| `sigma_e` | 0.981 | [0.856, 1.100] |
-| `initial_trend_growth` | 0.991 | [0.895, 1.085] |
+| `c` | **0.468** | [0.280, 0.657] |
+| `sigma_e` | 0.981 | [0.878, 1.094] |
+| `initial_trend_growth` | 0.991 | [0.908, 1.074] |
+
+Intervals throughout this file are 90% quantile bands, including this table, which previously quoted ArviZ's default 94% HDI. `analyse.py` still prints the 94% HDI in its own summary.
 
 | Headline, 2026Q2 | median | 90% band |
 |---|---|---|
@@ -132,15 +165,126 @@ A decline of roughly two percentage points since the late 1990s, with a dip arou
 
 The lockdown quarter reads −0.56 because inflation barely moved. The seven-point collapse in output sits in `e_c`, the residual, which is the right place for it: unexplained, rather than booked as a fall in productive capacity.
 
-### How much of the cycle inflation explains
+### External comparison
 
-| | |
+Everything else in this file is internal. This is not: four estimates of Australian potential growth, from four different information sets.
+
+| source | potential growth, 2026Q2 | basis |
+|---|---|---|
+| **This model** | **2.14** [1.77, 2.51] | log GDP + trimmed mean inflation. No production function. |
+| This repo's `cobb_douglas` | **1.86** | α = 0.30, HP(1600) trends, MFP trend −0.02% p.a., re-anchored at 1990Q1 / 2000Q1 / 2008Q1 / 2019Q4. No inflation. |
+| RBA, Feb 2026 SMP | ~2.0 | "potential output expected to grow at an annual rate of around 2 per cent over most of the forecast period"; revised down from August 2025, on 0.7% labour productivity. |
+| Treasury, Budget 2026-27 | 2.5 | medium-term projection assuming long-run productivity growth returns to 1.2%. |
+
+**The first two are the meaningful check.** They share no equations and almost no data: one takes GDP and inflation and defines the gap by the target, the other takes factor inputs and shares and never looks at prices. They differ by 0.28pp, inside this model's 90% band. `cobb_douglas` is also still falling (2.01 in 2025Q2 to 1.86 in 2026Q2), so the two are converging from opposite directions rather than sitting on a shared assumption. Two routes to the same neighbourhood is worth more than either route alone, and it is the only genuinely external evidence the package has. (The Cobb-Douglas figure at α = 0.36 is nearer 1.97; the 1.86 here is the repo's α = 0.30 default.)
+
+The RBA figure agrees as well, and carries extra weight because it is an operational input to a quarterly forecast used to set the cash rate, so it faces a correction loop.
+
+**The comparison is a growth comparison only, and deliberately so.** `cobb_douglas` puts the 2026Q2 output gap at −0.89% against this model's +0.51%, but those two numbers should not be set against each other. Re-anchoring never touches `g_potential`, which is HP-filtered capital and hours plus MFP trend over the whole sample; it resets `log_potential` to actual GDP at 1990Q1, 2000Q1, 2008Q1 and 2019Q4, forcing the gap to zero at each (`cobb_douglas/model.py:316`). So its 2026Q2 gap means "cumulated actual growth less trend growth since 2019Q4", and it rests on output having been exactly at potential in 2019Q4, which is an assumption rather than a finding. The Cobb-Douglas run offers no independent estimate of the level, so there is nothing here to adjudicate. That is its own stated position, not an inference from outside: its module docstring says "the output gap from this model is notional only - it is not disciplined by inflation dynamics".
+
+The re-anchoring is necessary rather than careless: with fixed factor shares and a smooth input trend, cumulating from one base drifts when the underlying speed limit is moving, and the level smears within each block. The printed resets are that drift being discarded, at 0.89%, −0.78%, −0.24% and −0.24%, roughly 0.08pp a year. That is precisely the problem the target fulcrum solves here, and it is why the growth paths can be compared while the levels cannot. Consistent with this, the Cobb-Douglas run reports its own gap correlating **0.160** with the inflation deviation and flags that it "may not capture demand pressure well".
+
+**Treasury is the outlier, and the difference is one assumption.** 2.5 sits at the very top of this model's 90% band. The gap against the RBA is almost entirely labour productivity, 1.2% assumed against 0.7%, and Treasury's is a projection assumption rather than an estimate of current potential: it has been revised down from the 30-year average of about 1.5% to the 20-year average of 1.2%, and the horizon for returning to it pushed out from roughly two years to five. MFP has been flat to negative since the GFC, so 1.2% labour productivity requires an MFP recovery not seen in fifteen years.
+
+Cobb-Douglas figures are from `./run-cd.sh -v` on the 2026Q2 vintage, so they are reproducible here rather than quoted. Other sources: [RBA Statement on Monetary Policy, February 2026](https://www.rba.gov.au/publications/smp/2026/feb/outlook.html); [Budget Paper No. 1, Statement 2, 2026-27](https://budget.gov.au/content/bp1/download/bp1_bs-2.pdf); [Treasury's medium-term economic projection methodology](https://treasury.gov.au/publication/treasurys-medium-term-economic-projection-methodology). The productivity argument against Treasury's 1.2% is set out in [Why 2.5% potential growth is wrong](https://markthegraph.blogspot.com/2026/01/why-25-potential-growth-is-wrong.html) (January 2026).
+
+### How much of the cycle inflation explains, and the implied Phillips slope
+
+`c` runs from inflation to output. A Phillips slope κ runs the other way. Two projections on the same data, so they are not reciprocals; they are related through the shared correlation by
+
+```
+c · κ = corr²
+```
+
+Computed draw by draw from the saved trace, with `x = log_gdp − y*` per draw and `d = pi − 2.5` (8,000 draws):
+
+| | mean | 90% |
+|---|---|---|
+| posterior `c` | 0.4681 | [0.280, 0.657] |
+| OLS slope of `x` on `d` | 0.4676 | [0.345, 0.590] |
+| **implied κ** | **0.4010** | **[0.316, 0.467]** |
+| corr² | 0.1906 | [0.109, 0.273] |
+| `c_ols · κ` | 0.1906 | [0.109, 0.273] |
+
+Four readings.
+
+**corr² = 0.19 is the answer to the question the model was built to ask.** The inflation-defined gap accounts for about a fifth of Australian output's deviation from trend; the other four fifths is residual. That is now measured rather than assumed, and measuring it is what the third equation bought. `analyse.py` prints the same quantity each run as a variance share of the median paths (0.197 there against 0.191 here, the difference being medians against draw-wise).
+
+**`c` is the OLS projection.** 0.4681 against 0.4676, identical to three decimals. The state-space estimation adds uncertainty to `c`, since `y*` is uncertain, but does not move it. Iteration log item 10 found the same equivalence in the earlier specification; it carries over.
+
+**The identity holds exactly**, which is the check that the two slopes are the same covariance seen from two ends rather than two different facts.
+
+**κ = 0.40 [0.32, 0.47] is the conventional range.** So the inflation-defined gap implies a Phillips slope consistent with the literature, obtained without estimating a Phillips curve on a target-era sample — which was the point of building the model this way. Inverting κ to get a `c` of 2.5 to 3 assumes a correlation of one; the correlation is 0.44.
+
+### Where the identification comes from
+
+`c` is a projection on `d`, so each quarter's weight in it is `d²/Σd²`. That weight is extremely concentrated:
+
+| | share of the information in `c` |
 |---|---|
-| sd of the gap | 0.47 |
-| sd of GDP less potential | 1.05 |
-| **variance share** | **19.7%** |
+| top 5 quarters (3.7% of the sample) | **46.7%** |
+| top 10 quarters (7.5%) | 61.8% |
+| the 23 quarters with abs(d) > 1.0 (17%) | **78%** |
 
-**This is the answer to the question the model was built to ask.** The inflation-defined gap accounts for about a fifth of Australian output's deviation from trend. The other four fifths is residual. That is now measured rather than assumed, and measuring it is what the third equation bought.
+And it is two episodes rather than a scatter. **2022Q2-2023Q4 carries about 53% on its own; 2008Q1-2009Q1 about 13%.** The remaining 111 quarters supply roughly a fifth of what is known about `c`. The 2000 GST quarters do not appear, so a one-off tax-driven price level shift is not doing the identifying.
+
+**This is why the low corr² is not a defect.** It is not the model failing to explain output. It is the model correctly reporting that in quiet quarters inflation carries almost no information about the gap — which is true, and is precisely what a central bank hitting its target produces. The identification lives in the rare breakouts, and the model uses them.
+
+**It also explains why κ is the clean number and `c` is the noisy one.** Write the relationship as `d = κ·x + u`, with `u` the non-demand part of inflation. κ has `d` on the left, so `u` goes into the residual and κ is unbiased. `c` has `d` on the right, and
+
+```
+c = κ · var(x)/var(d) = corr²/κ
+```
+
+so `c` is shrunk by the correlation. That is not a bias to be corrected. Shrinking toward zero is the correct response to a noisy signal, and it is what makes `c·d` a conditional mean rather than a structural inversion. It is also the proper reason the "lower bound" language earlier drafts of this file used was wrong: the gap is not understated, it is optimally shrunk.
+
+**The shrinkage is uniform and the signal-to-noise is not — but it costs almost nothing.** A single constant `c` applies the same discount to the 4.3-point deviation of 2022Q4 as to a 0.2-point deviation in 2015, though in a breakout the demand signal dominates `u` and deserves less shrinkage. Tested by split-sample projection (iteration log item 13, and read its warning about the pandemic quarters before repeating it):
+
+| | n | mean | 90% |
+|---|---|---|---|
+| full sample | 134 | 0.468 | [0.345, 0.590] |
+| breakout, `d` > +1, excl. 2020Q2-2021Q1 | 19 | 0.510 | [0.381, 0.639] |
+| quiet, abs(`d`) ≤ 1 | 111 | **−0.142** | [−0.392, 0.104] |
+
+The quiet quarters contain no relationship whatever — the slope straddles zero with the wrong sign, and P(breakout > quiet) = 1.000. That is the strongest single confirmation that identification lives in the breakouts. But the breakout coefficient exceeds the full-sample one by only 0.043, less than a fifth of the width of `c`'s own interval, with a 90% band of [−0.019, +0.107] that crosses zero. The reason is that the signal-free quarters are also the near-weightless ones: 111 quarters carrying 22% of the leverage cannot drag `c` far. **The concern is self-limiting, and no state-dependent `c` is warranted.** At the 2022Q4 peak the uniform shrinkage costs about 0.18% of GDP in gap.
+
+---
+
+## Surviving the pandemic
+
+Most trend/cycle models do not, and many simply say so: a COVID dummy, a dropped stretch of quarters, a separate variance for 2020, or a note that estimates over the period are unreliable. This model has none of that. The sample runs 1993Q1 to 2026Q2 continuously and 2020 is fitted like any other year.
+
+It survives for a reason rather than by luck. Inflation barely moved in 2020, so the defined gap barely moves, and the seven-point collapse in output goes to `e_c`. The 2020Q2 gap of **−0.56** is the model declining to call a lockdown a demand problem. That is the correct answer and it falls out of the definition rather than out of special handling.
+
+Both design choices are doing the protecting, not just the definition. Three counterexamples from this package's own history show what the alternative looks like: the no-residual version of this specification had potential growth swinging from **−6.0% to +9.6%** across 2020-21 as `y*` tracked GDP down and back (item 10); a Henderson-7 filter of log hours books a **−6.2 to +7.3 per cent** pandemic swing as *trend*, which is why the decomposition uses HP; and at the loosest setting in the `ratio_g` sweep the trend bends hard enough around 2020 to drag the 2019Q4 reading down to **0.47%** (item 14). The smoothness prior is what stops the last of those at the chosen setting.
+
+Where the pandemic still bites is in analysis built on top of the model rather than in the model itself. Item 13 had to exclude 2020Q2 to 2021Q1 from the split-sample test: four quarters of deep negative output against mildly negative inflation imply a slope of 2.58, and including them would have manufactured a state-dependence result out of nothing. Any diagnostic that selects quarters on the size of `d` needs the same exclusion.
+
+---
+
+## Endpoint behaviour
+
+Trend/cycle models are usually fragile at the right-hand end of the sample, because nothing has happened yet to say whether recent weakness is a dip below capacity or a fall in capacity. Iteration log item 6 is that failure in this package's own history: on the `core` spec the real-time output gap reached **−5.45%** in 2019Q4 against a full-sample value near zero.
+
+**Two design choices remove most of that problem from this specification, and it is worth being explicit about why.**
+
+**The gap is a data transform, not a filtered state.** `equations/inflation_gap.py` sets `output_gap = c · (pi_t − anchor)`. There is no trend standing between the data and the answer, so the estimate for quarter `t` uses `pi_t`, which is observed, and one global scalar. The whole of the real-time revision is therefore
+
+```
+revision(t) = (c_final − c_vintage) · (pi_t − anchor)
+```
+
+and the exercise reduces to asking how stable `c` is across vintages. The published band shows the same thing from the other side: the 2026Q2 gap of +0.51 [0.31, 0.72] is `c`'s interval [0.280, 0.657] rescaled by that quarter's deviation of about 1.09, because the deviation is data and carries no uncertainty. Item 6 cannot recur here in any form: reproducing −5.45 would require inflation about eleven percentage points below target.
+
+**Potential is assumed near-static.** `sigma_g` = 0.015 means the drift bends slowly whatever arrives at the sample end, so the trend/cycle question the endpoint problem turns on is answered in advance by the prior rather than by the last few quarters of data.
+
+**What this costs.** Because potential cannot move much and the gap is fixed by inflation, anything else in output has nowhere to go but `e_c`, which is assumed white noise. `sigma_e` = 0.98 is large. That is the price of the smoothness prior and it is paid every quarter.
+
+**Where it is not paid: the 2023 productivity trough.** An earlier version of this section named the migration surge as the episode where `sigma_g` looks like it binds wrongly, and proposed an episode sweep as the sharper test. That was wrong on the face of the specification. Labour is not in the model — the `inflation` spec observes log GDP and trimmed mean inflation only — so `sigma_g` has no labour supply step to refuse, and a sweep over it cannot bear on migration at all. `sigma_g` governs how closely `y*` follows GDP, and GDP grew 2.11% year-ended through 2023 against potential growth of 2.14%, so a looser setting would barely move 2023 and would pull 2024 down toward the 1% GDP was then running. See point 2 of "What it cannot say".
+
+The one thing `sigma_g` genuinely conditions is the trend growth path itself, and the standing check for that is the honesty sweep `sigma_sweep.py` was built for: does the two-point decline in the speed limit survive the grid, or is it the smoothing? That is a general question about the specification, not an episode.
+
+**If the real-time exercise is run, the question to ask is coverage, not revision size.** Estimates are meant to move as data arrive; that is updating, not failure. What would indict the model is a revision that fell outside what it said at the time. `realtime.py` cannot answer that as written: `_paths` keeps only median paths, and the full traces are discarded because dozens of them are tens of megabytes each. Asking the coverage question means retaining a quantile pair per vintage and adding a column to `revisions()` for how often the eventual value fell inside the real-time 90% band.
 
 ---
 
@@ -191,7 +335,9 @@ Note the 1994-2007 figure. This is a property of residuals, not an artefact of t
 ### What it cannot say
 
 1. **Trend productivity is a residual, not an estimate.** Any error in the hours trend lands on it in full. Nothing here is independent evidence about productivity.
-2. **The 2023 trough is an artefact of the smooth `y*`.** Trend hours growth jumps to 3.7% on the migration surge while potential growth is held near 2.1% by `sigma_g`. The residual must absorb the difference, so trend productivity growth prints below −1% in 2023. Read that as the model's smoothness prior refusing the labour supply surge, not as a productivity collapse.
+2. **The 2023 trough is arithmetic, and it is not an artefact of `sigma_g`.** Trend hours growth reaches 3.7% on the migration surge while potential growth sits near 2.1%, so the residual prints below −1%. An earlier version of this note read that as the smoothness prior refusing a labour supply surge. It cannot be: **labour is not in the model.** The `inflation` spec observes log GDP and trimmed mean inflation only, and hours enter nowhere except this post-modelling identity, so there is nothing for `sigma_g` to refuse. Nor would loosening it help — `sigma_g` controls how closely `y*` follows *GDP*, and year-ended GDP growth averaged 2.11% through 2023 against potential growth of 2.14%, then fell to about 1% through 2024. A looser trend would track that down and make the residual **more** negative, not less.
+
+   What the trough actually says is the arithmetic of the identity: output grew 2.1% while the trend of labour input grew 3.7%, so measured productivity fell. That is a statement about the Australian economy obtained from GDP and hours, and the model's smoothness did not produce it. Point 1 still applies — it is a residual, and any error in the hours trend lands on it in full.
 3. **Quarter-to-quarter movements in the residual are not news about productivity.** Trend hours and the residual are near mirror images; see the correlations above. The block averages carry the low-frequency story, and the wedge chart is the safe way to show the quarterly path.
 4. **HP has an endpoint problem.** Refitting the hours trend with the last four quarters withheld moves 2025Q2 trend hours growth from 2.75 to 2.34 as those quarters arrive.
 5. **Trend hours is not a supply concept.** It is a filter of measured labour input. Nothing here identifies the hours consistent with inflation at target.
@@ -202,12 +348,12 @@ Run with `./run-potential-uc.sh`; `--no-decompose` skips it, which is also the o
 
 ## Limitations
 
-1. **`c` is attenuated and cannot be otherwise.** Conventional Phillips slope estimates of 0.3 to 0.4 imply `c` near 2.5 to 3. This model returns 0.468. The gap between the two is the McLeay-Tenreyro attenuation, and no amount of respecification recovers it from a target-era sample. The implied gap should therefore be read as a **lower bound** on the true one.
-2. **Four fifths of the cycle is unexplained.** `sigma_e` = 0.98 against a gap sd of 0.47. The model does not claim to measure the Australian business cycle; it claims to measure the part of it that inflation identifies.
-3. **Everything is conditional on the anchor.** 2.5% from 1993. Genuine re-anchoring in either direction would be booked as a gap. This was the single most fragile assumption in the earlier specifications and it has not been removed, only made more visible.
-4. **The imposed variances still do most of the smoothing.** `sigma_ystar` = 0.078 is not estimated, and it is what makes potential a smooth line rather than something that follows output.
-5. **No lag between the gap and inflation.** The relationship is contemporaneous, and two attempts to relax that failed differently. Estimating a lag profile did not converge (item 9). Fixing a four-quarter lead in advance did converge, and put about 30% weight on it, but left `sigma_e` unchanged at 0.98 on a matched sample while costing the last four quarters of the gap (item 12). The turning-point evidence that motivated it is the kind item 7 shows does not survive prewhitening.
-6. **The two diagnostic modules have not been exercised on this specification.** `realtime.py` raises for any spec other than `core` and has not been rewired. `sigma_sweep.py` should work: its grids already cover `ratio_ystar`, `ratio_g`, `sigma_c` and `anchor`, which are exactly this spec's imposed settings, and a spec-name branch that would have sent it down the labour path has been fixed. It has not been run against this spec, so treat that as untested rather than working.
+1. **The gap is exactly as precise as `c`, and `c` is wide.** The gap *is* `c` times data, so it inherits `c`'s interval in full and has no other source of uncertainty. `c` is a projection onto a single regressor over a target-era sample, its 90% interval is [0.28, 0.66], and 78% of what identifies it comes from two episodes. Nothing tightens the gap except a better `c`.
+2. **Everything is conditional on the imposed variances.** `sigma_ystar` = 0.078 and `sigma_g` = 0.015 are set, not estimated, and they are what make potential a smooth line rather than something that follows output. This is a declared prior rather than a concealed one, and `ratio_g` = 0.025 is the HP(1600) convention for exactly this belief, so the model is at the field's default rather than at a number chosen to produce an answer. It is still an assumption, and the reported precision on potential growth is largely its precision: the sweep in iteration log item 14 moves the 90% band on latest trend growth from [1.93, 2.37] to [0.45, 3.53] across a sixteen-fold range in `ratio_g`, while barely moving the point estimate. The level and the two-point decline are in the data; the narrowness of the interval around them is not.
+3. **No lag between the gap and inflation.** The relationship is contemporaneous, and two attempts to relax that failed differently. Estimating a lag profile did not converge (item 9). Fixing a four-quarter lead in advance did converge, and put about 30% weight on it, but left `sigma_e` unchanged at 0.98 on a matched sample while costing the last four quarters of the gap (item 12). The turning-point evidence that motivated it is the kind item 7 shows does not survive prewhitening.
+4. **The anchor is applied flat from 1993Q1.** 2.5 is a historical fact for the whole sample, so this is not a guess about policy. What is assumed is that the target was equally the operative benchmark in the first five years, while credibility was being established; the `nairu` package takes the other view and transitions its anchor to target only by 1998. The exposure is small: no quarter before 2007Q4 has abs(`d`) > 1.0, so the early sample carries almost no weight in `c`, and a 0.5 error in the effective anchor over 1993-1998 would move the gap there by about 0.24% of GDP.
+
+Three things frequently taken for limitations of this model are not, and are dealt with elsewhere: that `c` looks small beside 1/κ (it is a projection, not a reciprocal; see the implied Phillips slope), that four fifths of the cycle is unexplained (the expected shape, since identification lives in the breakouts; see "Where the identification comes from"), and that inflation misses have causes other than demand (the gap is defined as the scaled deviation, so there is no separate true gap to misattribute to).
 
 ---
 
@@ -301,8 +447,35 @@ The motivation was turning-point timing: in both large episodes the residual pea
 
 Not adopted. The cost is the sample end: the last k quarters have no `pi_{t+k}`, so the gap is undefined for the four quarters of most interest, and no fit gain pays for that. The alternatives were worse — falling back to the contemporaneous term alone in the tail changes the definition of the gap exactly where it matters, and carrying an inflation forecast imports a judgement into an estimate meant to rest on data. Traces retained: `potential_uc_lead4`, and `potential_uc_lead0_short` for the matched-sample comparison.
 
+**13. Is `c` state-dependent? No, and the quiet quarters are empty.** `c` is a projection, so quarter weights are `d²/Σd²` and they are extremely concentrated: the top 5 quarters carry 46.7% of the information, the 23 quarters with abs(`d`) > 1.0 carry 78%, and it is two episodes — 2022Q2-2023Q4 about 53%, 2008Q1-2009Q1 about 13%. That raised the question of whether a single `c` over-shrinks the breakouts, since it applies the same discount whatever the signal-to-noise.
+
+**The pandemic quarters must be excluded, and this is the trap in the test.** An `abs(d) > 1.0` rule puts 2020Q2-2021Q1 in the breakout set: inflation ran 1.2 to 1.4 *below* target while GDP sat 7.4% below potential. Those four quarters alone imply a slope of **2.58**, and they are what lift a naive breakout estimate to 0.635 (1.049 with an intercept fitted). That is the lockdown, which this specification deliberately books to `e_c`, not evidence about the inflation-output relationship. Every other breakout quarter has `d` above +1, so outside the pandemic "breakout" means the 2007-09 and 2022-24 surges.
+
+With those four excluded: breakout `c` = 0.510 [0.381, 0.639] against a full-sample 0.468, a difference of **+0.043 [−0.019, +0.107]**, P = 0.871. Immaterial. The quiet 111 quarters give **−0.142 [−0.392, 0.104]**: no relationship, wrong sign, P(breakout > quiet) = 1.000. So identification is entirely a breakout phenomenon, and yet dropping the quiet quarters barely moves the coefficient, because 111 quarters carrying 22% of the leverage have no power to distort it. Both facts at once, and they are not in tension.
+
+Not adopted; no state-dependent `c`. Method caveat: `y*` is taken from the full-sample fit with a single `c`, so this is a diagnostic on the fitted decomposition rather than a re-estimation with two free coefficients. Given a difference of 0.043 that is unlikely to change the verdict, but it is not the same test.
+
+**14. The `ratio_g` sweep: the level and the decline hold, the precision does not.** `sigma_g` is imposed and trend growth is what the model exists to measure, so the standing honesty check is whether the answer survives the grid. Five runs, all converged (max `r_hat` 1.00 to 1.04):
+
+| `ratio_g` | trend g, 1995Q4 | trend g, 2019Q4 | trend g, latest | 90% on latest | decline | potential g, latest | gap |
+|---|---|---|---|---|---|---|---|
+| 0.0125 | 3.84 | 2.17 | 2.149 | [1.93, 2.37] | 1.70 | 2.139 | 0.462 |
+| **0.025** | 3.99 | 2.02 | **2.151** | [1.79, 2.50] | 1.84 | **2.148** | 0.513 |
+| 0.05 | 4.06 | 1.77 | 2.157 | [1.59, 2.73] | 1.90 | 2.160 | 0.568 |
+| 0.10 | 4.02 | 1.34 | 2.073 | [1.11, 3.00] | 1.95 | 2.095 | 0.584 |
+| 0.20 | 3.83 | 0.47 | 1.970 | [0.45, 3.53] | 1.86 | 2.045 | 0.494 |
+
+**The headlines are in the data.** Across a sixteen-fold range in the smoothing prior, latest trend growth spans 0.19pp and potential growth at 2026Q2 spans 0.12pp, from 2.05 to 2.16. The decline since 1995Q4 runs 1.70 to 1.95. So "about 2.1%, down roughly two points since the late 1990s" is not the prior speaking.
+
+**The precision is the prior's.** The 90% band on latest trend growth runs [1.93, 2.37] at the tightest setting and [0.45, 3.53] at the loosest. The published interval is as narrow as it is because `sigma_g` is as tight as it is, which is what Limitation 2 says and this quantifies.
+
+**The pre-COVID reading is not robust, and has two explanations.** Trend growth at 2019Q4 goes 2.17, 2.02, 1.77, 1.34, 0.47 down the grid. Part of that is the smoother: a flexible drift bends down ahead of the 2020 collapse, having seen it. But part is real, since year-ended GDP growth had already fallen from 3.11% in 2018Q2 to 1.66% by 2019Q2, recovering only to 2.20% by 2019Q4. The 0.47% at the loosest setting overshoots what that slowdown alone justifies, so both mechanisms are present and the sweep cannot separate them. Treat any quoted pre-pandemic speed limit as conditional on `sigma_g` in a way the endpoint and the total decline are not.
+
+Traces retained as `potential_uc_sweep_ratio_g_*`.
+
 **Next, in priority order:**
-1. **Rewire `realtime.py` to the `inflation` spec, then run it.** Endpoint revision is the test that discriminates, and this specification has never been through it. Item 6 of the log is what it did to the earlier one.
-2. **Weaken the fixed anchor.** Item 6 identifies it as the binding defect, and this specification inherits it unchanged.
-3. **Delete the dead specifications** once nothing further is wanted from them, along with the equation modules only they use.
-4. **Import `c` from outside the sample** if a defensible external estimate can be found. Item 1 under Limitations says the internal estimate is a lower bound; the cross-sectional route (state unemployment against capital-city CPIs, where the cash rate is common) is the standard way to get one.
+1. **Corroborate `c` from outside the sample.** No longer a correction — the implied κ of 0.40 says the internal estimate is not biased down, so this is now a matter of tightening a wide interval [0.28, 0.66] rather than replacing a suspect number. It matters because the gap is `c` times data: `c` is the whole of the gap's uncertainty and the whole content of any real-time revision to it. The cross-sectional route (state unemployment against capital-city CPIs, where the cash rate is common) is the standard way to get an independent read.
+2. **Delete the dead specifications** once nothing further is wanted from them, along with the equation modules only they use.
+3. **Rewire `realtime.py` to the `inflation` spec, if it is still wanted.** Demoted. "Endpoint behaviour" sets out why this specification has structurally little to fear from the test: the gap is not filtered, so the exercise only measures the stability of `c`. Worth doing for the trend rather than the gap, and only in the coverage form described there, which needs the module to retain quantiles rather than medians.
+
+Not on the list, and deliberately: **weakening the fixed anchor**. Earlier drafts had it as item 2, on the view that the anchor was the model's most fragile assumption. It is not an assumption at all: 2.5 is the RBA's target midpoint for the whole sample, and treating it as data is the identifying idea rather than a weakness in it. Loosening it would remove the level information the anchor supplies and return the model to a filter.

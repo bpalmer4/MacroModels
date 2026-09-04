@@ -4,6 +4,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 # Run NAIRU + Output Gap joint estimation model
 cd "$ROOT"
+source "$ROOT/ssl-env.sh"
 uv run python -m src.models.nairu.run "$@"
 
 # Default: --variant simple_excess_rstar_blend --anchor target

@@ -95,6 +95,8 @@ The NAIRU model uses a **spliced series**: Long Run through 1991Q4 (smooth disin
 uv run python -m src.models.cobb_douglas.model -v
 ```
 
+Growth accounting is the solid product here. The potential output path it also produces is notional: its level is set by re-anchoring to actual GDP at four dates and is not disciplined by inflation, so prefer `potential_uc` for the output gap. See the [`MODEL_NOTES.md`](src/models/cobb_douglas/MODEL_NOTES.md).
+
 ### HLW r\* (Bayesian)
 
 Resolution G (blend + hierarchical Beta) is the default and the standard specification to run. It is the end point of a sequence of specifications (A–H) built while diagnosing why canonical HLW fails to identify r\* on Australian data; the earlier resolutions are retained as diagnostic comparators — see the model notes for the full journey.

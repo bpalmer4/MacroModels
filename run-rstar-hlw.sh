@@ -4,6 +4,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 # Run HLW Bayesian r-star estimation model
 cd "$ROOT"
+source "$ROOT/ssl-env.sh"
 uv run python -m src.models.rstar_hlw.run "$@"
 
 # Typical usage:

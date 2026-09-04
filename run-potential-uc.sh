@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 # Run the unobserved-components potential output model
 # (default spec: core — potential output from GDP and inflation alone)
 cd "$ROOT"
+source "$ROOT/ssl-env.sh"
 uv run python -m src.models.potential_uc.run "$@"
 
 # Typical usage:
