@@ -25,8 +25,15 @@ if TYPE_CHECKING:
 
 CHART_DIR = DEFAULT_CHART_BASE / "PotentialUC"
 
+# Each specification writes to its own directory. `run_analysis` clears the
+# directory before writing, so sharing one would mean whichever spec ran last
+# silently deleted the other's charts.
+SPEC_CHART_DIRS = {"production": DEFAULT_CHART_BASE / "PotentialUC-production"}
+
 _RFOOTER = "Source: ABS 5206.0, 6202.0, 6401.0"
 _RFOOTER_CORE = "Source: ABS 5206.0, 6401.0"
+# The production spec adds capital (5204.0) and the capital share.
+_RFOOTER_PRODUCTION = "Source: ABS 5204.0, 5206.0, 6202.0, 6401.0"
 
 # Shown on the output gap chart, where the sign is the thing to read.
 _GAP_HEADER = "A positive output gap is consistent with inflation"
@@ -54,7 +61,11 @@ def _band(posterior: pd.DataFrame) -> pd.DataFrame:
 
 def _rfooter(results: PotentialResults) -> str:
     """Source line naming only the catalogues this specification actually uses."""
-    return _RFOOTER if results.spec == "labour" else _RFOOTER_CORE
+    if results.spec == "labour":
+        return _RFOOTER
+    if results.spec == "production":
+        return _RFOOTER_PRODUCTION
+    return _RFOOTER_CORE
 
 
 def print_diagnostics(results: PotentialResults) -> None:
@@ -68,7 +79,7 @@ def print_diagnostics(results: PotentialResults) -> None:
     last = pot.index[-1]
 
     headline = [("Potential growth", pot), ("Output gap", gap)]
-    if results.spec in ("inflation", "core", "target"):
+    if results.spec in ("inflation", "production", "core", "target"):
         headline.insert(0, ("Trend growth (g state)", results.trend_growth_posterior()))
     else:
         headline.insert(0, ("Trend productivity growth", results.trend_prod_growth_posterior()))
@@ -91,7 +102,7 @@ def print_diagnostics(results: PotentialResults) -> None:
             f"  [{np.quantile(roots, 0.05):5.2f}, {np.quantile(roots, 0.95):5.2f}]",
         )
         print(f"  {'draws stationary':<28} {(roots < 1.0).mean():6.1%}")
-    elif results.spec == "inflation":
+    elif results.spec in ("inflation", "production"):
         # The gap is defined by inflation, so there is no cycle to be
         # stationary. What matters instead is how much of output's deviation
         # from potential that definition actually accounts for.
@@ -193,19 +204,21 @@ def plot_gap_composition(results: PotentialResults) -> None:
         log_gdp_t = y*_t + gap_t + e_c,   gap_t = c · (pi_t - anchor)
 
     so the deviation of GDP from potential is exactly the inflation-defined gap
-    plus the residual, with nothing else in it: y* has no sub-components and
-    `e_c` is white noise by construction. Stacked bars make that additivity
-    visible; the line is the total they sum to.
+    plus the residual, with nothing else in it, since `e_c` is white noise by
+    construction. Stacked bars make that additivity visible; the line is the
+    total they sum to. It holds for `production` as well: that spec changes
+    where potential's growth comes from, not the GDP observation equation.
 
     The residual bar is the arithmetic residual of the two plotted medians
     (median deviation less median gap) rather than the median of the residual
     posterior, so the bars sum to the line exactly. The two differ by at most
     0.01 percentage points on the current trace, medians not being additive.
     """
-    if results.spec != "inflation":
+    if results.spec not in ("inflation", "production"):
         raise ValueError(
-            f"gap composition is only meaningful for the 'inflation' specification, not {results.spec!r}: "
-            "elsewhere the gap is the identity log_gdp - y*, so the residual is identically zero",
+            f"gap composition is only meaningful for the 'inflation' and 'production' specifications, "
+            f"not {results.spec!r}: elsewhere the gap is the identity log_gdp - y*, so the residual is "
+            "identically zero",
         )
 
     gdp = pd.Series(results.obs["log_gdp"], index=results.obs_index)
@@ -392,6 +405,9 @@ def plot_trend_growth(results: PotentialResults) -> None:
       diverge sharply (sd 0.72 against 1.57, and -5.95 against +2.02 in 2020Q2).
       Plot the differenced level, and do not quote the state as potential growth.
     """
+    # `production` generates potential from the factor trends, so its `g` state
+    # *is* potential growth and the differenced level would add the cumulation
+    # noise for nothing. It belongs with `core`, not with `inflation`.
     residual_potential = results.spec == "inflation"
     trend = (
         results.potential_growth_posterior()
@@ -406,16 +422,28 @@ def plot_trend_growth(results: PotentialResults) -> None:
         color=["darkorange"],
         width=2,
         annotate=True,
-        rounding=1,
+        # Two decimals: the whole point of the chart is a speed limit that has
+        # fallen about two points, and 2.1 hides the difference between this
+        # model's 2.14, the RBA's ~2.0 and Cobb-Douglas at 1.86.
+        rounding=2,
+    )
+    # The production spec builds this from capital, hours and MFP, so neither
+    # the "output and inflation alone" claim nor the two-catalogue source line
+    # is true there.
+    production = results.spec == "production"
+    provenance = (
+        "g_Y* = a·g_K* + (1-a)·g_L* + g_M*, with a the observed capital share. "
+        if production
+        else "Identified from output and inflation alone. "
     )
     mg.finalise_plot(
         ax,
-        title="Potential growth",
+        title="Potential growth from the production function" if production else "Potential growth",
         ylabel="Year-ended per cent" if residual_potential else "Per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter="Source: ABS 5206.0, 6401.0",
-        lfooter=_LFOOTER + "Identified from output and inflation alone. ",
+        rfooter=_rfooter(results),
+        lfooter=_LFOOTER + provenance,
         show=False,
     )
 
@@ -674,10 +702,153 @@ def plot_gap_attribution(results: PotentialResults) -> None:
     )
 
 
+def plot_factor_trends(results: PotentialResults) -> None:
+    """Chart the three factor trends, which is what the production spec adds.
+
+    Growth-rate states rather than differenced levels, so they are smooth by
+    construction. Bands are omitted because three overlapping fills are
+    unreadable; MFP gets its own banded chart, being the one with real
+    uncertainty and the one nothing else in the package can put a band on.
+    """
+    trends = pd.DataFrame({
+        "Trend capital growth": results.factor_trend_posterior("gk").median(axis=1),
+        "Trend hours growth": results.factor_trend_posterior("gl").median(axis=1),
+        "Trend MFP growth": results.factor_trend_posterior("gm").median(axis=1),
+    })
+
+    mg.line_plot_finalise(
+        trends,
+        title="Trend growth of the factors of production",
+        ylabel="Year-ended growth (%)",
+        color=["darkorange", "navy", "seagreen"],
+        width=2,
+        annotate=False,
+        y0=True,
+        legend={"loc": "best", "fontsize": "small"},
+        rfooter=_RFOOTER_PRODUCTION,
+        lfooter=_LFOOTER,
+        show=False,
+    )
+
+
+def plot_capital_share(results: PotentialResults) -> None:
+    """Chart the published capital share against the model's latent trend.
+
+    Worth charting because the two look nothing alike, and without the reason
+    on the chart a near-flat trend through a volatile series reads as a failure
+    to fit. It is not: almost all of the published movement is discarded on
+    purpose. The share correlates +0.85 with the terms of trade and -0.08 with
+    potential growth in changes, so it moves when ore prices move and not when
+    capacity does. Cobb-Douglas also implies constant factor shares outright.
+
+    The header and footer carry that explanation, which is why they are longer
+    than elsewhere in this module. See `ModelConfig.ratio_a`.
+    """
+    published = pd.Series(results.obs["alpha"], index=results.obs_index)
+    trend = results.factor_trend_posterior("a", annualised=False)
+
+    ax = mg.fill_between_plot(_band(trend), **_BAND_KWARGS)
+    mg.line_plot(
+        published.rename("As published"),
+        ax=ax,
+        color=["darkgrey"],
+        width=1.4,
+        annotate=False,
+    )
+    mg.line_plot(
+        trend.median(axis=1).rename("Smoothed by the model"),
+        ax=ax,
+        color=["indianred"],
+        width=2.2,
+        annotate=True,
+        rounding=3,
+    )
+    mg.finalise_plot(
+        ax,
+        title="Capital share used in the production function",
+        ylabel="Share of income",
+        legend={"loc": "best", "fontsize": "small"},
+        lheader="Near-constant by design: most published movement is the terms of trade, not technology",
+        rfooter="Source: ABS 5204.0, 5206.0",
+        lfooter=(
+            "Australia. alpha = GOS/(GOS+COE). Corr +0.85 with terms of trade, -0.08 with potential growth. "
+        ),
+        show=False,
+    )
+
+
+def plot_trend_mfp(results: PotentialResults) -> None:
+    """Trend MFP growth with its credible interval.
+
+    This is the specification's real addition. In `decompose.py` productivity
+    is a residual: it absorbs every error in the hours trend and carries no
+    uncertainty of its own. Here it is a state, so the band is meaningful, and
+    on this data it spans zero — which is the honest reading of Australian
+    productivity growth and one the deterministic split cannot express.
+    """
+    mfp = results.factor_trend_posterior("gm")
+
+    ax = mg.fill_between_plot(_band(mfp), **_BAND_KWARGS)
+    mg.line_plot(
+        mfp.median(axis=1).rename("Trend MFP growth"),
+        ax=ax,
+        color=["seagreen"],
+        width=2,
+        annotate=True,
+        rounding=2,
+    )
+    mg.finalise_plot(
+        ax,
+        title="Trend multifactor productivity growth",
+        ylabel="Year-ended growth (%)",
+        y0=True,
+        legend={"loc": "best", "fontsize": "small"},
+        rfooter=_RFOOTER_PRODUCTION,
+        lfooter=_LFOOTER,
+        show=False,
+    )
+
+
+def plot_factor_contributions(results: PotentialResults) -> None:
+    """Contributions to potential growth, which add to it exactly.
+
+    alpha·g_K*, (1-alpha)·g_L* and g_M*, with alpha the observed smoothed
+    capital share. The three sum to potential growth at every quarter, so the
+    stack is the composition of the speed limit rather than an approximation
+    to it.
+    """
+    contributions = results.factor_contributions()
+
+    ax = mg.line_plot(
+        contributions,
+        color=["darkorange", "navy", "seagreen"],
+        width=2,
+        annotate=False,
+    )
+    mg.line_plot(
+        contributions.sum(axis=1).rename("Potential growth"),
+        ax=ax,
+        color=["black"],
+        width=2.4,
+        style="--",
+        annotate=False,
+    )
+    mg.finalise_plot(
+        ax,
+        title="Contributions to potential growth",
+        ylabel="Percentage points, year-ended",
+        y0=True,
+        legend={"loc": "best", "fontsize": "x-small"},
+        rfooter=_RFOOTER_PRODUCTION,
+        lfooter=_LFOOTER + "Capital share is observed and smoothed, not estimated. ",
+        show=False,
+    )
+
+
 def run_analysis(
     output_dir: Path | str | None = None,
     prefix: str = "potential_uc",
-    chart_dir: Path | str = CHART_DIR,
+    chart_dir: Path | str | None = None,
     decompose: bool = True,
 ) -> PotentialResults:
     """Load results, print diagnostics, and write every chart.
@@ -685,12 +856,17 @@ def run_analysis(
     `decompose` adds the post-modelling accounting split of potential growth
     into hours and productivity (see `decompose.py`). It loads labour force
     data, so it is the only part of the analysis that touches ABS sources; pass
-    False to chart from the trace alone. It is skipped for the `labour`
-    specification, which estimates that split internally.
+    False to chart from the trace alone. It is skipped for `labour` and
+    `production`, both of which estimate a split internally.
     """
     results = load_results(output_dir=output_dir, prefix=prefix)
 
     print_diagnostics(results)
+
+    # Default per specification, so one spec's run cannot clear another's
+    # charts. An explicit chart_dir still wins.
+    if chart_dir is None:
+        chart_dir = SPEC_CHART_DIRS.get(results.spec, CHART_DIR)
 
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
@@ -698,7 +874,7 @@ def run_analysis(
     plot_potential(results, tag="full")
     plot_potential(results, plot_from="2015Q1", tag="recent")
     plot_output_gap(results)
-    if results.spec == "inflation":
+    if results.spec in ("inflation", "production"):
         plot_gap_composition(results)
 
     # Two windows: the full sample, and one that excludes the COVID swing,
@@ -706,9 +882,20 @@ def run_analysis(
     plot_growth_vs_potential(results, tag="full")
     plot_growth_vs_potential(results, plot_from="2015Q1", tag="recent")
 
-    if results.spec in ("inflation", "core", "target"):
+    if results.spec == "production":
+        plot_factor_trends(results)
+        plot_trend_mfp(results)
+        plot_factor_contributions(results)
+        plot_capital_share(results)
+
+    if results.spec in ("inflation", "production", "core", "target"):
         plot_trend_growth(results)
-        if decompose:
+        # `production` splits potential growth internally, into capital, hours
+        # and MFP with credible intervals, so the post-modelling accounting
+        # split would be a second, weaker answer to the same question: it
+        # re-derives productivity as a residual from a path that already has
+        # it as a state. Skipped there rather than shown alongside.
+        if decompose and results.spec != "production":
             decomposition = decompose_potential_growth(results)
             print_decomposition(decomposition)
             plot_growth_accounting(decomposition)

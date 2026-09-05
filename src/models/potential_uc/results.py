@@ -8,6 +8,7 @@ from typing import Any
 import arviz as az
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from src.models.potential_uc.config import DEFAULT_OUTPUT_DIR
 
@@ -24,24 +25,43 @@ class PotentialResults:
     constants: dict[str, Any] = field(default_factory=dict)
     chart_obs: pd.DataFrame | None = None
 
+    @property
+    def posterior(self) -> xr.Dataset:
+        """The trace's posterior group, narrowed at runtime.
+
+        `az.InferenceData` builds its groups dynamically, so a static checker
+        cannot see `.posterior` and every access reads as an attribute error.
+        Narrowing here once means the rest of the class is checkable, and it
+        turns a missing group into a clear failure rather than an AttributeError
+        several frames deep.
+        """
+        posterior = getattr(self.trace, "posterior", None)
+        if not isinstance(posterior, xr.Dataset):
+            raise TypeError("trace has no posterior group — was it loaded from a completed run?")
+        return posterior
+
     def _vector(self, var_name: str) -> pd.DataFrame:
         """Return a time x draw DataFrame for a vector-valued latent."""
         # xarray's .stack, not pandas' — PD013 does not apply.
-        stacked = self.trace.posterior[var_name].stack(sample=("chain", "draw"))  # noqa: PD013
+        stacked = self.posterior[var_name].stack(sample=("chain", "draw"))  # noqa: PD013
         return pd.DataFrame(np.asarray(stacked.values), index=self.obs_index)
 
     def _scalar(self, var_name: str) -> np.ndarray:
         """Return the flattened posterior draws for a scalar parameter."""
-        return np.asarray(self.trace.posterior[var_name].values).ravel()
+        return np.asarray(self.posterior[var_name].values).ravel()
 
     @property
     def spec(self) -> str:
         """Which specification produced this trace, read from its contents."""
-        if "trend_hours" in self.trace.posterior:
+        if "trend_hours" in self.posterior:
             return "labour"
-        if "c" in self.trace.posterior:
+        # Must precede the `c` test: the production spec keeps the inflation
+        # gap, so it carries `c` too, and differs by having the factor trends.
+        if "trend_gk" in self.posterior:
+            return "production"
+        if "c" in self.posterior:
             return "inflation"
-        if "inflation_deviation" in self.trace.posterior:
+        if "inflation_deviation" in self.posterior:
             return "target"
         return "core"
 
@@ -55,7 +75,7 @@ class PotentialResults:
         Smooth by construction, being the model's drift state. Use
         `potential_growth_posterior` for the differenced-level equivalent.
         """
-        if "trend_growth" not in self.trace.posterior:
+        if "trend_growth" not in self.posterior:
             raise ValueError(f"trend_growth is not a state of the {self.spec!r} specification")
         growth = self._vector("trend_growth")
         return growth * 4 if annualised else growth
@@ -69,6 +89,38 @@ class PotentialResults:
     def output_gap_posterior(self) -> pd.DataFrame:
         """Return the output gap, log_gdp - y* (log x 100)."""
         return self._vector("output_gap")
+
+    def _require_production(self, what: str) -> None:
+        if self.spec != "production":
+            raise ValueError(f"{what} is only available for the 'production' specification")
+
+    def factor_trend_posterior(self, factor: str, annualised: bool = True) -> pd.DataFrame:
+        """Return a factor's trend growth (production specification only).
+
+        `factor` is "gk" (capital), "gl" (hours), "gm" (MFP) or "a" (the
+        capital share). The first three are growth-rate states, so they are
+        smooth by construction and need no differencing, unlike
+        `potential_growth_posterior`. "a" is a share, not a growth rate, so
+        pass `annualised=False` for it.
+        """
+        self._require_production(f"factor trend {factor!r}")
+        if factor not in ("gk", "gl", "gm", "a"):
+            raise ValueError(f"factor must be one of 'gk', 'gl', 'gm', 'a', got {factor!r}")
+        trend = self._vector(f"trend_{factor}")
+        return trend * 4 if annualised else trend
+
+    def factor_contributions(self) -> pd.DataFrame:
+        """Return alpha·g_K*, (1-alpha)·g_L* and g_M*, which sum to potential growth.
+
+        The weights are the model's latent capital share, so the three columns
+        add to `trend_growth` exactly at every draw and every quarter.
+        """
+        self._require_production("factor_contributions")
+        alpha = self.factor_trend_posterior("a", annualised=False).median(axis=1)
+        capital = self.factor_trend_posterior("gk").median(axis=1) * alpha
+        hours = self.factor_trend_posterior("gl").median(axis=1) * (1.0 - alpha)
+        mfp = self.factor_trend_posterior("gm").median(axis=1)
+        return pd.DataFrame({"Capital": capital, "Hours": hours, "MFP": mfp})
 
     def trend_hours_posterior(self) -> pd.DataFrame:
         """Return trend hours, h* (log x 100). Labour specification only."""
@@ -193,8 +245,15 @@ class PotentialResults:
 
     def summary(self, var_names: list[str] | None = None) -> pd.DataFrame:
         """ArviZ summary for the scalar parameters."""
+        if var_names is None and self.spec == "production":
+            var_names = [
+                "c", "sigma_e", "rho_e", "sigma_e_total",
+                "sigma_obs_gk", "sigma_obs_gl", "sigma_obs_gm",
+            ]
         if var_names is None and self.spec == "inflation":
-            var_names = ["c", "sigma_e", "initial_trend_growth"]
+            # rho_e and sigma_e_total exist only under `ar1_residual`;
+            # `available` below drops them for the white-noise runs.
+            var_names = ["c", "sigma_e", "rho_e", "sigma_e_total", "initial_trend_growth"]
         if var_names is None:
             var_names = (
                 # `target` has no beta and no sigma_pi; `available` filters them.
@@ -207,7 +266,7 @@ class PotentialResults:
                     "initial_prod_growth",
                 ]
             )
-        available = [v for v in var_names if v in self.trace.posterior]
+        available = [v for v in var_names if v in self.posterior]
         summary = az.summary(self.trace, var_names=available)
         if not isinstance(summary, pd.DataFrame):
             raise TypeError(f"az.summary returned {type(summary).__name__}, expected a DataFrame")

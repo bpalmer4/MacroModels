@@ -57,7 +57,7 @@ from pathlib import Path
 
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
 
-SPECS = ("inflation", "core", "labour", "target")
+SPECS = ("inflation", "production", "core", "labour", "target")
 
 PI_BASES = ("quarterly", "annual")
 
@@ -144,6 +144,125 @@ class ModelConfig:
     # both be free.
     free_sigma_ystar: bool = False
 
+    # Let the GDP residual e_c be AR(1) rather than white noise (`inflation`
+    # spec only). e_c carries about four fifths of the cyclical variation in
+    # output, and asserting that four fifths is serially independent is a
+    # strong claim: a persistent non-inflationary cycle would look exactly like
+    # this, and the white-noise model cannot see it. Freeing rho asks whether
+    # c and trend growth depend on that assertion. Note what it does to the
+    # estimator: with persistent errors the likelihood weights c like a
+    # quasi-differenced GLS regression, and the inflation deviation is itself
+    # highly persistent, so quasi-differencing strips out much of the
+    # low-frequency variation in d. c is not guaranteed to survive.
+    ar1_residual: bool = False
+
+    # Inclusive quarter range whose inflation deviation is set to zero, as
+    # ("2020Q2", "2021Q1"). Those quarters keep their GDP observation and are
+    # fitted continuously, so nothing is dropped and no dummy is added; what
+    # changes is that they carry no deviation, so they imply no gap and supply
+    # no identification to `c`. This is the targeted form of "the lockdown is
+    # not evidence about the inflation-output relationship": the pandemic
+    # quarters have a large negative `x` caused by closure and a negative `d`
+    # caused by free childcare and fuel, so regressor and residual share a
+    # common cause and the projection's orthogonality condition fails there.
+    # See iteration log items 13 and 16.
+    zero_deviation: tuple[str, str] | None = None
+
+    # Give `c` a two-sided Normal(0, 2) prior instead of the default HalfNormal,
+    # so the posterior can place mass on a negative conversion factor. The
+    # default imposes the sign, which means the usual "c is clear of zero"
+    # statement is guaranteed by the prior rather than earned from the data.
+    # This is how the model's central proposition gets tested rather than
+    # assumed. `inflation` spec only.
+    two_sided_c: bool = False
+
+    # --- production spec ---------------------------------------------------
+    # Potential growth from a Cobb-Douglas production function instead of a
+    # free drift: g_Y* = alpha·g_K* + (1-alpha)·g_L* + g_M*. The level and the
+    # gap are unchanged from the `inflation` spec, so the inflation fulcrum
+    # still positions potential; what changes is where its *growth* comes from.
+    #
+    # Each factor trend is a random walk observed with noise, and the ratio of
+    # trend innovation sd to observation sd is imposed.
+    #
+    # These are NOT HP lambdas, and an earlier version of this comment said
+    # they were. HP(lambda) is the local *linear trend* model, where lambda is
+    # the variance ratio against the innovation to the slope of an I(2) trend.
+    # These trends are local *level* models — I(1) random walks — so the ratio
+    # is against the innovation to the level, and for the same nominal lambda
+    # it smooths very much harder. The interpretable quantity is how far the
+    # trend can wander over the sample: r x sigma_obs x sqrt(T).
+    #
+    # They differ deliberately, and this is the whole content of the
+    # specification. Over 1978Q4 onward the HP(1600) cycle is 37% of the
+    # variation in capital growth but 97% of it in hours growth, so putting
+    # both through the same filter under-smooths labour badly. Note the
+    # consequence: with a common ratio and a constant alpha the production
+    # terms cancel algebraically and potential growth collapses to an HP trend
+    # of GDP growth, exactly. The differences below are what stop that.
+    ratio_gk: float = 0.05      # capital: mostly trend already, light smoothing
+    ratio_gl: float = 0.0125    # hours: almost all cycle, heavy smoothing
+    ratio_gm: float = 0.025     # MFP: noisy at quarterly frequency
+
+    # alpha is a fourth latent trend, observed by the published capital share,
+    # smoothed inside the model on the same footing as the factor trends. No
+    # filter is applied to the data beforehand, so there is no smoothing choice
+    # sitting outside the specification.
+    #
+    # Set so tight that alpha is very nearly constant, 0.335 to 0.338 across
+    # the sample against a published range of 0.299 to 0.406. That is
+    # deliberate, and rests on two things.
+    #
+    # The published movement is the terms of trade, not technology. alpha is
+    # GOS / (GOS + COE), and it correlates **+0.852** with the terms of trade
+    # in levels (+0.459 in changes), while correlating −0.077 with potential
+    # growth in changes and −0.033 with an HP cycle of GDP. When iron ore and
+    # coal prices rise, mining revenue lands in GOS with no matching rise in
+    # COE, because the wage bill does not scale with the price of the ore. The
+    # share moves without anything happening to what the economy can produce.
+    #
+    # And Cobb-Douglas assumes an elasticity of substitution of one, which
+    # *implies* constant factor shares. A drifting alpha inside it is
+    # internally inconsistent: if shares genuinely move, the functional form
+    # should be CES with sigma != 1, and a drifting alpha is a patch on that
+    # misspecification rather than a feature.
+    #
+    # Loosening this to 0.05 lets a 0.036 drift through, which is the mining
+    # boom. It moves potential growth by 0.01pp, so nothing rests on the
+    # choice numerically; it rests on what alpha is supposed to represent.
+    ratio_a: float = 0.00625
+
+    # Drop the MFP observation equation, which double-counts GDP.
+    #
+    # The Solow residual is `g_Y - a·g_K - (1-a)·g_L`, so GDP growth is inside
+    # it, and GDP is separately observed in the gap equation. The model then
+    # has five observed vectors of length T drawn from four independent data
+    # series: 670 likelihood terms from 536 numbers on the 2026Q2 vintage.
+    # Exactly T of them are redundant, and they are the MFP equation.
+    #
+    # With `mfp_observed = False` that equation goes, leaving four equations
+    # for four series. `sigma_obs_gm` then appears nowhere, so `g_M*` cannot
+    # take its innovation sd as a ratio to it and needs an imposed absolute
+    # one: `sigma_gm` below, defaulting to the `sigma_g` of the main spec.
+    # `g_M*` is then identified as whatever reconciles the cumulated factor
+    # trends with GDP through the level equation, which is what a Solow
+    # residual is.
+    #
+    # Tested and left on. At sigma_gm = 0.015 the two are the same model for
+    # practical purposes (potential growth 2.17 against 2.16, band 0.66 against
+    # 0.68, c 0.500 against 0.498), so removing the redundancy buys nothing.
+    # The feared failure did not happen either: trend capital growth is +2.32
+    # to +2.33 in every variant, so `g_M*` does not absorb the decomposition.
+    #
+    # What sigma_gm does control is the *shape* of the MFP path once it has no
+    # data of its own: trend MFP in 1997Q4 runs 0.78, 1.35, 1.99 at sigma_gm
+    # 0.005, 0.015, 0.05, against 1.44 when observed. Since the productivity
+    # attribution is this specification's main addition, anchoring it to the
+    # measured Solow residual is worth more than removing 134 redundant
+    # likelihood terms that change no reported number.
+    mfp_observed: bool = True
+    sigma_gm: float = 0.015
+
     gap_sd_on_target: float = 0.50
     gap_sd_per_pp: float = 1.00
     cycle_ar: bool = True
@@ -188,7 +307,14 @@ class ModelConfig:
     def scale_constants(self) -> dict[str, float]:
         """Return the fixed variance scale and the ratios this spec uses."""
         constants = {"sigma_c": self.sigma_c}
-        if self.spec in ("inflation", "core", "target"):
+        if self.spec == "production":
+            # No ratio_ystar or ratio_g: potential's growth comes from the
+            # factor trends, so there is no free drift state to smooth.
+            constants["ratio_gk"] = self.ratio_gk
+            constants["ratio_gl"] = self.ratio_gl
+            constants["ratio_gm"] = self.ratio_gm
+            constants["ratio_a"] = self.ratio_a
+        elif self.spec in ("inflation", "core", "target"):
             constants["ratio_ystar"] = self.ratio_ystar
             constants["ratio_g"] = self.ratio_g
         else:

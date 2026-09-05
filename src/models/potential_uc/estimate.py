@@ -21,6 +21,7 @@ from src.models.potential_uc.equations.output import output_equation
 from src.models.potential_uc.equations.participation import participation_equation
 from src.models.potential_uc.equations.phillips import phillips_curve_equation
 from src.models.potential_uc.equations.potential import potential_output_equation
+from src.models.potential_uc.equations.production import production_potential_equation
 from src.models.potential_uc.equations.scale import scale_equation
 from src.models.potential_uc.equations.target_consistency import (
     target_consistency_equation,
@@ -58,6 +59,44 @@ def _free_sigma_ystar(
     return ["Scale:        sigma_ystar estimated, not imposed"]
 
 
+def _inflation_family(
+    obs: dict[str, np.ndarray],
+    model: pm.Model,
+    latents: dict[str, Any],
+    config: ModelConfig,
+) -> list[str]:
+    """Build the potential and gap blocks shared by `inflation` and `production`.
+
+    Both define the gap by inflation and fit GDP around it with a residual, so
+    they differ only in where potential's *growth* comes from: a free drift
+    state (`potential.py`) or the factor trends (`production.py`).
+    """
+    if config.spec == "production":
+        desc = production_potential_equation(
+            obs, model, latents,
+            constant={
+                "ratio_gk": config.ratio_gk,
+                "ratio_gl": config.ratio_gl,
+                "ratio_gm": config.ratio_gm,
+                "ratio_a": config.ratio_a,
+                "mfp_observed": config.mfp_observed,
+                "sigma_gm": config.sigma_gm,
+            },
+        )
+    else:
+        desc = potential_output_equation(obs, model, latents)
+
+    gap_desc = inflation_gap_equation(
+        obs, model, latents,
+        constant={
+            "anchor": config.anchor,
+            "ar1_residual": config.ar1_residual,
+            "two_sided_c": config.two_sided_c,
+        },
+    )
+    return [f"Potential:    {desc}", f"Gap:          {gap_desc}"]
+
+
 def build_model(
     obs: dict[str, np.ndarray],
     config: ModelConfig | None = None,
@@ -85,12 +124,8 @@ def build_model(
     # by inflation rather than restricted to look like a cycle, and GDP is
     # fitted around the two with a white-noise residual. No Phillips curve, no
     # IS curve, no AR(2).
-    if config.spec == "inflation":
-        desc = potential_output_equation(obs, model, latents)
-        descriptions.append(f"Potential:    {desc}")
-
-        desc = inflation_gap_equation(obs, model, latents, constant={"anchor": config.anchor})
-        descriptions.append(f"Gap:          {desc}")
+    if config.spec in ("inflation", "production"):
+        descriptions.extend(_inflation_family(obs, model, latents, config))
 
         if verbose:
             print("\nModel specification:")
@@ -214,6 +249,15 @@ def run_estimate(
         smooth_pop=config.smooth_pop, spec=config.spec,
         pi_basis=config.pi_basis, supply_control=config.supply_control,
     )
+
+    if config.zero_deviation is not None:
+        # Setting pi to the anchor is exactly d = 0 for those quarters, and is
+        # done here rather than inside the equation because this is the only
+        # place holding both the observations and their period index.
+        lo, hi = config.zero_deviation
+        mask = (obs_index >= pd.Period(lo, freq="Q")) & (obs_index <= pd.Period(hi, freq="Q"))
+        obs["pi"] = np.where(mask, config.anchor, obs["pi"])
+        print(f"Zeroed dev:   {lo} to {hi}  ({int(mask.sum())} quarters carry no deviation)")
 
     print("Building model...")
     model = build_model(obs, config=config)

@@ -45,9 +45,36 @@ def parse_args() -> argparse.Namespace:
         help="drop the AR(2) cycle restriction; gap becomes the bare identity",
     )
 
+    parser.add_argument(
+        "--ar1-residual", action="store_true",
+        help="inflation spec: let the GDP residual e_c be AR(1) rather than white noise",
+    )
+
+    parser.add_argument(
+        "--two-sided-c", action="store_true",
+        help="inflation spec: give c a Normal(0,2) prior so its sign is estimated, not imposed",
+    )
+
+    parser.add_argument(
+        "--zero-deviation", nargs=2, metavar=("FROM", "TO"), default=None,
+        help="inclusive quarter range whose inflation deviation is set to zero, e.g. 2020Q2 2021Q1",
+    )
+
     parser.add_argument("--sigma-c", type=float, default=0.60, help="Fixed cycle innovation sd")
     parser.add_argument("--ratio-ystar", type=float, default=0.13, help="core: potential level")
     parser.add_argument("--ratio-g", type=float, default=0.025, help="core: trend growth")
+    parser.add_argument("--ratio-gk", type=float, default=0.05,
+                        help="production: capital trend/obs sd ratio (= 1/sqrt(HP lambda))")
+    parser.add_argument("--ratio-gl", type=float, default=0.0125,
+                        help="production: hours trend/obs sd ratio")
+    parser.add_argument("--ratio-gm", type=float, default=0.025,
+                        help="production: MFP trend/obs sd ratio")
+    parser.add_argument("--ratio-a", type=float, default=0.00625,
+                        help="production: capital share trend/obs sd ratio")
+    parser.add_argument("--no-mfp-observation", action="store_true",
+                        help="production: drop the MFP observation equation, which double-counts GDP")
+    parser.add_argument("--sigma-gm", type=float, default=0.015,
+                        help="production: imposed MFP trend innovation sd when MFP is not observed")
     parser.add_argument("--ratio-pr-star", type=float, default=0.10)
     parser.add_argument("--ratio-hpp-star", type=float, default=0.10)
     parser.add_argument("--ratio-lp-star", type=float, default=0.10)
@@ -63,7 +90,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-analyse", action="store_true", help="Estimate without charting")
     parser.add_argument(
         "--no-decompose", action="store_true",
-        help="Skip the hours/productivity accounting split (avoids loading labour force data)",
+        help="Skip the hours/productivity accounting split (avoids loading labour force data). "
+             "Always skipped for the labour and production specs, which split potential internally",
     )
     parser.add_argument("--verbose", action="store_true")
 
@@ -84,9 +112,18 @@ def main() -> None:
         gap_sd_on_target=args.gap_sd_on_target,
         gap_sd_per_pp=args.gap_sd_per_pp,
         cycle_ar=not args.no_cycle_ar,
+        ar1_residual=args.ar1_residual,
+        zero_deviation=tuple(args.zero_deviation) if args.zero_deviation else None,
+        two_sided_c=args.two_sided_c,
         sigma_c=args.sigma_c,
         ratio_ystar=args.ratio_ystar,
         ratio_g=args.ratio_g,
+        ratio_gk=args.ratio_gk,
+        ratio_gl=args.ratio_gl,
+        ratio_gm=args.ratio_gm,
+        ratio_a=args.ratio_a,
+        mfp_observed=not args.no_mfp_observation,
+        sigma_gm=args.sigma_gm,
         ratio_pr_star=args.ratio_pr_star,
         ratio_hpp_star=args.ratio_hpp_star,
         ratio_lp_star=args.ratio_lp_star,

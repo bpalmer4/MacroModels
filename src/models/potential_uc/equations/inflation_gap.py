@@ -29,6 +29,21 @@ inflation on the gap. No IS curve and no policy rule. And no cycle dynamics:
 `e_c` is white noise, so nothing is imposed about how the unexplained part of
 output behaves over time, which is the opposite of assuming an AR(2) cycle.
 
+White noise is a choice rather than an absence, though, and `e_c` is serially
+correlated in fact: lag-1 autocorrelation 0.51. That is expected rather than
+troubling. Policy acts with lags and expectations feed inflation, so the part
+of output that contemporaneous inflation does not account for is bound to
+persist. What follows is that `e_c` is where the omitted IS curve and
+expectations block show through, and modelling it would mean reintroducing, in
+reduced form, the structure this package exists to do without.
+
+The residual is therefore left unmodelled deliberately, and its persistence is
+not a defect to be patched. `ModelConfig.ar1_residual` fits an AR(1) to it
+anyway, as a diagnostic rather than a candidate specification; see iteration
+log item 15 for what it shows and why it is not adopted. Under that option
+`sigma_e` becomes the innovation sd and `sigma_e_total` the stationary
+residual sd.
+
 The second line is contemporaneous, which asserts that inflation accompanies
 the gap rather than following it. Letting inflation lead was tried and did not
 earn its keep; see "Explored but did not work" in MODEL_NOTES.md.
@@ -73,31 +88,77 @@ def inflation_gap_equation(
         raise ValueError("inflation_gap_equation requires potential_output — run potential.py first")
 
     anchor = float(constant["anchor"])
+    ar1 = bool(constant.get("ar1_residual", False))
+    two_sided_c = bool(constant.get("two_sided_c", False))
     deviation = np.asarray(obs["pi"], dtype=float) - anchor
 
     with model:
         # c is per cent of output per percentage point of inflation deviation.
-        # Positive by construction: above-target inflation means output above
-        # potential, which is the proposition being tested. The prior is
-        # deliberately weak, since c is what the exercise is about.
+        # The default prior is HalfNormal, so the sign is *imposed*: above-target
+        # inflation means output above potential. That is the model's premise
+        # rather than a finding, and it means "c's interval is clear of zero"
+        # cannot be read as evidence for the premise, because the prior forbids
+        # the alternative. `two_sided_c` swaps in Normal(0, 2) so the data can
+        # place mass below zero, which is the only form in which the premise is
+        # actually tested. Weak either way, since c is what the exercise is about.
         settings = {
-            "c": {"sigma": 2.0},
+            "c": {"mu": 0.0, "sigma": 2.0} if two_sided_c else {"sigma": 2.0},
             "sigma_e": {"sigma": 1.0},
         }
+        if ar1:
+            # Weak and roughly flat over the stationary region: the point of
+            # freeing rho is to let the data say how persistent the residual
+            # is, so the prior must not answer that question. Two-sided,
+            # because a negative rho is a real (if unlikely) answer.
+            settings["rho_e"] = {"mu": 0.0, "sigma": 0.5, "lower": -0.99, "upper": 0.99}
         mc = set_model_coefficients(model, settings, constant)
 
         potential_output = latents["potential_output"]
         output_gap = pm.Deterministic("output_gap", mc["c"] * deviation)
 
-        pm.Normal(
-            "observed_gdp",
-            mu=potential_output + output_gap,
-            sigma=mc["sigma_e"],
-            observed=obs["log_gdp"],
-        )
+        if not ar1:
+            pm.Normal(
+                "observed_gdp",
+                mu=potential_output + output_gap,
+                sigma=mc["sigma_e"],
+                observed=obs["log_gdp"],
+            )
+        else:
+            # e_c,t = rho·e_c,{t-1} + eps_t. The lagged residual is observable
+            # given the states, since log_gdp is data, so the likelihood is
+            # written directly on GDP with the AR term in the mean rather than
+            # as a latent process: no extra states, no filtering.
+            #
+            # `sigma_e` is the *innovation* sd here, not the residual sd. The
+            # comparable quantity to the white-noise run's 0.98 is the
+            # stationary sd, recorded as `sigma_e_total`.
+            log_gdp = np.asarray(obs["log_gdp"], dtype=float)
+            fitted = potential_output + output_gap
+            rho = mc["rho_e"]
+            stationary_sigma = mc["sigma_e"] / pt.sqrt(1.0 - rho**2)
+
+            # The first observation carries the stationary distribution rather
+            # than being conditioned away. Dropping it would be the standard
+            # conditional likelihood; keeping it matters here because rho is
+            # the parameter under test and the exact likelihood is what makes
+            # the two runs' `sigma_e` comparable at rho = 0.
+            pm.Normal(
+                "observed_gdp_initial",
+                mu=fitted[0],
+                sigma=stationary_sigma,
+                observed=log_gdp[0],
+            )
+            pm.Normal(
+                "observed_gdp",
+                mu=fitted[1:] + rho * (log_gdp[:-1] - fitted[:-1]),
+                sigma=mc["sigma_e"],
+                observed=log_gdp[1:],
+            )
+            pm.Deterministic("sigma_e_total", stationary_sigma)
 
         pm.Deterministic("inflation_deviation", pt.as_tensor_variable(deviation))
 
     latents["output_gap"] = output_gap
 
-    return f"gap_t = c · (pi_t - {anchor:g});  log_gdp_t = y*_t + gap_t + e_c"
+    residual = "e_c ~ AR(1)" if ar1 else "e_c ~ N(0, sigma_e)"
+    return f"gap_t = c · (pi_t - {anchor:g});  log_gdp_t = y*_t + gap_t + e_c,  {residual}"

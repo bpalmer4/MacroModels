@@ -40,6 +40,8 @@ import numpy as np
 import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
 
+from src.data.capital import get_capital_stock_qrtly
+from src.data.capital_share import get_capital_share
 from src.data.gdp import get_log_gdp
 from src.data.henderson import hma
 from src.data.import_prices import get_import_price_growth_lagged_annual
@@ -150,6 +152,37 @@ def _load_series(
     if supply_control == "import_prices":
         columns["supply"] = get_import_price_growth_lagged_annual().data
         labels["supply"] = "import price growth (6457.0)"
+
+    if spec == "production":
+        # Growth rates in log x 100, matching log_gdp's units, so the Solow
+        # identity g_Y = alpha·g_K + (1-alpha)·g_L + mfp holds in those units.
+        # alpha is smoothed observed data, never estimated: the residual is an
+        # accounting identity, so alpha is not identified against it.
+        g_gdp = get_log_gdp().data.diff()
+        g_k = (np.log(get_capital_stock_qrtly().data) * 100).diff()
+        g_l = (np.log(get_hours_worked_qrtly().data) * 100).diff()
+        alpha = get_capital_share().data
+
+        aligned = pd.DataFrame({"g_gdp": g_gdp, "g_k": g_k, "g_l": g_l, "alpha": alpha}).dropna()
+        columns["g_k"] = aligned["g_k"]
+        columns["g_l"] = aligned["g_l"]
+        # The published share, unsmoothed. The model smooths it internally as a
+        # latent trend (see `equations/production.py`), so there is no filter
+        # choice sitting outside the model.
+        columns["alpha"] = aligned["alpha"]
+        # The Solow residual is built with the *raw* share, which keeps the
+        # identity g_Y = a·g_K + (1-a)·g_L + mfp exact in the data. Potential is
+        # then assembled from the trend of each component rather than from a
+        # part-smoothed identity.
+        columns["mfp"] = (
+            aligned["g_gdp"] - aligned["alpha"] * aligned["g_k"]
+            - (1.0 - aligned["alpha"]) * aligned["g_l"]
+        )
+        labels["g_k"] = "capital growth (5204.0)"
+        labels["g_l"] = "hours growth (6202.0)"
+        labels["alpha"] = "capital share, as published"
+        labels["mfp"] = "Solow residual"
+        return columns, labels
 
     if spec != "labour":
         return columns, labels
