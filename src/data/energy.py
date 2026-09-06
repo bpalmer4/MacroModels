@@ -57,7 +57,7 @@ def _resolve_pink_sheet_url() -> str:
 
     pattern = r'https://thedocs\.worldbank\.org/en/doc/[^"\']+/CMO-Historical-Data-Monthly\.xlsx'
     try:
-        req = urllib.request.Request(  # noqa: S310 — fixed https URL
+        req = urllib.request.Request(
             PINK_SHEET_LANDING_PAGE, headers={"User-Agent": "Mozilla/5.0"},
         )
         with urllib.request.urlopen(req) as response:  # noqa: S310

@@ -23,7 +23,7 @@ Two things, and it is worth keeping them apart because they are of very differen
 
 **Growth accounting.** How much of Australian output growth came from more capital, more hours, and neither. This is the model's real product. It is close to an identity, it needs only `alpha`, and the decade table below is a defensible description of what happened.
 
-**A potential output path.** Built by cumulating the trend contributions. This is weaker and the model says so in its own docstring: *"the output gap from this model is notional only, it is not disciplined by inflation dynamics."* Nothing in this package positions the level of potential output. See "The re-anchoring problem" and "Relationship to `potential_uc`".
+**A potential output path.** Built by cumulating the trend contributions. This is weaker and the model says so in its own docstring: *"the output gap from this model is notional only, it is not disciplined by inflation dynamics."* Nothing in this package positions the level of potential output. See "The re-anchoring problem" and "Relationship to `ystar`".
 
 ---
 
@@ -133,18 +133,18 @@ and prints "weak relationship, gap may not capture demand pressure well". This i
 
 ---
 
-## Relationship to `potential_uc`
+## Relationship to `ystar`
 
 The two models answer overlapping questions from disjoint information, which makes them a useful pair.
 
-| | `cobb_douglas` | `potential_uc` |
+| | `cobb_douglas` | `ystar` |
 |---|---|---|
 | information | capital, hours, factor shares | GDP, trimmed mean inflation |
 | potential growth, 2026Q2 | 1.86 | 2.14 [1.77, 2.51] |
 | how the level is set | reset to actual at four anchor dates | defined by inflation at target |
 | output gap, 2026Q2 | −0.89 (notional) | +0.51 [0.31, 0.72] |
 
-**Compare the growth paths, not the gaps.** 1.86 against 2.14 is a genuine cross-check between methods sharing no equations and almost no data, and 0.28pp apart is close. The gaps are not comparable, because this model does not claim to locate the level and `potential_uc` does. See `potential_uc/MODEL_NOTES.md`, "External comparison".
+**Compare the growth paths, not the gaps.** 1.86 against 2.14 is a genuine cross-check between methods sharing no equations and almost no data, and 0.28pp apart is close. The gaps are not comparable, because this model does not claim to locate the level and `ystar` does. See `ystar/MODEL_NOTES.md`, "External comparison".
 
 The `nairu` package also derives its deterministic r* from this model's potential growth, so changes here propagate there.
 
@@ -184,5 +184,5 @@ Nothing is cached or saved, so every run re-fetches from ABS.
 
 1. **Read `alpha` from the capital share series** instead of fixing it at 0.30, or at least document why a constant is preferred. The series is already loaded for charting.
 2. **Justify or revisit the anchor dates.** 2019Q4 in particular assumes a zero gap in a quarter when growth had already slowed markedly. Their sensitivity has never been tested, and it drives the entire gap series.
-3. **Consider dropping the gap.** The docstring already calls it notional, `potential_uc` now produces one that is disciplined by inflation, and a notional gap that is charted and printed invites use.
+3. **Consider dropping the gap.** The docstring already calls it notional, `ystar` now produces one that is disciplined by inflation, and a notional gap that is charted and printed invites use.
 4. **The growth accounting deserves better billing than the gap.** It is the solid part of this package and the decade table is its best output.

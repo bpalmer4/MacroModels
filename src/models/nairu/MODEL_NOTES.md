@@ -11,7 +11,7 @@ Bayesian state-space model for jointly estimating NAIRU, potential output, and o
 | Phillips Curves | Regime-switching, 3 regimes (default preset) | Single-slope variants; excess-expectations term (default preset) |
 | Identification | 2 state + N observation equations | Joint estimation with proper uncertainty |
 | Scenario Analysis | Model-consistent projection | 4-quarter horizon with policy scenarios |
-| Model Selection | LOO/WAIC + Pareto-k | `simple_excess` best full-sample fit; `simple_excess_regime` best all-rounder & default (see [Model Comparison](#model-comparison-loo--waic)) |
+| Model Selection | LOO/WAIC + Pareto-k | `simple_excess` best full-sample fit; `simple_excess_regime` best all-rounder. Default is `simple_excess_rstar_blend` — `simple_excess` with the global 35/65 r* blend (see [Model Comparison](#model-comparison-loo--waic)) |
 
 ---
 
@@ -148,8 +148,16 @@ nairu/
 | `simple` | Gaussian | No | No | — | Yes |
 | `simple_excess` | Gaussian | No | Yes | — | Yes |
 | `simple_regime` | Gaussian | Yes | No | — | Yes |
-| `simple_excess_regime` *(run.py default)* | Gaussian | Yes | Yes | — | Yes |
+| `simple_excess_regime` | Gaussian | Yes | Yes | — | Yes |
+| `simple_excess_rstar_blend` *(run.py default)* | Gaussian | No | Yes | — | Yes |
+| `simple_excess_rstar_est` | Gaussian | No | Yes | — | Yes |
 | `complex` | Student-t | Yes | No | Exchange rate, import price, participation, employment, net exports | Yes |
+
+`simple_excess_rstar_blend` is configuration-identical to `simple_excess`: the 35/65
+growth/yield r* blend is applied globally in `observations.py`, and the label exists only to
+record it in chart footers, filenames and the chart directory. `simple_excess_rstar_est`
+instead frees the blend weight α in-model (flat Beta(1,1)) as an identification probe; α is
+not identified.
 
 ### Creating Custom Variants
 
@@ -636,7 +644,15 @@ trace, obs, obs_index, anchor_label = run_estimate(config=SIMPLE)
 ## Key Design Decisions
 
 - **Joint estimation**: NAIRU + potential + gaps estimated together for proper uncertainty propagation
-- **Deterministic r***: Computed from Cobb-Douglas growth, not estimated as latent
+- **Deterministic r***: Not estimated as latent. A fixed convex blend of the Cobb-Douglas
+  growth anchor and the real bond-yield anchor, `r* = α·growth + (1−α)·yield` with α = 0.35
+  (`config.DEFAULT_RSTAR_ALPHA`), applied globally in `observations.py`. α is imposed, not
+  estimated: the rate channel cannot identify it (the free-α posterior mean was ~0.35, a ~9%
+  contraction off a flat prior), but the weak signal and the economics both lean toward the
+  yield anchor, and a yield lean fixes the perverse Cobb-Douglas r* profile (high in the
+  2010s, low now). NAIRU and output-gap estimates are near-insulated from the choice
+  (<0.08pp); it mainly shapes the r* level and the monetary-stance narrative. The
+  `simple_excess_rstar_est` variant is the identification probe that estimates α freely.
 - **Percentage unemployment gap**: `(U - NAIRU) / U` for scale invariance
 - **MFP floored at zero**: Negative MFP reflects cyclical underutilization, not technological regress
 - **COVID smoothing**: Labour inputs Henderson-smoothed during 2020Q1-2023Q2

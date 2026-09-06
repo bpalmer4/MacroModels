@@ -339,6 +339,27 @@ WPI_TOTAL_GROWTH = ReqsTuple(
 )
 
 
+# Private sector only. Public sector wages are set by governments and
+# tribunals rather than by the labour market, and over 1998Q1-2026Q2 the
+# public index correlates -0.127 with the unemployment rate against the
+# private index's -0.430. Blending the two drags the headline to -0.378, so
+# about a fifth of the all-sectors index is pure attenuation for any model
+# using wages as a tightness signal. Used by `ustar_wage`.
+WPI_PRIVATE = ReqsTuple(
+    cat="6345.0",
+    table="634501",
+    did=(
+        "Quarterly Index ;  Total hourly rates of pay excluding bonuses ;  "
+        "Australia ;  Private ;  All industries ;"
+    ),
+    stype="O",
+    unit="Index Numbers",
+    seek_yr_growth=False,
+    calc_growth=False,
+    zip_file="",
+)
+
+
 # --- Collections for common use cases ---
 
 NAIRU_MODEL_SERIES = {

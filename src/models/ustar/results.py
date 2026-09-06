@@ -1,0 +1,199 @@
+"""Container and loader for ustar posterior draws."""
+
+import pickle
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import arviz as az
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+from src.utilities.rate_conversion import quarterly
+
+DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
+DEFAULT_CHART_BASE = Path(__file__).parent.parent.parent.parent / "charts"
+
+
+@dataclass
+class UStarResults:
+    """Container for ustar posterior draws plus the observations."""
+
+    trace: az.InferenceData
+    obs: dict[str, np.ndarray]
+    obs_index: pd.PeriodIndex
+    constants: dict[str, Any] = field(default_factory=dict)
+    chart_obs: pd.DataFrame | None = None
+
+    @property
+    def posterior(self) -> xr.Dataset:
+        """The trace's posterior group, narrowed at runtime."""
+        posterior = getattr(self.trace, "posterior", None)
+        if not isinstance(posterior, xr.Dataset):
+            raise TypeError("trace has no posterior group — was it loaded from a completed run?")
+        return posterior
+
+    def _vector(self, var_name: str) -> pd.DataFrame:
+        """Return a time x draw DataFrame for a vector-valued latent."""
+        stacked = self.posterior[var_name].stack(sample=("chain", "draw"))  # noqa: PD013
+        return pd.DataFrame(np.asarray(stacked.values), index=self.obs_index)
+
+    def _scalar(self, var_name: str) -> np.ndarray:
+        """Return the flattened posterior draws for a scalar parameter."""
+        return np.asarray(self.posterior[var_name].values).ravel()
+
+    @property
+    def has_phillips(self) -> bool:
+        """Whether this run included the Phillips curve, read from the trace."""
+        return "gamma_pi" in self.posterior
+
+    # --- The object the model exists to estimate ---
+
+    def ustar_posterior(self) -> pd.DataFrame:
+        """Return u*, the unemployment rate consistent with output at potential."""
+        return self._vector("ustar")
+
+    def ustar_median(self) -> pd.Series:
+        """Return the posterior median of u*."""
+        return self.ustar_posterior().median(axis=1)
+
+    def ugap_posterior(self) -> pd.DataFrame:
+        """Return the unemployment gap in percentage points, u - u*.
+
+        Computed here rather than read from the trace: the `ugap` recorded by
+        the model is the scale-invariant `(u - u*)/u` the Phillips curve needs,
+        which is a different number and not what a reader of a chart labelled
+        "percentage points" expects.
+        """
+        return self.ustar_posterior().rsub(self.unemployment(), axis=0)
+
+    def ugap_median(self) -> pd.Series:
+        """Return the posterior median of the unemployment gap."""
+        return self.ugap_posterior().median(axis=1)
+
+    def unemployment(self) -> pd.Series:
+        """Return the observed unemployment rate."""
+        return pd.Series(self.obs["u"], index=self.obs_index)
+
+    # --- Diagnostics that would show the model failing ---
+
+    def prob_beta_positive(self) -> float:
+        """P(beta > 0): whether the data agree with Okun's law at all.
+
+        The analogue of ystar's P(c > 0). If this is not comfortably
+        above 0.9 the Okun channel is not identifying u*'s level, which is the
+        whole reason the equation is here.
+        """
+        return float((self._scalar("beta_okun") > 0).mean())
+
+    def prob_gamma_negative(self) -> float:
+        """P(gamma_pi < 0): whether slack disinflates in this sample."""
+        return float((self._scalar("gamma_pi") < 0).mean())
+
+    def ustar_variation(self) -> dict[str, float]:
+        """How much u* actually moves, against how much the prior lets it move.
+
+        The failure mode this is built to catch is the one that killed
+        `ustar_wage`: a u* whose path is set by the smoothness prior rather
+        than by the data. `sd of du*` close to the imposed `sigma_ustar` means
+        u* is wandering as freely as the prior permits and the data are not
+        holding it; far below means the data are binding.
+        """
+        ustar = self.ustar_median()
+        allowed = (
+            float(np.median(self._scalar("sigma_ustar")))
+            if self.free_sigma_ustar
+            else float(self.constants.get("sigma_ustar", np.nan))
+        )
+        label = "sigma_ustar (posterior median)" if self.free_sigma_ustar else "imposed sigma_ustar"
+        return {
+            "sd of u*": float(ustar.std()),
+            "sd of du*": float(ustar.diff().dropna().std()),
+            label: allowed,
+            "range of u*": float(ustar.max() - ustar.min()),
+        }
+
+    @property
+    def free_sigma_ustar(self) -> bool:
+        """Whether the drift was estimated under a prior rather than imposed."""
+        return "sigma_ustar" in self.posterior
+
+    def inflation_decomposition(self) -> pd.DataFrame:
+        """Split observed inflation into the Phillips curve's own terms.
+
+        Columns are the equation term by term, on the quarterly basis the model
+        fits, so they sum to observed inflation exactly:
+
+            pi = target + excess + demand + supply + residual
+
+        `target` is the flat 2.5 anchor and `excess` is beta x (expectations -
+        target), so the two are distinct objects rather than two readings of
+        the same one. `demand` is the only term carrying u*, which is what
+        makes this the readable statement of how much the model attributes to
+        the labour market as against anchoring and supply.
+        """
+        if not self.has_phillips:
+            raise ValueError("no Phillips curve in this run: nothing to decompose")
+
+        index = self.obs_index
+        median = self.posterior.median(dim=("chain", "draw"))
+        pi_exp = pd.Series(self.obs["pi_exp"], index=index)
+
+        anchor = pd.Series(quarterly(float(self.constants["anchor"])), index=index)
+        excess = float(median["beta_pi"]) * (quarterly(pi_exp) - anchor)
+        demand = float(median["gamma_pi"]) * pd.Series(
+            np.asarray(median["ugap"].values), index=index,
+        )
+        gscpi = pd.Series(self.obs["gscpi"], index=index)
+        supply = (
+            float(median["rho_pi"]) * pd.Series(self.obs["d4pm"], index=index)
+            + float(median["xi_gscpi"]) * gscpi**2 * np.sign(gscpi)
+        )
+        observed = pd.Series(self.obs["pi"], index=index)
+        fitted = anchor + excess + demand + supply
+
+        return pd.DataFrame({
+            "observed": observed,
+            "anchor": anchor,
+            "excess": excess,
+            "demand": demand,
+            "supply": supply,
+            "residual": observed - fitted,
+        })
+
+    def summary(self, var_names: list[str] | None = None) -> pd.DataFrame:
+        """ArviZ summary for the scalar parameters."""
+        if var_names is None:
+            var_names = ["beta_okun", "sigma_okun"]
+            if self.free_sigma_ustar:
+                var_names.insert(0, "sigma_ustar")
+            if self.has_phillips:
+                var_names += ["gamma_pi", "beta_pi", "rho_pi", "xi_gscpi", "epsilon_pi"]
+        summary = az.summary(self.trace, var_names=var_names)
+        if not isinstance(summary, pd.DataFrame):
+            raise TypeError("az.summary returned a Dataset — expected the DataFrame form")
+        return summary
+
+
+def load_results(
+    output_dir: Path | str | None = None,
+    prefix: str = "ustar",
+) -> UStarResults:
+    """Load a saved trace and observations from disk."""
+    output_dir = Path(output_dir) if output_dir is not None else DEFAULT_OUTPUT_DIR
+
+    trace_path = output_dir / f"{prefix}_trace.nc"
+    obs_path = output_dir / f"{prefix}_obs.pkl"
+
+    trace = az.from_netcdf(str(trace_path))
+    with obs_path.open("rb") as f:
+        saved = pickle.load(f)  # noqa: S301 — our own output, written by save_results
+
+    return UStarResults(
+        trace=trace,
+        obs=saved["obs"],
+        obs_index=saved["obs_index"],
+        constants=saved.get("constants", {}),
+        chart_obs=saved.get("chart_obs"),
+    )

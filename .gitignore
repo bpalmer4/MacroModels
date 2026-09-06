@@ -20,8 +20,8 @@ __pycache__/
 
 # too much detail
 charts/**
-.readabs_cache/**
-.sdmxabs_cache/**
+.readabs_cache/
+.sdmxabs_cache/
 model_outputs/**
 output/**
 

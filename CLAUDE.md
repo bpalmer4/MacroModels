@@ -31,7 +31,8 @@ uv sync                            # Install dependencies
 ./run-gdp-nowcast-bvar.sh          # Run GDP nowcast (Bayesian VAR, T-0 only)
 ./run-gdp-nowcast-components.sh    # Run GDP nowcast (expenditure-identity components, T-0 only)
 ./run-rstar-hlw.sh                 # Run HLW Bayesian r-star model
-./run-potential-uc.sh              # Run UC potential output model (hours x productivity)
+./run-ystar.sh                     # Run y* potential output model (inflation-defined output gap)
+./run-ustar.sh                     # Run u* model (Okun + Phillips; needs expectations + ystar)
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
 uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
 uv run python -m src.models.dsge.nk_twostar_model    # Run NK two-star linear probe
@@ -63,9 +64,18 @@ src/
 │   ├── gdp_nowcast_bvar/           # GDP nowcasting via Bayesian VAR, T-0 only (see MODEL_NOTES.md)
 │   ├── gdp_nowcast_components/     # GDP nowcasting via expenditure-identity components, T-0 only (see MODEL_NOTES.md)
 │   ├── rstar_hlw/                 # HLW Bayesian r-star model, AU data (see MODEL_NOTES.md)
-│   ├── potential_uc/              # UC potential output: trend hours x trend productivity,
-│   │                              #   identified by an anchored Phillips curve (see MODEL_NOTES.md).
+│   ├── ystar/                     # y* potential output: potential is a slow-moving random walk,
+│   │                              #   the gap is DEFINED as c x (pi - 2.5). No Phillips curve, no
+│   │                              #   IS curve, no policy rule (see MODEL_NOTES.md).
 │   │                              #   Self-contained: imports only src/data, no other model.
+│   ├── ustar/                     # u* from a GIVEN output gap: one state (u* random walk),
+│   │                              #   two observation equations (Okun, expectations-augmented
+│   │                              #   Phillips). Reads expectations + ystar output;
+│   │                              #   estimates neither. HEADLINE IS CONDITIONAL: u*'s level
+│   │                              #   is set by the imposed sigma_ustar, which cannot be
+│   │                              #   estimated (free prior escapes, bounded prior pins to the
+│   │                              #   bound). Use `nairu` for an operational NAIRU
+│   │                              #   (see MODEL_NOTES.md).
 │   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition
 │   ├── dsge/                      # DSGE + HLW-style models (see MODELS_EXPLAINED.md)
 │   │                              #   fa_nk_model.py: financial-accelerator DSGE, two r* + endogenous EFP wedge (labour_block flag)
@@ -132,7 +142,8 @@ The main model jointly estimates:
 Key parameters:
 - α (alpha): Capital share of income (~0.25-0.30)
 - Inflation anchor transitions from expectations (pre-1993) to target (2.5%, post-1998)
-- Deterministic r* derived from Cobb-Douglas potential growth
+- Deterministic r*: a fixed 35/65 blend of the Cobb-Douglas growth anchor and the real
+  bond-yield anchor (`config.DEFAULT_RSTAR_ALPHA`), applied globally in `observations.py`
 
 ### Code Style
 - Ruff configured with aggressive linting (`line-length=119`, most rules enabled)
