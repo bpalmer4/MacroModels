@@ -11,10 +11,11 @@ Australian macroeconomic modelling. Includes both Bayesian state-space estimatio
 - **Cobb-Douglas MFP**: Deterministic growth accounting decomposing output into capital, labour, and productivity
 - **y\* (Potential Output)**: Bayesian unobserved-components model where potential is a slow-moving random walk and the output gap is *defined* by inflation's deviation from the 2.5% target — no Phillips curve, no IS curve, no policy rule. Self-contained (imports only `src/data`). The preferred source for the output gap and for trend growth (~2.1%) — see [`MODEL_NOTES.md`](src/models/ystar/MODEL_NOTES.md)
 - **u\* (NAIRU from a given output gap)**: A deliberately small Bayesian model — one state, two observation equations — taking `ystar`'s output gap as an input rather than estimating it. Okun fits unemployment, an expectations-augmented Phillips curve fits inflation. **Its headline is conditional**: u\*'s level is set by an imposed drift rate that cannot be estimated, and moves from 5.10 to 4.62 across the defensible range. Its value is legibility about what an Australian NAIRU rests on, not a better number — use `nairu` for the operational estimate. See [`MODEL_NOTES.md`](src/models/ustar/MODEL_NOTES.md)
+- **r\* (natural rate from the bond market)**: One latent state — an Australia-specific wedge over published world r\*, moving as a Student-t random walk — read off the indexed real 10-year yield. No IS curve, because three separate efforts in this repo found the rate-to-output-gap link too weak to identify anything on Australian data. Carries a level Taylor rule and an observed credit wedge for the cost of capital to firms. **r\* is around 1.2-1.6 and robust to its one imposed setting; the recent path is not** — see [`MODEL_NOTES.md`](src/models/rstar/MODEL_NOTES.md)
 - **HLW r\***: Bayesian (PyMC) Holston-Laubach-Williams model estimating the natural rate of interest for Australia — see [`MODEL_NOTES.md`](src/models/rstar_hlw/MODEL_NOTES.md)
 - **DSGE** — **experimental, work in progress; none usable yet.** A family of forward-looking DSGE models (New Keynesian; financial-accelerator `FA-NK` with two natural rates and an endogenous external-finance-premium wedge; sticky-wage `FA-NK-wage` with Galí unemployment; and a reduced-form `NK-TwoStar` probe) built to explore the post-GFC "great divergence". They are research and diagnostic builds, not production tools. A Bayesian re-estimation (`fa_nk_bayes.py`, PyMC/DEMetropolis-Z) now **identifies the policy block** — the cash-rate rule responds aggressively to inflation (φ_π≈2.6), and both FA-NK models converge cleanly — but the r\* and NAIRU/U\* these models produce remain **not credible**, and the φ_π result is not yet robustness-tested. For credible r\* and NAIRU use the HLW r\* and NAIRU models above. See [`MODELS_EXPLAINED.md`](src/models/dsge/MODELS_EXPLAINED.md).
 
-**Run order:** the NAIRU model and the HLW r\* model both read the expectations model's saved output (`output/expectations/`) as an input — **run the expectations model first** whenever updating after new data. The u\* model sits one step further down: it reads both the expectations output and a completed `ystar` run, so the order there is `expectations` → `ystar` → `ustar`. The NAIRU model's operational r\* is deterministic: a fixed 35/65 convex blend of the Cobb-Douglas growth anchor (r\* ≈ potential growth) and the real bond-yield anchor. The 35/65 weight is imposed, not estimated — the rate channel cannot identify it, and the yield lean fixes the perverse Cobb-Douglas r\* profile (high in the 2010s, low now). NAIRU and output-gap estimates are near-insulated from the choice (<0.08pp); it mainly shapes the r\* level and the monetary-stance narrative.
+**Run order:** the NAIRU model and the HLW r\* model both read the expectations model's saved output (`output/expectations/`) as an input — **run the expectations model first** whenever updating after new data. The u\* model sits one step further down: it reads both the expectations output and a completed `ystar` run. The r\* model sits below that again, reading `ystar`'s output gap and `ustar`'s supply decomposition for its Taylor rule. The full chain is `expectations` → `ystar` → `ustar` → `rstar`. The NAIRU model's operational r\* is deterministic: a fixed 35/65 convex blend of the Cobb-Douglas growth anchor (r\* ≈ potential growth) and the real bond-yield anchor. The 35/65 weight is imposed, not estimated — the rate channel cannot identify it, and the yield lean fixes the perverse Cobb-Douglas r\* profile (high in the 2010s, low now). NAIRU and output-gap estimates are near-insulated from the choice (<0.08pp); it mainly shapes the r\* level and the monetary-stance narrative.
 
 ### GDP nowcasting
 
@@ -161,6 +162,32 @@ bound, and across the defensible range u\* runs 5.10 to 4.62 with the gap moving
 0.042, against the NAIRU model's 0.047) and the Phillips residual. See the
 [`MODEL_NOTES.md`](src/models/ustar/MODEL_NOTES.md).
 
+### r\* — the natural rate from the bond market (Bayesian)
+
+Reads `ystar`'s output gap and `ustar`'s supply decomposition for the Taylor rule; r\*
+itself needs neither, and the affected charts are skipped with a note if they are missing.
+
+```bash
+./run-rstar.sh -v
+
+# The setting the answer leans on — sweep it
+./run-rstar.sh --sigma-walk 0.03
+
+# Diagnostics, kept so the checks are reproducible
+./run-rstar.sh --steps           # the asserted-break comparator
+./run-rstar.sh --no-world        # does the global anchor do the work? (it does)
+./run-rstar.sh --no-look-through # respond to headline inflation instead
+```
+
+**r\* is 1.24 now, against world r\* of 0.95**, with a nominal neutral cash rate of 3.74
+against an actual 4.35 — so policy is around 0.6 restrictive, and 1.26 below what a Taylor
+rule wants given inflation at 3.6 and a positive output gap. Across a seven-fold sweep of
+`sigma_walk` the level holds at 1.24-1.62 and the Taylor gap stays above a point, so both
+are results rather than settings. **The recent path is not**: how far r\* fell in 2021, and
+therefore how much of the bond selloff is neutral rate rather than term premium, moves from
+1.08 to 2.66 across the same sweep. Quote the level and that today is 55-68% of the
+pre-GFC rate; not the rise. See the [`MODEL_NOTES.md`](src/models/rstar/MODEL_NOTES.md).
+
 ### HLW r\* (Bayesian)
 
 Resolution G (blend + hierarchical Beta) is the default and the standard specification to run. It is the end point of a sequence of specifications (A–H) built while diagnosing why canonical HLW fails to identify r\* on Australian data; the earlier resolutions are retained as diagnostic comparators — see the model notes for the full journey.
@@ -210,13 +237,14 @@ The bridge and DFM are the workhorses for production nowcasts. The BVAR is a com
 
 | Directory | Contents |
 |-----------|----------|
-| `model_outputs/` | NAIRU saved traces (`.nc`) and observations (`.pkl`) for multiple model variants; `ystar_*` traces, observations and the real-time run (`.pkl`); `ustar_*` traces and observations; `rstar_hlw_*` traces (resolutions A–H); GDP nowcast outputs (`gdp_nowcast*/`) |
+| `model_outputs/` | NAIRU saved traces (`.nc`) and observations (`.pkl`) for multiple model variants; `ystar_*` traces, observations and the real-time run (`.pkl`); `ustar_*` and `rstar_*` traces and observations; `rstar_hlw_*` traces (resolutions A–H); GDP nowcast outputs (`gdp_nowcast*/`) |
 | `output/expectations/` | Expectations traces (`.nc`), HDI estimates (`.parquet`, `.csv`), metadata (`.pkl`) |
 | `charts/nairu_*/` | NAIRU, output gap, Phillips curves, equations, decompositions (per variant) |
 | `charts/expectations/` | Expectations comparison, diagnostics, model fits |
 | `charts/cobb_douglas/` | MFP trends, productivity growth, potential output |
 | `charts/YStar*/` | y\* potential output, output gap, trend growth, sweeps (one dir per spec) |
 | `charts/UStar/` | u\* against unemployment (plain and RBA-band shaded), the unemployment gap, price inflation decomposition |
+| `charts/RStar/` | Taylor rule with real and nominal r\*, r\* against the real yield, the term premium, r\* for firms |
 | `charts/rstar-hlw-*/` | r\* estimates, cross-resolution comparisons, diagnostics (one dir per resolution) |
 | `charts/GDP-Nowcast-*/` | GDP nowcast fan charts and decompositions (Bridge, DFM, BVAR, Components) |
 

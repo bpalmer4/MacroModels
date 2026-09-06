@@ -51,7 +51,7 @@ def main() -> None:
     parser.add_argument("--prefix", default="ustar", help="Output filename prefix")
     parser.add_argument("--analyse-only", action="store_true", help="Skip estimation")
     parser.add_argument("--no-analyse", action="store_true", help="Estimate without charting")
-    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed output")
     args = parser.parse_args()
 
     if not args.analyse_only:

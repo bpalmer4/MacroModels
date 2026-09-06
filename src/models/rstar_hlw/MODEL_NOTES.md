@@ -33,6 +33,23 @@ The project did not produce *the* r* estimate for Australia. That estimate canno
 
 The rest of these notes work through the eight resolutions individually, the cross-resolution evidence, the diagnostic framing, and an iteration log.
 
+### Where this went next: `src/models/rstar`
+
+**The finding here is not really about r\*. It is that the IS curve is fragile**, and r\* non-identification is a symptom of that. Every resolution below asks the interest rate to reveal itself through its effect on output — r\* is whatever makes the IS curve fit — so once the rate channel is established as too weak (a_r ≈ −0.04 against σ_IS ≈ 0.70, a signal-to-noise ratio of about 0.11), no specification search recovers r\*, because there is nothing to search over. Resolutions A through H are the proof of that, not a failure to find the right one.
+
+That is a claim about **monetary transmission in Australian data**, not about one latent variable, and it recurs everywhere this repo looks for it: `nairu`'s IS curve gives β_is ≈ 0.084 with fiscal touching zero; the `dsge` family found the same weak rate channel; `ustar` found its Okun channel explains a third of ΔU and shifts u\* by only 0.10pp. Any model in which a rate gap is supposed to move real activity inherits this problem.
+
+`src/models/rstar` was built on the opposite premise: **stop asking output about the interest rate, and read r\* off an asset price instead.** It has no IS curve at all. r\* is world r\* (published HLW for the US, Euro Area and Canada, used as data) plus an Australia-specific wedge that moves as a Student-t random walk, with the indexed real 10-year yield as the observable and the term premium defined as the residual. See [`rstar/MODEL_NOTES.md`](../rstar/MODEL_NOTES.md).
+
+Two things follow that are worth carrying back here:
+
+- **The bond-versus-growth axis this model formalises is still the right frame**, but `rstar` sits at the bond end by construction rather than by a chosen α. Its wedge is what this model's α-blend was reaching for, estimated rather than weighted.
+- **It gets a different answer**: r\* of 1.24 against Resolution G's 2.23, and its headline survives a seven-fold sweep of its one imposed setting where nothing here survived a prior sweep. The two have not been reconciled, and that reconciliation is listed as outstanding work in both sets of notes.
+
+What `rstar` does *not* do is rescue the IS curve. It sidesteps it, and the fragility documented below is untouched.
+
+**That leaves a tension worth stating plainly, in both packages.** `rstar` carries a Taylor rule that prescribes a cash rate, and a policy rule is only worth prescribing if moving the rate moves the economy. The evidence assembled here says that link is weak enough that r\* cannot be recovered from it. So the rule should be read as a normative statement about what a central bank following a standard reaction function *would* do, not as a forecast of what would happen if it did. The transmission the prescription relies on is precisely what this model failed to find.
+
 ## Sample, data, and the indexed-yield fill
 
 **Sample**: 1986Q3 → 2026Q1 (159 contiguous quarters as at the June 2026 run; the end advances with each quarterly re-run). The start is pinned by the indexed bond yield series — `observations.py` joins all series and drops incomplete quarters, so the 1980Q1 CLI default start is a no-op and the effective floor is 1986Q3. Pre-1993 Australia had no inflation target and a different monetary regime — including 1983Q1–1992Q4 worsens identification. The HLW-NAIRU integration plan is to use HLW r* from 1993Q1 onward and fall back to the Cobb-Douglas r* before that.
@@ -339,6 +356,8 @@ Iteration 12 applies a standard non-centred reparameterisation to r_innovation: 
 - **Long-run survey expectations** (Del Negro et al 2017): use Consensus Economics 6–10y forecasts of the cash rate as an additional observation. Would pin r*'s long-run mean.
 - **Convenience-yield observation** (Szoke-Vazquez-Grande-Xavier 2024 FEDS Note): would need long-history Australian AA corporate bond yield data — RBA F3 only goes back to ~2005.
 - **AR(1) trend growth**: would mean-revert g, possibly stabilising σ_g. Risk: changes the long-run interpretation.
+- **Dropping the IS curve entirely** — tried, and it worked, but as a separate package rather than a ninth resolution. See `src/models/rstar`. The reason it could not be a resolution here is structural: every resolution below shares the HLW state-space core, and removing the IS curve removes the thing that makes it HLW.
+- **Reconciling with `rstar`**: Resolution G gives 2.23, `rstar` gives 1.24. Both are in this repo, neither has been reconciled with the other, and they differ by more than this model's own cross-resolution spread of ~1.0pp. Worth doing, and listed as outstanding in `rstar`'s notes too.
 
 ## File structure
 

@@ -33,6 +33,7 @@ uv sync                            # Install dependencies
 ./run-rstar-hlw.sh                 # Run HLW Bayesian r-star model
 ./run-ystar.sh                     # Run y* potential output model (inflation-defined output gap)
 ./run-ustar.sh                     # Run u* model (Okun + Phillips; needs expectations + ystar)
+./run-rstar.sh                     # Run r* model (bond market + world r*; Taylor rule needs ystar + ustar)
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
 uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
 uv run python -m src.models.dsge.nk_twostar_model    # Run NK two-star linear probe
@@ -76,6 +77,13 @@ src/
 │   │                              #   estimated (free prior escapes, bounded prior pins to the
 │   │                              #   bound). Use `nairu` for an operational NAIRU
 │   │                              #   (see MODEL_NOTES.md).
+│   ├── rstar/                     # r* from the bond market: one state, an AU wedge over
+│   │                              #   published world r* moving as a StudentT random walk,
+│   │                              #   read off the indexed real 10y yield. NO IS CURVE —
+│   │                              #   three efforts here found the rate/output-gap link
+│   │                              #   unidentifiable on AU data. Level Taylor rule on top.
+│   │                              #   r* ~1.2-1.6 is robust to sigma_walk; the recent PATH
+│   │                              #   is not (see MODEL_NOTES.md).
 │   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition
 │   ├── dsge/                      # DSGE + HLW-style models (see MODELS_EXPLAINED.md)
 │   │                              #   fa_nk_model.py: financial-accelerator DSGE, two r* + endogenous EFP wedge (labour_block flag)

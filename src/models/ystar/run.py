@@ -93,7 +93,7 @@ def parse_args() -> argparse.Namespace:
         help="Skip the hours/productivity accounting split (avoids loading labour force data). "
              "Always skipped for the labour and production specs, which split potential internally",
     )
-    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed output")
 
     return parser.parse_args()
 
