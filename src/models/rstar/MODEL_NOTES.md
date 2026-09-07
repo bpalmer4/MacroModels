@@ -65,8 +65,13 @@ same jumps.
 
 ## Results (2026Q2 vintage, `sigma_walk` = 0.08)
 
-All `r_hat` = 1.00, 1 divergence. `ess_bulk` 820 to 9,236 — `nu_walk` at 820 is the
-weakest and the one to watch.
+All `r_hat` = 1.00, **12 divergences** in 8,000 draws (0.15%). `ess_bulk` 820 to 9,236 —
+`nu_walk` at 820 is the weakest, and its `mcse_sd` of 0.191 is 14% of its posterior sd.
+
+An earlier version of this line recorded 1 divergence against an otherwise identical
+posterior table, which cannot be right for the same data and seed; the count here has been
+reproduced on four separate runs. Refinement 3 records what was tried and why the
+divergences are now believed to be intrinsic rather than fixable.
 
 | Parameter | mean | 90% HDI | |
 |---|---|---|---|
@@ -83,7 +88,7 @@ weakest and the one to watch.
 | term premium | 1.26 |
 | nominal r\* (r\* + 2.5% target) | **3.74** |
 | cash rate | 4.35 → **0.6 restrictive** |
-| Taylor prescription | **5.61** → 1.26 below what the rule wants |
+| Taylor prescription | **5.51** → 1.16 below what the rule wants |
 | r\* for firms (r\* + credit spread) | 2.01 |
 
 `nu_walk` = 2.36 is the substantive finding of the specification: the data want the wedge
@@ -179,21 +184,49 @@ contribution removed from inflation before the rule is applied:
 i* = r* + pi_core + 0.5·(pi_core - 2.5) + 0.5·ygap,   pi_core = pi - supply
 ```
 
-Inputs from elsewhere: `ygap` from `ystar`, and the supply term from `ustar`'s Phillips
-decomposition (`rho·d4pm + xi·GSCPI²·sign`) on a four-quarter rolling sum — not
-`annualize()`, which is a compounding transform and not additive across components.
+**Inputs from elsewhere come from the joint `ystar_ustar` model**, which supplies all three:
+the output gap, the unemployment gap, and the supply term from its Phillips decomposition
+(`rho·d4pm + xi·GSCPI²·sign`) on a four-quarter rolling sum — not `annualize()`, which is a
+compounding transform and not additive across components.
+
+One model rather than two, because the three inputs are then mutually consistent: the same
+potential output, the same u\*, the same `c`. Read from the parents separately they are not,
+since `ustar` treats `ystar`'s gap as data, so its unemployment gap is conditional on a gap
+`ystar` may since have revised. `--input-source separate` restores the old wiring, reading
+`ygap` from `ystar` and the other two from `ustar`.
+
+The gap this brings in is about twice the one it replaces: sd 0.420 against `ystar`'s 0.188,
+and +0.30 at 2026Q2 against +0.21. The joint model gives the gap a free component
+alongside the inflation-defined part, which is why it is larger; see
+`src/models/ystar_ustar/MODEL_NOTES.md`.
+
+**The rule is the only thing here that reads any of it, and it is outside the likelihood.**
+`r*`, the wedge and the term premium are estimated from the bond market alone, so nothing
+upstream can move them. Two changes have now tested that. When `ystar` excluded the pandemic
+quarters its `c` fell from 0.468 to 0.188 and the 2026Q2 gap from +0.51 to +0.21; every state
+here was unchanged to three decimals and only the rule moved, the level prescription from
+5.61 to 5.45. The check has since passed three more times. Switching the inputs to the joint
+model, giving that model's u\* a convergence mechanism, and tightening its `sigma_ustar` from
+0.040 to 0.020 all left `r*` at **1.24** and the term premium at **1.26** to the printed
+digits, while the level prescription moved 5.45 to 5.47 to 5.51. Useful
+as a check on the wiring: if an upstream change ever moves `r*`, something has been miswired.
 
 Prescribed less actual, by era:
 
-| era | gap |
-|---|---|
-| 1994-2007 | −0.56 |
-| 2008-2011 | +0.39 |
-| 2012-2015 | −0.16 |
-| 2016-2019 | −0.56 |
-| 2019-2021 | −0.17 |
-| post-COVID | +2.19 |
-| **now** | **+1.26** |
+| era | gap | on `ystar`'s gap |
+|---|---|---|
+| 1994-2007 | −0.56 | −0.56 |
+| 2008-2011 | +0.33 | +0.39 |
+| 2012-2015 | −0.27 | −0.16 |
+| 2016-2019 | −0.50 | −0.56 |
+| 2019-2021 | −0.12 | −0.17 |
+| post-COVID | +2.02 | +2.19 |
+| **now** | **+1.16** | +1.26 |
+
+The second column is the same table computed on `ystar`'s narrower gap, before the inputs
+moved to the joint model. Nothing changes sign and no era moves by more than 0.17, which is
+the expected result: the joint gap is three times wider but the rule weights it at 0.5, and
+the two gaps correlate closely enough that the era averages barely notice.
 
 That pattern — at or below the actual rate through 2012-2019, above it now — was the
 user's stated judgement *before* the free-walk specification was run, and the model
@@ -298,14 +331,51 @@ Caveat worth stating in advance: indexed AGS are thin, so their yield carries a 
 premium a nominal bond does not, and a term premium estimate built on nominal bonds is not
 measuring the same object. The gap between them would need its own assumption.
 
-### 3. `nu_walk` sampling
+### 3. `nu_walk` sampling — settled: the divergences are intrinsic
 
-`ess_bulk` of 820 is the weakest in the package, and the posterior mean of 2.36 is close
-enough to Cauchy that the wedge's tails are doing a great deal of work. Two things to check:
-whether a longer run or a reparameterisation tightens it, and whether the fat tails are
-absorbing movement that belongs in the term premium. A prior-predictive check — simulating
-wedges at `nu` = 2 and asking whether they look like a natural rate — would be cheap and
-informative.
+`ess_bulk` of 820 is the weakest in the package and there are 12 divergences, so this was
+the obvious thing to fix. Four routes were tried and none works.
+
+| | divergences | `nu` `ess_bulk` | r\* 2026Q2 |
+|---|---|---|---|
+| **centred, `target_accept` 0.95 (default)** | **12** | **820** | **1.24** |
+| `target_accept` 0.97 | 11 | 747 | — |
+| `nu` fixed at 2.36 | 7 | n/a | 1.26 |
+| `nu` fixed at 2.0 | 15 | n/a | 1.24 |
+| `nu` fixed at 1.5 | 44 | n/a | 1.26 |
+| scale mixture (`noncentred_wedge`) | **511** | 440 | 1.25 |
+
+**Not a step-size problem.** Raising `target_accept` to 0.97 changed nothing and cost a
+third of the run time again. 0.99 was not attempted on that evidence.
+
+**Not a free-`nu` problem.** Fixing `nu` does not clear them, and the count scales with how
+heavy the tails are: 7 at 2.36, 15 at 2.0, 44 at 1.5. That rules out `nu` funnelling against
+the innovations, which was the first diagnosis and was wrong. What remains is the
+innovations themselves: under a heavy tail their per-quarter scale varies over orders of
+magnitude, and no single step size serves all of it.
+
+**The standard transform makes it far worse.** `ModelConfig.noncentred_wedge` samples the
+scale mixture, `eps = z·sqrt(lam)` with `lam ~ InverseGamma(nu/2, nu/2)`, which is exactly a
+Student-t — verified by a two-sample KS test on 200,000 draws, D = 0.0018, p = 0.90. It gives
+**511 divergences**, `r_hat` 1.02 and `nu` ESS of 440. The reason is the ordinary one:
+non-centring pays when the data are weakly informative about the latent and costs when they
+are not, and the yield data pin these innovations well. With `alpha = nu/2 ≈ 1.18` the
+`InverseGamma` is heavy-tailed enough that the transform builds a funnel between `lam` and
+`z` rather than removing one. Both switches are kept, defaulting to the original behaviour,
+so the test is repeatable and nobody runs it twice.
+
+**What the exercise settles.** `r*` at 2026Q2 is 1.24 to 1.26 in every one of these runs,
+including the 511-divergence one, so the level does not depend on the sampling problem. More
+usefully, the 2022Q2 jump is +1.26 to +1.38 throughout, which was the thing worth checking:
+the jump dates are in the data rather than in the corner where the sampler struggles.
+
+**Still open.** Fixing `nu` at 2.36 is the one option that buys something real — `sigma_tp`
+`ess_bulk` goes 1,022 to 3,828 and divergences 12 to 7 — but it asserts the tail weight that
+`nu` = 2.36 [1.11, 3.85] currently reports as uncertain, and the tails are the specification's
+substantive finding. That is an identification choice, not a sampler fix, and `nu` is left
+free. Also still unchecked, and unaffected by any of the above: whether the fat tails absorb
+movement that belongs in the term premium, and the prior-predictive check of simulating
+wedges at `nu` = 2 to ask whether they look like a natural rate.
 
 ### 4. Does the world anchor have to be HLW?
 
@@ -359,14 +429,17 @@ src/models/rstar/
 └── run.py            # CLI
 ```
 
-Run order: `expectations` → `ystar` → `ustar` → `rstar`. r\* itself needs neither `ystar`
-nor `ustar`; the Taylor rule needs both, and the affected charts are skipped with a note if
-they are missing.
+Run order: `expectations` → `ystar_ustar` → `rstar`. r\* itself needs no upstream model at
+all; only the Taylor rule does, and the affected charts are skipped with a note if the inputs
+are missing. Under `--input-source separate` the order is the older
+`expectations` → `ystar` → `ustar` → `rstar`.
 
 ```bash
 ./run-rstar.sh -v
 ./run-rstar.sh --analyse-only         # recharts from the saved trace
+./run-rstar.sh --input-source separate  # rule inputs from ystar + ustar, as before
 ./run-rstar.sh --sigma-walk 0.03      # the setting the answer leans on
+./run-rstar.sh --nu-walk 2.36         # fix the tail weight instead of estimating it
 ./run-rstar.sh --steps                # the asserted-break comparator
 ./run-rstar.sh --no-world             # does the global anchor do the work? (yes)
 ./run-rstar.sh --world-source US      # the marginal pricer, not the average

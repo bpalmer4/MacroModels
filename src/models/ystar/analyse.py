@@ -1,10 +1,11 @@
 """Diagnostics and charts for the ystar model."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Unpack
 
 import mgplot as mg
 import numpy as np
 import pandas as pd
+from mgplot.finalisers import DataT, LPFKwargs
 
 from src.data.henderson import hma
 from src.models.ystar.decompose import (
@@ -19,6 +20,7 @@ from src.models.ystar.results import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from matplotlib.axes import Axes
@@ -42,7 +44,7 @@ _RFOOTER_PRODUCTION = "Source: ABS 5204.0, 5206.0, 6202.0, 6401.0"
 _GAP_HEADER = "The gap is defined by inflation's deviation from the target"
 # Shown on the actual gap chart, where the point is what the definition leaves out.
 _ACTUAL_GAP_HEADER = "GDP's full deviation from potential: the defined gap plus the residual"
-_LFOOTER = "Australia. Unobserved-components model. "
+_LFOOTER = "Australia. y* model. "
 # Points per quarter used when shading the growth-versus-potential chart.
 _FILL_SUBDIVISIONS = 20
 
@@ -58,6 +60,141 @@ _BAND_KWARGS: dict[str, Any] = {
     "alpha": 0.25,
     "label": "90% credible interval",
 }
+
+
+# Set once per run by `run_analysis` and read by the two finalise wrappers
+# below. Module-level rather than a parameter because roughly twenty chart
+# functions call finalise, several of them from a `GrowthDecomposition` that has
+# no access to the run's settings, and threading a window through every one of
+# those signatures would be a worse trade than one piece of run-scoped state.
+_EXCLUDED_WINDOW: tuple[str, str] | None = None
+
+# Deliberately plain: the shading marks quarters that carry no likelihood, so it
+# should read as an absence rather than as a highlighted episode. Behind the
+# lines and the credible-interval band.
+#
+# `label` puts it in the legend, which is where a reader looks to find out what
+# a shaded band means. "excluded from fit" rather than "pandemic" alone: the
+# claim being made is about the estimation, not about the epidemiology, and a
+# reader who sees only "pandemic" will take the shading for an episode marker.
+# Yellow rather than orange: several of these charts draw their headline series
+# in darkorange, and an orange wash behind an orange line costs contrast where
+# it is needed most. Gold at low alpha reads as a warm highlight against both
+# the orange lines and the cornflower credible-interval band.
+_EXCLUDED_SPAN: dict[str, Any] = {
+    "color": "gold",
+    "alpha": 0.20,
+    "zorder": -1,
+    "label": "Pandemic: excluded from fit",
+}
+
+
+def excluded_span_style() -> dict[str, Any]:
+    """Return the shared styling for the excluded-window span.
+
+    Public because `ustar` and the joint y*/u* model draw the same window on
+    their own charts, and the whole point is that it looks identical wherever
+    it appears. Copying the dict into each package is how it would drift.
+    """
+    return dict(_EXCLUDED_SPAN)
+
+
+def _excluded_kwargs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
+    """Add the excluded-window shading and its footer note to finalise kwargs.
+
+    The states run through an excluded window under their priors, so every
+    series still has values there and the charts would otherwise show a fitted
+    trend across quarters the model was never shown. Shading says so on the
+    chart rather than in a caption someone will read separately.
+    """
+    if _EXCLUDED_WINDOW is None:
+        return dict(kwargs)
+
+    lo, hi = _EXCLUDED_WINDOW
+    kwargs = dict(kwargs)
+    if "axvspan" in kwargs:
+        raise ValueError("axvspan is set by the excluded-window shading; do not pass it too")
+    kwargs["axvspan"] = {
+        "xmin": pd.Period(lo, freq="Q"),
+        "xmax": pd.Period(hi, freq="Q"),
+        **_EXCLUDED_SPAN,
+    }
+    # The dates go in the legend label, not the left footer. Some of these
+    # footers are already long (the gap chart names its off-scale quarters), and
+    # appending to them overran the source line on the right.
+    kwargs["axvspan"]["label"] = f"{_EXCLUDED_SPAN['label']}, {lo}-{hi}"
+    return kwargs
+
+
+def _on_quarterly_axis(axes: Axes) -> bool:
+    """Whether these axes are plotted against quarters, so a span belongs on them.
+
+    mgplot draws a PeriodIndex at its period ordinals, so a quarterly chart's
+    xlim brackets the ordinal of every quarter it covers (2020Q2 is 201, against
+    an xlim of roughly 85 to 232 on the full sample). Charts with any other
+    x-axis are nowhere near those numbers: `plot_growth_contributions` draws
+    period *blocks* on a RangeIndex with an xlim of -0.59 to 3.59, and shading it
+    with a quarter stretched the axis to take in a coordinate 200 units away,
+    squashing every bar against the left edge.
+
+    Checked rather than made a caller's flag, since a flag is something the next
+    chart added here would have to remember.
+    """
+    if _EXCLUDED_WINDOW is None:
+        return False
+    lo, hi = _EXCLUDED_WINDOW
+    left, right = axes.get_xlim()
+    return left <= pd.Period(hi, freq="Q").ordinal and pd.Period(lo, freq="Q").ordinal <= right
+
+
+def _finalise(axes: Axes, **kwargs: Unpack[mg.FinaliseKwargs]) -> None:
+    """`mg.finalise_plot` with any excluded window shaded."""
+    if not _on_quarterly_axis(axes):
+        mg.finalise_plot(axes, **kwargs)
+        return
+    mg.finalise_plot(axes, **_excluded_kwargs(kwargs))
+
+
+def _line_plot_finalise(
+    data: DataT,
+    # LPFKwargs, not LineKwargs: the *_finalise entry points take the plot
+    # kwargs and the finalise kwargs together, and `mg.LineKwargs` is only the
+    # first half.
+    **kwargs: Unpack[LPFKwargs],
+) -> None:
+    """`mg.line_plot_finalise` with any excluded window shaded.
+
+    These entry points build their own axes, so the quarterly test is made on
+    the data instead. Same reason as `_on_quarterly_axis`.
+    """
+    if not isinstance(data.index, pd.PeriodIndex):
+        mg.line_plot_finalise(data, **kwargs)
+        return
+    mg.line_plot_finalise(data, **_excluded_kwargs(kwargs))
+
+
+def _excluded_window(results: PotentialResults) -> tuple[str, str] | None:
+    """Return the run's excluded window, read from its own recorded settings."""
+    window = results.constants.get("exclude_window")
+    return window if isinstance(window, tuple) else None
+
+
+def _fitted_mask(results: PotentialResults) -> pd.Series:
+    """Boolean over the sample: True where the run carried a likelihood term.
+
+    Read from `results` rather than the module-level `_EXCLUDED_WINDOW`, since
+    `print_diagnostics` can be called on a results object directly without
+    going through `run_analysis`, and a statistic must not depend on whether
+    some earlier call happened to set that global.
+    """
+    index = results.obs_index
+    window = _excluded_window(results)
+    if window is None:
+        return pd.Series(data=True, index=index)
+
+    lo, hi = window
+    excluded = (index >= pd.Period(lo, freq="Q")) & (index <= pd.Period(hi, freq="Q"))
+    return pd.Series(data=~np.asarray(excluded), index=index)
 
 
 def _band(posterior: pd.DataFrame) -> pd.DataFrame:
@@ -117,7 +254,19 @@ def print_diagnostics(results: PotentialResults) -> None:
         # Not `gap`: that name is already bound to the time x draw DataFrame above.
         gap_median = results.output_gap_median()
         deviation = gdp - results.potential_median()
-        print("\nHow much of the cycle the inflation-defined gap explains")
+
+        # Over the fitted quarters only. Computed on the full index, the six
+        # excluded quarters put deviations of -8.5 and -5.6 into the
+        # denominator, which is a lockdown rather than a cycle: sd of GDP less
+        # potential goes 0.51 -> 1.08 and the share reads 3.0% instead of 13.1%.
+        # The share is meant to say how much of the *cycle* the definition
+        # accounts for, so it can only be taken over quarters the model was
+        # asked to explain.
+        fitted = _fitted_mask(results)
+        gap_median, deviation = gap_median[fitted], deviation[fitted]
+
+        scope = "" if _excluded_window(results) is None else "  (fitted quarters only)"
+        print(f"\nHow much of the cycle the inflation-defined gap explains{scope}")
         print("-" * 70)
         print(f"  {'sd of gap':<28} {gap_median.std():6.2f}")
         print(f"  {'sd of GDP less potential':<28} {deviation.std():6.2f}")
@@ -164,7 +313,7 @@ def plot_potential(
         annotate=True,
         rounding=1,
     )
-    mg.finalise_plot(
+    _finalise(
         ax,
         tag=tag,
         title="GDP and potential output",
@@ -224,7 +373,7 @@ def plot_actual_output_gap(
         annotate=True,
         rounding=1,
     )
-    mg.finalise_plot(
+    _finalise(
         ax,
         tag=tag,
         title="Output gap",
@@ -263,7 +412,7 @@ def plot_inflation_defined_gap(results: PotentialResults) -> None:
         annotate=True,
         rounding=1,
     )
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Inflation-defined output gap",
         ylabel="Per cent of potential",
@@ -316,7 +465,7 @@ def plot_gap_composition(results: PotentialResults) -> None:
     # still drawn, they run off the top and bottom, and the footnote says so.
     off_scale = [q for q in (pd.Period(p, "Q") for p in _OFF_SCALE) if q in components.index]
     ax = _plot_gap_composition_axes(components, deviation)
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Output gap composition",
         ylabel="Per cent of potential",
@@ -478,7 +627,7 @@ def plot_growth_vs_potential(
         color="steelblue", alpha=0.34, label="Gap narrowing (toward zero)",
     )
 
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Actual growth versus potential",
         ylabel="Year-ended per cent",
@@ -541,7 +690,7 @@ def plot_trend_growth(results: PotentialResults) -> None:
         if production
         else "Identified from output and inflation alone. "
     )
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Potential growth from the production function" if production else "Potential growth",
         ylabel="Year-ended per cent" if residual_potential else "Per cent",
@@ -566,7 +715,7 @@ def plot_trend_productivity_growth(results: PotentialResults) -> None:
         annotate=True,
         rounding=1,
     )
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Trend labour productivity growth",
         ylabel="Annualised per cent",
@@ -598,7 +747,7 @@ def plot_potential_growth(results: PotentialResults) -> None:
         annotate=True,
         rounding=1,
     )
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Potential output growth and its components",
         ylabel="Year-ended per cent",
@@ -636,7 +785,7 @@ def plot_growth_accounting(decomposition: GrowthDecomposition) -> None:
         annotate=True,
         rounding=1,
     )
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Potential growth: hours and productivity",
         ylabel="Year-ended per cent",
@@ -702,7 +851,7 @@ def plot_growth_wedge(decomposition: GrowthDecomposition) -> None:
         color="indianred", alpha=0.30, label="Trend productivity (negative)",
     )
 
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Potential growth and labour input",
         ylabel="Year-ended per cent",
@@ -747,7 +896,7 @@ def plot_growth_contributions(decomposition: GrowthDecomposition) -> None:
         # final bar for no gain: the numbers are in the printed table.
         annotate=False,
     )
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Contributions to potential growth",
         ylabel="Year-ended per cent, period average",
@@ -766,7 +915,7 @@ def plot_trend_hours_components(results: PotentialResults) -> None:
         "Observed participation": pd.Series(results.obs["log_pr"], index=results.obs_index),
     })
 
-    mg.line_plot_finalise(
+    _line_plot_finalise(
         data,
         color=["darkorange", "black"],
         width=[2, 1],
@@ -790,7 +939,7 @@ def plot_gap_attribution(results: PotentialResults) -> None:
         "Productivity component": results.productivity_gap_posterior().median(axis=1),
     })
 
-    mg.line_plot_finalise(
+    _line_plot_finalise(
         data,
         color=["black", "darkorange", "seagreen"],
         width=[2, 1.5, 1.5],
@@ -821,7 +970,7 @@ def plot_factor_trends(results: PotentialResults) -> None:
         "Trend MFP growth": results.factor_trend_posterior("gm").median(axis=1),
     })
 
-    mg.line_plot_finalise(
+    _line_plot_finalise(
         trends,
         title="Trend growth of the factors of production",
         ylabel="Year-ended growth (%)",
@@ -868,7 +1017,7 @@ def plot_capital_share(results: PotentialResults) -> None:
         annotate=True,
         rounding=3,
     )
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Capital share used in the production function",
         ylabel="Share of income",
@@ -902,7 +1051,7 @@ def plot_trend_mfp(results: PotentialResults) -> None:
         annotate=True,
         rounding=2,
     )
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Trend multifactor productivity growth",
         ylabel="Year-ended growth (%)",
@@ -938,7 +1087,7 @@ def plot_factor_contributions(results: PotentialResults) -> None:
         style="--",
         annotate=False,
     )
-    mg.finalise_plot(
+    _finalise(
         ax,
         title="Contributions to potential growth",
         ylabel="Percentage points, year-ended",
@@ -965,6 +1114,13 @@ def run_analysis(
     `production`, both of which estimate a split internally.
     """
     results = load_results(output_dir=output_dir, prefix=prefix)
+
+    # Read from the run's own recorded settings rather than passed in, so a
+    # chart can never disagree with the trace it was drawn from. Reset each
+    # call: a session that analyses an excluded-window run and then a normal one
+    # would otherwise carry the shading over to the second.
+    global _EXCLUDED_WINDOW  # noqa: PLW0603 — run-scoped state, see the definition
+    _EXCLUDED_WINDOW = _excluded_window(results)
 
     print_diagnostics(results)
 

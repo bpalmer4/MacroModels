@@ -11,9 +11,9 @@ from src.models.rstar.results import DEFAULT_CHART_BASE, RStarResults, load_resu
 CHART_DIR = DEFAULT_CHART_BASE / "RStar"
 
 _RFOOTER = "Source: RBA F1/F2/F3; NY Fed HLW; ABS 6401.0"
-_LFOOTER = "Australia. r* from the bond market, anchored on world r*. "
+_LFOOTER = "Australia. r* model. "
 # Deliberately terse: the full sentence ran into the source line on the right.
-_LFOOTER_BAND = "Australia. Band conditional on the imposed sigma_walk. "
+_LFOOTER_BAND = "Australia. r* model. Band conditional on the imposed sigma_walk. "
 
 _BAND_KWARGS: dict[str, Any] = {
     "color": "cornflowerblue",

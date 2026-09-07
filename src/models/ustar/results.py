@@ -72,6 +72,48 @@ class UStarResults:
         """Return the posterior median of the unemployment gap."""
         return self.ugap_posterior().median(axis=1)
 
+    @property
+    def converges(self) -> bool:
+        """Whether u* was specified as converging to an equilibrium."""
+        return "phi_ustar" in self.posterior
+
+    def ustar_change_decomposition(self) -> pd.DataFrame:
+        """Split u*'s quarterly change into its two exact components.
+
+            u*_t - u*_{t-1} = phi·(u*_eq - u*_{t-1})  +  e_u,t
+
+        The first term is the specification pulling u* toward its estimated
+        equilibrium; the second is what the data added on top. `deterministic`
+        is the path u* would have taken from the same starting point with every
+        innovation set to zero, so the distance between it and u* is the whole
+        of what the data contributed.
+
+        Computed on posterior medians, so it describes the reported path rather
+        than integrating over uncertainty.
+        """
+        if not self.converges:
+            raise ValueError("this run has no convergence terms to decompose")
+
+        median = self.posterior.median(dim=("chain", "draw"))
+        phi = float(median["phi_ustar"])
+        eq = float(median["ustar_eq"])
+        ustar = self.ustar_median()
+
+        convergence = phi * (eq - ustar.shift(1))
+        innovation = ustar.diff() - convergence
+
+        # The counterfactual path: same start, no innovations at all.
+        path = [ustar.iloc[0]]
+        for _ in range(len(ustar) - 1):
+            path.append(path[-1] + phi * (eq - path[-1]))
+
+        return pd.DataFrame({
+            "ustar": ustar,
+            "deterministic": pd.Series(path, index=ustar.index),
+            "convergence": convergence,
+            "innovation": innovation,
+        })
+
     def unemployment(self) -> pd.Series:
         """Return the observed unemployment rate."""
         return pd.Series(self.obs["u"], index=self.obs_index)

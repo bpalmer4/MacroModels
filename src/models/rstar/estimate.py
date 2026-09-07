@@ -40,6 +40,64 @@ def _break_design(obs_index: pd.PeriodIndex, breaks: tuple[str, ...]) -> tuple[n
     return design, kept
 
 
+def _wedge_nu(model: pm.Model, config: ModelConfig) -> tuple[Any, str]:
+    """Return the Student-t degrees of freedom for the wedge, and a label.
+
+    Free `nu` is the model's one funnel: the innovations are drawn at a
+    degrees-of-freedom that is itself sampled, so the two shape each other's
+    geometry. Fixing it removes that. See `ModelConfig.nu_walk` for why the
+    value is a judgement about the wedge rather than a sampler setting.
+
+    Must be called inside the model context, since it may create a variable.
+    """
+    if config.nu_walk is None:
+        return pm.Gamma("nu_walk", alpha=2.0, beta=2.0 / config.nu_prior_mean), "nu estimated"
+
+    if config.nu_walk <= 0:
+        raise ValueError(f"nu_walk must be positive, got {config.nu_walk}")
+
+    fixed = getattr(model, "_fixed_constants", {})
+    fixed["nu_walk"] = config.nu_walk
+    model._fixed_constants = fixed  # noqa: SLF001 — our own metadata, as elsewhere in the package
+    return config.nu_walk, f"nu={config.nu_walk:g} imposed"
+
+
+def _wedge_innovations(
+    nu: pt.TensorVariable | float,
+    n: int,
+    *,
+    noncentred: bool,
+) -> tuple[pt.TensorVariable, str]:
+    """Return the wedge's Student-t innovations, centred or as a scale mixture.
+
+    A Student-t(nu) is *exactly* `Normal(0, 1) · sqrt(lam)` with
+    `lam ~ InverseGamma(nu/2, nu/2)`, so the two branches target the same
+    posterior. Only the geometry differs, which is the whole point.
+
+    The centred form is what the model had, and it is where its divergences
+    come from. Three tests point at it rather than at the alternatives: raising
+    `target_accept` to 0.97 changed nothing (11 divergences against 12, and
+    slightly worse ESS); fixing `nu` changed nothing (7 at 2.36, 15 at 2.0);
+    and the divergence count scales with how heavy the tails are (44 at
+    nu = 1.5). That is the innovations themselves, whose per-quarter scale
+    varies over orders of magnitude under a heavy tail, so no single step size
+    serves the whole distribution. The mixture makes that scale an explicit
+    `lam` the sampler can adapt to.
+
+    Kept switchable because a pure reparameterisation is only useful as a check
+    if the thing it is checked against can still be run.
+    """
+    if not noncentred:
+        return pm.StudentT("eps_wedge", nu=nu, mu=0.0, sigma=1.0, shape=n), "centred"
+
+    # Scale before the standardised draw, matching the order the package uses
+    # elsewhere: the variance scale is declared first, then what rides on it.
+    lam = pm.InverseGamma("lam_wedge", alpha=nu / 2.0, beta=nu / 2.0, shape=n)
+    z = pm.Normal("z_wedge", mu=0.0, sigma=1.0, shape=n)
+    eps = pm.Deterministic("eps_wedge", z * pt.sqrt(lam))
+    return eps, "scale mixture"
+
+
 def build_model(
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
@@ -86,11 +144,13 @@ def build_model(
             # A random walk with Student-t innovations: quiet most quarters,
             # with the occasional large move permitted, and nobody naming the
             # dates. Non-centred, so the imposed scale creates no funnel.
-            nu = pm.Gamma("nu_walk", alpha=2.0, beta=2.0 / config.nu_prior_mean)
-            eps = pm.StudentT("eps_wedge", nu=nu, mu=0.0, sigma=1.0, shape=n)
+            nu, nu_desc = _wedge_nu(model, config)
+            eps, eps_desc = _wedge_innovations(nu, n, noncentred=config.noncentred_wedge)
+            nu_desc = f"{nu_desc}, {eps_desc}"
             wedge = wedge_0 + config.sigma_walk * pt.concatenate([pt.zeros(1), pt.cumsum(eps[1:])])
             descriptions.append(
-                f"Wedge:      random walk, StudentT innovations, sigma={config.sigma_walk:g} imposed",
+                f"Wedge:      random walk, StudentT innovations, "
+                f"sigma={config.sigma_walk:g} imposed, {nu_desc}",
             )
         else:
             design, kept = _break_design(obs_index, config.break_quarters)
@@ -202,6 +262,11 @@ def run_estimate(
     else:
         print(f"Breaks:       {', '.join(config.break_quarters)}")
         print(f"Wedge drift:  {config.wedge_drift:g} (0 = pure step function)")
+    source = (
+        f"joint ({config.joint_prefix})" if config.input_source == "joint"
+        else f"separate ({config.ystar_prefix} + {config.ustar_prefix})"
+    )
+    print(f"Rule inputs:  {source}")
     print(f"Policy rule:  d_i = {config.rule_pi:g} x (pi - {config.anchor:g}) + {config.rule_gap:g} x "
           f"{'(-u gap)' if config.taylor_use_ugap else 'output gap'}   (first difference)")
     print(f"Sampler seed: {sampler_config.random_seed}")
@@ -211,6 +276,8 @@ def run_estimate(
         start=config.start,
         end=config.end,
         world_source=config.world_source,
+        input_source=config.input_source,
+        joint_prefix=config.joint_prefix,
         ystar_prefix=config.ystar_prefix,
         ustar_prefix=config.ustar_prefix,
         verbose=verbose,

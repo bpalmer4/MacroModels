@@ -77,7 +77,9 @@ def inflation_gap_equation(
            log_gdp_t = y*_t + gap_t + e_c,   e_c ~ N(0, sigma_e)
 
     `anchor` must be supplied via `constant`. `latents` must already carry
-    `potential_output` (see `potential.py`).
+    `potential_output` (see `potential.py`). An optional boolean `keep` array in
+    `constant` drops quarters from the GDP likelihood; see
+    `ModelConfig.exclude_window`.
     """
     if constant is None:
         constant = {}
@@ -117,13 +119,36 @@ def inflation_gap_equation(
         output_gap = pm.Deterministic("output_gap", mc["c"] * deviation)
 
         if not ar1:
+            # `keep` drops a window of quarters from the likelihood altogether
+            # (see ModelConfig.exclude_window). The states still run through the
+            # window under their priors; what goes is the claim that potential
+            # plus the inflation-defined gap should account for output there.
+            keep = constant.get("keep")
+            fitted = potential_output + output_gap
+            observed = np.asarray(obs["log_gdp"], dtype=float)
+            if keep is not None:
+                if not isinstance(keep, np.ndarray) or keep.dtype != bool:
+                    raise TypeError("keep must be a boolean numpy array over the sample")
+                if keep.shape != observed.shape:
+                    raise ValueError(
+                        f"keep has shape {keep.shape}, expected {observed.shape}",
+                    )
+                rows = np.flatnonzero(keep)
+                fitted, observed = fitted[rows], observed[rows]
             pm.Normal(
                 "observed_gdp",
-                mu=potential_output + output_gap,
+                mu=fitted,
                 sigma=mc["sigma_e"],
-                observed=obs["log_gdp"],
+                observed=observed,
             )
         else:
+            if constant.get("keep") is not None:
+                raise ValueError(
+                    "exclude_window cannot be combined with ar1_residual: the AR(1) "
+                    "likelihood is written on consecutive quarters, so removing a window "
+                    "from the middle would silently splice e_c across the gap",
+                )
+
             # e_c,t = rho·e_c,{t-1} + eps_t. The lagged residual is observable
             # given the states, since log_gdp is data, so the likelihood is
             # written directly on GDP with the AR term in the mean rather than

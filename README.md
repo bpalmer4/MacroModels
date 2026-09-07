@@ -10,12 +10,14 @@ Australian macroeconomic modelling. Includes both Bayesian state-space estimatio
 - **Inflation Expectations**: Bayesian signal extraction model estimating latent expectations from surveys and market data — see [`MODEL_NOTES.md`](src/models/expectations/MODEL_NOTES.md)
 - **Cobb-Douglas MFP**: Deterministic growth accounting decomposing output into capital, labour, and productivity
 - **y\* (Potential Output)**: Bayesian unobserved-components model where potential is a slow-moving random walk and the output gap is *defined* by inflation's deviation from the 2.5% target — no Phillips curve, no IS curve, no policy rule. Self-contained (imports only `src/data`). The preferred source for the output gap and for trend growth (~2.1%) — see [`MODEL_NOTES.md`](src/models/ystar/MODEL_NOTES.md)
-- **u\* (NAIRU from a given output gap)**: A deliberately small Bayesian model — one state, two observation equations — taking `ystar`'s output gap as an input rather than estimating it. Okun fits unemployment, an expectations-augmented Phillips curve fits inflation. **Its headline is conditional**: u\*'s level is set by an imposed drift rate that cannot be estimated, and moves from 5.10 to 4.62 across the defensible range. Its value is legibility about what an Australian NAIRU rests on, not a better number — use `nairu` for the operational estimate. See [`MODEL_NOTES.md`](src/models/ustar/MODEL_NOTES.md)
+- **u\* (NAIRU from a given output gap)**: A deliberately small Bayesian model — one state, two observation equations — taking `ystar`'s output gap as an input rather than estimating it. Okun fits unemployment, an expectations-augmented Phillips curve fits inflation. u\* **converges to an estimated equilibrium** rather than wandering: the driftless random walk it replaced sat about 8 standard deviations from its own fitted path and could not accommodate the 1990s decline. Currently u\* = 4.83 against an equilibrium of 4.86. **Its headline is conditional** on two imposed choices, the convergence shape and `sigma_ustar` = 0.020, and about 97% of u\*'s total fall is the mechanism rather than the data. Its value is legibility about what an Australian NAIRU rests on, not a better number — use `nairu` for the operational estimate. See [`MODEL_NOTES.md`](src/models/ustar/MODEL_NOTES.md)
+
+- **Joint y\*/u\***: `ystar` and `ustar` in one likelihood, plus a free component `v` on the output gap. `v` cannot be estimated in `ystar` alone (it and the GDP residual are one additive term); adding the Okun equation makes the covariance between the two residuals identify it. The result is an output gap about twice `ystar`'s, of which roughly half is cycle inflation does not see. Feeds `rstar`'s Taylor rule. See [`MODEL_NOTES.md`](src/models/ystar_ustar/MODEL_NOTES.md)
 - **r\* (natural rate from the bond market)**: One latent state — an Australia-specific wedge over published world r\*, moving as a Student-t random walk — read off the indexed real 10-year yield. No IS curve, because three separate efforts in this repo found the rate-to-output-gap link too weak to identify anything on Australian data. Carries a level Taylor rule and an observed credit wedge for the cost of capital to firms. **r\* is around 1.2-1.6 and robust to its one imposed setting; the recent path is not** — see [`MODEL_NOTES.md`](src/models/rstar/MODEL_NOTES.md)
 - **HLW r\***: Bayesian (PyMC) Holston-Laubach-Williams model estimating the natural rate of interest for Australia — see [`MODEL_NOTES.md`](src/models/rstar_hlw/MODEL_NOTES.md)
 - **DSGE** — **experimental, work in progress; none usable yet.** A family of forward-looking DSGE models (New Keynesian; financial-accelerator `FA-NK` with two natural rates and an endogenous external-finance-premium wedge; sticky-wage `FA-NK-wage` with Galí unemployment; and a reduced-form `NK-TwoStar` probe) built to explore the post-GFC "great divergence". They are research and diagnostic builds, not production tools. A Bayesian re-estimation (`fa_nk_bayes.py`, PyMC/DEMetropolis-Z) now **identifies the policy block** — the cash-rate rule responds aggressively to inflation (φ_π≈2.6), and both FA-NK models converge cleanly — but the r\* and NAIRU/U\* these models produce remain **not credible**, and the φ_π result is not yet robustness-tested. For credible r\* and NAIRU use the HLW r\* and NAIRU models above. See [`MODELS_EXPLAINED.md`](src/models/dsge/MODELS_EXPLAINED.md).
 
-**Run order:** the NAIRU model and the HLW r\* model both read the expectations model's saved output (`output/expectations/`) as an input — **run the expectations model first** whenever updating after new data. The u\* model sits one step further down: it reads both the expectations output and a completed `ystar` run. The r\* model sits below that again, reading `ystar`'s output gap and `ustar`'s supply decomposition for its Taylor rule. The full chain is `expectations` → `ystar` → `ustar` → `rstar`. The NAIRU model's operational r\* is deterministic: a fixed 35/65 convex blend of the Cobb-Douglas growth anchor (r\* ≈ potential growth) and the real bond-yield anchor. The 35/65 weight is imposed, not estimated — the rate channel cannot identify it, and the yield lean fixes the perverse Cobb-Douglas r\* profile (high in the 2010s, low now). NAIRU and output-gap estimates are near-insulated from the choice (<0.08pp); it mainly shapes the r\* level and the monetary-stance narrative.
+**Run order:** the NAIRU model and the HLW r\* model both read the expectations model's saved output (`output/expectations/`) as an input — **run the expectations model first** whenever updating after new data. The u\* model sits one step further down: it reads both the expectations output and a completed `ystar` run. The r\* model sits below that again, and now reads all three Taylor-rule inputs from a completed **joint y\*/u\*** run so they share one potential output, one u\* and one `c` (`--input-source separate` restores the older wiring). The full chain is `expectations` → `ystar` → `ustar`, with `expectations` → `ystar_ustar` → `rstar` alongside it. The NAIRU model's operational r\* is deterministic: a fixed 35/65 convex blend of the Cobb-Douglas growth anchor (r\* ≈ potential growth) and the real bond-yield anchor. The 35/65 weight is imposed, not estimated — the rate channel cannot identify it, and the yield lean fixes the perverse Cobb-Douglas r\* profile (high in the 2010s, low now). NAIRU and output-gap estimates are near-insulated from the choice (<0.08pp); it mainly shapes the r\* level and the monetary-stance narrative.
 
 ### GDP nowcasting
 
@@ -139,7 +141,7 @@ the weak half. See the [`MODEL_NOTES.md`](src/models/ystar/MODEL_NOTES.md).
 Reads saved output from the expectations and `ystar` models, so run those first.
 
 ```bash
-# Default: sigma_ustar 0.040, sample from 1993Q1
+# Default: u* converges, sigma_ustar 0.020, sample from 1993Q1
 ./run-ustar.sh --verbose
 
 # Recharts from the saved trace
@@ -148,19 +150,57 @@ Reads saved output from the expectations and `ystar` models, so run those first.
 # The setting the answer hinges on — sweep it, don't trust it
 ./run-ustar.sh --sigma-ustar 0.030
 
-# Diagnostics, kept so the checks are reproducible
+# Specification alternatives, kept so the comparison is reproducible
+./run-ustar.sh --no-ustar-converge   # the driftless random walk it replaced
+./run-ustar.sh --ustar-drift         # drift on excess inflation expectations instead
+
+# Diagnostics
 ./run-ustar.sh --free-sigma-ustar    # why the drift cannot be estimated
 ./run-ustar.sh --no-output-gap       # does the given gap actually matter?
 ./run-ustar.sh --no-phillips         # Okun only
 ```
 
-Read the result as conditional. **The level of u\* is set by `sigma_ustar`, the imposed drift
-rate, which cannot be estimated** — a free prior escapes to 0.131, a bounded one pins to its
-bound, and across the defensible range u\* runs 5.10 to 4.62 with the gap moving −0.75 to
-−0.27. Quote "u\* near 4.8, labour market tight by roughly half a point" and no decimals. What
-*is* identified by the data and stable across the sweep: the supply-chain coefficient (0.037 to
-0.042, against the NAIRU model's 0.047) and the Phillips residual. See the
+Read the result as conditional, and more so than the number suggests. u\* = **4.83** against an
+estimated equilibrium of 4.86, with the gap at −0.48. But the chart
+`what-moves-u-the-specification-or-the-data` shows that of u\*'s 6.1pp fall across the sample,
+about **97% is the convergence mechanism and 3% is the data** — the 1990s are essentially the
+specification drawing a curve. `sigma_ustar` = 0.020 governs how far u\* may wander from that
+curve, and it too is imposed: a free prior escapes to 0.131 and a bounded one pins to its
+bound. Quote "u\* near 4.8, labour market tight by roughly half a point" and no decimals. What
+*is* identified by the data and stable across specifications: the supply-chain coefficient
+(0.037 to 0.043, against the NAIRU model's 0.047) and the Phillips residual. See the
 [`MODEL_NOTES.md`](src/models/ustar/MODEL_NOTES.md).
+
+### Joint y\* / u\* (Bayesian)
+
+Reads saved output from the expectations model only; it re-estimates both `ystar` and `ustar`
+rather than reading them.
+
+```bash
+# Default: quarterly gap basis, u* converging, sigma_ustar 0.020, 10,000 draws
+./run-ystar-ustar.sh
+
+# Recharts from the saved trace
+./run-ystar-ustar.sh --analyse-only
+
+# The controls the result rests on
+./run-ystar-ustar.sh --no-okun       # sigma_v should return its prior — it does
+./run-ystar-ustar.sh --no-phillips   # sigma_v with inflation off the left-hand side
+./run-ystar-ustar.sh --sigma-v-prior 0.5   # is sigma_v prior-driven? no
+```
+
+The point of joining is one parameter, `sigma_v`, the scale of a free component on the output
+gap. Inside `ystar` it cannot be estimated at all — it and the GDP residual are two mean-zero
+terms in one equation — but the gap also enters the Okun equation, so the covariance between
+the GDP and unemployment residuals identifies it. Currently `sigma_v` = 0.334 with 91% prior
+shrinkage, giving an output gap with sd 0.420 against `ystar`'s 0.188, of which about half is
+cycle inflation does not see.
+
+Two caveats worth carrying. That share is **not** a robust number: it moves with the inflation
+horizon and with the imposed `sigma_okun`, while the gap itself does not. And the figure was
+substantially larger before u\* was given a convergence mechanism, which means part of what the
+model attributed to hidden cycle was a mis-specified u\* trend. See the
+[`MODEL_NOTES.md`](src/models/ystar_ustar/MODEL_NOTES.md).
 
 ### r\* — the natural rate from the bond market (Bayesian)
 

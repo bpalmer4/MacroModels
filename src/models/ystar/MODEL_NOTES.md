@@ -13,6 +13,8 @@ log_gdp_t = y*_t + gap_t + e_c            output: fitted, residual e_c
 
 Three estimated quantities: `c`, `sigma_e`, and the initial level of the drift. Two imposed: `sigma_ystar` and `sigma_g`. One asserted: the 2.5% anchor.
 
+**One window carries no likelihood: 2020Q2-2021Q3.** Those six quarters contribute no GDP term and no inflation deviation, on the ground that potential output is not well defined in a lockdown rather than merely hard to estimate. The states still run through them under their priors, so the sample is continuous and nothing is spliced, but nothing there is estimated from either. See "The pandemic quarters carry no likelihood", which replaces what used to be "Surviving the pandemic", and item 21. `--no-exclude-window` recovers the earlier continuous-likelihood model.
+
 A second live specification, `--spec production`, keeps the level and the gap and replaces the drift with a Cobb-Douglas production function, so potential growth comes from trend capital, hours and MFP. It agrees at 2.16 against 2.14 and gives trend productivity a credible interval. `inflation` remains the default and the two are deliberately kept apart, since the agreement is only informative while they are separate specifications. See "An alternative source for potential growth".
 
 **Independent by construction.** Imports nothing from `nairu`, `rstar_hlw`, `expectations` or `models/common`. Its only dependency outside the package is `src/data`.
@@ -29,16 +31,16 @@ The sign has one weakness, and it is at turning points. The gap is dated by the 
 
 And it has one substantive exception. The sign is the sign of an inflation deviation, so it reads the ledger correctly only when that deviation is demand-driven. A supply shock that lifts inflation above target while the economy sits at or below capacity produces a positive reading from a negative gap. Trimmed mean does not protect against this, because trimming removes outliers rather than broad correlated shocks; Limitation 6 sets it out and item 18 records why non-tradables inflation cannot be substituted to fix it. So: robust to the statistical objections, not robust to stagflation.
 
-The magnitude does, entirely, and it is the weaker half. `c` = 0.468 [0.28, 0.66], its identification is concentrated in two inflation episodes, and it is sensitive to four pandemic quarters: **0.47 on the continuous sample against 0.27 excluding them** (item 16). That pair is more informative than the posterior interval, because the interval is uncertainty conditional on the specification while the pandemic experiment is uncertainty about the specification. Quote the sign and the direction of travel with confidence; treat a gap of +0.51 against +0.40 as a distinction the model cannot make.
+The magnitude does, entirely, and it is the weaker half. `c` = **0.188 [0.07, 0.32]**, and its identification is concentrated in two inflation episodes. The pandemic sensitivity that item 16 recorded is no longer a sensitivity but a decision: those quarters are out of the likelihood, and `c` is roughly 40% of the 0.468 it took when they were in. Item 20 sets out why they are out and what it costs. The consequence for use is unchanged in kind and larger in degree: quote the sign and the direction of travel with confidence, and treat the gap's scale as the model's weakest number. A gap of +0.21 against +0.30 is a distinction it cannot make.
 
 **In short, ranked by how much weight each will bear:**
 
 | | |
 |---|---|
-| trend growth, about 2.1% | strong: 2.12 to 2.19 across every perturbation tried, and the RBA independently at ~2.0 |
-| orientation of the gap | strong statistically: P(`c` > 0) = 97.7% on the hardest specification |
+| trend growth, about 1.9% | strong: the level and the decline survive every perturbation tried, and the RBA independently at ~2.0. Was 2.14 on the continuous likelihood; item 21 |
+| orientation of the gap | strong statistically: P(`c` > 0) = 99.1% with the sign free and the pandemic quarters out (item 21); 97.7% on the hardest continuous-likelihood specification (item 17) |
 | economic reading of that sign | conditional: holds when the inflation deviation is demand-driven, not under stagflation |
-| scale of the gap | weak: `c` wide, and 0.47 against 0.27 on the pandemic quarters |
+| scale of the gap | weak, and weaker than it was: `c` = 0.188 [0.07, 0.32], against 0.468 when the pandemic quarters were fitted |
 | timing near turning points | weak: annual inflation is a distributed object, and the sample cannot resolve the lag |
 | the *width* of the trend growth band | prior-sensitive, even though the central estimate is not (Limitation 2) |
 
@@ -183,34 +185,38 @@ Adding `e_c` fixes all of it. Trend and gap no longer have to exhaust output, so
 
 ## Results (2026Q2 vintage)
 
-Converged: all `r_hat` = 1.00, `ess_bulk` 9,574 to 13,945.
+Converged: all `r_hat` = 1.00, `ess_bulk` 8,569 to 12,301.
 
 | Parameter | mean | 90% |
 |---|---|---|
-| `c` | **0.468** | [0.280, 0.657] |
-| `sigma_e` | 0.981 | [0.878, 1.094] |
-| `initial_trend_growth` | 0.991 | [0.908, 1.074] |
+| `c` | **0.188** | [0.065, 0.315] |
+| `sigma_e` | 0.508 | [0.448, 0.576] |
+| `initial_trend_growth` | 0.986 | [0.904, 1.068] |
 
 Intervals throughout this file are 90% quantile bands, including this table, which previously quoted ArviZ's default 94% HDI. `analyse.py` still prints the 94% HDI in its own summary.
 
 | Headline, 2026Q2 | median | 90% band |
 |---|---|---|
-| Potential growth (year-ended) | **2.14** | [1.77, 2.51] |
-| Output gap | **+0.51** | [0.31, 0.72] |
+| Potential growth (year-ended) | **1.94** | [1.62, 2.26] |
+| Output gap | **+0.21** | [0.07, 0.35] |
 
-`c` = 0.468 means one percentage point of excess inflation implies about half a per cent of output gap. Its 90% interval is clear of zero.
+`c` = 0.188 means one percentage point of excess inflation implies about a fifth of a per cent of output gap. Its 90% interval is clear of zero, and item 21 shows it stays clear when the sign is freed. It was 0.468 while the pandemic quarters were fitted, and that change is the largest single consequence of excluding them.
+
+`sigma_e` is not comparable with the 0.981 this table used to show: the six excluded quarters held the largest residuals in the sample, so this is a different likelihood over different data rather than a better fit. Item 21.
 
 ### Potential growth
 
 | | year-ended % |
 |---|---|
-| 1997Q4 | 4.10 |
-| 2005Q4 | 3.13 |
-| 2012Q4 | 2.79 |
-| 2019Q4 | 1.88 |
-| 2026Q2 | **2.14** |
+| 1997Q4 | 4.32 |
+| 2005Q4 | 3.17 |
+| 2012Q4 | 2.84 |
+| 2019Q4 | 2.19 |
+| 2026Q2 | **1.94** |
 
-A decline of roughly two percentage points since the late 1990s, with a dip around 2020 and a partial recovery.
+A decline of roughly 2.4 percentage points since the late 1990s, now monotone rather than dipping around 2020 and partly recovering: with the lockdown quarters out of the likelihood there is nothing there for the trend to dip into.
+
+**A vintage warning for the rest of this file.** Sections below that quote `c` = 0.468, `sigma_e` ≈ 0.98 or potential growth of 2.14 were computed on the continuous likelihood, before 2020Q2-2021Q3 was excluded. In the iteration log that is correct and deliberate, since those entries record experiments actually run that way. In the analysis sections it means the arithmetic still holds while the levels are one vintage old. The two places it matters most are the identification section, where the projection weights and the leave-one-episode-out results are all computed with the pandemic quarters in, and the `production` comparison table, which has not been re-run under the new default.
 
 ### Output gap
 
@@ -231,7 +237,7 @@ Everything else in this file is internal. This is not: four estimates of Austral
 
 | source | potential growth, 2026Q2 | basis |
 |---|---|---|
-| **This model** | **2.14** [1.77, 2.51] | log GDP + trimmed mean inflation. No production function. |
+| **This model** | **1.94** [1.62, 2.26] | log GDP + trimmed mean inflation. No production function. 2020Q2-2021Q3 excluded; 2.14 on the continuous likelihood. |
 | This repo's `cobb_douglas` | **1.86** | α = 0.30, HP(1600) trends, MFP trend −0.02% p.a., re-anchored at 1990Q1 / 2000Q1 / 2008Q1 / 2019Q4. No inflation. |
 | RBA, Feb 2026 SMP | ~2.0 | "potential output expected to grow at an annual rate of around 2 per cent over most of the forecast period"; revised down from August 2025, on 0.7% labour productivity. |
 | Treasury, Budget 2026-27 | 2.5 | medium-term projection assuming long-run productivity growth returns to 1.2%. |
@@ -330,11 +336,17 @@ The quiet quarters contain no relationship whatever: the slope straddles zero wi
 
 ---
 
-## Surviving the pandemic
+## The pandemic quarters carry no likelihood
 
-Most trend/cycle models do not, and many simply say so: a COVID dummy, a dropped stretch of quarters, a separate variance for 2020, or a note that estimates over the period are unreliable. This model has none of that. The sample runs 1993Q1 to 2026Q2 continuously and 2020 is fitted like any other year.
+This section used to be called "Surviving the pandemic" and said that the sample ran continuously and 2020 was fitted like any other year. That is no longer true, and the reason it changed is worth more than the claim it replaced. Item 21 has the numbers.
 
-It survives for a reason rather than by luck. Inflation barely moved in 2020, so the defined gap barely moves, and the seven-point collapse in output goes to `e_c`. The 2020Q2 gap of **−0.56** is the model declining to call a lockdown a demand problem. That is the correct answer and it falls out of the definition rather than out of special handling.
+**The argument is that potential output is not well defined in a lockdown, rather than hard to estimate.** Capacity in the sense of plant, workers and skills barely moved in June 2020; capacity in the sense of what could lawfully be produced collapsed with GDP. Both are standard readings and they give opposite answers, so the gap in those quarters is not a quantity the data can settle. This model is worse placed than most to try, because its one instrument is inflation, and inflation in those quarters was moved by free childcare and administered fuel prices rather than by demand. That is the same orthogonality failure `zero_deviation` was written for, in its stronger form: regressor and residual share a cause, so the projection is not identified there.
+
+So 2020Q2-2021Q3 contributes no GDP term and no deviation. `exclude_window` is stronger than `zero_deviation`, which keeps the GDP observation and only sets `d` to zero: zeroing the deviation asserts the gap *was* zero, which is a claim, where dropping the quarters is an abstention.
+
+**What made the case was that the model stopped asking for a break.** Given a free one-off step in `y*` at 2020Q2 on the continuous likelihood, it takes **−3.75 [−4.63, −2.83]**. Given the same free step with these six quarters excluded, it takes **+0.33 [−0.73, +1.36]**. The −3.75 was those quarters and nothing else. A free parameter that goes to zero when the contaminated observations leave is better evidence than one that lands on a plausible number.
+
+The old section's defence still holds for what it claimed. Inflation barely moved in 2020, the defined gap barely moved, and the collapse went to `e_c`; the continuous model's 2020Q2 gap of −0.56 was it declining to call a lockdown a demand problem. The definition was doing real work. What the exclusion adds is that those quarters were nonetheless setting `c`, and through `c` the scale of every gap in the sample.
 
 Both design choices are doing the protecting, not just the definition. Three counterexamples from this package's own history show what the alternative looks like: the no-residual version of this specification had potential growth swinging from **−6.0% to +9.6%** across 2020-21 as `y*` tracked GDP down and back (item 10); a Henderson-7 filter of log hours books a **−6.2 to +7.3 per cent** pandemic swing as *trend*, which is why the decomposition uses HP; and at the loosest setting in the `ratio_g` sweep the trend bends hard enough around 2020 to drag the 2019Q4 reading down to **0.47%** (item 14). The smoothness prior is what stops the last of those at the chosen setting.
 
@@ -388,12 +400,14 @@ Participation and hours per participant are cyclical and get HP(1600). A Henders
 
 | | Population | Participation | Hours per participant | Productivity | Total |
 |---|---|---|---|---|---|
-| 1994-1999 | 1.27 | −0.01 | 0.33 | 2.39 | 3.98 |
-| 2000-2009 | 1.64 | 0.36 | −0.15 | 1.34 | 3.19 |
-| 2010-2019 | 1.62 | −0.01 | −0.34 | 1.25 | 2.52 |
-| 2020-2026 | 1.70 | 0.40 | 0.09 | −0.08 | 2.10 |
+| 1994-1999 | 1.27 | −0.01 | 0.33 | 2.45 | 4.04 |
+| 2000-2009 | 1.64 | 0.36 | −0.15 | 1.32 | 3.17 |
+| 2010-2019 | 1.62 | −0.01 | −0.34 | 1.31 | 2.58 |
+| 2020-2026 | 1.70 | 0.40 | 0.09 | −0.17 | 2.02 |
 
 The two-point fall in the speed limit since the late 1990s is almost entirely the productivity column. The population contribution is flat at 1.3 to 1.7 throughout.
+
+**The 2020-2026 row averages over the excluded quarters, and the productivity column is sensitive to that.** Population, participation and hours per participant are trends of observed data and are unaffected. Productivity is the residual, potential growth less trend hours, and inside the window potential growth is a prior extrapolation running near 2% while trend hours is real data that collapsed with the border closure. So the residual books a productivity boom in six quarters the model never learned from. Over the fitted quarters alone the row reads 2.01 / 0.42 / 0.13 / **−0.58**. Both numbers are defensible: −0.17 describes the period as it happened, −0.58 describes the part of it the model was shown. Quote −0.17 for the period average and −0.58 when the point is what the model estimated.
 
 ### Two presentations of the same split
 
@@ -799,11 +813,39 @@ A deterministic sweep put numbers on both the gain and the cost. Against an `HP(
 
 **Built as `--spec production`**, documented above. It agrees with the `inflation` spec at 2.15 against 2.14, which restores the cross-check the package lost when `cobb_douglas` turned out to be a filter, and gives trend MFP a credible interval for the first time. Nothing in `cobb_douglas` was changed.
 
+**21. The 2020Q2 level break was entirely the lockdown quarters, so those quarters left the likelihood.** The question was whether potential took a one-off step in the pandemic. `ModelConfig.level_break` adds a free scalar to the level recursion at a nominated quarter, `y*_t = y*_{t-1} + g_{t-1} + e_y + delta·1{t = break}`, with a deliberately non-binding `Normal(0, 5)` prior: `sigma_ystar` is 0.078, so that admits a step sixty times a quarterly innovation and imposes no sign.
+
+| | `c` | `sigma_e` | step at 2020Q2 | potential growth 2026Q2 |
+|---|---|---|---|---|
+| continuous likelihood | 0.468 | 0.977 | — | 2.14 |
+| + free break at 2020Q2 | 0.548 | 0.835 | **−3.75 [−4.63, −2.83]** | 2.35 |
+| + breaks at 2020Q2 and 2021Q4 | 0.224 | 0.781 | −3.88, and +2.91 at 2021Q4 | 2.00 |
+| **2020Q2-2021Q3 excluded (default)** | **0.188** | 0.506 | — | **1.94** |
+| excluded, plus a free break | 0.169 | 0.506 | **+0.33 [−0.73, +1.36]** | 1.93 |
+
+**The single break is not what it looks like.** It is permanent, so it is identified by the level of GDP *after* the break against the pre-2020 trend extrapolation, not by the hole. It cannot fit a V. What it does fix is real: over 2017Q1-2019Q4 the continuous model's defined gap says −0.40 while GDP less potential says +0.35, a three-year one-signed residual of +0.75 in a series asserted to be white noise. The break collapses that to +0.03, and puts GDP below potential in 11 of 12 quarters rather than 2. That period is where the inflation data and the output data disagree, and the disagreement was real.
+
+**Two breaks fit better and say less.** Adding 2021Q4 gives potential growth of 2.00, on the RBA's ~2.0 and the Cobb-Douglas 1.97, and cleans the 2020-21 residual to −0.03. But `c` falls to 0.224 and the variance share to 8%, because corr(delta 2021Q4, `c`) = −0.59: the step lifts potential at the start of the inflation breakout, mean GDP less potential over 2022-23 falls from +2.07 to +0.91, and there is less gap left for inflation to be credited with. On the chart potential becomes a smoothed copy of GDP. Three free level parameters, two steps and a random-walk drift, is item 10's failure mode with extra steps.
+
+**The excluded window settles it.** Dropping 2020Q2-2021Q3 from the likelihood entirely, the same free break goes to **+0.33 with an interval through zero**: the −3.75 was those six quarters and nothing else. No break is needed, the 2017-19 contradiction is fixed anyway (mean `e_c` +0.07), and residuals are flat in every sub-period outside the window (+0.00, +0.07, +0.15, −0.12). Timing inside the window is unidentified by construction, and this was checked: a break dated 2021Q1 instead of 2020Q2 returns +0.323 against +0.328, with `c`, `sigma_e` and `y*` at 2026Q2 agreeing to every printed digit.
+
+**The cost, stated plainly.** `c` = 0.188 [0.07, 0.32], against 0.468. Under `two_sided_c`, which is the only form in which the sign is a proposition rather than a prior, 0.187 [0.060, 0.310] with P(`c` > 0) = 0.991. The sign survives; the magnitude does not. Variance share 13.1% over fitted quarters.
+
+**Do not compare `sigma_e` across the exclusion.** 0.506 against 0.977 is not a fit improvement: six of the largest residuals in the sample left the likelihood, so it is a different likelihood over different data. The credible bands are correspondingly *narrower* than the continuous model's, 0.56 against 0.80 on `y*` pre-2020, and that is the removal of contamination rather than a claim to know more — realised residual sd over the fitted quarters is 0.477 against a posterior `sigma_e` of 0.506. What the exclusion does reveal is that the residual variance is not constant: 0.639 in the 1990s, 0.539 in the 2000s, 0.352 in the 2010s, 0.237 from 2021Q4. A single `sigma_e` is therefore loose at the endpoint and tight at the start.
+
+**What it does not fix.** The bands widen only 0.59 to 0.70 across the window, because `sigma_ystar` is imposed at 0.078 and over six unobserved quarters the level can wander 0.19 at most. Inside the window the line is the smoothness prior, not an estimate, and the charts shade it for that reason. Traces: `ystar_break`, `ystar_break2`, `ystar_break2_2sided`, `ystar_excl_break`, `ystar_excl_break_alt`, `ystar_excl_2sided`.
+
 **Next, in priority order:**
 1. **Corroborate `c` from outside the sample.** No longer a correction — the implied κ of 0.40 says the internal estimate is not biased down, so this is now a matter of tightening a wide interval [0.28, 0.66] rather than replacing a suspect number. It matters because the gap is `c` times data: `c` is the whole of the gap's uncertainty and the whole content of any real-time revision to it. The cross-sectional route (state unemployment against capital-city CPIs, where the cash rate is common) is the standard way to get an independent read.
 2. **Delete the dead specifications** once nothing further is wanted from them, along with the equation modules only they use.
 3. **Rewire `realtime.py` to the `inflation` spec, if it is still wanted.** Demoted. "Endpoint behaviour" sets out why this specification has structurally little to fear from the test: the gap is not filtered, so the exercise only measures the stability of `c`. Worth doing for the trend rather than the gap, and only in the coverage form described there, which needs the module to retain quantiles rather than medians.
 
-Settled, and deliberately: **2020Q2-2021Q1 stays in the estimation sample.** Item 16 shows those four quarters carry 4.7% of the weight at an implied slope of 2.58 against 0.363 elsewhere, so they supply roughly a fifth of `c`; removing them takes `c` to 0.273 and the 2026Q2 gap to +0.30. Item 13's exclusion of them does not condemn this: it is scoped to diagnostics that select quarters on the size of `d`, where a rule built to catch inflation breakouts scoops up a lockdown instead, and the estimation sample selects on nothing. Three reasons to keep them. The specification has no dummy machinery and "Surviving the pandemic" is built on a continuous sample, so dropping four quarters is exactly the intervention this package avoids. Zeroing their deviation is not neutral either: it asserts the gap was zero in those quarters, which is a claim rather than an abstention. And the cost is steep, because the variance share is quadratic in `c` and falls from **19.7% to 6.5%**, turning "inflation accounts for about a fifth of the deviation from trend" into about a fifteenth. What remains is a declared sensitivity rather than an inconsistency, and item 16 is where it is recorded.
+**Reversed, and this entry is kept rather than deleted because the reasoning was wrong in an instructive way.** This used to read "Settled, and deliberately: 2020Q2-2021Q1 stays in the estimation sample", on three grounds: that the package has no dummy machinery, that zeroing the deviation asserts a gap rather than abstaining, and that the cost to the variance share was steep. The second is still right and is why `exclude_window` drops the quarters rather than zeroing `d`. The first was an argument from the package's habits rather than from the data. The third confused a cost with an objection: the variance share falling is what it looks like when leverage that should not have been there is removed, and it is a reason to report the smaller number, not to keep the larger one.
+
+What settled it the other way was the free level break. Item 21: on the continuous likelihood the model takes a step of −3.75 at 2020Q2; with the six quarters excluded the same free step goes to +0.33 with an interval through zero. The step *was* those quarters. Excluding them also removes a three-year run of one-signed residual over 2017-2019 that no break was needed to fix.
+
+The cost is recorded and is larger than the old entry anticipated, because the window is six quarters rather than four: `c` goes from 0.468 to 0.188 and the variance share from 19.7% to **13.1%**. Note that the 13.1% is computed over the fitted quarters only. Taken over the full index it reads 3.0%, because the excluded quarters put deviations of −8.5 and −5.6 into the denominator, which is a lockdown and not a cycle; `analyse.py` was printing that contaminated number for one run and now scopes the statistic.
+
+Still open: **the window boundaries have not been tested.** 2020Q2-2021Q3 is the first lockdown through Delta, ending the quarter before reopening, which is a judgement rather than a result. Two runs would show whether the answer is insensitive to it.
 
 Not on the list, and deliberately: **weakening the fixed anchor**. Earlier drafts had it as item 2, on the view that the anchor was the model's most fragile assumption. It is not an assumption at all: 2.5 is the RBA's target midpoint for the whole sample, and treating it as data is the identifying idea rather than a weakness in it. Loosening it would remove the level information the anchor supplies and return the model to a filter.

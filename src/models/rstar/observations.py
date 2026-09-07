@@ -59,6 +59,19 @@ def _optional(name: str, loader: object) -> pd.Series:
         return pd.Series(dtype=float)
 
 
+def _joint_results(prefix: str) -> object:
+    """Load a completed joint y*/u* run.
+
+    All three Taylor-rule inputs come from one model here, so they share a
+    potential output, a u* and an estimate of `c`. Read from the two parents
+    instead, they do not: `ustar` takes `ystar`'s gap as data, so its
+    unemployment gap is conditional on a gap `ystar` may since have revised.
+    """
+    from src.models.ystar_ustar.results import load_results  # noqa: PLC0415 — optional dependency
+
+    return load_results(prefix=prefix)
+
+
 def _ystar_gap(prefix: str) -> pd.Series:
     """Return the median output gap from a completed ystar run."""
     from src.models.ystar.results import load_results  # noqa: PLC0415 — optional dependency
@@ -73,6 +86,16 @@ def _ustar_gap(prefix: str) -> pd.Series:
     return load_results(prefix=prefix).ugap_median()
 
 
+def _supply_annual(supply: pd.Series) -> pd.Series:
+    """Put a quarterly supply contribution on a four-quarter basis.
+
+    A rolling sum, not `annualize()`: the decomposition chart uses the latter,
+    but it is a compounding transform and not additive across components, and
+    the Taylor rule needs the terms to add up.
+    """
+    return supply.rolling(4).sum()
+
+
 def _ustar_supply(prefix: str) -> pd.Series:
     """Return the supply contribution to inflation, on a four-quarter basis.
 
@@ -84,8 +107,7 @@ def _ustar_supply(prefix: str) -> pd.Series:
     """
     from src.models.ustar.results import load_results  # noqa: PLC0415 — optional dependency
 
-    supply = load_results(prefix=prefix).inflation_decomposition()["supply"]
-    return supply.rolling(4).sum()
+    return _supply_annual(load_results(prefix=prefix).inflation_decomposition()["supply"])
 
 
 def build_observations(
@@ -93,6 +115,8 @@ def build_observations(
     end: str | None = None,
     *,
     world_source: str = "mean",
+    input_source: str = "joint",
+    joint_prefix: str = "ystar_ustar",
     ystar_prefix: str = "ystar",
     ustar_prefix: str = "ustar",
     verbose: bool = False,
@@ -139,9 +163,24 @@ def build_observations(
             lambda: get_model_expectations_unanchored().data.astype(float),
         ),
         "cash_rate": _optional("cash rate", lambda: get_cash_rate_qrtly().data.astype(float)),
-        "ygap": _optional("ystar output gap", lambda: _ystar_gap(ystar_prefix)),
-        "ugap": _optional("ustar unemployment gap", lambda: _ustar_gap(ustar_prefix)),
-        "supply": _optional("ustar supply contribution", lambda: _ustar_supply(ustar_prefix)),
+        # The Taylor rule's three inputs. From one joint run by default, so
+        # they are mutually consistent; see `ModelConfig.input_source`.
+        "ygap": _optional(
+            f"{input_source} output gap",
+            (lambda: _joint_results(joint_prefix).output_gap_median())
+            if input_source == "joint" else (lambda: _ystar_gap(ystar_prefix)),
+        ),
+        "ugap": _optional(
+            f"{input_source} unemployment gap",
+            (lambda: _joint_results(joint_prefix).ugap_median())
+            if input_source == "joint" else (lambda: _ustar_gap(ustar_prefix)),
+        ),
+        "supply": _optional(
+            f"{input_source} supply contribution",
+            (lambda: _supply_annual(
+                _joint_results(joint_prefix).inflation_decomposition()["supply"]))
+            if input_source == "joint" else (lambda: _ustar_supply(ustar_prefix)),
+        ),
     }
 
     chart_obs = core.copy()

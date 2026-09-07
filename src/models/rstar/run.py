@@ -29,7 +29,17 @@ def main() -> None:
         "--steps", action="store_true",
         help="Use the asserted step-break wedge instead of the free Student-t walk",
     )
+    parser.add_argument(
+        "--input-source", default="joint", choices=["joint", "separate"],
+        help="Where the Taylor rule's inputs come from: one joint ystar_ustar run "
+             "(default) or separate ystar and ustar runs",
+    )
     parser.add_argument("--sigma-walk", type=float, default=0.08, help="Imposed wedge innovation sd")
+    parser.add_argument(
+        "--nu-walk", type=float, default=None,
+        help="fix the StudentT degrees of freedom instead of estimating them "
+             "(removes the model's one funnel; see ModelConfig.nu_walk)",
+    )
     parser.add_argument(
         "--wedge-drift", type=float, default=0.0,
         help="Background drift between breaks (0 = pure step function)",
@@ -71,7 +81,9 @@ def main() -> None:
             **({"break_quarters": tuple(args.breaks)} if args.breaks else {}),
             wedge_drift=args.wedge_drift,
             free_wedge=not args.steps,
+            input_source=args.input_source,
             sigma_walk=args.sigma_walk,
+            nu_walk=args.nu_walk,
             anchor=args.anchor,
             rule_pi=args.rule_pi,
             rule_gap=args.rule_gap,

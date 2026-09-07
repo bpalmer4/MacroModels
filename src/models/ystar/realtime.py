@@ -70,7 +70,7 @@ def _paths(config: ModelConfig, sampler_config: SamplerConfig) -> dict[str, pd.S
         smooth_pop=config.smooth_pop, spec=config.spec,
         pi_basis=config.pi_basis, supply_control=config.supply_control,
     )
-    model = build_model(obs, config=config, verbose=False)
+    model = build_model(obs, config=config, verbose=False, obs_index=obs_index)
     trace = sample_model(model, sampler_config)
     results = PotentialResults(trace=trace, obs=obs, obs_index=obs_index)
 

@@ -43,6 +43,9 @@ DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs
 # Which published r* series stands in for the world rate.
 #   "mean" — the simple average of the three, i.e. "the global financial cycle"
 #   "US"   — the marginal pricer, arguably the truer mechanism
+# Where the Taylor rule's inputs come from. See `ModelConfig.input_source`.
+INPUT_SOURCES = ("joint", "separate")
+
 WORLD_SOURCES = ("mean", "US", "Euro Area", "Canada")
 
 
@@ -113,6 +116,54 @@ class ModelConfig:
     sigma_walk: float = 0.08
     nu_prior_mean: float = 6.0
 
+    # Fix `nu` instead of estimating it. None (default) leaves it free.
+    #
+    # Free `nu` is the model's one bad geometry. It is a centred Student-t: the
+    # innovations are drawn at a degrees-of-freedom that is itself sampled, so
+    # the two funnel against each other. The block comment above says the
+    # non-centred form leaves no funnel, and that is true of `sigma_walk` and
+    # only of `sigma_walk`. The symptoms are 12 divergences in 8,000 draws
+    # concentrated at low `nu` (median 1.82 among divergent draws against 2.05
+    # overall) and `ess_bulk` of 820 for `nu_walk`, whose `mcse_sd` of 0.191 is
+    # 14% of its posterior sd. Fixing `nu` removes that geometry outright.
+    #
+    # Three things to know before choosing a value.
+    #
+    # The data do speak here: the prior mean is 6.0 and the posterior comes
+    # back at 2.36 [1.11, 3.85]. So fixing at the posterior median of about 2.0
+    # is declining to pay for uncertainty the data already narrowed; fixing
+    # below that is a judgement of your own, and belongs in the notes as one.
+    #
+    # Below nu = 2 the Student-t has no variance. `sigma_walk` is then a scale
+    # rather than a standard deviation, and it already behaves like one: the
+    # realised sd of the quarterly wedge change is 0.139 against a nominal
+    # 0.08.
+    #
+    # Lower `nu` does not simply mean jumpier. With `sigma_walk` held fixed,
+    # heavier tails make ordinary quarters quieter and rare ones larger, so the
+    # expected effect is a flatter wedge between jumps with 2022Q2 sharpening,
+    # and the marginal 0.30-sized moves (1993Q3, 1995Q2, 2012Q2) the first to
+    # go. Whether that is right is a view about the wedge, not a sampler
+    # question, which is why it is swept rather than set.
+    nu_walk: float | None = None
+
+    # Sample the Student-t innovations as a scale mixture of normals rather
+    # than directly: `eps = z · sqrt(lam)` with `z ~ N(0,1)` and
+    # `lam ~ InverseGamma(nu/2, nu/2)`, which *is* a Student-t(nu). Same
+    # posterior, different geometry.
+    #
+    # OFF, because it was tried and it is much worse: 511 divergences against
+    # 12, `r_hat` 1.02 against 1.00, and `nu_walk` ESS halved to 440. Kept only
+    # so the test is repeatable.
+    #
+    # The reason is the standard one. Non-centring pays when the data are weakly
+    # informative about the latent and costs when they are not. The yield data
+    # pin these innovations well, so making the scale an explicit `lam` builds a
+    # funnel between `lam` and `z` rather than removing one — and with
+    # `alpha = nu/2 ≈ 1.18` that InverseGamma is heavy-tailed enough to make it
+    # a bad funnel. Centred is the right parameterisation here.
+    noncentred_wedge: bool = False
+
     # --- The policy rule: first-difference, not level ---
     # `d_i = a_pi·(pi - target) + a_gap·gap`: how far to move the cash rate,
     # not where to put it. Orphanides and Williams proposed this form precisely
@@ -150,6 +201,24 @@ class ModelConfig:
     supply_positive_only: bool = True
 
     # --- Inputs read from other models ---
+    # Where the Taylor rule's inputs come from.
+    #
+    # "joint" reads the output gap, the unemployment gap and the supply term
+    # from one completed `ystar_ustar` run. "separate" reads the first from
+    # `ystar` and the other two from `ustar`, which is what this model did
+    # before the joint model existed.
+    #
+    # Joint is the default because the three inputs are then mutually
+    # consistent: the same potential output, the same u*, the same estimate of
+    # `c`. Read separately they come from two models run in sequence, where
+    # `ustar` treats `ystar`'s gap as data, so the unemployment gap is
+    # conditional on a gap the other model no longer reports.
+    #
+    # Note the limits of what this changes. The Taylor rule sits outside this
+    # model's likelihood, so `r*`, the wedge and the term premium cannot move:
+    # only the prescription does.
+    input_source: str = "joint"
+    joint_prefix: str = "ystar_ustar"
     ystar_prefix: str = "ystar"
     ustar_prefix: str = "ustar"
 
@@ -160,6 +229,8 @@ class ModelConfig:
         """Validate the specification switches."""
         if self.world_source not in WORLD_SOURCES:
             raise ValueError(f"world_source must be one of {WORLD_SOURCES}, got {self.world_source!r}")
+        if self.input_source not in INPUT_SOURCES:
+            raise ValueError(f"input_source must be one of {INPUT_SOURCES}, got {self.input_source!r}")
 
     @property
     def constants(self) -> dict[str, float]:

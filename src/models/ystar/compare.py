@@ -105,8 +105,10 @@ def run_comparison(
     runs: dict[str, str] | None = None,
     output_dir: Path | None = None,
     chart_dir: Path | str = CHART_DIR,
+    *,
     note: str = "Same model, different Phillips curve. ",
     by: str = "Phillips curve specification",
+    sources: str = "Source: ABS 5206.0, 6401.0, 6457.0",
 ) -> dict[str, pd.DataFrame]:
     """Load the runs, print the endpoint spread, and write the charts."""
     if runs is None:
@@ -133,8 +135,10 @@ def run_comparison(
     mg.clear_chart_dir()
     for name, frame in frames.items():
         title, ylabel = titles[name]
-        plot_comparison(frame, title, ylabel, tag="full", note=note)
-        plot_comparison(frame, title, ylabel, plot_from="2015Q1", tag="recent", note=note)
+        plot_comparison(frame, title, ylabel, tag="full", note=note, sources=sources)
+        plot_comparison(
+            frame, title, ylabel, plot_from="2015Q1", tag="recent", note=note, sources=sources,
+        )
 
     print(f"\nCharts written to: {chart_dir}")
     return frames

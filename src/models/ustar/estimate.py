@@ -8,6 +8,7 @@ import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pytensor
 import pytensor.tensor as pt
 
 from src.models.ustar.config import DEFAULT_OUTPUT_DIR, ModelConfig
@@ -59,7 +60,12 @@ def _output_gap(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfig
         )
 
 
-def _ustar_state(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfig) -> Any:  # noqa: ANN401
+def _ustar_state(
+    obs: dict[str, np.ndarray],
+    model: pm.Model,
+    config: ModelConfig,
+    obs_index: pd.PeriodIndex | None = None,
+) -> Any:  # noqa: ANN401
     """u* as a driftless Gaussian random walk with an imposed innovation sd.
 
     The initial level is given a wide prior centred on the sample's own mean
@@ -82,8 +88,52 @@ def _ustar_state(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfi
         else:
             sigma = config.sigma_ustar
 
+        drift: Any = 0.0
+        if config.ustar_drift:
+            if "pi_exp" not in obs:
+                raise ValueError(
+                    "ustar_drift needs the expectations series, which is only loaded "
+                    "with the Phillips curve: drop --no-phillips",
+                )
+            # Lagged, so this quarter's drift is set by expectations formed
+            # before this quarter's unemployment was observed.
+            excess = np.maximum(0.0, np.asarray(obs["pi_exp"], dtype=float) - config.anchor)
+            if obs_index is None:
+                raise ValueError("ustar_drift needs obs_index to apply its end date")
+            excess = np.where(obs_index < pd.Period(config.ustar_drift_end, freq="Q"), excess, 0.0)
+            mc = set_model_coefficients(
+                model, {"lambda_ustar": {"mu": 0.0, "sigma": config.lambda_prior_sd}},
+            )
+            drift = -mc["lambda_ustar"] * excess[:-1]
+
+        if config.ustar_converge:
+            # u*_t = u*_{t-1} + phi·(u*_eq - u*_{t-1}) + e, written as a scan so
+            # the mean reversion is on the state's own past rather than on an
+            # exogenous series. Non-centred innovations, as everywhere else here.
+            mc = set_model_coefficients(
+                model,
+                {
+                    "phi_ustar": {"mu": 0.05, "sigma": 0.05, "lower": 0.0, "upper": 1.0},
+                    "ustar_eq": {"mu": 5.0, "sigma": 2.0},
+                },
+            )
+            z = pm.Normal("z_ustar", mu=0.0, sigma=1.0, shape=n)
+            init = pm.Normal("ustar_init", mu=float(obs["u"][0]), sigma=3.0)
+
+            def step(eps: Any, prev: Any, phi: Any, eq: Any) -> Any:  # noqa: ANN401
+                return prev + phi * (eq - prev) + eps
+
+            path, _ = pytensor.scan(
+                fn=step,
+                sequences=[z[1:] * sigma],
+                outputs_info=[init],
+                non_sequences=[mc["phi_ustar"], mc["ustar_eq"]],
+            )
+            return pm.Deterministic("ustar", pt.concatenate([[init], path]))
+
         return pm.GaussianRandomWalk(
             "ustar",
+            mu=drift,
             sigma=sigma,
             init_dist=pm.Normal.dist(mu=float(np.mean(obs["u"])), sigma=3.0),
             shape=n,
@@ -189,6 +239,7 @@ def build_model(
     obs: dict[str, np.ndarray],
     config: ModelConfig | None = None,
     verbose: bool = True,
+    obs_index: pd.PeriodIndex | None = None,
 ) -> pm.Model:
     """Build the ustar PyMC model: one state, one or two observation equations."""
     if config is None:
@@ -198,8 +249,16 @@ def build_model(
     descriptions: list[str] = []
 
     ygap = _output_gap(obs, model, config)
-    ustar = _ustar_state(obs, model, config)
-    descriptions.append("State:        u*_t = u*_{t-1} + e   (sigma imposed)")
+    ustar = _ustar_state(obs, model, config, obs_index)
+    state = "u*_t = u*_{t-1} + e   (sigma imposed)"
+    if config.ustar_converge:
+        state = "u*_t = u*_{t-1} + phi x (u*_eq - u*_{t-1}) + e   (sigma imposed)"
+    elif config.ustar_drift:
+        state = (
+            f"u*_t = u*_{{t-1}} - lambda x max(0, pi_exp - {config.anchor:g}) + e   "
+            f"(drift off from {config.ustar_drift_end}, sigma imposed)"
+        )
+    descriptions.append(f"State:        {state}")
 
     descriptions.append(f"Okun:         {_okun_equation(obs, model, ustar, ygap, config)}")
 
@@ -292,7 +351,7 @@ def run_estimate(
     )
 
     print("Building model...")
-    model = build_model(obs, config=config)
+    model = build_model(obs, config=config, obs_index=obs_index)
 
     print("Sampling...")
     trace = sample_model(model, sampler_config)

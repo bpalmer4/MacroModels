@@ -11,7 +11,13 @@ import argparse
 
 from src.models.ystar.analyse import run_analysis
 from src.models.ystar.base import SamplerConfig
-from src.models.ystar.config import PI_BASES, SPECS, SUPPLY_CONTROLS, ModelConfig
+from src.models.ystar.config import (
+    DEFAULT_EXCLUDE_WINDOW,
+    PI_BASES,
+    SPECS,
+    SUPPLY_CONTROLS,
+    ModelConfig,
+)
 from src.models.ystar.estimate import run_estimate
 
 
@@ -25,7 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--spec", default="inflation", choices=SPECS, help="Specification")
     parser.add_argument(
         "--pi-basis", default="annual", choices=PI_BASES,
-        help="Trimmed mean basis: 'annual' (four-quarter) or 'quarterly' (annualised)",
+        help="Trimmed mean basis: 'annual' (four-quarter, the default) or "
+             "'quarterly' (annualised, non-overlapping; required for --spec core)",
     )
     parser.add_argument(
         "--supply-control", default=None, choices=[c for c in SUPPLY_CONTROLS if c],
@@ -58,6 +65,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--zero-deviation", nargs=2, metavar=("FROM", "TO"), default=None,
         help="inclusive quarter range whose inflation deviation is set to zero, e.g. 2020Q2 2021Q1",
+    )
+
+    parser.add_argument(
+        "--level-break", nargs="+", default=None, metavar="QUARTER",
+        help="quarters at which y* takes a free one-off step, e.g. 2020Q2 2021Q4 "
+             "(inflation, core and target specs)",
+    )
+
+    parser.add_argument(
+        "--exclude-window", nargs=2, metavar=("FROM", "TO"), default=DEFAULT_EXCLUDE_WINDOW,
+        help="inclusive quarter range dropped from the likelihood entirely "
+             f"(default: {' '.join(DEFAULT_EXCLUDE_WINDOW)})",
+    )
+    parser.add_argument(
+        "--no-exclude-window", action="store_true",
+        help="fit the pandemic quarters like any other, recovering the continuous-sample model",
     )
 
     parser.add_argument("--sigma-c", type=float, default=0.60, help="Fixed cycle innovation sd")
@@ -115,6 +138,8 @@ def main() -> None:
         ar1_residual=args.ar1_residual,
         zero_deviation=tuple(args.zero_deviation) if args.zero_deviation else None,
         two_sided_c=args.two_sided_c,
+        level_break=tuple(args.level_break) if args.level_break else None,
+        exclude_window=None if args.no_exclude_window else tuple(args.exclude_window),
         sigma_c=args.sigma_c,
         ratio_ystar=args.ratio_ystar,
         ratio_g=args.ratio_g,

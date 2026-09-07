@@ -98,9 +98,135 @@ class ModelConfig:
     # the way ystar reports P(c > 0).
     two_sided_beta: bool = True
 
+    # Let u* drift down while inflation expectations sit above target.
+    #
+    #     u*_t = u*_{t-1} - lambda·max(0, pi^e_{t-1} - anchor) + e_u
+    #
+    # Off, u* is a driftless random walk, and that prior is badly at odds with
+    # the sample. Fitted, u* falls 8.43 to 4.71: 3.72pp over 134 quarters,
+    # where a driftless walk at sigma_ustar = 0.040 puts the sd of the total
+    # change at 0.46pp. The fitted path is about 8 standard deviations out, and
+    # the increments use most of the allowed per-quarter movement with three
+    # quarters of it directed rather than random. The prior is not stretched,
+    # it is overwhelmed.
+    #
+    # The cost shows up at the start of the sample, and Limitation 4 in the
+    # notes records the symptom without naming this as the cause. To begin
+    # where unemployment actually was in 1993Q1, 10.93, and still reach 4.71
+    # needs 6.2pp, which the prior cannot afford, so the posterior starts u* at
+    # 8.43 and books the remaining +2.5pp in the Okun residual.
+    #
+    # **Why expectations rather than a date or a constant.** A constant drift
+    # says the NAIRU falls forever, which is wrong at the endpoint. A date break
+    # is arbitrary. Excess expectations are an observable measuring the thing
+    # that would actually move a NAIRU: a target people do not yet believe, so
+    # wage-setting has not adapted to it. The series puts the regime's
+    # credibility at about 1998 — excess over target averages +0.64 across
+    # 1994-1996 against +0.07 across 2000-2019 — even though realised trimmed
+    # mean inflation was already 2.1% in 1993Q1. Credibility and realised
+    # inflation are different things and only the first should move u*.
+    #
+    # **Why it stops in 2000, and why that is a date rather than a rule.** The
+    # level of excess expectations cannot tell "the target is not yet believed"
+    # from "a supply shock has temporarily lifted expectations": it reads +0.64
+    # across 1994-1996 and +0.87 across 2022-23. Left ungated the drift pushed
+    # u* from 4.71 to 4.25 at 2026Q2 and flipped the current unemployment gap
+    # from -0.36 to +0.10, which is a large claim about today resting on an
+    # episode that was not a regime transition.
+    #
+    # The mechanism is one-off. Wage-setting adapts to a credible target once
+    # and does not unadapt, so the term is switched off after
+    # `ustar_drift_end`. That is an asserted date, and it is asserted rather
+    # than estimated because the claim being made is historical: the Australian
+    # inflation-targeting regime became credible during the 1990s. The series
+    # supports the timing without being asked to — excess averages +0.64 across
+    # 1994-1996 and +0.07 across 2000-2019 — but the date is a judgement and
+    # should be swept.
+    ustar_drift: bool = False
+    # Let u* converge to a new equilibrium instead of drifting on expectations:
+    #
+    #     u*_t = u*_{t-1} + phi·(u*_eq - u*_{t-1}) + e_u
+    #
+    # The alternative story for the same fact. `ustar_drift` says u* fell in the
+    # 1990s because the target was not yet believed; this says it was moving to
+    # a new equilibrium and decelerated as it arrived. Three differences that
+    # matter. It needs no cutoff date, because the process stops by arriving
+    # rather than by decree. `u*` depends on nothing but its own past, so the
+    # unemployment gap cannot become a proxy for inflation expectations, which
+    # under `ustar_drift` it partly does (corr with excess expectations goes
+    # +0.05 to -0.41 over 1993-99, and `beta_pi` falls from 0.578 to 0.378).
+    # And it is stationary, which is a strong claim the drift does not make.
+    #
+    # That last point is the risk. The fitted u* falls 6.64 to 4.66 after 2000,
+    # which is 4.8 sd against a driftless walk, so the sample has a slow
+    # secular decline as well as the 1990s transition. A process converging to a
+    # constant has to fight that, and may resolve it by putting `u*_eq` low and
+    # `phi` small, which would be a transition model masquerading as one.
+    #
+    # **ON BY DEFAULT.** The driftless walk it replaces is about 8 standard
+    # deviations from its own prior over the sample and 17 over 1993-1999, puts
+    # u* below unemployment in all 16 quarters of 1994-1997 while the trimmed
+    # mean broke above 3%, and leaves a +2.5pp gap one year after the deepest
+    # recession since the 1930s. Convergence fixes all three, fits better
+    # (sigma_okun 0.685 -> 0.426) and samples better, without an asserted date.
+    #
+    # What it does not do is improve the model's external validation. Against
+    # wage growth, which is not in this likelihood, the driftless gap correlates
+    # -0.523 with WPI and this one -0.485; on hourly compensation over the full
+    # sample, -0.205 against -0.059. Both still pass the test — the gap beats
+    # raw unemployment at -0.243 — but the fix does not make the gap a better
+    # measure of tightness, and on the longer wage series it is worse. That is
+    # recorded in MODEL_NOTES and is the honest counterweight to everything
+    # above.
+    #
+    # Mutually exclusive with `ustar_drift`.
+    ustar_converge: bool = True
+
+    # Quarters from here on carry no drift. See `ustar_drift`.
+    ustar_drift_end: str = "2000Q1"
+    # Prior sd for `lambda_ustar`, whose mean is zero so the sign is tested
+    # rather than asserted. A switch because 0.1 turned out to sit 2.5 prior
+    # standard deviations below the posterior, which is where `beta_okun`'s
+    # prior was found to be binding.
+    lambda_prior_sd: float = 0.1
+
     # --- How fast u* is allowed to drift ---
+    # **0.020, and the number changed when u* stopped being a random walk.**
+    #
+    # It used to be 0.040, from three readings: `ystar`'s rule of a trend
+    # innovation sd around 8% of the observed variation in the series it trends,
+    # so 8% of sd(du) = 0.300 giving 0.024; `nairu`'s realised sd(dNAIRU) of
+    # 0.032; and a ceiling from the 2012Q4-2015Q4 inflation-band test, which is
+    # what pushed the compromise up from 0.024 to 0.040.
+    #
+    # All three were derived on the driftless random walk, where the innovation
+    # had to carry the whole 3.7pp decline in u* over the sample. Under
+    # convergence the mechanism carries that and the innovation carries only
+    # deviations from it, so the calibration no longer describes the same job.
+    # The model says so itself: at 0.040 the realised innovation sd was 0.021,
+    # about half the allowance, and it was spending that allowance in the wrong
+    # place — 16% of it across 1993-1999 against 53% across 2000-2019.
+    #
+    # What 0.040 bought was late wandering: u* drifted +0.53 above its own
+    # equilibrium path in 2014 and -0.30 below it recently, which put the
+    # endpoint at 4.54 against an estimated equilibrium of 4.68. At 0.020 those
+    # deviations fall to +0.16 and -0.09, and the endpoint lands at 4.74 with
+    # the equilibrium at 4.78.
+    #
+    # The trade is visible and should be read before trusting it. A less mobile
+    # u* means a larger, more persistent unemployment gap, so `gamma_pi`
+    # flattens from -1.48 to -1.15, and in the joint model `sigma_v` rises as
+    # work is pushed onto the free gap component. And the tighter u* is, the
+    # more of it is the convergence mechanism rather than the data: see the
+    # "what moves u*" chart, where the data's share of the total fall drops
+    # from 3% to about 1%.
+    #
+    # Still outstanding: the 2012Q4-2015Q4 ceiling test has not been re-run
+    # under convergence, and it is the argument that pushed the old number up.
+    # If it no longer binds, 0.024 from `ystar`'s rule is the only remaining
+    # anchor and 0.020 sits just below it.
     # Imposed, and the single most consequential setting in the model: u* runs
-    # 5.08 to 4.62 across 0.024 to 0.065, with the gap moving -0.72 to -0.27.
+    # 5.04 to 4.58 across 0.024 to 0.065, with the gap moving -0.69 to -0.23.
     #
     # 0.040 is a compromise between three readings. `ystar`'s rule — a
     # trend innovation sd around 8% of the observed variation in the series it
@@ -110,12 +236,13 @@ class ModelConfig:
     #
     # The ceiling comes from the inflation-band chart. Across 2012Q4-2015Q4,
     # a stretch when inflation sat *below* the RBA band and so was signalling
-    # genuine slack, u* declines at 0.040 and tighter (-0.09), is flat at 0.050
-    # (-0.01), and turns positive at 0.065 (+0.09) — the model booking part of
-    # the post-mining-boom rise in unemployment as structural. `beta_pi` also
-    # falls monotonically, 0.79 at 0.024 to 0.34 at 0.065, as a freer u* crowds
-    # out the de-anchoring term.
-    sigma_ustar: float = 0.040
+    # genuine slack, u* should not be rising. It changes by -0.14, -0.13, -0.07,
+    # +0.01 and +0.11 across 0.024 to 0.065, so the sign flips between 0.040 and
+    # 0.050 and anything looser books part of the post-mining-boom rise in
+    # unemployment as structural. 0.040 is the loosest setting that passes.
+    # `beta_pi` also falls monotonically, 0.80 at 0.024 to 0.35 at 0.065, as a
+    # freer u* crowds out the de-anchoring term.
+    sigma_ustar: float = 0.020
 
     # Estimate sigma_ustar under a constrained prior instead of fixing it.
     #
@@ -154,6 +281,11 @@ class ModelConfig:
 
     def __post_init__(self) -> None:
         """Validate the specification switches."""
+        if self.ustar_drift and self.ustar_converge:
+            raise ValueError(
+                "ustar_drift and ustar_converge are two stories about the same fact; "
+                "pick one",
+            )
         if self.gap_source not in GAP_SOURCES:
             raise ValueError(f"gap_source must be one of {GAP_SOURCES}, got {self.gap_source!r}")
 

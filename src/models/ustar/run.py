@@ -37,7 +37,25 @@ def main() -> None:
         "--one-sided-beta", action="store_true",
         help="Truncate beta at zero, asserting Okun's law rather than testing it",
     )
-    parser.add_argument("--sigma-ustar", type=float, default=0.040, help="Imposed u* innovation sd")
+    parser.add_argument("--sigma-ustar", type=float, default=0.020, help="Imposed u* innovation sd")
+    parser.add_argument(
+        "--ustar-drift", action="store_true",
+        help="Let u* drift down while inflation expectations sit above target, "
+             "instead of being a driftless random walk. See ModelConfig.ustar_drift",
+    )
+    parser.add_argument(
+        "--no-ustar-converge", action="store_true",
+        help="Make u* a driftless random walk again, the pre-2026 specification. "
+             "See ModelConfig.ustar_converge for why it is not the default",
+    )
+    parser.add_argument(
+        "--lambda-prior-sd", type=float, default=0.1,
+        help="Prior sd for lambda_ustar (default 0.1); widen to test whether it binds",
+    )
+    parser.add_argument(
+        "--ustar-drift-end", default="2000Q1",
+        help="Quarter from which the u* drift term is zero (default 2000Q1)",
+    )
     parser.add_argument(
         "--free-sigma-ustar", action="store_true",
         help="Estimate the drift under a constrained prior instead of imposing it",
@@ -66,6 +84,12 @@ def main() -> None:
             two_sided_beta=not args.one_sided_beta,
             sigma_ustar=args.sigma_ustar,
             free_sigma_ustar=args.free_sigma_ustar,
+            ustar_drift=args.ustar_drift,
+            # --ustar-drift is the other story about the same fact, so asking
+            # for it turns this one off rather than raising.
+            ustar_converge=not args.no_ustar_converge and not args.ustar_drift,
+            ustar_drift_end=args.ustar_drift_end,
+            lambda_prior_sd=args.lambda_prior_sd,
         )
         sampler_config = SamplerConfig(draws=args.draws, tune=args.tune, chains=args.chains)
         run_estimate(

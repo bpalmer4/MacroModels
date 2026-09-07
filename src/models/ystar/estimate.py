@@ -59,11 +59,121 @@ def _free_sigma_ystar(
     return ["Scale:        sigma_ystar estimated, not imposed"]
 
 
+# Specs whose potential is a single free level recursion, and so can carry a
+# one-off step. `production` builds the level from the factor trends and
+# `labour` from trend hours times trend productivity; a step in either would be
+# a step in one component, which is a different claim.
+_BREAKABLE_SPECS = ("inflation", "core", "target")
+
+
+def _keep_mask(config: ModelConfig, obs_index: pd.PeriodIndex | None) -> np.ndarray | None:
+    """Resolve `config.exclude_window` to a boolean keep-mask over the sample.
+
+    Returns None when no window is excluded. Raises rather than quietly
+    excluding nothing if the window misses the sample, and rather than leaving
+    the model with too little to fit if it swallows most of it.
+    """
+    if config.exclude_window is None:
+        return None
+    if obs_index is None:
+        raise ValueError("exclude_window needs obs_index; pass it to build_model")
+    if config.spec not in ("inflation", "production"):
+        raise ValueError(
+            f"exclude_window is not available for the {config.spec} spec: the mask is "
+            f"applied in the inflation-gap GDP equation, which that spec does not use",
+        )
+
+    lo, hi = config.exclude_window
+    dropped = (obs_index >= pd.Period(lo, freq="Q")) & (obs_index <= pd.Period(hi, freq="Q"))
+    if not dropped.any():
+        raise ValueError(
+            f"exclude_window {lo} to {hi} covers no quarter of the estimation sample "
+            f"{obs_index.min()} to {obs_index.max()}",
+        )
+    if dropped.all():
+        raise ValueError(f"exclude_window {lo} to {hi} would drop the whole sample")
+
+    return ~np.asarray(dropped)
+
+
+def _record_exclusion(model: pm.Model, config: ModelConfig) -> None:
+    """Record the excluded window with the run's imposed settings.
+
+    It travels in the obs pickle to `analyse.py`, which shades the window rather
+    than drawing states through it as though they had been fitted. Call after
+    `scale_equation`, which creates the dict this writes into.
+    """
+    if config.exclude_window is not None:
+        get_fixed_constants(model)["exclude_window"] = config.exclude_window
+
+
+def _break_quarters(config: ModelConfig) -> tuple[str, ...]:
+    """Normalise `config.level_break` to a tuple of quarter strings."""
+    if config.level_break is None:
+        return ()
+    if isinstance(config.level_break, str):
+        return (config.level_break,)
+    return tuple(config.level_break)
+
+
+def _break_indices(
+    config: ModelConfig,
+    obs_index: pd.PeriodIndex | None,
+) -> tuple[tuple[int, ...], tuple[str, ...]]:
+    """Resolve `config.level_break` to positions in the estimation sample.
+
+    Returns empty tuples when no break is asked for. Every quarter must be in
+    the sample: a break outside it is silently a no-op otherwise, which would
+    leave the run log claiming a break the model does not have.
+    """
+    quarters = _break_quarters(config)
+    if not quarters:
+        return (), ()
+    if obs_index is None:
+        raise ValueError("level_break needs obs_index; pass it to build_model")
+    if config.spec not in _BREAKABLE_SPECS:
+        raise ValueError(
+            f"level_break is not available for the {config.spec} spec: potential's level "
+            f"is built from factor or component trends there, so there is no single free "
+            f"level recursion to break. Available for {_BREAKABLE_SPECS}",
+        )
+    if len(set(quarters)) != len(quarters):
+        raise ValueError(f"level_break has a repeated quarter: {quarters}")
+
+    indices = []
+    for quarter in quarters:
+        positions = np.flatnonzero(obs_index == pd.Period(quarter, freq="Q"))
+        if positions.size == 0:
+            raise ValueError(
+                f"level_break {quarter!r} is outside the estimation sample "
+                f"{obs_index.min()} to {obs_index.max()}",
+            )
+        indices.append(int(positions[0]))
+
+    # Sorted so the trace's break coordinate reads chronologically whatever
+    # order they were given in.
+    order = sorted(range(len(indices)), key=lambda i: indices[i])
+    return tuple(indices[i] for i in order), tuple(quarters[i] for i in order)
+
+
+def _potential_constant(
+    break_index: tuple[int, ...],
+    break_labels: tuple[str, ...],
+) -> dict[str, Any] | None:
+    """Constants for `potential_output_equation`, or None when there are none."""
+    if not break_index:
+        return None
+    return {"break_index": break_index, "break_labels": break_labels}
+
+
 def _inflation_family(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     latents: dict[str, Any],
     config: ModelConfig,
+    *,
+    potential_constant: dict[str, Any] | None = None,
+    keep: np.ndarray | None = None,
 ) -> list[str]:
     """Build the potential and gap blocks shared by `inflation` and `production`.
 
@@ -84,7 +194,10 @@ def _inflation_family(
             },
         )
     else:
-        desc = potential_output_equation(obs, model, latents)
+        desc = potential_output_equation(
+            obs, model, latents,
+            constant=potential_constant,
+        )
 
     gap_desc = inflation_gap_equation(
         obs, model, latents,
@@ -92,6 +205,7 @@ def _inflation_family(
             "anchor": config.anchor,
             "ar1_residual": config.ar1_residual,
             "two_sided_c": config.two_sided_c,
+            "keep": keep,
         },
     )
     return [f"Potential:    {desc}", f"Gap:          {gap_desc}"]
@@ -101,14 +215,22 @@ def build_model(
     obs: dict[str, np.ndarray],
     config: ModelConfig | None = None,
     verbose: bool = True,
+    obs_index: pd.PeriodIndex | None = None,
 ) -> pm.Model:
     """Build the ystar PyMC model.
 
     Equation order matters: the variance scale first, then the state
     equations, then the observation equations (see `equations/__init__.py`).
+
+    `obs_index` is needed only when `config.level_break` is set, to turn the
+    nominated quarter into a position in the sample.
     """
     if config is None:
         config = ModelConfig()
+
+    break_index, break_labels = _break_indices(config, obs_index)
+    potential_constant = _potential_constant(break_index, break_labels)
+    keep = _keep_mask(config, obs_index)
 
     model = pm.Model()
     latents: dict[str, Any] = {}
@@ -118,6 +240,8 @@ def build_model(
     desc = scale_equation(obs, model, latents, constant=config.scale_constants)
     descriptions.append(f"Scale:        {desc}")
 
+    _record_exclusion(model, config)
+
     descriptions.extend(_free_sigma_ystar(model, latents, config=config))
 
     # Potential is a state as usual; what differs is that the gap is *defined*
@@ -125,7 +249,12 @@ def build_model(
     # fitted around the two with a white-noise residual. No Phillips curve, no
     # IS curve, no AR(2).
     if config.spec in ("inflation", "production"):
-        descriptions.extend(_inflation_family(obs, model, latents, config))
+        descriptions.extend(
+            _inflation_family(
+                obs, model, latents, config,
+                potential_constant=potential_constant, keep=keep,
+            ),
+        )
 
         if verbose:
             print("\nModel specification:")
@@ -136,7 +265,10 @@ def build_model(
 
     # --- State equations ---
     if config.spec in ("core", "target"):
-        desc = potential_output_equation(obs, model, latents)
+        desc = potential_output_equation(
+            obs, model, latents,
+            constant=potential_constant,
+        )
         descriptions.append(f"Potential:    {desc}")
     else:
         desc = trend_hours_equation(obs, model, latents)
@@ -259,8 +391,17 @@ def run_estimate(
         obs["pi"] = np.where(mask, config.anchor, obs["pi"])
         print(f"Zeroed dev:   {lo} to {hi}  ({int(mask.sum())} quarters carry no deviation)")
 
+    quarters = _break_quarters(config)
+    if quarters:
+        print(f"Level breaks: {', '.join(quarters)}  (free one-off steps in y*)")
+
+    if config.exclude_window is not None:
+        lo, hi = config.exclude_window
+        dropped = ((obs_index >= pd.Period(lo, freq="Q")) & (obs_index <= pd.Period(hi, freq="Q")))
+        print(f"Excluded:     {lo} to {hi}  ({int(dropped.sum())} quarters carry no likelihood)")
+
     print("Building model...")
-    model = build_model(obs, config=config)
+    model = build_model(obs, config=config, obs_index=obs_index)
 
     print("Sampling...")
     trace = sample_model(model, sampler_config)

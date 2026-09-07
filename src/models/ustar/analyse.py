@@ -14,15 +14,61 @@ import pandas as pd
 
 from src.data.inflation import get_trimmed_mean_annual
 from src.models.ustar.results import DEFAULT_CHART_BASE, UStarResults, load_results
+from src.models.ystar.analyse import excluded_span_style
 from src.utilities.rate_conversion import annualize
 
 CHART_DIR = DEFAULT_CHART_BASE / "UStar"
 
 _RFOOTER = "Source: ABS 1364.0, 5206.0, 6401.0"
-_LFOOTER = "Australia. u* from a given output gap. "
+_LFOOTER = "Australia. u* model. "
 # Only for charts that actually draw a band. The decomposition chart is bars
 # and a line built from median parameters, with no interval on it to widen.
 _LFOOTER_BAND = _LFOOTER + "Band widened x2 for the imposed drift; see notes. "
+
+# Quarters that carried no likelihood, as ("2020Q2", "2021Q3"), or None.
+#
+# `ustar` never excludes anything, so this is None for its own runs. It exists
+# because the joint y*/u* model reuses these plotting functions and *does*
+# exclude the pandemic quarters from all three of its equations, which makes u*
+# there a prior extrapolation rather than an estimate. Set by the caller before
+# plotting, the same pattern `ystar.analyse` uses for the same reason. Without
+# it the u* chart draws a confident line through six quarters nothing was
+# fitted to.
+_EXCLUDED_WINDOW: tuple[str, str] | None = None
+
+
+def _excluded_span() -> list[dict[str, Any]]:
+    """Return an axvspan dict marking the unfitted window, or nothing.
+
+    Styled from `ystar.analyse.excluded_span_style` rather than restyled here,
+    so the pandemic window looks identical on every chart in the package.
+    Copying the styling into each package is how it would drift.
+
+    It carries its own legend label, which is why no footer note is added: a
+    footer would be a second, quieter statement of the same thing, and on the
+    inflation-shaded chart the reader has to tell this span apart from the
+    band-breach spans by looking at it.
+    """
+    if _EXCLUDED_WINDOW is None:
+        return []
+    lo, hi = _EXCLUDED_WINDOW
+    style = excluded_span_style()
+    return [{
+        "xmin": pd.Period(lo, freq="Q"),
+        "xmax": pd.Period(hi, freq="Q"),
+        **style,
+        "label": f"{style['label']}, {lo}-{hi}",
+    }]
+
+
+def _with_excluded(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Add the unfitted-window marker to a finalise kwargs dict."""
+    spans = _excluded_span()
+    if not spans:
+        return kwargs
+    existing = kwargs.get("axvspan") or []
+    kwargs["axvspan"] = [*spans, *existing] if isinstance(existing, list) else [*spans, existing]
+    return kwargs
 
 # The Phillips curve as drawn, with each term labelled by its bar colour.
 # Written out here rather than imported from `nairu.analysis`: that builder is a
@@ -117,12 +163,15 @@ _INFLATION_LOW = 2.0
 
 
 def _inflation_regime_spans(index: pd.PeriodIndex) -> list[dict[str, Any]]:
-    """Return axvspan dicts shading quarters where annual inflation left the band.
+    """Return axvspan dicts shading quarters where the trimmed mean left the band.
 
-    Red above the band, blue below it, nothing inside 2-3%. Annual trimmed mean
-    rather than the model's quarterly series: "inflation outside the band" is a
-    four-quarter notion, and the quarterly-annualised rate crosses the
-    thresholds several times a year.
+    Red above, blue below, nothing inside 2-3%. Two things the label has to be
+    careful about. The series is the annual **trimmed mean**, not headline CPI,
+    while the RBA's 2-3% band is a headline-CPI target, so this marks where the
+    core measure sat outside the band rather than where the target was missed.
+    And it is the four-quarter rate rather than the model's quarterly series,
+    because "outside the band" is a four-quarter notion and the
+    quarterly-annualised rate crosses the thresholds several times a year.
 
     Contiguous quarters are merged into single spans, so the chart gets a few
     readable blocks instead of 134 abutting rectangles with seamed edges.
@@ -198,10 +247,10 @@ def plot_ustar(results: UStarResults, shade_inflation: bool = False, tag: str = 
     if shade_inflation:
         finalise_kwargs["axvspan"] = _inflation_regime_spans(results.obs_index)
         finalise_kwargs["lheader"] = (
-            f"Shaded where annual inflation sat outside the "
-            f"{_INFLATION_LOW:g}-{_INFLATION_HIGH:g}% band: red above, blue below"
+            f"Shaded where the annual trimmed mean sat outside "
+            f"{_INFLATION_LOW:g}-{_INFLATION_HIGH:g}%: red above, blue below"
         )
-    mg.finalise_plot(ax, **finalise_kwargs)
+    mg.finalise_plot(ax, **_with_excluded(finalise_kwargs))
 
 
 def plot_ugap(results: UStarResults) -> None:
@@ -217,17 +266,16 @@ def plot_ugap(results: UStarResults) -> None:
         annotate=True,
         rounding=2,
     )
-    mg.finalise_plot(
-        ax,
-        title="Unemployment gap",
-        ylabel="Percentage points",
-        y0=True,
-        legend={"loc": "best", "fontsize": "small"},
-        lheader="Below zero is a tight labour market",
-        rfooter=_RFOOTER,
-        lfooter=_LFOOTER_BAND,
-        show=False,
-    )
+    mg.finalise_plot(ax, **_with_excluded({
+        "title": "Unemployment gap",
+        "ylabel": "Percentage points",
+        "y0": True,
+        "legend": {"loc": "best", "fontsize": "small"},
+        "lheader": "Below zero is a tight labour market",
+        "rfooter": _RFOOTER,
+        "lfooter": _LFOOTER_BAND,
+        "show": False,
+    }))
 
 
 def plot_inflation_decomposition(results: UStarResults) -> None:
@@ -280,6 +328,47 @@ def plot_inflation_decomposition(results: UStarResults) -> None:
     )
 
 
+def plot_ustar_components(results: UStarResults) -> None:
+    """Show how much of u*'s path is the specification and how much is the data.
+
+    The dashed line is where u* would have gone from the same 1993 starting
+    point with every innovation set to zero, so it is the convergence mechanism
+    alone. The shaded distance between the two is the whole of what the data
+    added. It is the honest answer to "is that narrow early credible band
+    telling me the data placed u* at 10.8 in 1993": through the 1990s the two
+    lines are nearly on top of each other, so they are not.
+    """
+    if not results.converges:
+        return
+    d = results.ustar_change_decomposition()
+
+    ax = mg.fill_between_plot(
+        pd.DataFrame({"lower": d[["ustar", "deterministic"]].min(axis=1),
+                      "upper": d[["ustar", "deterministic"]].max(axis=1)}),
+        color="cornflowerblue", alpha=0.25, label="Contribution of the data",
+    )
+    mg.line_plot(
+        pd.DataFrame({
+            "u*": d["ustar"],
+            "Convergence alone, no innovations": d["deterministic"],
+        }),
+        ax=ax, color=["darkorange", "black"], width=[2, 1.5], style=["--", "-"],
+        annotate=True, rounding=2,
+    )
+    total = d["ustar"].iloc[-1] - d["ustar"].iloc[0]
+    det = d["deterministic"].iloc[-1] - d["deterministic"].iloc[0]
+    mg.finalise_plot(ax, **_with_excluded({
+        "title": "What moves u*: the specification or the data",
+        "ylabel": "Per cent",
+        "legend": {"loc": "best", "fontsize": "small"},
+        "lheader": f"Of u*'s total fall of {abs(total):.2f}pp, "
+                   f"{abs(det):.2f}pp is the convergence mechanism alone",
+        "rfooter": _RFOOTER,
+        "lfooter": _LFOOTER,
+        "show": False,
+    }))
+
+
 def run_analysis(
     output_dir: Path | str | None = None,
     prefix: str = "ustar",
@@ -290,12 +379,19 @@ def run_analysis(
 
     print_diagnostics(results)
 
-    mg.set_chart_dir(str(chart_dir if chart_dir is not None else CHART_DIR))
+    # A variant run gets its own directory rather than overwriting the default
+    # one. Charting clears its directory first, so without this a single
+    # `--prefix ustar_conv` run would silently delete the headline charts, and
+    # the person comparing them would not know why.
+    if chart_dir is None:
+        chart_dir = CHART_DIR if prefix == "ustar" else DEFAULT_CHART_BASE / f"UStar-{prefix}"
+    mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
 
     plot_ustar(results)
     plot_ustar(results, shade_inflation=True, tag="inflation")
     plot_ugap(results)
+    plot_ustar_components(results)
     if results.has_phillips:
         plot_inflation_decomposition(results)
 

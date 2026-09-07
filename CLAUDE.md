@@ -34,6 +34,7 @@ uv sync                            # Install dependencies
 ./run-ystar.sh                     # Run y* potential output model (inflation-defined output gap)
 ./run-ustar.sh                     # Run u* model (Okun + Phillips; needs expectations + ystar)
 ./run-rstar.sh                     # Run r* model (bond market + world r*; Taylor rule needs ystar + ustar)
+./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free; needs expectations)
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
 uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
 uv run python -m src.models.dsge.nk_twostar_model    # Run NK two-star linear probe
@@ -84,6 +85,15 @@ src/
 │   │                              #   unidentifiable on AU data. Level Taylor rule on top.
 │   │                              #   r* ~1.2-1.6 is robust to sigma_walk; the recent PATH
 │   │                              #   is not (see MODEL_NOTES.md).
+│   ├── ystar_ustar/               # y* and u* estimated JOINTLY, with the gap partly free:
+│   │                              #   gap = c x (pi - 2.5) + v. The point is sigma_v, which
+│   │                              #   ystar alone cannot identify (v and e_c are one additive
+│   │                              #   term); adding Okun puts v in a second equation, so the
+│   │                              #   GDP/unemployment residual covariance separates them.
+│   │                              #   u* CONVERGES to an estimated equilibrium here and in
+│   │                              #   ustar; the driftless walk it replaced was ~8 sd from its
+│   │                              #   own fitted path. Feeds rstar's Taylor rule
+│   │                              #   (see MODEL_NOTES.md).
 │   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition
 │   ├── dsge/                      # DSGE + HLW-style models (see MODELS_EXPLAINED.md)
 │   │                              #   fa_nk_model.py: financial-accelerator DSGE, two r* + endogenous EFP wedge (labour_block flag)

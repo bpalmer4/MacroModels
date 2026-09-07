@@ -63,6 +63,11 @@ PI_BASES = ("quarterly", "annual")
 
 SUPPLY_CONTROLS = (None, "import_prices")
 
+# The pandemic quarters carrying no likelihood: the first lockdown through the
+# Delta lockdown, ending the quarter before reopening. See
+# `ModelConfig.exclude_window` for why they are excluded and what it costs.
+DEFAULT_EXCLUDE_WINDOW = ("2020Q2", "2021Q3")
+
 
 @dataclass
 class ModelConfig:
@@ -120,11 +125,24 @@ class ModelConfig:
     start: str = "1993Q1"
     end: str | None = None
     anchor: float = 2.5
-    # "annual" is the default because the live `inflation` spec uses the
-    # four-quarter rate: there inflation is not a regressor, so the overlapping
-    # -error problem that motivated "quarterly" does not arise, and "at target"
-    # is an annual concept. The `core` spec should be run with pi_basis
-    # "quarterly"; see the note on this field below.
+    # "annual" for the live `inflation` spec: there inflation is a regressor
+    # rather than a dependent variable, so overlapping observations create no
+    # overlapping-error problem, and "at target" is an annual concept. The
+    # `core` spec should be run with pi_basis "quarterly"; see the note on this
+    # field below.
+    #
+    # **Quarterly was tried as the default and reverted.** The four-quarter rate
+    # autocorrelates 0.948 at one lag and shares three of its four quarters with
+    # its own lag, which is a real objection and is why the joint y*/u* model
+    # uses quarterly. It does not carry over here, and the reason is an
+    # asymmetry in how the two models identify the gap. The joint model has an
+    # Okun equation, so unemployment pins the gap even when inflation is a noisy
+    # signal. This model has inflation and nothing else. On the quarterly basis
+    # `c` falls from 0.188 [0.065, 0.315] to 0.096 [0.000, 0.167] — the interval
+    # touching zero, which under a HalfNormal prior is as close to "no
+    # relationship" as the posterior can say — and the gap's sd falls from 0.188
+    # to 0.102. Same change, opposite consequence, because the noisier regressor
+    # attenuates a projection coefficient that has no other support.
     pi_basis: str = "annual"
     supply_control: str | None = None
 
@@ -167,6 +185,86 @@ class ModelConfig:
     # common cause and the projection's orthogonality condition fails there.
     # See iteration log items 13 and 16.
     zero_deviation: tuple[str, str] | None = None
+
+    # Quarters at which potential output takes a free one-off step, as "2020Q2"
+    # or ("2020Q2", "2021Q4"):
+    #
+    #     y*_t = y*_{t-1} + g_{t-1} + e_y + sum_k delta_k · 1{t = break_k}
+    #
+    # Each step is estimated with a wide two-sided prior, so its size and sign
+    # come from the data. Steps are cumulative, being increments to the same
+    # level recursion, so a +0.6 at 2021Q4 partly undoes a -3.7 at 2020Q2.
+    #
+    # Note what it can and cannot do, because the gap here is *defined* as
+    # c·(pi - anchor) and does not read y* at all. Given c, the quantity
+    # y*_t + e_c,t = log_gdp_t - c·d_t is fixed data, so the step only moves
+    # variation between potential and the residual: it cannot change the gap
+    # in any quarter except through c. And it is permanent, so it is identified
+    # by the level of GDP *after* the break relative to the pre-break trend
+    # extrapolation, not by the size of the hole at the break itself. A V-shaped
+    # collapse and recovery is not the shape a single step can fit.
+    #
+    # Two things to watch in the posterior. delta competes with the drift g,
+    # which is itself a random walk and can re-level slowly, so expect the two
+    # to trade off. And letting y* drop through 2020 takes the pandemic
+    # quarters' leverage out of c, which is where a fifth of it comes from
+    # (MODEL_NOTES item 16).
+    #
+    # Each break is a hole in the smoothness prior that does the identifying
+    # work here, so they are not free. Two of them a few quarters apart, on top
+    # of a drift that is itself a random walk, leaves little to stop potential
+    # tracking GDP down and back through 2020-21 (MODEL_NOTES iteration log
+    # item 10). Read `sigma_ystar`-scale diagnostics, not just `sigma_e`, when
+    # adding a second.
+    #
+    # `inflation`, `core` and `target` specs only: `production` builds potential
+    # from the factor trends and has no free level recursion to break.
+    level_break: str | tuple[str, ...] | None = None
+
+    # Inclusive quarter range dropped from the likelihood entirely, as
+    # ("2020Q2", "2021Q3"). Stronger than `zero_deviation`, which keeps the GDP
+    # observation and only sets the inflation deviation to zero: here the
+    # quarters contribute no GDP term and no deviation, so they say nothing
+    # about `c`, nothing about `sigma_e`, and nothing about where potential is.
+    # The states still run through the window under their priors, so the sample
+    # stays continuous and nothing is spliced.
+    #
+    # The motivating argument is that "potential output" is not well defined in
+    # a lockdown rather than merely hard to estimate. Capacity in the sense of
+    # plant, workers and skills barely moved in 2020Q2; capacity in the sense
+    # of what could lawfully be produced collapsed with GDP. Nothing in the
+    # data separates the two, and this model is worse placed than most to try,
+    # since its one instrument is inflation and inflation in those quarters was
+    # moved by free childcare and administered fuel prices rather than by
+    # demand. See `zero_deviation` for the same orthogonality argument in its
+    # weaker form.
+    #
+    # Pair it with a `level_break` inside the window to let potential take a net
+    # step across it. With the window excluded there are no observations between
+    # the candidate dates, so the break's *timing* is unidentified and only the
+    # net shift is estimated. That is the intended result rather than a defect:
+    # the model reports how far potential moved across the pandemic while
+    # declining to say when or in what pattern.
+    #
+    # `inflation` and `production` specs only: the mask is applied in
+    # `inflation_gap_equation`, which is the GDP observation for both.
+    #
+    # ON BY DEFAULT, and this is the package's central judgement rather than a
+    # tuning choice. What settled it: given a free level break at 2020Q2 on the
+    # full sample the model takes a step of -3.75 [-4.63, -2.83], but with these
+    # six quarters excluded the same free break goes to +0.33 [-0.73, +1.36].
+    # The step was those quarters and nothing else. Excluding them also fixes a
+    # three-year sign run in `e_c` over 2017-2019 (+0.75 to +0.07), which no
+    # break was needed to achieve, and leaves potential growth at 1.94, against
+    # the RBA's ~2.0 and the Cobb-Douglas 1.97.
+    #
+    # The price is `c`, which falls from 0.468 to 0.188 [0.07, 0.31] because
+    # those quarters carried a fifth of it (MODEL_NOTES item 16). It survives a
+    # two-sided prior at P(c > 0) = 0.991. Read that as the honest cost of the
+    # position: the sign holds, the magnitude does not, and the gap this model
+    # reports is correspondingly small. Set to None to recover the earlier
+    # continuous-sample model.
+    exclude_window: tuple[str, str] | None = DEFAULT_EXCLUDE_WINDOW
 
     # Give `c` a two-sided Normal(0, 2) prior instead of the default HalfNormal,
     # so the posterior can place mass on a negative conversion factor. The
@@ -296,6 +394,20 @@ class ModelConfig:
         """Validate the specification, inflation basis and supply control."""
         if self.spec not in SPECS:
             raise ValueError(f"spec must be one of {SPECS}, got {self.spec!r}")
+
+        # `exclude_window` is on by default, but the mask lives in the
+        # inflation-gap GDP equation and only the inflation family uses it. The
+        # others observe GDP through an AR(2) on the gap, where dropping a
+        # window from the middle would splice the lags across it rather than
+        # remove them.
+        #
+        # So the *default* simply does not apply to those specs, and is cleared
+        # here rather than raising: `--spec core` should still run. An explicit
+        # window is a different matter, and `_break_indices`' sibling check in
+        # estimate.py raises for it, because a request that cannot be honoured
+        # must not be silently dropped.
+        if self.spec not in ("inflation", "production") and self.exclude_window == DEFAULT_EXCLUDE_WINDOW:
+            self.exclude_window = None
         if self.pi_basis not in PI_BASES:
             raise ValueError(f"pi_basis must be one of {PI_BASES}, got {self.pi_basis!r}")
         if self.supply_control not in SUPPLY_CONTROLS:
