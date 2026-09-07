@@ -2,6 +2,57 @@
 
 Bayesian state-space model for jointly estimating NAIRU, potential output, and output gaps for Australia using PyMC (NumPyro NUTS backend).
 
+> ## Read this before quoting anything below
+>
+> **This model is superseded for potential output, the output gap, and the NAIRU itself.**
+> Use `ystar` for potential growth, and `ystar_ustar` (the joint y\*/u\* model) for the output gap
+> and u\*.
+>
+> **It does not estimate potential output.** The posterior median traces the Cobb-Douglas
+> production-function input turning point for turning point across forty years, ending at 1.66
+> against the input's 1.74. See `charts/.../potential-growth-input-vs-modeled-output.png`. The
+> credible bands in the potential-growth chart are bands around a number the data never moved.
+>
+> **And that input is not a potential path.** Potential growth falls from 4.8% to 0.15% between
+> 1990 and 1992, is back at 4.8% by 1996, and goes negative in 2020. Potential output does not
+> contract during a lockdown; measured output does. The series tracks the cycle, so the output gap
+> is close to actual minus a filtered version of actual. The cyclical signal is absorbed into
+> "potential" before the Phillips curve ever sees it, and the Okun equation carries the damage
+> straight into the NAIRU. That is why the NAIRU is superseded too, and not only the gap.
+>
+> **And the NAIRU cannot move.** It is a driftless Gaussian random walk (`equations/nairu.py`,
+> `mu=0`), and the fitted path is near-immobile: the sd of its quarterly change is 0.032, a tenth
+> of unemployment's own 0.316. It runs 6.14 in 1990Q1, 6.26 in 1993Q1, 6.37 in 1995Q1, 6.14 in
+> 1997Q4 and 6.31 in 2000Q1, a net **+0.17 across the decade** in which unemployment went from 6.3
+> to 10.9 and back to 6.6. The whole 1990s is therefore booked as output gap rather than as a
+> moving NAIRU: `u − NAIRU` is positive in all 16 quarters of 1994-97, averaging +2.42 and peaking
+> at +4.02.
+>
+> This is not a variance set too tight. The prior on the innovation is `Normal(0.3, 0.1)`, far
+> looser than `ustar`'s imposed 0.020. A driftless walk has no mechanism for sustained
+> one-directional movement, because innovations are mean-zero, so a larger sigma buys noise rather
+> than descent. "The NAIRU fell through the 1990s" is not a hypothesis this specification can
+> entertain, and the flat-NAIRU-with-a-large-gap reading wins by default rather than on evidence.
+> `ustar` reached the same conclusion about its own driftless walk and replaced it with convergence
+> toward an estimated equilibrium.
+>
+> **What that does not show.** Inflation does not contradict the flat NAIRU over that window.
+> Trimmed mean averaged 2.41% year-ended across 1994-97, exceeded 3% in only 2 of 16 quarters, and
+> sat below expectations in 13 of 16 as expectations fell from 3.2 to 2.6. A model reading 2.4
+> points of slack and predicting disinflation is coherent there. The objection is that it cannot
+> represent the alternative, not that its reading is refuted.
+>
+> The current level, 4.88, is close to the joint model's 4.74. This defect is historical, not
+> contemporary.
+>
+> **What this model is still for**, and nothing else in the package offers it: the wage equation,
+> the expectations-to-target anchor transition, the regime split, and the LOO/WAIC comparison
+> across variants. Those are about inflation dynamics and the re-anchoring narrative. Read the
+> Phillips-curve and model-comparison sections for that. The NAIRU and gap numbers it prints are
+> not the package's answer to those questions.
+>
+> Everything below is unchanged and describes the model on its own terms.
+
 ## Summary
 
 | Component | Method | Key Feature |

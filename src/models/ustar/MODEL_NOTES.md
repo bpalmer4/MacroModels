@@ -222,10 +222,20 @@ Split by era it is worse at the front:
 10.93, and still reach 4.71 needs 6.2pp, which the prior cannot afford. So the posterior
 compromises by starting u\* at 8.43 and booking the remaining +2.5pp in the Okun residual.
 
-**And that reading contradicts the inflation data.** With no drift, u\* sits below unemployment
-in all 16 quarters of 1994-1997, so the model says slack throughout — while the annual trimmed
-mean broke above 3% in late 1995. A Phillips curve cannot explain an inflation breakout out of
-slack. The summary statistic over 1993-1999:
+**And that reading sits awkwardly with the inflation data.** With no drift, u\* sits below
+unemployment in all 16 quarters of 1994-1997, so the model says slack throughout, while the annual
+trimmed mean rose above 3% in late 1995.
+
+State that carefully, because an earlier version of this paragraph overstated it and the
+overstatement propagated into `config.py` and into `ystar_ustar`'s notes. The breakout was brief:
+across 1994-1997 the annual trimmed mean **averaged 2.41%**, exceeded 3% in **2 of 16 quarters**
+(3.1 in 1995Q4 and 3.2 in 1996Q1, with 3.0 in 1996Q2), and sat **below expectations in every
+quarter**, as expectations fell from about 3.5 to 2.9. So "slack throughout, with inflation
+running below expectations and falling" is not by itself incoherent, and the window is not the
+knockdown it was written as. What the driftless walk gets wrong is the correlation below, and the
+descent it cannot make, rather than a contradiction with an inflation breakout.
+
+The summary statistic over 1993-1999:
 
 | corr(u − u\*, inflation four quarters ahead) | |
 |---|---|

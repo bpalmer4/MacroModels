@@ -25,13 +25,13 @@ from src.models.ystar_ustar.results import JointResults, load_results
 # Reference values from the separately estimated parents, for the comparison
 # table. Both are 2026Q2 vintage and both are recorded in their MODEL_NOTES.
 _YSTAR_C = 0.188
-_YSTAR_SIGMA_E = 0.508
+_YSTAR_SIGMA_E = 0.506
 _YSTAR_POTENTIAL_GROWTH = 1.94
 _YSTAR_GAP = 0.21
 _YSTAR_GAP_SD = 0.188
-_USTAR_BETA = 2.033
-_USTAR_GAMMA = -1.055
-_USTAR_LEVEL = 4.71
+_USTAR_BETA = 2.147
+_USTAR_GAMMA = -1.148
+_USTAR_LEVEL = 4.83
 
 _LFOOTER = "Australia. Joint y* and u* model. "
 _SOURCE = "Source: ABS 5206.0, 6401.0, 6202.0, 6457.0"
@@ -53,7 +53,7 @@ _TAIL = 0.10
 _SCALAR_NDIM = 2
 
 # Where the parents put the same parameter, for the reference line.
-_SEPARATE_VALUE = {"sigma_e": _YSTAR_SIGMA_E, "sigma_okun": 0.685}
+_SEPARATE_VALUE = {"sigma_e": _YSTAR_SIGMA_E, "sigma_okun": 0.485}
 
 
 def _halfnormal_moments(sigma: float) -> tuple[float, float]:
@@ -280,6 +280,117 @@ def _chart_gap_decomposition(results: JointResults) -> None:
         legend={"loc": "best", "fontsize": "small"},
         lheader=f"Inflation-defined share of gap variance: {shares['defined']:.0%}",
         lfooter=_LFOOTER + "Medians. Shaded: no likelihood. ",
+        rfooter=_SOURCE,
+        axvspan=_excluded_span(results),
+        show=False,
+    )
+
+
+_PHILLIPS_ERAS: tuple[tuple[str, str, str], ...] = (
+    ("1993Q1", "1999Q4", "1993-1999"),
+    ("2000Q1", "2009Q4", "2000-2009"),
+    ("2010Q1", "2019Q4", "2010-2019"),
+    ("2020Q1", "2026Q4", "2020-"),
+)
+_ERA_COLOURS = ("tab:blue", "tab:green", "goldenrod", "crimson")
+
+
+def _chart_phillips_curve(results: JointResults) -> None:
+    """Draw the Phillips curve the model actually fits.
+
+    A partial-regression plot: the equation's own regressor on the horizontal
+    axis, and inflation with every non-demand term removed on the vertical, so
+    the fitted line is `gamma_pi` through the origin with nothing else in the
+    way. Points are coloured by era, which is how a reader can see whether the
+    relationship is one line or several.
+    """
+    if not results.has_phillips:
+        return
+
+    frame = results.phillips_frame()
+    keep = results.fitted_mask()
+    frame = frame[keep]
+
+    gamma = results.posterior["gamma_pi"].values.ravel()
+    gamma_median = float(np.median(gamma))
+
+    _, ax = plt.subplots()
+    for (lo, hi, label), colour in zip(_PHILLIPS_ERAS, _ERA_COLOURS, strict=False):
+        window = frame[lo:hi]
+        if window.empty:
+            continue
+        ax.scatter(
+            window["demand_slack"], window["inflation_ex_other"],
+            s=22, color=colour, alpha=0.8, label=label, zorder=3,
+        )
+
+    grid = np.linspace(frame["demand_slack"].min(), frame["demand_slack"].max(), 50)
+    lo_g, hi_g = np.percentile(gamma, [5, 95])
+    ax.fill_between(grid, lo_g * grid, hi_g * grid, color="grey", alpha=0.20,
+                    label="90% interval for the slope", zorder=1)
+    ax.plot(grid, gamma_median * grid, color="black", linewidth=2,
+            label=f"Fitted: gamma = {gamma_median:.2f}", zorder=2)
+    ax.axhline(0.0, color="grey", linewidth=0.8)
+    ax.axvline(0.0, color="grey", linewidth=0.8)
+
+    mg.finalise_plot(
+        ax,
+        title="The Phillips curve as specified",
+        xlabel="Unemployment gap, (u - u*) / u",
+        ylabel="Quarterly inflation less anchor,\nexpectations and supply terms",
+        legend={"loc": "best", "fontsize": "small"},
+        lheader=f"gamma = {gamma_median:.2f}, 90% interval [{lo_g:.2f}, {hi_g:.2f}]",
+        lfooter=_LFOOTER + "Excluded quarters dropped. Axes not independent: see notes. ",
+        rfooter=_SOURCE,
+        show=False,
+    )
+
+
+def _chart_implied_ustar(results: JointResults) -> None:
+    """Show how much of the reported u* path is prior rather than likelihood.
+
+    The grey line is the u* each quarter's inflation would imply on its own,
+    from `results.implied_ustar()`. The state law's whole job is to turn that
+    into something a NAIRU could plausibly be, so the question the chart answers
+    is whether it does that by filtering the series or by ignoring it.
+    """
+    if not results.has_phillips:
+        return
+
+    ustar = results.ustar_posterior()
+    implied = results.implied_ustar()
+    fitted = ustar.median(axis=1)
+    ratio = implied.diff().std() / fitted.diff().std()
+
+    band = pd.DataFrame({
+        "lower": ustar.quantile(0.05, axis=1),
+        "upper": ustar.quantile(0.95, axis=1),
+    })
+    ax = mg.fill_between_plot(band, color="cornflowerblue", alpha=0.25,
+                              label="u* 90% credible interval")
+    mg.line_plot(
+        pd.DataFrame({
+            "Implied by inflation alone": implied,
+            "u*": fitted,
+        }),
+        ax=ax,
+        color=["grey", "darkorange"],
+        width=[1.0, 2.5],
+        style=["-", "-"],
+        alpha=[0.7, 1.0],
+        annotate=True,
+        rounding=2,
+    )
+    mg.finalise_plot(
+        ax,
+        title="What inflation alone says u* is, quarter by quarter",
+        ylabel="Per cent",
+        legend={"loc": "best", "fontsize": "small"},
+        lheader=(
+            f"Implied series moves {ratio:.0f}x as much quarter to quarter; "
+            f"correlation with u* {implied.corr(fitted):.2f}"
+        ),
+        lfooter=_LFOOTER + "Phillips curve inverted at posterior medians, residual set to zero. ",
         rfooter=_SOURCE,
         axvspan=_excluded_span(results),
         show=False,
@@ -518,6 +629,8 @@ def run_analysis(
         # cycle spec is that inflation does not own a share of it.
         _chart_gap_decomposition(results)
     _chart_residuals(results)
+    _chart_implied_ustar(results)
+    _chart_phillips_curve(results)
     _chart_parameter_posteriors(results)
 
     ystar_analyse._LFOOTER = ystar_footer  # noqa: SLF001

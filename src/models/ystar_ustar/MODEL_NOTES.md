@@ -24,8 +24,8 @@ OBSERVED
 Every prior is taken unchanged from the two parent models, and so are `sigma_ystar`, `sigma_g`
 and `sigma_ustar`, so a difference in the posterior is attributable to joint estimation and to
 `v` rather than to re-tuning. The one departure is `sigma_okun`, which `ustar` estimates and
-this model imposes: see "Why `sigma_okun` is imposed" for the evidence that nothing reported
-turns on it.
+this model imposes: see "Why `sigma_okun` is imposed" for the sweep, which shows the answer does
+depend on it beyond 0.4, and for why the data do not go there.
 
 ---
 
@@ -52,16 +52,34 @@ joining the two models, and `--no-okun` is the control that demonstrates it: wit
 second equation `sigma_v` should return its prior.
 
 **What the answer decides.** If `sigma_v` is near zero, `ystar`'s identity is vindicated,
-its 0.188 gap *is* the output gap, and `ustar`'s `beta_okun` = 2.03 is a real and
+its 0.188 gap *is* the output gap, and `ustar`'s `beta_okun` = 2.14 is a real and
 uncomfortable finding rather than an artefact. If `sigma_v` is large, `ystar` has been
-reporting a slice of the cycle, `ustar` has been fed that slice, and 2.03 is the slice
+reporting a slice of the cycle, `ustar` has been fed that slice, and 2.14 is the slice
 showing up as an inflated slope.
 
 **Expect it to be weakly identified.** The moment is a covariance between two large
-residuals (`ystar` reports `sigma_e` = 0.508, `ustar` `sigma_okun` = 0.685). The
+residuals (`ystar` reports `sigma_e` = 0.508, `ustar` `sigma_okun` = 0.486). The
 prior-versus-posterior check in `analyse.py` is there because "the posterior equals the
 prior" is a live outcome, and it would mean the joint model failed at the one thing it was
 built for.
+
+**And the model is small on purpose.** Three states, three observation equations, five imposed
+variances. It is not attempting a comprehensive business cycle decomposition, and it does not
+claim to have measured the output gap independently. `sigma_v` is a **diagnostic on `ystar`**: it
+asks how much cyclical movement the inflation identity misses, given that unemployment can see
+some of it. Answering "materially more than a little" does not require knowing what the missing
+part is made of, and the model makes no claim about that.
+
+That boundary is worth stating because the model resembles a class of larger models it is not a
+member of, and a reader who assumes otherwise will find defects that are declared choices.
+Separating a latent cycle from correlated equation disturbances, adding cyclical measurements
+(hours, vacancies, capacity utilisation, surveys) until the trend/cycle split is free, replacing
+the defined gap with an estimated one: each is a coherent research programme and each is a
+different model. `ystar`'s own notes make the same point about the machinery it dropped.
+
+The imposed variances are the price of being small. The honest response to them is to sweep and
+report, which is what the sweeps in this file do. It is not to add structure until they become
+estimable, because the free-cycle experiment below shows where that ends on this observable set.
 
 ---
 
@@ -95,13 +113,16 @@ as well, in that `sigma_okun` sampled worse on quarterly (ESS 77 against 257, wi
 posterior mass below 0.10 against the prior's 8%, where the annual run had 6%). That is moot
 now that `sigma_okun` is imposed, and it was part of why imposing it was worth doing.
 
-**Three imposed variances still set the answers.** `sigma_ystar`, `sigma_g` and `sigma_ustar`
-are all imposed, for the reason all three parents impose them: a free state beside a free
-residual is the Stock-Watson pile-up pair, and `ustar` documented all three routes to
-estimating its own drift failing. Joining the models does not relieve that and arguably makes
-it harder to see, since the three now interact. `ystar`'s `sigma_sweep.py` and `ustar`'s
-`sigma_ustar` sweep both remain the honest way to report it, and neither has been run on this
-model yet.
+**Three state variances are imposed, but only one of them still sets anything.** `sigma_ystar`,
+`sigma_g` and `sigma_ustar` are all imposed, for the reason all three parents impose them: a free
+state beside a free residual is the Stock-Watson pile-up pair, and `ustar` documented all three
+routes to estimating its own drift failing.
+
+Two have since been swept on this model and neither moves the headline. `sigma_ustar` shifts
+`sigma_v` by 0.057 across a doubling (see the u\* 2x2); `sigma_ystar` by 0.031 across a grid from
+zero to three times the default (see its sweep). `sigma_g` has not been swept here. The imposed
+variance that does matter is not a state variance at all: it is `sigma_okun`, which has no
+external anchor and beyond 0.40 collapses the model into `ystar`.
 
 **No IS curve, no r\*.** The repo's central negative finding is that the rate-to-activity link
 is not identified in Australian data: `rstar_hlw` measures `a_r` ≈ −0.04 against `σ_IS` ≈ 0.70,
@@ -154,7 +175,10 @@ the same 0.078, and nothing in the new structure touches it. Adding `v` moves va
 
 ## Results (2026Q2 vintage)
 
-**`sigma_v` is identified, and about half the output gap is cycle that inflation cannot see.**
+**`sigma_v` is identified, and the output gap is about twice as wide as `ystar` reports.**
+
+That is the statement to quote. The defined/free split below is an accounting convention that
+moves with the inflation horizon and with `sigma_ustar`; sd(gap) does not.
 
 Defaults: quarterly gap basis, u\* converging, `sigma_ustar` = 0.020, `sigma_okun` imposed at
 0.20, 10,000 draws. **0 divergences, `r_hat` 1.000 throughout, minimum ESS 4,528.**
@@ -178,6 +202,16 @@ Defaults: quarterly gap basis, u\* converging, `sigma_ustar` = 0.020, `sigma_oku
 | sd(gap) | **0.420**, against `ystar`'s 0.188 |
 | corr(e_c, e_o) | **−0.584** |
 
+**`corr(e_c, e_o)` is a leftover, not the identifying moment.** The moment that identifies
+`sigma_v` is the covariance of the residuals *before* `v` is removed, as derived above. What this
+row reports is what is left after `v` has been extracted, and the likelihood assumes it is zero.
+Across the 2x2 below it runs −0.578 / −0.165 / −0.623 / −0.584: only in the cell where `sigma_v`
+is 0.873 does it approach zero, because there `v` is large enough to absorb the common movement.
+So −0.58 is not corroboration. It is the part `v` failed to absorb, and it is the one piece of
+evidence that the model's `cov(e_c, e_o) = 0` restriction is straining. Testing that means freeing
+the correlation, which is only estimable while `sigma_okun` stays imposed: `sigma_v`, `sigma_e`,
+`sigma_okun` and `rho` are four unknowns against the three moments of a 2x2 residual covariance.
+
 | Headline | joint | separate |
 |---|---|---|
 | potential growth, y/y | 1.99 | 1.94 |
@@ -185,31 +219,128 @@ Defaults: quarterly gap basis, u\* converging, `sigma_ustar` = 0.020, `sigma_oku
 | u\* | **4.74** | 4.83 (`ustar`) |
 | u − u\* | −0.39 | −0.48 |
 
-### u\* converges, and it changed the answer
+### The u\* state law, run as a 2x2
 
 u\* used to be a driftless random walk here as in `ustar`, and that prior is about 8 standard
-deviations from its own fitted path. Backporting `ustar`'s convergence specification, and with
-it `sigma_ustar` = 0.020 in place of 0.040, moved the model materially:
+deviations from its own fitted path. Backporting `ustar`'s convergence specification made **two**
+changes at once: it added a pull toward an estimated equilibrium, and it halved `sigma_ustar` from
+0.040 to 0.020. Those changes push `sigma_v` in opposite directions, and this section used to
+report them as one move. Run as a 2x2, `sigma_v` (mean, 94% HDI):
 
-| | driftless, `sigma_ustar` 0.040 | converging, 0.020 |
+| | `sigma_ustar` = 0.040 | 0.020 |
 |---|---|---|
-| `sigma_v` | 0.495 | **0.334** |
-| sd(gap) | 0.549 | **0.420** |
-| free share of the gap | 66.7% | **47.5%** |
-| `beta_okun` | 1.343 | 1.265 |
-| `gamma_pi` | −1.022 | −1.152 |
-| u\* 2026Q2 | 4.69 | **4.74** |
+| driftless | 0.495 [0.344, 0.664] | 0.873 [0.621, 1.120] |
+| converging | 0.277 [0.182, 0.376] | **0.334** [0.231, 0.442] |
 
-**`sigma_v` fell by a third and the free share from two thirds to under a half.** The reading
-is uncomfortable and worth stating plainly: a substantial part of what this model was
-attributing to "cycle inflation cannot see" was a **mis-specified u\* trend**. Forced to be a
-driftless walk, u\* could not fall as fast as the 1990s required, so the Okun equation needed a
-large free gap component to reconcile unemployment with output. Fix u\* and the demand for `v`
-drops sharply.
+sd(gap) 0.556 / 0.935 / 0.352 / **0.421**; free share 66.7 / 80.2 / 39.6 / **47.5**%;
+`beta_okun` 1.343 / 1.452 / 1.130 / **1.265**; `gamma_pi` −1.022 / −0.564 / −1.481 / **−1.152**.
+All four sample cleanly: 0 divergences, max `r_hat` 1.010, minimum ESS 686.
 
-The finding survives, smaller. `sigma_v` = 0.334 still shows 91% prior shrinkage, the
-identifying covariance is still −0.58, and the gap is still more than twice `ystar`'s. But the
-headline this model was built on was overstated, and the cause was a defect elsewhere in it.
+**The decay is what mattered.** At either variance it roughly halves `sigma_v`. A substantial part
+of what this model was attributing to "cycle inflation cannot see" was u\* being unable to fall as
+fast as the 1990s required: the sample starts 1993Q1 with unemployment near its post-recession
+peak, and a driftless walk cannot make that descent, so the Okun equation needed a large free gap
+component to reconcile unemployment with output. Give u\* a pull toward equilibrium and the demand
+for `v` halves.
+
+**The halved variance was working against it.** Tightening `sigma_ustar` stiffens u\* everywhere, so
+unemployment variation u\* can no longer absorb must be explained by `beta·gap` instead. That is why
+the driftless row rises from 0.495 to 0.873. The two changes netted to 0.334, so the decay's own
+effect is larger than the bundled move suggested.
+
+**The decay also removes the model's dependence on `sigma_ustar`, and that is the more useful
+result.** Halving `sigma_ustar` moves `sigma_v` by 0.378 under the driftless walk and by 0.057
+under the decay. The mechanism is that with the pull term u\* makes its big move through
+`phi·(u*_eq − u*)` whatever its innovations are allowed to be, so it stops caring about
+`sigma_ustar`; without it, innovations are the only way u\* can move at all. `sigma_ustar` has an
+external anchor in `ustar`'s 2012Q4-2015Q4 inflation-band test, but a weak one, and under the decay
+the answer no longer turns on it. This is the `sigma_ustar` sweep that "Still to run" used to list
+as mattering most, done on the axis that mattered.
+
+**`phi` is inert now, which is why the decay row is nearly flat.** With `u*_eq` = 4.78 and u\* at
+4.74, the pull term is about 0.002 percentage points a quarter. The decay does its work in the
+1990s descent and then gets out of the way, so what governs the recent u\* path is `sigma_ustar`
+alone. The 0.277-to-0.334 spread is what remains of that, and it is small.
+
+**What survives.** `sigma_v` is 0.28 to 0.33 across the two decay cells, the free share 40 to 48%,
+sd(gap) 0.35 to 0.42 against `ystar`'s 0.188. The finding has now shrunk twice. Quote sd(gap) as a
+range across `sigma_ustar`, not as a point, and do not quote the free share at all.
+
+### The wage check, and why it does not bear on the decay
+
+External validation, outside every likelihood: private-sector WPI growth (y/y, 1998Q3-2026Q2,
+n = 112) regressed on `u − u*` and inflation expectations, HAC(4). Wages are in no model here, and
+WPI is not in the gap's construction, so this is genuinely out of sample in the way that matters.
+
+| | corr | slope | t | R² |
+|---|---|---|---|---|
+| joint `u − u*` | −0.748 | −0.476 | −3.84 | 0.672 |
+| `ustar` `u − u*` | −0.737 | −0.449 | −3.48 | 0.663 |
+| raw unemployment | −0.430 | +0.000 | +0.00 | 0.575 |
+
+**The gap beats the level, and not marginally.** With expectations controlled, raw unemployment's
+coefficient is exactly zero. u\* is adding information rather than relabelling `u`.
+
+**It is the one labour-market slope here that is not circular.** In the `(u − u*)/u` form the
+Phillips curve uses, the wage slope is **−2.00** against `gamma_pi`'s −1.15. `gamma_pi` is
+uninterpretable because its regressor is partly a rescaling of its own dependent variable; the
+wage slope has no such problem. Expectations pass through at 1.019.
+
+**NAIRU-consistent private wage growth is 2.92%**, at `u = u*` with expectations at target. It
+comes back at 2.92 across the entire `sigma_okun` sweep and both decay cells (2.82 and 2.86 in the
+driftless cells), because it rests on the constant and the pass-through rather than on the gap.
+That makes it the least specification-sensitive number this model produces. Implied trend labour
+productivity growth, on the identity and a constant labour share, is about 0.4%.
+
+**It cannot rank `sigma_okun`**, which was the hope: correlation runs −0.747 to −0.760 across 0.10,
+0.20, 0.40, 0.70 and the free run. There is no external anchor for that parameter here. The
+gradient that exists mildly favours 0.70, the cell where the model degenerates into `ystar`, and is
+far too small to carry weight.
+
+**It ranks the u\* specifications and prefers the driftless walk at 0.040** (corr −0.785, t −5.15,
+R² 0.707, against the headline's −0.748, −3.84, 0.672), and `ustar` records the same direction from
+its own wage check. **Neither bears on the decay**, for two reasons. WPI private annual begins
+1998Q3, so the sample starts after the 1990s descent and never sees the failure the decay was
+adopted to fix. And post-1998 the decay term is inert, since u\* is already at its equilibrium and
+the pull is about 0.002pp a quarter, so what separates the cells over that sample is mostly
+`sigma_ustar`, meaning how much u\* wiggles recently. If a wigglier u\* tracked wages better,
+`conv040` should beat `conv020`; it does not, −0.727 against −0.748. There is no consistent story
+in the ranking, which is the second reason not to lean on it.
+
+The check is a regression on saved output, not a model run.
+
+### The early sample: the model over-predicts inflation in the 1990s
+
+Phillips residuals, observed less fitted, quarterly percentage points:
+
+| period | n | mean residual | t |
+|---|---|---|---|
+| 1993-1995 | 12 | −0.071 | −1.81 |
+| **1996-1998** | 12 | **−0.119** | **−2.73** |
+| 1999-2019 | 84 | +0.009 | +0.54 |
+| 2020-2026 | 26 | −0.019 | −0.63 |
+
+Negative means fitted above observed, so over 1996-98 the model **over**-predicts inflation by
+about half a point annualised, systematically.
+
+**Which points at u\* being too high early, not too low.** `gamma_pi` is negative, so
+over-prediction means the demand term is contributing too much inflation, which means the model
+sees too little slack, which means u\* sits above where inflation wants it. The decay was adopted
+because a driftless walk could not descend fast enough. These residuals say the decay does not
+descend fast enough either over 1996-98. Smaller in degree, same in kind, and it is the second
+piece of evidence about the early sample after the implied-u\* chart.
+
+**An expectations explanation was tested and does not work.** The natural story is that
+pass-through was stronger before the target was credible, so a fixed `beta_pi` = 0.361
+under-weights expectations early and the shortfall lands on the demand term. That predicts
+**under**-prediction. The model over-predicts, so raising `beta_pi` would add inflation to
+quarters that are already too high and make the miss worse. The residual's correlation with the
+expectations term is also −0.08 pre-1996, so it is not tracking that variable. The raw excess is
+certainly present, with expectations above anchor by +0.64 in 1993-95 and +0.40 in 1996-98, but
+the model is not missing on account of it. If anything the data could support *less* early
+pass-through, which would want a reason before it was tried.
+
+Twelve quarters and half a point annualised, so this is a lead rather than a finding.
 
 ### Why `sigma_okun` is imposed
 
@@ -230,27 +361,115 @@ Pinning one end dissolves it, and the gain is not marginal:
 
 Better absolute sampling from half the draws.
 
-**Nothing reported depends on it.** Free against imposed: `c` 0.284 → 0.285, `sigma_v`
-0.492 → 0.495, `beta_okun` 1.333 → 1.343, `gamma_pi` −1.021 → −1.022. And doubling the
-imposed value to 0.40 moves `c` by +0.005 and `sigma_v` by −0.009; `beta_okun` shifts −0.113,
-about half a posterior sd, with `sigma_e` absorbing the rest at 0.404, exactly as the −0.55
-correlation predicts.
+**The sweep: `sigma_v` does depend on it.** Four imposed values, everything else at the defaults:
 
-**The objection, stated rather than buried.** 0.20 is this model's own posterior mean, so
-imposing it is circular in a way the package's other imposed variances are not. `ystar`'s
-`sigma_ystar` rests on an 8%-of-observed-variation rule; `ustar`'s `sigma_ustar` on the
-2012Q4-2015Q4 inflation-band test; both are swept and reported as conditional. This one has no
-external anchor. What defends it is the insensitivity, not the value: the honest reading is
-that `sigma_okun` is a nuisance parameter the data do not determine and the answers do not
-need. `ustar`'s 0.685 is not a candidate, being conditional on a frozen gap that this model
-rejects. `--free-sigma-okun` restores the original specification; expect `r_hat` 1.08 and
-budget 24,000 draws.
+| `sigma_okun` | `sigma_v` | sd(gap) | free share | `c` | `beta_okun` |
+|---|---|---|---|---|---|
+| 0.10 | 0.340 [0.24, 0.44] | 0.431 | 54.5% | 0.264 | 1.343 |
+| **0.20** | **0.334** [0.23, 0.44] | **0.421** | **47.5%** | 0.278 | 1.265 |
+| 0.40 | 0.261 [0.13, 0.40] | 0.332 | 24.7% | 0.264 | 1.226 |
+| 0.70 | 0.085 [0.00, 0.22] | 0.224 | 0.1% | 0.206 | 1.395 |
 
-**On the annual gap basis**, for comparison, `c` = 0.376, `sigma_v` = 0.461, `beta_okun` =
-1.244 and the free share is 52.3%. The gap itself is unchanged: sd 0.545 against 0.549, and
-the same 0.354 correlation with NAB business conditions. **The defined/free split is an
-accounting convention, not a result** — it moves with the inflation horizon while the object
-it decomposes does not. Do not quote it as a finding.
+All four sample cleanly: `r_hat` 1.000, minimum ESS 1,708, 0 divergences except 5 at 0.70.
+
+At 0.70 the free component is gone, its interval includes zero, `c` = 0.206 is within noise of
+`ystar`'s 0.188, and **the model degenerates into `ystar`**. So `sigma_okun` is not a nuisance
+parameter, it is the finding restated: *if* unemployment tracks the gap tightly enough for its
+equation residual to sit between 0.1 and 0.4, a large part of the cycle is invisible to inflation;
+at 0.7 it is not.
+
+This section used to report that doubling to 0.40 moves `sigma_v` by −0.009, and conclude that
+nothing depends on it. That was a driftless-era measurement, taken when `v` was large enough to
+swamp the change. Under the decay the move is **−0.073**, about 0.8 of a posterior sd, with
+sd(gap) down a fifth and the free share halved. The decay did not remove the model's dependence on
+an imposed variance. It removed the `sigma_ustar` one and left this one exposed.
+
+**The free run says the data will not go near the cliff.** `--free-sigma-okun` under the decay,
+10,000 draws:
+
+| | free | imposed at 0.20 |
+|---|---|---|
+| `sigma_okun` | 0.141, ESS **16**, `r_hat` **1.19** | imposed |
+| `sigma_v` | 0.335 | 0.334 |
+| `c` | 0.270 | 0.278 |
+| `beta_okun` | 1.304 | 1.265 |
+| sd(gap) | 0.426 | 0.421 |
+| divergences | 1 | 0 |
+
+The ridge survives the decay, so imposing stays necessary: `sigma_okun` itself is no better
+identified than it was. But the rest of the geometry improved a lot, from 45 divergences to 1, and
+every parameter that matters sampled acceptably and did not move. And across 10,000 draws the
+`sigma_okun` posterior put **all** its mass below 0.40 and **none** above 0.60, median 0.142, which
+is below the imposed value. Read that softly. ESS 16 is not a posterior anyone should quote and
+0.141 is not an estimate; what it supports is only the weaker claim that four badly-mixed chains
+all declined to wander toward the collapse region.
+
+**So the defence changes, and improves.** It used to be "`sigma_v` does not depend on
+`sigma_okun`", which the sweep falsifies. The defensible version is that **the data confine
+`sigma_okun` to the region where `sigma_v` is flat**: across 0.10 to 0.20 `sigma_v` moves 0.340 to
+0.334, and the free run puts no mass beyond 0.40. The cliff is real and it is outside where the
+likelihood goes.
+
+**The objection, stated rather than buried.** 0.20 is this model's own posterior mean, so imposing
+it is circular in a way the package's other imposed variances are not. `ystar`'s `sigma_ystar`
+rests on an 8%-of-observed-variation rule; `ustar`'s `sigma_ustar` on the 2012Q4-2015Q4
+inflation-band test. This one has no external anchor and the sweep shows it matters, so what
+defends it is where the free run locates it, not the insensitivity claim that used to sit here.
+`ustar`'s own `sigma_okun`, currently 0.486, sits between the 0.40 and 0.70 sweep points, implying
+`sigma_v` near 0.21: accepting it would shrink the finding by about a third rather than destroy
+it. This model's free posterior still puts no mass there, and 0.486 was already argued down as an
+upper bound conditional on a frozen gap this model rejects, which is now an empirical statement
+rather than a plausibility argument. `--free-sigma-okun`
+restores the original specification; expect `sigma_okun` ESS around 16 and everything else fine.
+
+**On the annual gap basis.** **PRE-BACKPORT: driftless u\*, `sigma_ustar` = 0.040. These figures
+are not comparable with the headline table above and have not been remade under the decay.**
+`c` = 0.376, `sigma_v` = 0.461, `beta_okun` = 1.244, free share 52.3%. The gap itself is unchanged:
+sd 0.545 against the driftless quarterly run's 0.549, and the same 0.354 correlation with NAB
+business conditions. **The defined/free split is an accounting convention, not a result:** it
+moves with the inflation horizon while the object it decomposes does not. Do not quote it as a
+finding.
+
+That warning no longer depends on these stale figures. The `sigma_okun` sweep above moves the free
+share from 54.5% to 0.1% while sd(gap) falls only from 0.431 to 0.224, and the u\* 2x2 above moves
+it from 39.6% to 80.2%. Three separate settings the data do not determine swing the split across
+almost its whole range, and two of those measurements are current. sd(gap) is the object with a
+stable meaning; the share is bookkeeping.
+
+### The `sigma_ystar` sweep: it does not matter, and the reason is instructive
+
+`ystar`'s own grid for `ratio_ystar`, where `sigma_ystar = ratio_ystar x sigma_c` and the default
+0.13 gives 0.078. `ratio_ystar` = 0 is the informative end rather than a corner case: it strips
+the level innovation and leaves the integrated random walk that HP(1600) actually is.
+
+| `ratio_ystar` | `sigma_v` | sd(gap) | free share | `sigma_e` | `beta_okun` | potential growth |
+|---|---|---|---|---|---|---|
+| 0.00 | 0.339 | 0.427 | 47.5% | 0.512 | 1.244 | 1.92 |
+| 0.05 | 0.340 | 0.428 | 47.4% | 0.504 | 1.245 | 1.94 |
+| 0.10 | 0.337 | 0.424 | 47.6% | 0.482 | 1.256 | 1.97 |
+| **0.13** | **0.334** | **0.421** | **47.5%** | 0.464 | 1.265 | **1.99** |
+| 0.25 | 0.321 | 0.403 | 47.8% | 0.386 | 1.321 | 2.14 |
+| 0.40 | 0.309 | 0.386 | 48.1% | 0.301 | 1.384 | 2.27 |
+
+Zero divergences in every cell, minimum ESS 1,194 at the loosest.
+
+**The gap result is not conditional on it.** Across a grid spanning zero to three times the
+default, `sigma_v` moves 0.031, about half a posterior sd, and sd(gap) stays at roughly twice
+`ystar`'s 0.188 throughout. The free share is 47.4 to 48.1% in every cell.
+
+**The `sigma_e` column says why.** A wobblier potential competes with the **GDP residual**, not
+with the gap: `sigma_e` falls 41% across the grid while `sigma_v` falls 9%. That is the design
+note in "Design decisions" confirmed from the other direction. The gap is tied to an observed
+series, so loosening potential cannot eat it; only the unexplained part of GDP is available.
+
+**One number does move, and it is not the gap.** Potential growth runs 1.92 to 2.27. That is
+`ystar`'s headline product, quoted against the RBA's ~2.0, and a threefold change in an imposed
+smoothness parameter shifts it by a third of a point, with the looser settings heading toward
+Treasury's 2.5. `ystar`'s notes carry that sensitivity; it is repeated here because this model
+reports potential growth too.
+
+**So `sigma_okun` is the only imposed variance the headline still turns on.** `sigma_ustar` was
+settled by the 2x2 above, `sigma_ystar` by this. `sigma_g` remains untested.
 
 ### `beta_okun` is prior-sensitive in level
 
@@ -258,15 +477,15 @@ it decomposes does not. Do not quote it as a finding.
 
 | | prior sd 0.5 | prior sd 1.0 |
 |---|---|---|
-| `beta_okun` | 1.331 [1.00, 1.67] | **1.482 [1.00, 1.94]** |
-| `sigma_v` | 0.491 | 0.443 |
-| `c` | 0.283 | 0.257 |
+| `beta_okun` | 1.265 [0.91, 1.64] | **1.425 [0.94, 1.98]** |
+| `sigma_v` | 0.334 | 0.302 |
+| `c` | 0.278 | 0.251 |
 
-A move of 0.15, about 0.7 of a posterior sd, and still rising as the prior is released: a prior
+A move of 0.16, about 0.8 of a posterior sd, and still rising as the prior is released: a prior
 mean of 0.5 that this sample rejects at three standard deviations is doing real work.
 
-**The comparison with `ustar` survives**, because 2.033 was estimated under the same prior, so
-"joint estimation drops `beta_okun` from 2.03 to 1.34" is like-for-like. **The level does
+**The comparison with `ustar` survives**, because 2.144 was estimated under the same prior, so
+"joint estimation drops `beta_okun` from 2.14 to 1.27" is like-for-like. **The level does
 not.** `beta_okun` is somewhere between 1.3 and 1.5, is still well above the textbook 0.4, and
 its exact value is partly the prior's. Do not read "close to textbook" into it. 0.5 is kept as
 the default because inheriting both parents' priors unchanged is what makes the comparison mean
@@ -280,33 +499,84 @@ to 1.21, with 398 divergences. The sampler cannot explore a ridge that has becom
 `c` returns to **0.190**, which is `ystar`'s 0.188 to within noise. The covariance is doing the
 work, demonstrated rather than asserted.
 
-**2. The `--no-phillips` control changes nothing.** `sigma_v` = 0.467, `c` = 0.389,
-`beta_okun` = 1.226, all inside the main run's intervals. **The result does not depend on the
-Phillips curve being in the likelihood at all**, so it cannot be an artefact of the circularity
-that motivated this whole exercise. This is the strongest single piece of evidence here.
+**2. The `--no-phillips` control changes nothing.** `sigma_v` = 0.334, `c` = 0.277,
+`beta_okun` = 1.265, sd(gap) 0.418. Not merely inside the main run's intervals: identical to it
+to three decimals. **The result does not depend on the Phillips curve being in the likelihood at
+all**, so it cannot be an artefact of the circularity that motivated this whole exercise. This is
+the strongest single piece of evidence here.
 
-**3. The prior does not drive it.** Quadruple the prior mean and the posterior moves 3%:
+That `sigma_v` survives without the Phillips curve is a statement about `sigma_v`, not a case for
+dropping the equation. See "Why the Phillips curve stays".
 
-| prior sd | prior mean | `sigma_v` | `c` | `beta_okun` | sd shrinkage |
-|---|---|---|---|---|---|
-| 0.5 | 0.399 | 0.447 | 0.375 | 1.248 | 71% |
-| **1.0** | 0.798 | **0.458** | 0.379 | 1.233 | 85% |
-| 2.0 | 1.596 | 0.461 | 0.381 | 1.230 | 93% |
+**3. The prior does not drive it.** Quadruple the prior mean and the posterior moves 1%:
+
+| prior sd | prior mean | `sigma_v` | posterior sd | `c` | `beta_okun` | sd shrinkage |
+|---|---|---|---|---|---|---|
+| 0.5 | 0.399 | 0.331 | 0.056 | 0.275 | 1.275 | 81% |
+| **1.0** | 0.798 | **0.334** | 0.057 | 0.278 | 1.265 | 91% |
+| 2.0 | 1.596 | 0.335 | 0.057 | 0.278 | 1.263 | 95% |
+
+The posterior mean moves 0.004 across a fourfold change in prior scale, and its sd does not move
+at all. The posterior is the likelihood's, not the prior's.
 
 ### What it says about the two parent models
 
 `ystar` has been reporting a slice of the cycle rather than the output gap. Its own residual
 `e_c` was carrying roughly as much cyclical variation again as its published gap, and
-unemployment can see it. The gap is about three times wider than `ystar` reports.
+unemployment can see it. The gap is about twice as wide as `ystar` reports, sd 0.421 against
+0.188.
 
-`ustar`'s `beta_okun` = 2.03 was substantially the consequence of being fed that slice. Given
-the whole gap it falls to **1.23**, a 40% reduction toward the textbook 0.4. It does not reach
+`ustar`'s `beta_okun` = 2.14 was substantially the consequence of being fed that slice. Given
+the whole gap it falls to **1.27**, a 41% reduction toward the textbook 0.4. It does not reach
 it: the puzzle is reduced, not resolved, and an Okun coefficient three times textbook still
 wants an explanation.
 
-`gamma_pi` barely moves, −1.055 to −0.997, which is consistent with the contamination
-diagnosis: the manufactured component was a fifth of the regressor's variance, and diluting it
-should shift the coefficient a little rather than overturn it.
+`gamma_pi` barely moves, −1.150 in `ustar` against −1.152 here, which is consistent with the
+contamination diagnosis: the manufactured component was a fifth of the regressor's variance, and
+diluting it should shift the coefficient a little rather than overturn it. Note how little
+reassurance that carries on its own, given the same coefficient runs −0.564 to −1.481 across the
+u\* 2x2.
+
+### Why the Phillips curve stays
+
+`--no-phillips` is a control, not a candidate default, and the reason is worth stating because the
+control's own result invites the opposite conclusion.
+
+**It belongs here.** This is the model where output, unemployment and inflation are reconciled
+against one set of stars. Prices are one of the three legs, not an optional extra bolted to a
+GDP-and-Okun core: drop the equation and u\* keeps only an indirect tie to inflation through the
+gap, and the model stops being able to say anything about what the labour market is doing to
+prices. `sigma_v` surviving `--no-phillips` shows the *gap* result is not an artefact of the
+circularity. It does not show the equation is surplus.
+
+**And it is the only place the supply decomposition comes from.** `results.inflation_decomposition`
+splits observed inflation into anchor, expectations, demand and supply, where supply is
+`rho_pi·d4pm + xi_gscpi·GSCPI²`. `rstar` reads that supply column through its `observations.py`,
+puts it on a four-quarter basis, and its Taylor rule looks through it, asymmetrically under
+`config.supply_positive_only`: decline to tighten into a supply-driven overshoot, but still ease
+when supply is holding inflation down. Running this model with `--no-phillips` as the default would
+remove the input to the only other model that consumes this one.
+
+**Two caveats, because the circularity reaches the supply term too.** First, `gamma_pi` should not
+be quoted as an estimate of the Phillips slope: its regressor `(u − u*)/u` is partly a rescaled
+copy of its own dependent variable. The 2x2 above makes that concrete, with `gamma_pi` running
+−0.564 to −1.481 across four cells that differ only in the u\* state law.
+
+Second, and this one lands on the supply term rather than on `gamma_pi`. Through the Okun identity
+the demand term contains roughly `−gamma·beta·c·4·pi_q / u`, which at the headline values
+(−1.152, 1.265, 0.278, u ≈ 4.7) is about **+0.35·pi_q on the right-hand side**. The equation is
+then effectively fitting 0.65 of quarterly inflation with everything else, so `rho_pi` and
+`xi_gscpi` are scaled up by something like 1/(1 − 0.35), and the supply contribution `rstar` looks
+through would be too large by that factor. That is arithmetic on the reported coefficients, not a
+measured bias.
+
+The check is cheap and has not been done: compare `rho_pi` and `xi_gscpi` across the quarterly
+basis, the annual basis (`--gap-pi-basis annual`, where the gap-to-inflation correlation is 0.828
+rather than 1.0) and `ustar`'s own Phillips curve. Those two coefficients sit on external
+regressors that are not functions of any state, so the scaling above is the only route by which
+the circularity can reach them. If they are stable across bases the concern is empirically small;
+if they move by something like half, `rstar` has been looking through too much and should read the
+annual-basis run.
 
 ### Sampling
 
@@ -315,6 +585,26 @@ geometry of the question rather than a defect, and it shows up as low ESS rather
 `target_accept` 0.99 cut divergences from 22 to 3 while cutting `sigma_e`'s `ess_bulk` from 398
 to 140, and moved no estimate by more than 0.005, so the default stays at 0.95 and the answer
 is bought with draws instead.
+
+**Traces now carry the pointwise log likelihood**, so variants can be ranked with LOO or WAIC
+instead of by comparing coefficients across tables, which is what every sweep in this file
+currently does. `SamplerConfig.log_likelihood` defaults on in `ystar/base.py`, which `ystar`,
+`ustar`, `rstar` and this model all share. Two things to know before using it.
+
+**Only compare runs that observe the same data.** `--no-okun` and `--no-phillips` drop an observed
+variable, so their criteria are not comparable with the full model's. Every sweep here is.
+
+**And treat a ranking that prefers flexibility with suspicion.** Pointwise LOO assumes
+observations are exchangeable given the parameters, which is false for a state-space model on
+time series: neighbouring quarters share latent states, so leaving one out leaves most of its
+information in the model through its neighbours. LOO therefore under-penalises a flexible latent
+path. Given that the wage check independently favoured the more mobile driftless u\*, a LOO
+ranking that also favours flexibility is partly the method talking.
+
+`rstar` is the exception and stores nothing, by design. Its likelihood is written entirely with
+`pm.Potential`, so it has no observed RVs, there are no pointwise contributions to store, and
+LOO would be meaningless on it. `sample_model` detects that and skips the request; without the
+guard PyMC's JAX path raises, since it returns `None` where it expects a list.
 
 ### Reproducing
 
@@ -327,6 +617,16 @@ is bought with draws instead.
 ./run-ystar-ustar.sh --free-sigma-okun --draws 6000 --prefix ystar_ustar_freeso
 ./run-ystar-ustar.sh --sigma-okun 0.40 --prefix yus_so40   # is the imposed value binding?
 ./run-ystar-ustar.sh --beta-prior-sd 1.0 --prefix ystar_ustar_bwide
+
+# The sigma_ystar sweep, on ystar's own grid (0.13 is the default, i.e. the headline run).
+for r in 0.0 0.05 0.10 0.25 0.40; do
+  ./run-ystar-ustar.sh --ratio-ystar $r --prefix "yus_ry$(echo $r | tr -d '.')" --no-analyse
+done
+
+# The u* state law 2x2. The fourth cell is the headline run itself.
+./run-ystar-ustar.sh --sigma-ustar 0.040 --prefix yus_conv040   --no-analyse
+./run-ystar-ustar.sh --no-ustar-converge --sigma-ustar 0.020 --prefix yus_drift020 --no-analyse
+./run-ystar-ustar.sh --no-ustar-converge --sigma-ustar 0.040 --prefix yus_drift040 --no-analyse
 ```
 
 ## Explored and did not work: a free cycle instead of the inflation anchor
@@ -363,12 +663,17 @@ leaves inflation to expectations (`beta_pi` → 1.0). Both slopes straddle zero 
 model reports no relationship between the output gap and either unemployment or inflation,
 which is the signature of a state that fits everything.
 
-**What it establishes about the specification that works.** `ystar`'s inflation anchor is not
-merely a signal about the cycle, it is what makes the trend/cycle split identified. Tying the
-gap to an observed series stops it drifting into being a trend. Loosen that to `c·d + v` and
-the model estimates cleanly; remove it and no parameterisation rescues the decomposition. The
-only thing that would is bounding `rho` well below 1, which imposes the cycle's persistence by
-hand and buys nothing over `defined`.
+**What it establishes about the specification that works.** Tying the gap to an observed series is
+what stops it drifting into being a trend. Loosen that to `c·d + v` and the model estimates
+cleanly; remove it and no parameterisation rescues the decomposition. The only thing that would is
+bounding `rho` well below 1, which imposes the cycle's persistence by hand and buys nothing over
+`defined`.
+
+State the conclusion no wider than the experiment supports: this shows that **some** observed
+anchor is needed, on the observable set this model has. It does not show that inflation is the
+only series that could serve, and nothing here tests any other candidate. Inflation is the anchor
+this package uses because it is the one `ystar` was built around, not because it was selected
+against alternatives.
 
 The switch is kept so the test is repeatable, in the same spirit as `rstar`'s
 `noncentred_wedge`. It is not a candidate specification.
@@ -386,9 +691,22 @@ Inherited obligations rather than new ideas.
 ./run-ystar-ustar.sh --sigma-ustar 0.024        # and the rest of ustar's sweep
 ```
 
-The `sigma_ustar` and `sigma_ystar` sweeps matter most. Both parents report their headline as
-conditional on an imposed variance, and this model has three of them interacting. Nothing here
-has yet established how much of the 0.458 is `sigma_ystar`'s doing.
+**`sigma_ustar` and `sigma_ystar` are both now answered**, in "The u\* state law, run as a 2x2"
+and "The `sigma_ystar` sweep". Neither moves the headline: 0.057 and 0.031 on `sigma_v`
+respectively. **`sigma_g` is the one state variance never swept on this model**, and it is the
+remaining item of that kind, though `sigma_ystar`'s result makes a large effect unlikely since
+`sigma_g` reaches the gap only through the same potential-output block.
+
+Two other obligations. The supply-term check in "Why the Phillips curve stays": compare `rho_pi`
+and `xi_gscpi` across the two gap bases and against `ustar`, because `rstar`'s Taylor rule looks
+through a supply contribution this equation may be scaling up by about half. And the annual-basis
+run, which is the one pre-backport figure still quoted anywhere in this file; it is marked as such
+in "Why `sigma_okun` is imposed".
+
+The four robustness runs (`--no-phillips`, both `sigma-v-prior` runs, `--beta-prior-sd`) **have**
+been remade under the current defaults, and all four now agree with the headline. They previously
+reported `sigma_v` in the 0.44 to 0.50 driftless-era band, outside the current interval, which is
+what made this section necessary.
 
 ---
 
@@ -407,10 +725,30 @@ src/models/ystar_ustar/
 Reuses `ystar`'s `scale_equation` and `potential_output_equation` unchanged rather than
 copying them, so the potential block cannot drift away from its parent.
 
-Charts land in `charts/YStarUStar/`, eighteen of them. Sixteen are drawn by calling `ystar`'s
-and `ustar`'s own plotting functions through the adapters in `analyse.py`, rather than
-reimplementing them: those modules carry quarterly-axis handling, the excluded-window shading,
-the off-scale annotation on the gap composition and the band-widening convention on u*, none
-of which is worth maintaining twice. The two that are new here are the gap decomposition and
-the residual pair, and neither parent can draw either: `ystar` has no free component to
-separate out, and `ustar` receives the gap as data.
+Charts land in `charts/YStarUStar/`. Most are drawn by calling `ystar`'s and `ustar`'s own
+plotting functions through the adapters in `analyse.py`, rather than reimplementing them: those
+modules carry quarterly-axis handling, the excluded-window shading, the off-scale annotation on
+the gap composition and the band-widening convention on u*, none of which is worth maintaining
+twice.
+
+Four are specific to this model.
+
+- **The gap decomposition** and **the residual pair**, which neither parent can draw: `ystar` has
+  no free component to separate out, and `ustar` receives the gap as data.
+- **"What inflation alone says u\* is, quarter by quarter"** inverts the Phillips curve each
+  quarter, residual set to zero, and plots that against the fitted u\*. The implied series moves
+  17 times as much quarter to quarter (sd 0.995 against 0.058) while correlating 0.84 with the
+  fitted path, so the state law is filtering rather than overriding. It also makes visible what
+  the notes can only assert in words: the 90% band is roughly ±0.15 while the implied series
+  scatters ±1, because the band reports uncertainty conditional on `sigma_ustar` = 0.020 rather
+  than uncertainty about where u\* is.
+- **"The Phillips curve as specified"** is a partial-regression plot: the equation's own
+  regressor `(u − u*)/u` against inflation stripped of anchor, expectations and supply terms, so
+  the fitted line is `gamma_pi` through the origin. It shows the slope is identified almost
+  entirely by the tight side. Splitting the fitted sample: gap < −0.10 gives slope −1.82 with
+  r = −0.66 on 30 quarters, while gap > 0 gives −0.45 with r = −0.13 on 66. The slack side is a
+  formless cloud. Those 30 tight quarters are two episodes, 14 in the 2000s and 16 since 2020,
+  which is consistent with the relationship being observable only when policy is not offsetting
+  it. The competing reading is that the post-2020 points are the supply-shock quarters and the
+  model's supply terms under-remove the shock; the 2000s cluster is the counterweight, since it
+  is a tight labour market without a global supply shock and sits on the same line.

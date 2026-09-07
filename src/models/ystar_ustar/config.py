@@ -151,7 +151,7 @@ class ModelConfig:
     # informational gain from joining the two models.
     #
     # Expect it to be weakly identified even so. Both residuals are large
-    # (`ystar` reports sigma_e = 0.508, `ustar` sigma_okun = 0.685) and the
+    # (`ystar` reports sigma_e = 0.508, `ustar` sigma_okun = 0.486) and the
     # moment is a covariance between them, so the posterior may sit close to
     # the prior. `--sweep-sigma-v` exists to tell that case apart from a real
     # answer: if the posterior tracks the prior, it is not identified here
@@ -202,22 +202,33 @@ class ModelConfig:
     # ess_bulk goes from 280 to 20,839. That is what makes 10,000 draws enough
     # where the free version needed 24,000 and still reported r_hat 1.08.
     #
-    # **Why it is safe.** Nothing reported depends on it. Free against fixed at
-    # 0.20: c 0.284 -> 0.285, sigma_v 0.492 -> 0.495, beta_okun 1.333 -> 1.343,
-    # gamma_pi -1.021 -> -1.024. Doubling the imposed value to 0.40 moves c by
-    # +0.005 and sigma_v by -0.009; beta_okun shifts -0.113, about half a
-    # posterior sd, and sigma_e absorbs the rest, falling to 0.404 exactly as
-    # the -0.55 correlation predicts.
+    # **Why it is safe.** NOT because nothing depends on it: this comment used to
+    # say that, on a driftless-u* measurement where v was large enough to swamp
+    # the change. Under the decay the sweep is
+    #
+    #     sigma_okun   0.10    0.20    0.40    0.70
+    #     sigma_v      0.340   0.334   0.261   0.085   (interval reaches 0)
+    #     sd(gap)      0.431   0.421   0.332   0.224
+    #
+    # At 0.70 the free component is gone and c = 0.206 is within noise of
+    # `ystar`'s 0.188: the model degenerates into `ystar`. What is safe is the
+    # region the data occupy, not the parameter. Freed under the decay,
+    # sigma_okun still does not sample (ess 16, r_hat 1.19) but puts all its mass
+    # below 0.40 and none above 0.60, median 0.142, and nothing else moves:
+    # sigma_v 0.335 against 0.334, c 0.270 against 0.278, sd(gap) 0.426 against
+    # 0.421. So sigma_v is flat over 0.10-0.20, which is where the likelihood
+    # goes, and the cliff beyond 0.40 is outside it.
     #
     # **The objection, stated rather than hidden.** 0.20 is this model's own
     # posterior mean, so imposing it is circular in a way the package's other
     # imposed variances are not: `ystar`'s sigma_ystar rests on an 8%-of-variation
     # rule, `ustar`'s sigma_ustar on the 2012-15 inflation-band test, and both
-    # are swept. This one has no external anchor. What defends it is not the
-    # value but the insensitivity to it, and the honest reading is that
-    # sigma_okun is a nuisance parameter the data do not determine and the
-    # answers do not need. `ustar`'s 0.685 is not a candidate: it was
-    # conditional on a frozen gap and this model's free posterior excludes it.
+    # are swept. This one has no external anchor. What defends it is where the
+    # free run locates it, not insensitivity to it. `ustar`'s own value, now
+    # 0.486, sits between the 0.40 and 0.70 sweep points and implies sigma_v near
+    # 0.21: accepting it would shrink the finding by about a third, not destroy
+    # it. This model's free posterior gives it no mass, which turns "conditional
+    # on a frozen gap" from a plausibility argument into an empirical one.
     sigma_okun: float | None = 0.20
 
     # Let u* drift while inflation expectations sit above target.
@@ -268,9 +279,12 @@ class ModelConfig:
     # Backported from `ustar`, where the driftless walk it replaces turned out to
     # be about 8 standard deviations from its own fitted path over the sample and
     # 17 over 1993-1999, to put u* below unemployment in all 16 quarters of
-    # 1994-1997 while the trimmed mean broke above 3%, and to leave a +2.5pp gap
+    # 1994-1997 (a weaker point than it reads: `ustar`'s notes record that the
+    # annual trimmed mean averaged 2.41% there and sat below expectations in
+    # every quarter), and to leave a +2.5pp gap
     # one year after the deepest recession since the 1930s. There it cut
-    # `sigma_okun` from 0.685 to 0.426 and improved sampling. Its notes carry the
+    # `sigma_okun` from 0.685 to 0.426 (0.486 on the current vintage) and improved
+    # sampling. Its notes carry the
     # evidence, including the external wage check that does *not* favour it.
     #
     # Mutually exclusive with `ustar_drift`.

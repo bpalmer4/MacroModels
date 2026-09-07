@@ -60,24 +60,50 @@ src/
 │   └── ...                        # Individual data series modules (inflation, gdp, etc.)
 │
 ├── models/
-│   ├── nairu/                     # NAIRU + output gap model (see MODEL_NOTES.md)
+│   ├── nairu/                     # NAIRU + output gap model. SUPERSEDED THROUGHOUT: potential,
+│   │                              #   gap and NAIRU. Potential is not estimated, the posterior
+│   │                              #   median reproduces the Cobb-Douglas input (1.66 vs 1.74),
+│   │                              #   and that input tracks the cycle rather than trend, going
+│   │                              #   negative in 2020 and swinging 4.8 -> 0.15 across 1990-92.
+│   │                              #   The gap is therefore actual minus filtered actual, and
+│   │                              #   Okun carries it into the NAIRU. Use ystar for potential
+│   │                              #   growth and ystar_ustar for the gap and u*. Still the only
+│   │                              #   model with a wage equation, the anchor transition, the
+│   │                              #   regime split and LOO/WAIC variant comparison, which is
+│   │                              #   what it is for (see MODEL_NOTES.md).
 │   ├── gdp_nowcast_bridge/        # GDP nowcasting via bridge equations (see MODEL_NOTES.md)
 │   ├── gdp_nowcast_dfm/            # GDP nowcasting via Dynamic Factor Model (see MODEL_NOTES.md)
 │   ├── gdp_nowcast_bvar/           # GDP nowcasting via Bayesian VAR, T-0 only (see MODEL_NOTES.md)
 │   ├── gdp_nowcast_components/     # GDP nowcasting via expenditure-identity components, T-0 only (see MODEL_NOTES.md)
 │   ├── rstar_hlw/                 # HLW Bayesian r-star model, AU data (see MODEL_NOTES.md)
+│   ├── ystar_ustar/               # ** PREFERRED for the output gap and u*. ** y* and u*
+│   │                              #   estimated JOINTLY, gap = c x (pi - 2.5) + v, so the gap is
+│   │                              #   not frozen and the GDP and Okun equations negotiate over
+│   │                              #   it. Estimates sigma_v, which neither parent can identify.
+│   │                              #   Ranks above both because it resolves their inconsistency:
+│   │                              #   the gap is ~2x ystar's (sd 0.421 vs 0.188) and ustar's
+│   │                              #   beta_okun falls 2.14 -> 1.27 once fed the whole gap.
+│   │                              #   CONDITIONAL on sigma_okun (imposed 0.20, the one imposed
+│   │                              #   variance in the package with no external anchor): sigma_v
+│   │                              #   is flat over 0.10-0.20, and the model degenerates into
+│   │                              #   ystar by 0.70, but the free posterior puts no mass above
+│   │                              #   0.40. Feeds rstar's Taylor rule (see MODEL_NOTES.md).
 │   ├── ystar/                     # y* potential output: potential is a slow-moving random walk,
 │   │                              #   the gap is DEFINED as c x (pi - 2.5). No Phillips curve, no
 │   │                              #   IS curve, no policy rule (see MODEL_NOTES.md).
 │   │                              #   Self-contained: imports only src/data, no other model.
-│   ├── ustar/                     # u* from a GIVEN output gap: one state (u* random walk),
-│   │                              #   two observation equations (Okun, expectations-augmented
-│   │                              #   Phillips). Reads expectations + ystar output;
-│   │                              #   estimates neither. HEADLINE IS CONDITIONAL: u*'s level
-│   │                              #   is set by the imposed sigma_ustar, which cannot be
-│   │                              #   estimated (free prior escapes, bounded prior pins to the
-│   │                              #   bound). Use `nairu` for an operational NAIRU
-│   │                              #   (see MODEL_NOTES.md).
+│   │                              #   Still the preferred source for POTENTIAL GROWTH: the joint
+│   │                              #   model agrees (1.99 vs 1.94) and this is the simpler
+│   │                              #   statement of the same answer. Superseded for the GAP.
+│   ├── ustar/                     # u* from a GIVEN output gap: one state (u*), two observation
+│   │                              #   equations (Okun, expectations-augmented Phillips). Reads
+│   │                              #   expectations + ystar output; estimates neither.
+│   │                              #   SUPERSEDED by ystar_ustar for u*: taking the gap as data,
+│   │                              #   it cannot notice that the gap is too narrow and pays for
+│   │                              #   the mismatch with beta_okun = 2.14. Kept as the component
+│   │                              #   model and for its own diagnostics (the wage check, the
+│   │                              #   sigma_ustar sweep). HEADLINE IS CONDITIONAL: u*'s level is
+│   │                              #   set by the imposed sigma_ustar (see MODEL_NOTES.md).
 │   ├── rstar/                     # r* from the bond market: one state, an AU wedge over
 │   │                              #   published world r* moving as a StudentT random walk,
 │   │                              #   read off the indexed real 10y yield. NO IS CURVE —
@@ -85,16 +111,12 @@ src/
 │   │                              #   unidentifiable on AU data. Level Taylor rule on top.
 │   │                              #   r* ~1.2-1.6 is robust to sigma_walk; the recent PATH
 │   │                              #   is not (see MODEL_NOTES.md).
-│   ├── ystar_ustar/               # y* and u* estimated JOINTLY, with the gap partly free:
-│   │                              #   gap = c x (pi - 2.5) + v. The point is sigma_v, which
-│   │                              #   ystar alone cannot identify (v and e_c are one additive
-│   │                              #   term); adding Okun puts v in a second equation, so the
-│   │                              #   GDP/unemployment residual covariance separates them.
-│   │                              #   u* CONVERGES to an estimated equilibrium here and in
-│   │                              #   ustar; the driftless walk it replaced was ~8 sd from its
-│   │                              #   own fitted path. Feeds rstar's Taylor rule
-│   │                              #   (see MODEL_NOTES.md).
-│   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition
+│   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition. SUPERSEDED by ystar and
+│   │                              #   ystar_ustar for potential output and the output gap: its
+│   │                              #   potential path is re-anchored to actual GDP at four dates
+│   │                              #   and is not disciplined by inflation. Use it only for the
+│   │                              #   growth accounting (capital / labour / MFP), which neither
+│   │                              #   Bayesian model attempts.
 │   ├── dsge/                      # DSGE + HLW-style models (see MODELS_EXPLAINED.md)
 │   │                              #   fa_nk_model.py: financial-accelerator DSGE, two r* + endogenous EFP wedge (labour_block flag)
 │   │                              #   fa_nk_wage_model.py: FA-NK + sticky wages + Galí unemployment / U*

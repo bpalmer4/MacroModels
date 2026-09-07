@@ -165,8 +165,10 @@ class ModelConfig:
     #
     # **ON BY DEFAULT.** The driftless walk it replaces is about 8 standard
     # deviations from its own prior over the sample and 17 over 1993-1999, puts
-    # u* below unemployment in all 16 quarters of 1994-1997 while the trimmed
-    # mean broke above 3%, and leaves a +2.5pp gap one year after the deepest
+    # u* below unemployment in all 16 quarters of 1994-1997 (see MODEL_NOTES for
+    # why that window is weaker evidence than it was once written as: the annual
+    # trimmed mean averaged 2.41% there and sat below expectations throughout),
+    # and leaves a +2.5pp gap one year after the deepest
     # recession since the 1930s. Convergence fixes all three, fits better
     # (sigma_okun 0.685 -> 0.426) and samples better, without an asserted date.
     #

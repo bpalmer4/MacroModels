@@ -24,12 +24,24 @@ class SamplerConfig:
     sampler: str = "numpyro"
     target_accept: float = 0.95
     random_seed: int = 42
+    # Store pointwise log likelihood in the trace, so variants can be ranked
+    # with LOO/WAIC instead of by eyeballing coefficients. Only compare runs
+    # that observe the SAME data: `--no-phillips` drops an observed variable,
+    # so it is not comparable with the full model, while the sigma sweeps are.
+    log_likelihood: bool = True
 
 
 def sample_model(model: pm.Model, config: SamplerConfig | None = None) -> az.InferenceData:
     """Sample from a PyMC model using NUTS."""
     if config is None:
         config = SamplerConfig()
+
+    # A model whose likelihood is written entirely with `pm.Potential` has no
+    # observed RVs, so there are no pointwise contributions to store and LOO or
+    # WAIC would be meaningless on it anyway. `rstar` is that model. Asking for
+    # the log likelihood there does not degrade gracefully: PyMC's JAX path
+    # returns None where it expects a list and raises a TypeError.
+    log_likelihood = config.log_likelihood and bool(model.observed_RVs)
 
     with model:
         return pm.sample(
@@ -40,6 +52,7 @@ def sample_model(model: pm.Model, config: SamplerConfig | None = None) -> az.Inf
             nuts_sampler=config.sampler,
             target_accept=config.target_accept,
             random_seed=config.random_seed,
+            idata_kwargs={"log_likelihood": log_likelihood},
         )
 
 

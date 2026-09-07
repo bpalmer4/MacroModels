@@ -213,6 +213,72 @@ class JointResults:
             "residual": observed - fitted,
         })
 
+    def phillips_frame(self) -> pd.DataFrame:
+        """The Phillips curve reduced to its two axes, as specified.
+
+        `demand_slack` is the equation's own regressor, `(u - u*)/u`.
+        `inflation_ex_other` is quarterly inflation with every non-demand term
+        removed: the anchor, the expectations excess, import prices and GSCPI.
+
+        By construction the equation says `inflation_ex_other = gamma_pi x
+        demand_slack + e_p`, so a scatter of the two is the fitted relationship
+        with nothing else in the way, and the fitted line passes through the
+        origin with slope `gamma_pi`.
+
+        The circularity applies here as everywhere: the gap that sets `u*`
+        contains `c x (pi - anchor)`, so the horizontal axis is not independent
+        of the vertical one. This is a picture of what the model fits, not
+        evidence that the relationship is causal.
+        """
+        if not self.has_phillips:
+            raise ValueError("no Phillips curve in this run")
+
+        index = self.obs_index
+        median = self.posterior.median(dim=("chain", "draw"))
+        anchor_q = quarterly(float(self.constants["anchor"]))
+
+        u = pd.Series(self.obs["u"], index=index)
+        pi_q = pd.Series(self.obs["pi_qtr"], index=index)
+        pi_exp = pd.Series(self.obs["pi_exp"], index=index)
+        gscpi = pd.Series(self.obs["gscpi"], index=index)
+        d4pm = pd.Series(self.obs["d4pm"], index=index)
+        ustar = self.ustar_posterior().median(axis=1)
+
+        return pd.DataFrame({
+            "demand_slack": (u - ustar) / u,
+            "inflation_ex_other": (
+                pi_q
+                - anchor_q
+                - float(median["beta_pi"]) * (quarterly(pi_exp) - anchor_q)
+                - float(median["rho_pi"]) * d4pm
+                - float(median["xi_gscpi"]) * gscpi**2 * np.sign(gscpi)
+            ),
+        })
+
+    def implied_ustar(self) -> pd.Series:
+        """The u* each quarter's inflation would need, taken on its own.
+
+        Invert the Phillips curve with the residual set to zero and solve for
+        u*. Writing the equation's non-demand terms as `R`,
+
+            R      = pi_q - q(anchor) - beta_pi x [q(pi_exp) - q(anchor)]
+                     - rho x d4pm - xi x GSCPI^2 x sign(GSCPI)
+            u*_t   = u_t x (1 - R_t / gamma_pi)
+
+        This is deliberately *not* an estimator. It is the diagnostic that makes
+        the state law visible: it is what the data would say about u* with no
+        smoothness prior at all, so plotting the fitted u* against it shows
+        directly how much of the reported path is the prior rather than the
+        likelihood. Expect it to be wild, since it divides a noisy residual by a
+        coefficient near one and multiplies by the unemployment rate.
+
+        Coefficients are posterior medians, matching `inflation_decomposition`.
+        """
+        median = self.posterior.median(dim=("chain", "draw"))
+        u = pd.Series(self.obs["u"], index=self.obs_index)
+        residual_free = self.phillips_frame()["inflation_ex_other"]
+        return u * (1.0 - residual_free / float(median["gamma_pi"]))
+
     # --- Medians, matching the accessor names `rstar` reads on the parents ---
 
     def output_gap_median(self) -> pd.Series:
