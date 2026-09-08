@@ -65,7 +65,7 @@ def _paths(config: ModelConfig, sampler_config: SamplerConfig) -> dict[str, pd.S
     exercise is dozens of runs and each full trace is tens of megabytes on disk.
     Only the medians are needed.
     """
-    obs, obs_index, _ = build_observations(
+    obs, obs_index, _, _ = build_observations(
         start=config.start, end=config.end, verbose=False,
         smooth_pop=config.smooth_pop, spec=config.spec,
         pi_basis=config.pi_basis, supply_control=config.supply_control,
@@ -113,7 +113,7 @@ def run_vintages(
 
     # The full sample defines the last vintage and hence the "final" estimate
     # every revision is measured against.
-    _, full_index, _ = build_observations(
+    _, full_index, _, _ = build_observations(
         start=base_config.start, end=base_config.end, verbose=False,
         smooth_pop=base_config.smooth_pop, spec=base_config.spec,
         pi_basis=base_config.pi_basis, supply_control=base_config.supply_control,

@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from src.models.common.sources import footer_from_constants
 from src.utilities.rate_conversion import quarterly
 
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
@@ -42,6 +43,16 @@ class UStarResults:
     def _scalar(self, var_name: str) -> np.ndarray:
         """Return the flattened posterior draws for a scalar parameter."""
         return np.asarray(self.posterior[var_name].values).ravel()
+
+    @property
+    def source_footer(self) -> str | None:
+        """The "Built using: ..." line for this run's inputs, or None for an older run.
+
+        Runs saved before `build_observations` began recording where its series
+        came from carry no "sources" key, so the charting module falls back to
+        its own constant.
+        """
+        return footer_from_constants(self.constants)
 
     @property
     def has_phillips(self) -> bool:

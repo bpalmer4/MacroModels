@@ -157,6 +157,32 @@ Where `lp_trend` is the HMA(13) labour productivity trend derived from wage data
 
 The COVID dummy covers 2020Q1-2021Q1.
 
+### The `SingularMatrixWarning` from the out-of-sample loop (and why it is benign)
+
+A live run prints `SingularMatrixWarning: The design matrix is rank-deficient` many times
+from `_estimate_bridge`'s expanding-window loop. It is expected, and it changes no number.
+
+The COVID dummy is zero everywhere before 2020Q1, so every training window that stops
+before then carries an all-zero column, which is rank-deficient on its own without any
+collinearity. On the hours bridge the estimation sample is 190 quarters from 1979Q1, of
+which 5 are COVID, and the loop starts at `min_train = 63`: **102 of the 127 windows are
+affected, exactly those ending before 2020Q1**. The other bridges differ only in sample
+length.
+
+`statsmodels` solves through the pseudo-inverse, so the unidentified coefficient comes back
+as exactly 0.0 and the fit equals the correctly specified regression with the column
+dropped. Checked window by window on the hours bridge: across the 102 degenerate windows
+the largest prediction difference against dropping `covid` is 1.3e-15. The 25 windows that
+do contain COVID quarters differ by up to 2.2pp, which is the dummy doing its job rather
+than a defect.
+
+The dummy is not free, but it does not flatter the bridge: keeping it puts the hours
+bridge's `mse_oos` at 0.4196 against 0.3537 without it, so it slightly *lowers* that
+bridge's inverse-MSE weight.
+
+Silencing the warning would mean dropping constant columns inside the loop. That is
+cosmetic and has not been done, so the console noise stays.
+
 ### Building the nowcast regressor row (and why the zero-fill is safe)
 
 `_bridge_nowcast` assembles the regressor row for the target quarter, then aligns

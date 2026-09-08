@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from src.models.common.sources import footer_from_constants
 from src.models.ystar_ustar.config import DEFAULT_OUTPUT_DIR
 from src.utilities.rate_conversion import quarterly
 
@@ -50,6 +51,18 @@ class JointResults:
     def has_phillips(self) -> bool:
         """Whether the Phillips curve was in the likelihood."""
         return "gamma_pi" in self.posterior or "kappa_gap" in self.posterior
+
+    @property
+    def anchor_annual(self) -> np.ndarray:
+        """The anchor this run used, per quarter, in annual per cent.
+
+        Runs made before `anchor_phase` existed recorded only the scalar, so the
+        constant is broadcast for them and the decomposition is unchanged.
+        """
+        recorded = self.constants.get("anchor_series")
+        if isinstance(recorded, list | tuple | np.ndarray) and len(recorded) == len(self.obs_index):
+            return np.asarray(recorded, dtype=float)
+        return np.full(len(self.obs_index), float(self.constants["anchor"]))
 
     @property
     def gap_spec(self) -> str:
@@ -182,7 +195,7 @@ class JointResults:
         median = self.posterior.median(dim=("chain", "draw"))
         pi_exp = pd.Series(self.obs["pi_exp"], index=index)
 
-        anchor = pd.Series(quarterly(float(self.constants["anchor"])), index=index)
+        anchor = pd.Series(quarterly(self.anchor_annual), index=index)
         excess = float(median["beta_pi"]) * (quarterly(pi_exp) - anchor)
         # The demand term is the only thing that differs between the two specs:
         # kappa x output gap under "cycle", gamma x unemployment gap under
@@ -214,7 +227,7 @@ class JointResults:
         })
 
     def phillips_frame(self) -> pd.DataFrame:
-        """The Phillips curve reduced to its two axes, as specified.
+        """Return the Phillips curve reduced to its two axes, as specified.
 
         `demand_slack` is the equation's own regressor, `(u - u*)/u`.
         `inflation_ex_other` is quarterly inflation with every non-demand term
@@ -256,7 +269,7 @@ class JointResults:
         })
 
     def implied_ustar(self) -> pd.Series:
-        """The u* each quarter's inflation would need, taken on its own.
+        """Return the u* each quarter's inflation would need, taken on its own.
 
         Invert the Phillips curve with the residual set to zero and solve for
         u*. Writing the equation's non-demand terms as `R`,
@@ -295,6 +308,15 @@ class JointResults:
         return self.unemployment_gap_posterior().median(axis=1)
 
     # --- Convenience ---
+
+    @property
+    def source_footer(self) -> str | None:
+        """The "Built using: ..." line for this run's inputs, or None for an older run.
+
+        Runs saved before the source records were added carry no "sources" key,
+        so the charting module falls back to its own constant.
+        """
+        return footer_from_constants(self.constants)
 
     @property
     def excluded_window(self) -> tuple[str, str] | None:
@@ -338,7 +360,14 @@ class JointResults:
                  "epsilon_pi", "initial_trend_growth")
                 if name in self.posterior
             ]
-        return az.summary(self.trace, var_names=var_names, hdi_prob=0.9)
+        # `az.summary` returns a Dataset when asked for one (`fmt="xarray"`),
+        # and a frame otherwise. This call takes the default, so the frame is
+        # the only outcome; narrowed rather than asserted because every caller
+        # prints or indexes it.
+        summary = az.summary(self.trace, var_names=var_names, hdi_prob=0.9)
+        if not isinstance(summary, pd.DataFrame):
+            raise TypeError(f"expected a summary frame, got {type(summary).__name__}")
+        return summary
 
 
 def load_results(

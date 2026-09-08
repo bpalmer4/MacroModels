@@ -78,7 +78,6 @@ def main() -> None:
             end=args.end,
             world_source=args.world_source,
             use_world=not args.no_world,
-            **({"break_quarters": tuple(args.breaks)} if args.breaks else {}),
             wedge_drift=args.wedge_drift,
             free_wedge=not args.steps,
             input_source=args.input_source,
@@ -91,6 +90,11 @@ def main() -> None:
             look_through_supply=not args.no_look_through,
             supply_positive_only=not args.supply_symmetric,
         )
+        # Set after construction rather than unpacked into the call: the default
+        # is a meaningful set of dates, so an absent --breaks must leave it
+        # alone, and a conditional `**{...}` inside the call is untypeable.
+        if args.breaks:
+            config.break_quarters = tuple(args.breaks)
         sampler_config = SamplerConfig(draws=args.draws, tune=args.tune, chains=args.chains)
         run_estimate(
             config=config,

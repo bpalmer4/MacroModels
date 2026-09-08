@@ -13,6 +13,7 @@ Australian macroeconomic modelling. Includes both Bayesian state-space estimatio
 - **u\* (NAIRU from a given output gap)**: A deliberately small Bayesian model — one state, two observation equations — taking `ystar`'s output gap as an input rather than estimating it. Okun fits unemployment, an expectations-augmented Phillips curve fits inflation. u\* **converges to an estimated equilibrium** rather than wandering: the driftless random walk it replaced sat about 8 standard deviations from its own fitted path and could not accommodate the 1990s decline. Currently u\* = 4.83 against an equilibrium of 4.86. **Its headline is conditional** on two imposed choices, the convergence shape and `sigma_ustar` = 0.020, and about 97% of u\*'s total fall is the mechanism rather than the data. **Superseded for u\* by the joint y\*/u\* model**: taking the gap as data, this model cannot notice when that gap is too narrow, and pays for the mismatch with `beta_okun` = 2.15, which falls to 1.27 once the gap is estimated alongside. Kept as the component model and for its own diagnostics. Its value is legibility about what an Australian NAIRU rests on, not a better number. See [`MODEL_NOTES.md`](src/models/ustar/MODEL_NOTES.md)
 
 - **Joint y\*/u\***: `ystar` and `ustar` in one likelihood, plus a free component `v` on the output gap. `v` cannot be estimated in `ystar` alone (it and the GDP residual are one additive term); adding the Okun equation makes the covariance between the two residuals identify it. The result is an output gap about twice `ystar`'s, sd 0.421 against 0.188. **This is the preferred source for the output gap and for u\***, because it is the only model in the package where the two can disagree and be reconciled: `ustar`'s `beta_okun` of 2.15 falls to 1.27 once the gap is estimated rather than imported. Feeds `rstar`'s Taylor rule. See [`MODEL_NOTES.md`](src/models/ystar_ustar/MODEL_NOTES.md)
+- **Long-run u\***: Not an estimate. Every other u\* here starts in 1993, because its gap is defined against an inflation target that did not exist earlier. This one finds the stretches where inflation *actually* stopped changing, reads the unemployment rate off them, and reports what it saw, so it reaches back to **1959Q3**. Two categories, kept apart: five **plateaus** where inflation held level, reading 1.82 in the late 1960s and 5.45-5.68 since 2002; and six **U-bases** where it sat at the bottom of a wide trough, which skew high because a trough usually arrives at the end of a disinflation and must not be quoted as u\* without that qualification. On the one plateau where it overlaps the `nairu` model, the two agree to two hundredths: 6.20 against 6.22. A state-space version over the same period was built and deleted; the notes record why. See [`MODEL_NOTES.md`](src/models/long_run_ustar/MODEL_NOTES.md)
 - **r\* (natural rate from the bond market)**: One latent state — an Australia-specific wedge over published world r\*, moving as a Student-t random walk — read off the indexed real 10-year yield. No IS curve, because three separate efforts in this repo found the rate-to-output-gap link too weak to identify anything on Australian data. Carries a level Taylor rule and an observed credit wedge for the cost of capital to firms. **r\* is around 1.2-1.6 and robust to its one imposed setting; the recent path is not** — see [`MODEL_NOTES.md`](src/models/rstar/MODEL_NOTES.md)
 - **HLW r\***: Bayesian (PyMC) Holston-Laubach-Williams model estimating the natural rate of interest for Australia — see [`MODEL_NOTES.md`](src/models/rstar_hlw/MODEL_NOTES.md)
 - **DSGE** — **experimental, work in progress; none usable yet.** A family of forward-looking DSGE models (New Keynesian; financial-accelerator `FA-NK` with two natural rates and an endogenous external-finance-premium wedge; sticky-wage `FA-NK-wage` with Galí unemployment; and a reduced-form `NK-TwoStar` probe) built to explore the post-GFC "great divergence". They are research and diagnostic builds, not production tools. A Bayesian re-estimation (`fa_nk_bayes.py`, PyMC/DEMetropolis-Z) now **identifies the policy block** — the cash-rate rule responds aggressively to inflation (φ_π≈2.6), and both FA-NK models converge cleanly — but the r\* and NAIRU/U\* these models produce remain **not credible**, and the φ_π result is not yet robustness-tested. For credible r\* and NAIRU use the HLW r\* and NAIRU models above. See [`MODELS_EXPLAINED.md`](src/models/dsge/MODELS_EXPLAINED.md).
@@ -202,6 +203,26 @@ was substantially larger before u\* was given a convergence mechanism, which mea
 the model attributed to hidden cycle was a mis-specified u\* trend. See the
 [`MODEL_NOTES.md`](src/models/ystar_ustar/MODEL_NOTES.md).
 
+### Long-run u\* — read off flat inflation, back to 1959
+
+No likelihood and no priors: a rule, and the sensitivity of the answer to it.
+
+```bash
+./run-long-run-ustar.sh
+./run-long-run-ustar.sh --require-flat-u      # both series settled, not just inflation
+./run-long-run-ustar.sh --tolerance 1.5       # looser: picks up the 1990s false positive
+./run-long-run-ustar.sh --window 12           # a longer stretch must be flat
+./run-long-run-ustar.sh --smooth 1            # no smoothing: finds nothing before 2002
+```
+
+Readings by decade: **1.82** in the 1960s, 6.20 in the 1980s, 5.57 in the 2000s, 5.50 in the
+2010s. No single number is printed across decades, and the code declines to compute one:
+averaging 1.8 and 5.5 would assert the constancy the exercise exists to test. The **direction
+contrast** is the model's actual test, and it shows the Phillips ordering holding cleanly in the
+1960s and 2010s and breaking in the 1970s and 2020s, the two supply-shock decades. Read the
+trough table knowing it is cyclically contaminated by construction. See the
+[`MODEL_NOTES.md`](src/models/long_run_ustar/MODEL_NOTES.md).
+
 ### r\* — the natural rate from the bond market (Bayesian)
 
 Reads the Taylor rule's inputs (output gap, unemployment gap, supply decomposition) from a
@@ -304,7 +325,7 @@ src/
 ├── data/               # Data fetching (ABS, RBA) and preparation
 ├── utilities/          # Shared utilities (rate conversion, etc.)
 └── models/
-    ├── common/                 # Shared model utilities (diagnostics, extraction, timeseries)
+    ├── common/                 # Shared model utilities (diagnostics, extraction, timeseries, sources)
     ├── expectations/           # Inflation expectations signal extraction
     ├── nairu/                  # NAIRU + Output Gap model (estimate → validate → analyse → forecast)
     │   └── analysis/           # Plotting and diagnostics modules
@@ -313,6 +334,11 @@ src/
     │                           #   (self-contained: imports only src/data)
     ├── ustar/                  # u* from a given output gap — Okun + Phillips, one state
     │                           #   (reads expectations and ystar output)
+    ├── ystar_ustar/            # y* and u* estimated jointly, gap partly free
+    │                           #   (preferred for the output gap and u*)
+    ├── long_run_ustar/         # u* read off flat-inflation stretches, back to 1959Q3
+    │                           #   (a rule, not an estimate: no likelihood, no priors)
+    ├── rstar/                  # r* from the bond market — AU wedge over world r*, no IS curve
     ├── rstar_hlw/              # HLW Bayesian r* model (AU data)
     ├── gdp_nowcast_bridge/     # GDP nowcast — bridge equations
     ├── gdp_nowcast_dfm/        # GDP nowcast — Dynamic Factor Model

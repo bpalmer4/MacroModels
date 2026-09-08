@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from src.models.common.sources import footer_from_constants
 from src.models.ystar.config import DEFAULT_OUTPUT_DIR
 
 DEFAULT_CHART_BASE = Path(__file__).parent.parent.parent.parent / "charts"
@@ -49,6 +50,16 @@ class PotentialResults:
     def _scalar(self, var_name: str) -> np.ndarray:
         """Return the flattened posterior draws for a scalar parameter."""
         return np.asarray(self.posterior[var_name].values).ravel()
+
+    @property
+    def source_footer(self) -> str | None:
+        """The "Built using: ..." line for this run's inputs, or None for an older run.
+
+        Runs saved before `build_observations` began recording where its series
+        came from carry no "sources" key, so the charting module falls back to
+        its own constant.
+        """
+        return footer_from_constants(self.constants)
 
     @property
     def spec(self) -> str:

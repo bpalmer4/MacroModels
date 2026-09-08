@@ -5,6 +5,7 @@ import argparse
 from src.models.ystar.base import SamplerConfig
 from src.models.ystar_ustar.analyse import run_analysis
 from src.models.ystar_ustar.config import (
+    ANCHOR_PHASES,
     DEFAULT_EXCLUDE_WINDOW,
     EXCLUDE_SCOPES,
     GAP_PI_BASES,
@@ -22,6 +23,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start", default="1993Q1", help="Sample start (default 1993Q1)")
     parser.add_argument("--end", default=None, help="Sample end (default: latest)")
     parser.add_argument("--anchor", type=float, default=2.5, help="Inflation target, per cent")
+    parser.add_argument(
+        "--anchor-phase", default="none", choices=list(ANCHOR_PHASES),
+        help="Whether the anchor is constant ('none'), expectations until 1998Q1 then the "
+             "target ('step'), or a linear glide from 1993Q1 to 1998Q4 ('glide'). See "
+             "ModelConfig.anchor_phase",
+    )
 
     parser.add_argument(
         "--gap-spec", default="defined", choices=list(GAP_SPECS),
@@ -149,6 +156,7 @@ def main() -> None:
             start=args.start,
             end=args.end,
             anchor=args.anchor,
+            anchor_phase=args.anchor_phase,
             gap_spec=args.gap_spec,
             gap_pi_basis=args.gap_pi_basis,
             sigma_c=args.sigma_c,

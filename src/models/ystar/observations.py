@@ -51,6 +51,7 @@ from src.data.labour_force import (
     get_hours_worked_qrtly,
     get_participation_rate_qrtly,
 )
+from src.models.common.sources import SourceSet
 
 _NAME_WIDTH = 27
 
@@ -118,7 +119,7 @@ def smooth_population(log_pop: pd.Series, terms: int) -> pd.Series:
     return smooth_log_level(log_pop, terms)
 
 
-def _inflation(pi_basis: str) -> tuple[pd.Series, str]:
+def _inflation(pi_basis: str, sources: SourceSet) -> pd.Series:
     """Return the Phillips curve's left-hand side, in annual per cent.
 
     "quarterly" is the quarterly trimmed mean rate multiplied by four, so it is
@@ -128,8 +129,8 @@ def _inflation(pi_basis: str) -> tuple[pd.Series, str]:
     quarters out of four; see `ModelConfig.pi_basis`.
     """
     if pi_basis == "quarterly":
-        return get_trimmed_mean_qrtly().data * 4.0, "trimmed mean q/q ann. (6401.0)"
-    return get_trimmed_mean_annual().data, "trimmed mean y/y (6401.0)"
+        return sources.take(get_trimmed_mean_qrtly(), "trimmed mean q/q ann.", key="pi") * 4.0
+    return sources.take(get_trimmed_mean_annual(), "trimmed mean y/y", key="pi")
 
 
 def _load_series(
@@ -137,31 +138,28 @@ def _load_series(
     smooth_pop: int,
     pi_basis: str = "quarterly",
     supply_control: str | None = None,
-) -> tuple[dict[str, pd.Series], dict[str, str]]:
-    """Load the input series this specification needs, with display labels."""
-    pi_series, pi_label = _inflation(pi_basis)
+) -> tuple[dict[str, pd.Series], SourceSet]:
+    """Load the input series this specification needs, recording where they came from."""
+    sources = SourceSet()
     columns: dict[str, pd.Series] = {
-        "log_gdp": get_log_gdp().data,
-        "pi": pi_series,
-    }
-    labels = {
-        "log_gdp": "log GDP (5206.0)",
-        "pi": pi_label,
+        "log_gdp": sources.take(get_log_gdp(), "log GDP", key="log_gdp"),
+        "pi": _inflation(pi_basis, sources),
     }
 
     if supply_control == "import_prices":
-        columns["supply"] = get_import_price_growth_lagged_annual().data
-        labels["supply"] = "import price growth (6457.0)"
+        columns["supply"] = sources.take(
+            get_import_price_growth_lagged_annual(), "import price growth", key="supply",
+        )
 
     if spec == "production":
         # Growth rates in log x 100, matching log_gdp's units, so the Solow
         # identity g_Y = alpha·g_K + (1-alpha)·g_L + mfp holds in those units.
         # alpha is smoothed observed data, never estimated: the residual is an
         # accounting identity, so alpha is not identified against it.
-        g_gdp = get_log_gdp().data.diff()
-        g_k = (np.log(get_capital_stock_qrtly().data) * 100).diff()
-        g_l = (np.log(get_hours_worked_qrtly().data) * 100).diff()
-        alpha = get_capital_share().data
+        g_gdp = columns["log_gdp"].diff()
+        g_k = (np.log(sources.take(get_capital_stock_qrtly(), "capital growth", key="g_k")) * 100).diff()
+        g_l = (np.log(sources.take(get_hours_worked_qrtly(), "hours growth", key="g_l")) * 100).diff()
+        alpha = sources.take(get_capital_share(), "capital share, as published", key="alpha")
 
         aligned = pd.DataFrame({"g_gdp": g_gdp, "g_k": g_k, "g_l": g_l, "alpha": alpha}).dropna()
         columns["g_k"] = aligned["g_k"]
@@ -178,16 +176,13 @@ def _load_series(
             aligned["g_gdp"] - aligned["alpha"] * aligned["g_k"]
             - (1.0 - aligned["alpha"]) * aligned["g_l"]
         )
-        labels["g_k"] = "capital growth (5204.0)"
-        labels["g_l"] = "hours growth (6202.0)"
-        labels["alpha"] = "capital share, as published"
-        labels["mfp"] = "Solow residual"
-        return columns, labels
+        sources.note("mfp", "Solow residual")
+        return columns, sources
 
     if spec != "labour":
-        return columns, labels
+        return columns, sources
 
-    log_pop = np.log(get_civilian_population_qrtly().data) * 100
+    log_pop = np.log(sources.take(get_civilian_population_qrtly(), "log pop 15+", key="log_pop")) * 100
     # Population is a trend input to h*, so its estimation noise would show up
     # as jitter in trend hours growth. Smoothed on the full history (from
     # 1978Q2) and trimmed to the sample later, so the sample start still gets a
@@ -195,14 +190,15 @@ def _load_series(
     if smooth_pop:
         log_pop = smooth_population(log_pop, smooth_pop)
 
-    columns["log_hours"] = np.log(get_hours_worked_qrtly().data) * 100
+    columns["log_hours"] = np.log(
+        sources.take(get_hours_worked_qrtly(), "log hours", key="log_hours"),
+    ) * 100
     columns["log_pop"] = log_pop
-    columns["log_pr"] = np.log(get_participation_rate_qrtly().data) * 100
-    labels["log_hours"] = "log hours (6202.0)"
-    labels["log_pop"] = "log pop 15+ (6202.0)"
-    labels["log_pr"] = "log participation (6202.0)"
+    columns["log_pr"] = np.log(
+        sources.take(get_participation_rate_qrtly(), "log participation", key="log_pr"),
+    ) * 100
 
-    return columns, labels
+    return columns, sources
 
 
 def _align(columns: dict[str, pd.Series], start: str | None, end: str | None) -> pd.DataFrame:
@@ -236,7 +232,7 @@ def build_observations(
     spec: str = "core",
     pi_basis: str = "quarterly",
     supply_control: str | None = None,
-) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, pd.DataFrame]:
+) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, pd.DataFrame, SourceSet]:
     """Build observation arrays for ystar estimation.
 
     The core specification loads only log GDP and inflation. The labour
@@ -260,15 +256,16 @@ def build_observations(
           - obs: dict of numpy arrays keyed by variable name
           - obs_index: the aligned PeriodIndex
           - chart_obs: DataFrame of the same series, for charting
+          - sources: the providers behind those series, for the chart footers
 
     """
-    columns, labels = _load_series(spec, smooth_pop, pi_basis, supply_control)
+    columns, sources = _load_series(spec, smooth_pop, pi_basis, supply_control)
 
     if verbose:
         print(f"Input series coverage ({spec} specification):")
         for key, series in columns.items():
             clean = series.dropna()
-            label = labels[key]
+            label = sources.label(key)
             print(f"  {label:<{_NAME_WIDTH}} {clean.index.min()} -> {clean.index.max()}  n={len(clean)}")
 
     df = _align(columns, start, end)
@@ -296,4 +293,4 @@ def build_observations(
     if not isinstance(obs_index, pd.PeriodIndex):
         raise TypeError(f"Expected a PeriodIndex after alignment, got {type(obs_index).__name__}")
 
-    return obs, obs_index, df
+    return obs, obs_index, df, sources

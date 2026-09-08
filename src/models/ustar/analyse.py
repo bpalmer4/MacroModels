@@ -19,7 +19,12 @@ from src.utilities.rate_conversion import annualize
 
 CHART_DIR = DEFAULT_CHART_BASE / "UStar"
 
-_RFOOTER = "Source: ABS 1364.0, 5206.0, 6401.0"
+# Used only for runs saved before `build_observations` began recording where its
+# series came from. A current run carries its own records and `_rfooter` reads
+# those instead, which is also how a chart drawn from the joint y*/u* run names
+# that model's sources rather than this one's. The GSCPI is a Phillips curve
+# input here and was missing from this line entirely.
+_RFOOTER = "Built using: ABS 1364.0.15.003, 5206.0, 6401.0, 6457.0; NY Fed"
 _LFOOTER = "Australia. u* model. "
 # Only for charts that actually draw a band. The decomposition chart is bars
 # and a line built from median parameters, with no interval on it to widen.
@@ -35,6 +40,49 @@ _LFOOTER_BAND = _LFOOTER + "Band widened x2 for the imposed drift; see notes. "
 # it the u* chart draws a confident line through six quarters nothing was
 # fitted to.
 _EXCLUDED_WINDOW: tuple[str, str] | None = None
+
+# The early quarters where u* is placed by the state law rather than by
+# inflation, shaded so the chart does not read as a confident estimate there.
+# Set by whichever model has the evidence for a window; None draws nothing.
+_UNIDENTIFIED_WINDOW: tuple[str, str] | None = None
+
+# The window this model's own diagnostics support, applied in `run_analysis`.
+# The joint model sets its own, to the same dates and on its own evidence.
+#
+# Ends 1995Q4, where the band criterion points rather than where the Phillips
+# residuals and the expectations date do. The 90% band runs 2.79x its
+# mid-sample width in 1993 and 1.96x in 1994, is 1.53x by 1995 and 1.36x by
+# 1996, which is close to the 1.1-1.3 it holds until 2002. Shading to 1998
+# would assert that 1997 is as doubtful as 1993, and it is not. That u* is not
+# fully settled until 1998 is left to MODEL_NOTES, which can say it in degrees.
+UNIDENTIFIED_WINDOW = ("1993Q1", "1995Q4")
+
+# Orange rather than the excluded window's yellow, so the two are told apart at
+# a glance where both appear. Low alpha: it sits under the u* line, which is
+# darkorange itself, and must not compete with it.
+_UNIDENTIFIED_SPAN: dict[str, Any] = {
+    "color": "darkorange",
+    "alpha": 0.12,
+    "label": "u* not well identified",
+}
+
+
+def _unidentified_span() -> list[dict[str, Any]]:
+    """Return an axvspan dict for the weakly identified early window, or nothing.
+
+    It carries its own legend label and no footer note, for the reason
+    `_excluded_span` gives: a footer would be a quieter second statement of what
+    the legend already says.
+    """
+    if _UNIDENTIFIED_WINDOW is None:
+        return []
+    lo, hi = _UNIDENTIFIED_WINDOW
+    return [{
+        "xmin": pd.Period(lo, freq="Q"),
+        "xmax": pd.Period(hi, freq="Q"),
+        **_UNIDENTIFIED_SPAN,
+        "label": f"{_UNIDENTIFIED_SPAN['label']}, {lo}-{hi}",
+    }]
 
 
 def _excluded_span() -> list[dict[str, Any]]:
@@ -62,8 +110,8 @@ def _excluded_span() -> list[dict[str, Any]]:
 
 
 def _with_excluded(kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Add the unfitted-window marker to a finalise kwargs dict."""
-    spans = _excluded_span()
+    """Add the unfitted-window and weakly-identified markers to finalise kwargs."""
+    spans = _unidentified_span() + _excluded_span()
     if not spans:
         return kwargs
     existing = kwargs.get("axvspan") or []
@@ -190,7 +238,10 @@ def _inflation_regime_spans(index: pd.PeriodIndex) -> list[dict[str, Any]]:
             "xmin": run_start, "xmax": end, "color": color, "alpha": 0.10, "zorder": 0,
         })
 
-    for period, value in inflation.items():
+    # Paired with `index` rather than read off `inflation.items()`: the series
+    # was just reindexed onto it, so the quarters are the same ones, and this
+    # way each is a Period rather than the Hashable a Series yields.
+    for period, value in zip(index, inflation.to_numpy(), strict=True):
         if pd.isna(value):
             state = None
         elif value > _INFLATION_HIGH:
@@ -205,6 +256,11 @@ def _inflation_regime_spans(index: pd.PeriodIndex) -> list[dict[str, Any]]:
     close(index[-1])
 
     return spans
+
+
+def _rfooter(results: UStarResults) -> str:
+    """Return the source line this run recorded, falling back for older runs."""
+    return results.source_footer or _RFOOTER
 
 
 def plot_ustar(results: UStarResults, shade_inflation: bool = False, tag: str = "") -> None:
@@ -238,7 +294,7 @@ def plot_ustar(results: UStarResults, shade_inflation: bool = False, tag: str = 
         "ylabel": "Per cent",
         "legend": {"loc": "best", "fontsize": "small"},
         "lheader": "u* is the unemployment rate consistent with output at potential",
-        "rfooter": _RFOOTER,
+        "rfooter": _rfooter(results),
         "lfooter": _LFOOTER_BAND,
         "show": False,
     }
@@ -272,7 +328,7 @@ def plot_ugap(results: UStarResults) -> None:
         "y0": True,
         "legend": {"loc": "best", "fontsize": "small"},
         "lheader": "Below zero is a tight labour market",
-        "rfooter": _RFOOTER,
+        "rfooter": _rfooter(results),
         "lfooter": _LFOOTER_BAND,
         "show": False,
     }))
@@ -290,7 +346,13 @@ def plot_inflation_decomposition(results: UStarResults) -> None:
     labour market, against expectations and supply. On the current calibration
     that share is small, and the chart is the honest way to say so.
     """
+    # `annualize` takes an array, a Series, a frame or a scalar and returns the
+    # same shape, which its signature can only express as a union. A frame went
+    # in, so a frame comes out; checked rather than asserted, since everything
+    # below indexes columns.
     decomp = annualize(results.inflation_decomposition())
+    if not isinstance(decomp, pd.DataFrame):
+        raise TypeError(f"expected the annualised decomposition to be a frame, got {type(decomp).__name__}")
 
     bars = pd.DataFrame({
         "Inflation target": decomp["anchor"],
@@ -322,7 +384,7 @@ def plot_inflation_decomposition(results: UStarResults) -> None:
         legend={"loc": "best", "fontsize": "x-small"},
         y0=True,
         lheader="pi = target + expectations above target + demand + supply + noise",
-        rfooter=_RFOOTER,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER,
         show=False,
     )
@@ -363,7 +425,7 @@ def plot_ustar_components(results: UStarResults) -> None:
         "legend": {"loc": "best", "fontsize": "small"},
         "lheader": f"Of u*'s total fall of {abs(total):.2f}pp, "
                    f"{abs(det):.2f}pp is the convergence mechanism alone",
-        "rfooter": _RFOOTER,
+        "rfooter": _rfooter(results),
         "lfooter": _LFOOTER,
         "show": False,
     }))
@@ -376,6 +438,20 @@ def run_analysis(
 ) -> UStarResults:
     """Load a saved run, print the diagnostics, write the charts."""
     results = load_results(output_dir=output_dir, prefix=prefix)
+
+    # Shade the quarters where u* is placed by the state law and by Okun rather
+    # than by inflation. Measured on this model, not inherited: u* opens at
+    # 10.75 against u of 10.93, the 90% band runs 2.79x its mid-sample width in
+    # 1993 and does not settle until 1998, and Okun outweighs the Phillips curve
+    # 3.2:1 per point of u* even with sigma_okun free at 0.485. Guarded on the
+    # sample actually starting there, so a run over a different span is not
+    # given a window that was never checked for it. See MODEL_NOTES.
+    global _UNIDENTIFIED_WINDOW  # noqa: PLW0603 — the module-level marker these charts read
+    _UNIDENTIFIED_WINDOW = (
+        UNIDENTIFIED_WINDOW
+        if results.obs_index[0] == pd.Period(UNIDENTIFIED_WINDOW[0], freq="Q")
+        else None
+    )
 
     print_diagnostics(results)
 

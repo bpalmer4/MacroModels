@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from src.models.common.sources import footer_from_constants
+
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
 DEFAULT_CHART_BASE = Path(__file__).parent.parent.parent.parent / "charts"
 
@@ -31,6 +33,16 @@ class RStarResults:
         if not isinstance(posterior, xr.Dataset):
             raise TypeError("trace has no posterior group — was it loaded from a completed run?")
         return posterior
+
+    @property
+    def source_footer(self) -> str | None:
+        """The "Built using: ..." line for this run's inputs, or None for an older run.
+
+        Runs saved before `build_observations` began recording where its series
+        came from carry no "sources" key, so the charting module falls back to
+        its own constant.
+        """
+        return footer_from_constants(self.constants)
 
     def _vector(self, var_name: str) -> pd.DataFrame:
         """Return a time x draw DataFrame for a vector-valued latent."""

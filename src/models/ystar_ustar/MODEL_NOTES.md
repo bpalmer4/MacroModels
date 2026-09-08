@@ -342,6 +342,80 @@ pass-through, which would want a reason before it was tried.
 
 Twelve quarters and half a point annualised, so this is a lead rather than a finding.
 
+### The early sample: u\* is not well identified, and the charts now say so
+
+The lead above was followed. It ends in a negative result worth recording, and in the shaded
+window on the u\* charts, `analyse.UNIDENTIFIED_WINDOW` = 1993Q1-1998Q4.
+
+**Why u\* sits next to u in the early years.** The sample opens in 1993Q1 with u = 10.93 and the
+posterior u\* at 10.77, a gap of 0.16 at the trough of the deepest recession since the 1930s. That
+is not a judgement about 1993, it is arithmetic. Trimmed mean inflation averaged the 2.5 anchor
+over 1993-95 (mean deviation −0.05), so `c·(pi − anchor)` has almost nothing to work with, and
+Okun then places u\* within half a point of u. Across the whole sample u\* tracks the identity
+`u + beta_okun·c·(pi − anchor)` with correlation 0.949 and mean absolute error 0.38 points, and
+the fit is *tightest* in 1993-96 at 0.236.
+
+**Okun outweighs the Phillips curve about 8:1 in placing the level.** Move u\* by 1pp at 1993Q1:
+fitted u moves 1.00pp against `sigma_okun` = 0.20, which is 5.0 sd; the Phillips gap `(u − u*)/u`
+moves 0.092, so with `gamma_pi` = −1.150 fitted quarterly inflation moves 0.105 against
+`epsilon_pi` = 0.165, which is 0.64 sd. In log-likelihood terms that is roughly 60:1 per quarter.
+Nothing on the nominal side can outvote it.
+
+**Tried and failed: a phased anchor** (`anchor_phase`, kept and defaulting to `"none"`). The
+expectations series does not reach the target until 1998 — 3.50 in 1995Q1, 3.04 in 1997Q1, 2.70 in
+1998Q1, 2.48 by 1998Q3 — so holding the anchor at 2.5 from 1993 asserts an anchoring that had not
+happened. Under `"step"` the anchor is expectations until 1998Q1, blended across 1998, the target
+after. The prediction, registered before running, was that the 1996-98 residual bias would shrink
+toward zero and 1999-2019 would not move. Result:
+
+| window | n | none | t | step | t |
+|---|---|---|---|---|---|
+| 1993-1995 | 12 | −0.071 | −1.81 | **−0.145** | **−3.08** |
+| 1996-1998 | 12 | −0.119 | −2.73 | **−0.168** | **−4.09** |
+| 1999-2019 | 84 | +0.009 | 0.54 | +0.007 | 0.43 |
+| 2020-2026 | 26 | −0.019 | −0.63 | −0.018 | −0.60 |
+
+The middle held, as predicted. The early bias roughly doubled. u\* fell only 0.29 at 1993Q1 and
+nothing after 2010, and the implied-u\* diagnostic got worse too: correlation 0.839 to 0.785, R²
+0.705 to 0.617, amplitude 17.1x to 19.6x. **`beta_pi` is what ate it**, going 0.361 to 0.697. The
+baseline is `(1 − beta_pi)·a_t + beta_pi·pi_exp`, so as `beta_pi` approaches 1 the anchor stops
+mattering; and since `a_t` = expectations early, the higher weight pushed fitted inflation up
+toward 3.4 where observed was 2.0. Everything else was stable: `c` 0.275 to 0.276, `beta_okun`
+1.244 to 1.231, `phi` 0.039 both, `sigma_v` 0.332 to 0.342.
+
+**What that settles.** The early level is not an anchor problem and cannot be fixed from the
+nominal side. Okun is the binding constraint. The remaining untried candidate is a window-specific
+`sigma_okun`, which would need to reach 0.70 before Okun's edge falls to 2.2:1 — see the sweep in
+*Why `sigma_okun` is imposed* for why loosening it across the whole sample degenerates the model
+into `ystar`.
+
+**Why the window ends at 1995Q4.** The shaded window is the band criterion's, not the widest one
+available:
+
+| year | 90% band | x mid-sample (0.210) | u\* change/qtr |
+|---|---|---|---|
+| 1993 | 0.550 | **2.61** | −0.225 |
+| 1994 | 0.389 | 1.85 | −0.199 |
+| 1995 | 0.304 | 1.45 | −0.167 |
+| 1996 | 0.272 | 1.29 | −0.140 |
+| 1998 | 0.263 | 1.25 | −0.102 |
+| 2002 | 0.236 | 1.12 | −0.059 |
+
+The concern is concentrated in 1993-94, at 2.6x and 1.9x the mid-sample width. By 1995 it is
+1.45x and by 1996 1.29x, against the 1.1-1.2x the band holds through to 2002. So the estimate is
+most of the way to its normal precision by 1995 and **largely settled by 1996**, which is what
+the window marks.
+
+What runs past 1996 is not the band but the other two diagnostics: the Phillips residuals stay
+systematically negative until 1999 (table above), and expectations do not reach the target until
+1998, which is also the phase end date here and in `nairu`. **That wider window is deliberately
+not shaded.** A flat block to 1998Q4 asserts that 1997 is as doubtful as 1993, and the band says
+plainly that it is not. The shading marks where the concern is; the residual bias running on to
+1998 is this section's job, because prose can say it in degrees and a shaded rectangle cannot.
+
+The shading claims only that u\* is not well identified there, which is what the band on the same
+chart shows. The mechanism is this section's business, not the chart's.
+
 ### Why `sigma_okun` is imposed
 
 Free, it was the model's one bad parameter and the only thing standing between this model and
@@ -622,6 +696,10 @@ guard PyMC's JAX path raises, since it returns `None` where it expects a list.
 for r in 0.0 0.05 0.10 0.25 0.40; do
   ./run-ystar-ustar.sh --ratio-ystar $r --prefix "yus_ry$(echo $r | tr -d '.')" --no-analyse
 done
+
+# The phased anchor, which does not work. See "The early sample".
+./run-ystar-ustar.sh --anchor-phase step  --prefix yus_anchor_step
+./run-ystar-ustar.sh --anchor-phase glide --prefix yus_anchor_glide
 
 # The u* state law 2x2. The fourth cell is the headline run itself.
 ./run-ystar-ustar.sh --sigma-ustar 0.040 --prefix yus_conv040   --no-analyse

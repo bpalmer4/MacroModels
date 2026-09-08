@@ -23,7 +23,13 @@ from src.models.ystar.base import (
 )
 from src.models.ystar.equations.potential import potential_output_equation
 from src.models.ystar.equations.scale import scale_equation
-from src.models.ystar_ustar.config import DEFAULT_OUTPUT_DIR, ModelConfig
+from src.models.ystar_ustar.config import (
+    ANCHOR_GLIDE_START,
+    ANCHOR_PHASE_END,
+    ANCHOR_STEP_START,
+    DEFAULT_OUTPUT_DIR,
+    ModelConfig,
+)
 from src.models.ystar_ustar.observations import build_observations
 from src.utilities.rate_conversion import quarterly
 
@@ -187,6 +193,41 @@ def _cycle_gap(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfig)
     )
 
 
+def _anchor_series(
+    obs: dict[str, np.ndarray],
+    obs_index: pd.PeriodIndex,
+    config: ModelConfig,
+) -> np.ndarray:
+    """Return the anchor for each quarter: a constant, or expectations phasing to it.
+
+    The weight runs 0 at the phase's first quarter to 1 at `ANCHOR_PHASE_END`,
+    with expectations before the phase and `config.anchor` after it. "step"
+    starts the phase in 1998Q1, so the anchor is expectations through the years
+    the expectations series says were not yet anchored; "glide" starts it at the
+    sample's own first quarter, which is `nairu`'s `_phase_between` shifted a
+    quarter: that one runs weight 0 from its PHASE_START of 1992Q4, before this
+    sample begins, so 1993Q1 already carries weight 0.042 there and 0 here.
+    """
+    constant = np.full(len(obs_index), float(config.anchor))
+    if config.anchor_phase == "none":
+        return constant
+
+    expectations = np.asarray(obs["pi_exp"], dtype=float)
+    start = ANCHOR_GLIDE_START if config.anchor_phase == "glide" else ANCHOR_STEP_START
+    phase = pd.period_range(start, ANCHOR_PHASE_END, freq="Q")
+
+    weight = np.where(obs_index < phase[0], 0.0, 1.0)
+    for i, period in enumerate(phase):
+        weight[obs_index == period] = i / (len(phase) - 1)
+    return (1.0 - weight) * expectations + weight * constant
+
+
+def _anchor_label(anchor: np.ndarray) -> str:
+    """Render the anchor for an equation description: its value, or `a_t` if it varies."""
+    first = float(anchor[0])
+    return f"{first:g}" if bool(np.all(anchor == first)) else "a_t"
+
+
 def _gap_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
@@ -204,7 +245,7 @@ def _gap_equation(
         return _cycle_gap(obs, model, config)
 
     n = len(obs["log_gdp"])
-    deviation = np.asarray(obs["pi_gap"], dtype=float) - config.anchor
+    deviation = np.asarray(obs["pi_gap"], dtype=float) - np.asarray(obs["anchor"], dtype=float)
 
     with model:
         settings: dict[str, dict[str, float]] = {
@@ -291,7 +332,7 @@ def _phillips_on_gap(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     gap: Any,  # noqa: ANN401
-    anchor: float,
+    anchor: np.ndarray,
     keep: np.ndarray | None,
 ) -> str:
     """Fit the Phillips curve on the output gap, for the `cycle` spec.
@@ -328,8 +369,9 @@ def _phillips_on_gap(
             + mc["xi_gscpi"] * obs["gscpi"] ** 2 * np.sign(obs["gscpi"])
         )
         _observe("observed_pi", mu, mc["epsilon_pi"], np.asarray(obs["pi_qtr"], dtype=float), keep)
+    label = _anchor_label(anchor)
     return (
-        f"pi_q = q({anchor:g}) + beta x [q(pi_exp) - q({anchor:g})]"
+        f"pi_q = q({label}) + beta x [q(pi_exp) - q({label})]"
         " + kappa x gap + rho x d4pm + xi x GSCPI^2 + e_p"
     )
 
@@ -338,7 +380,7 @@ def _phillips_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     ustar: Any,  # noqa: ANN401
-    anchor: float,
+    anchor: np.ndarray,
     keep: np.ndarray | None,
 ) -> str:
     """Fit the price Phillips curve on the quarterly rate, anchored on the target.
@@ -385,8 +427,9 @@ def _phillips_equation(
             np.asarray(obs["pi_qtr"], dtype=float),
             keep,
         )
+    label = _anchor_label(anchor)
     return (
-        f"pi_q = q({anchor:g}) + beta x [q(pi_exp) - q({anchor:g})]"
+        f"pi_q = q({label}) + beta x [q(pi_exp) - q({label})]"
         " + gamma x u_gap + rho x d4pm + xi x GSCPI^2 + e_p"
     )
 
@@ -412,6 +455,11 @@ def build_model(
     latents: dict[str, Any] = {}
     descriptions: list[str] = []
 
+    # Built once and carried in `obs`, so the gap identity and the Phillips
+    # baseline cannot drift apart: they are the same anchor by construction.
+    anchor = _anchor_series(obs, obs_index, config)
+    obs = {**obs, "anchor": anchor}
+
     desc = scale_equation(obs, model, latents, constant=config.scale_constants)
     descriptions.append(f"Scale:        {desc}")
     if config.exclude_window is not None:
@@ -422,6 +470,10 @@ def build_model(
     descriptions.append(f"Potential:    {desc}")
 
     ustar = _ustar_state(obs, model, config)
+    # After the state, which is where `_fixed_constants` is created. Saved as a
+    # list so the pickle stays plain, and read back by `results.py` for the
+    # inflation decomposition, which otherwise assumes a scalar anchor.
+    get_fixed_constants(model)["anchor_series"] = anchor.tolist()
     nairu_state = (
         "u*_t = u*_{t-1} + phi x (u*_eq - u*_{t-1}) + e_u   (sigma imposed)"
         if config.ustar_converge
@@ -440,9 +492,9 @@ def build_model(
         )
     if config.include_phillips:
         phillips = (
-            _phillips_on_gap(obs, model, gap, config.anchor, keep_other)
+            _phillips_on_gap(obs, model, gap, anchor, keep_other)
             if config.gap_spec == "cycle"
-            else _phillips_equation(obs, model, ustar, config.anchor, keep_other)
+            else _phillips_equation(obs, model, ustar, anchor, keep_other)
         )
         descriptions.append(f"Phillips:     {phillips}")
         if config.gap_spec == "cycle":
@@ -536,7 +588,7 @@ def run_estimate(
     print(f"Sampler seed: {sampler_config.random_seed}")
 
     print("\nBuilding observations...")
-    obs, obs_index, chart_obs = build_observations(
+    obs, obs_index, chart_obs, sources = build_observations(
         start=config.start,
         end=config.end,
         gap_pi_basis=config.gap_pi_basis,
@@ -557,7 +609,9 @@ def run_estimate(
     trace = sample_model(model, sampler_config)
     print()
 
-    constants = get_fixed_constants(model)
+    # The providers behind the observations travel with the run, so the charts
+    # name what was actually loaded rather than a separately maintained string.
+    constants = {**get_fixed_constants(model), "sources": sources.to_records()}
     save_results(
         trace, obs, obs_index,
         constants=constants,

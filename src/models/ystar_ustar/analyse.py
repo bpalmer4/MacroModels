@@ -6,7 +6,9 @@ whether the data moved it at all.
 """
 
 import math
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import mgplot as mg
@@ -22,6 +24,9 @@ from src.models.ystar.results import PotentialResults
 from src.models.ystar_ustar.config import CHART_DIR
 from src.models.ystar_ustar.results import JointResults, load_results
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 # Reference values from the separately estimated parents, for the comparison
 # table. Both are 2026Q2 vintage and both are recorded in their MODEL_NOTES.
 _YSTAR_C = 0.188
@@ -34,7 +39,22 @@ _USTAR_GAMMA = -1.148
 _USTAR_LEVEL = 4.83
 
 _LFOOTER = "Australia. Joint y* and u* model. "
-_SOURCE = "Source: ABS 5206.0, 6401.0, 6202.0, 6457.0"
+
+# The quarters where u* is not well identified: the sample opens one quarter
+# after a five-point collapse in inflation expectations, and neither the
+# inflation-defined gap nor a phased anchor can place a level there. Ends where
+# the 90% band stops being materially wider than its mid-sample width: 2.61x in
+# 1993 and 1.85x in 1994 against 1.45x by 1995 and 1.29x by 1996. The Phillips
+# residuals and the expectations date would both carry it to 1998, but the
+# concern is concentrated in the first two years and a flat block to 1998 would
+# claim 1997 is as doubtful as 1993. See MODEL_NOTES, "The early sample".
+UNIDENTIFIED_WINDOW = ("1993Q1", "1995Q4")
+
+# Used only for runs saved before `build_observations` began recording where its
+# series came from. A current run carries its own records and `_rfooter` reads
+# those instead. The unemployment rate is 1364.0.15.003, not 6202.0: an earlier
+# version of this constant said otherwise, which is the reason the records exist.
+_SOURCE = "Built using: ABS 1364.0.15.003, 5206.0, 6401.0, 6457.0; NY Fed"
 
 # How much the posterior sd must fall below the prior's before sigma_v counts as
 # having been moved by the data. A judgement, not a test: at 20% the posterior is
@@ -175,6 +195,11 @@ def print_diagnostics(results: JointResults, sigma_v_prior: float = 1.0) -> None
 # ---------------------------------------------------------------------------
 
 
+def _rfooter(results: JointResults) -> str:
+    """Return the source line this run recorded, falling back for older runs."""
+    return results.source_footer or _SOURCE
+
+
 def _as_ystar_results(results: JointResults) -> PotentialResults:
     """View the joint run as a `ystar` result, for `ystar`'s charts.
 
@@ -280,7 +305,7 @@ def _chart_gap_decomposition(results: JointResults) -> None:
         legend={"loc": "best", "fontsize": "small"},
         lheader=f"Inflation-defined share of gap variance: {shares['defined']:.0%}",
         lfooter=_LFOOTER + "Medians. Shaded: no likelihood. ",
-        rfooter=_SOURCE,
+        rfooter=_rfooter(results),
         axvspan=_excluded_span(results),
         show=False,
     )
@@ -311,7 +336,7 @@ def _chart_phillips_curve(results: JointResults) -> None:
     keep = results.fitted_mask()
     frame = frame[keep]
 
-    gamma = results.posterior["gamma_pi"].values.ravel()
+    gamma = np.asarray(results.posterior["gamma_pi"].values).ravel()
     gamma_median = float(np.median(gamma))
 
     _, ax = plt.subplots()
@@ -341,7 +366,7 @@ def _chart_phillips_curve(results: JointResults) -> None:
         legend={"loc": "best", "fontsize": "small"},
         lheader=f"gamma = {gamma_median:.2f}, 90% interval [{lo_g:.2f}, {hi_g:.2f}]",
         lfooter=_LFOOTER + "Excluded quarters dropped. Axes not independent: see notes. ",
-        rfooter=_SOURCE,
+        rfooter=_rfooter(results),
         show=False,
     )
 
@@ -386,13 +411,13 @@ def _chart_implied_ustar(results: JointResults) -> None:
         title="What inflation alone says u* is, quarter by quarter",
         ylabel="Per cent",
         legend={"loc": "best", "fontsize": "small"},
+        axvspan=[*ustar_analyse._unidentified_span(), *_excluded_span(results)],  # noqa: SLF001
         lheader=(
             f"Implied series moves {ratio:.0f}x as much quarter to quarter; "
             f"correlation with u* {implied.corr(fitted):.2f}"
         ),
-        lfooter=_LFOOTER + "Phillips curve inverted at posterior medians, residual set to zero. ",
-        rfooter=_SOURCE,
-        axvspan=_excluded_span(results),
+        lfooter=_LFOOTER + "Phillips inverted at posterior medians. ",
+        rfooter=_rfooter(results),
         show=False,
     )
 
@@ -421,7 +446,7 @@ def _chart_residuals(results: JointResults) -> None:
         legend={"loc": "best", "fontsize": "small"},
         lheader=f"corr(e_c, e_o) = {results.residual_correlation():+.2f}",
         lfooter=_LFOOTER + "Okun residual sign-flipped. Shaded: no likelihood. ",
-        rfooter=_SOURCE,
+        rfooter=_rfooter(results),
         axvspan=_excluded_span(results),
         show=False,
     )
@@ -536,7 +561,7 @@ def _chart_parameter_posterior(results: JointResults, name: str) -> None:
         legend={"loc": "best", "fontsize": "x-small"},
         lheader=header,
         lfooter=_LFOOTER + "Dotted lines are individual chains. ",
-        rfooter=_SOURCE,
+        rfooter=_rfooter(results),
         show=False,
     )
 
@@ -548,36 +573,41 @@ def _chart_parameter_posteriors(results: JointResults) -> None:
             _chart_parameter_posterior(results, str(name))
 
 
-def run_analysis(
-    prefix: str = "ystar_ustar",
-    sigma_v_prior: float = 1.0,
-    chart_dir: Path | str | None = None,
-) -> JointResults:
-    """Load a saved run, print the diagnostics, write every chart.
+@contextmanager
+def _parent_chart_settings(results: JointResults) -> Iterator[None]:
+    """Point `ystar`'s and `ustar`'s chart modules at this model, then restore them.
 
-    `chart_dir` defaults to `charts/YStarUStar`. Pass a different one for a
-    variant run: the charting clears its directory first, so analysing a
-    variant into the default would delete the headline run's charts.
+    Their charts carry their own footers, and one of them is actively wrong
+    here: `ustar`'s says "u* from a given output gap", but in this model the gap
+    is estimated rather than given. Both are overridden so every chart in this
+    directory names the model that drew it.
+
+    The right footers need no override for a current run: the parents read the
+    source records off the results they are handed, which are this model's.
+    Their fallback constants do need one, for a run saved before those records
+    existed, or every chart here would name its parent's inputs instead.
+
+    Restored on the way out, so a session that analyses this model and then one
+    of its parents does not mislabel the parent's charts.
     """
-    results = load_results(prefix=prefix)
-    print_diagnostics(results, sigma_v_prior=sigma_v_prior)
-
-    ystar_view = _as_ystar_results(results)
-    ustar_view = _as_ustar_results(results)
-
-    # The parents' charts carry their parents' footers, and one of them is
-    # actively wrong here: `ustar`'s says "u* from a given output gap", but in
-    # this model the gap is estimated rather than given. Both are overridden so
-    # every chart in this directory names the model that drew it. Restored
-    # afterwards, so a session that analyses this model and then one of its
-    # parents does not mislabel the parent's charts.
     ystar_footer, ustar_footer = ystar_analyse._LFOOTER, ustar_analyse._LFOOTER  # noqa: SLF001
     ustar_band_footer = ustar_analyse._LFOOTER_BAND  # noqa: SLF001
+    ystar_fallbacks = (
+        ystar_analyse._RFOOTER, ystar_analyse._RFOOTER_CORE, ystar_analyse._RFOOTER_PRODUCTION,  # noqa: SLF001
+    )
+    ustar_fallback = ustar_analyse._RFOOTER  # noqa: SLF001
+    ustar_excluded = ustar_analyse._EXCLUDED_WINDOW  # noqa: SLF001
+    ustar_unidentified = ustar_analyse._UNIDENTIFIED_WINDOW  # noqa: SLF001
+
     ystar_analyse._LFOOTER = _LFOOTER  # noqa: SLF001
     ustar_analyse._LFOOTER = _LFOOTER  # noqa: SLF001
     ustar_analyse._LFOOTER_BAND = (  # noqa: SLF001
         _LFOOTER + "Band widened x2 for the imposed drift; see notes. "
     )
+    ystar_analyse._RFOOTER = _SOURCE  # noqa: SLF001
+    ystar_analyse._RFOOTER_CORE = _SOURCE  # noqa: SLF001
+    ystar_analyse._RFOOTER_PRODUCTION = _SOURCE  # noqa: SLF001
+    ustar_analyse._RFOOTER = _SOURCE  # noqa: SLF001
 
     # `ystar`'s chart module keeps the excluded window in a module-level global,
     # set inside its own run_analysis, which we are bypassing. Setting it here
@@ -586,15 +616,37 @@ def run_analysis(
     # Same for `ustar`'s charts. Its own runs exclude nothing, so this is dead
     # for `ustar` itself, but here the window is dropped from all three
     # equations and u* inside it is a prior extrapolation.
-    ustar_excluded = ustar_analyse._EXCLUDED_WINDOW  # noqa: SLF001
     ustar_analyse._EXCLUDED_WINDOW = (  # noqa: SLF001
         results.excluded_window if results.constants.get("exclude_scope") == "all" else None
     )
+    # The early window, where u*'s level is set by the state law and by Okun
+    # rather than by inflation: the 90% band runs 2.6x its mid-sample width in
+    # 1993, the Phillips residuals are systematically negative until 1999, and
+    # expectations do not reach the target until 1998. See MODEL_NOTES.
+    ustar_analyse._UNIDENTIFIED_WINDOW = UNIDENTIFIED_WINDOW  # noqa: SLF001
 
-    chart_dir = Path(chart_dir) if chart_dir is not None else CHART_DIR
-    mg.set_chart_dir(str(chart_dir))
-    mg.clear_chart_dir()
+    try:
+        yield
+    finally:
+        ystar_analyse._LFOOTER = ystar_footer  # noqa: SLF001
+        ustar_analyse._LFOOTER = ustar_footer  # noqa: SLF001
+        ustar_analyse._LFOOTER_BAND = ustar_band_footer  # noqa: SLF001
+        (
+            ystar_analyse._RFOOTER,  # noqa: SLF001
+            ystar_analyse._RFOOTER_CORE,  # noqa: SLF001
+            ystar_analyse._RFOOTER_PRODUCTION,  # noqa: SLF001
+        ) = ystar_fallbacks
+        ustar_analyse._RFOOTER = ustar_fallback  # noqa: SLF001
+        ustar_analyse._EXCLUDED_WINDOW = ustar_excluded  # noqa: SLF001
+        ustar_analyse._UNIDENTIFIED_WINDOW = ustar_unidentified  # noqa: SLF001
 
+
+def _draw_charts(
+    results: JointResults,
+    ystar_view: PotentialResults,
+    ustar_view: UStarResults,
+) -> None:
+    """Write every chart for this run, the parents' and this model's own."""
     # --- The y* side, exactly what `ystar` draws for its inflation spec ---
     ystar_analyse.plot_potential(ystar_view, tag="full")
     ystar_analyse.plot_potential(ystar_view, plot_from="2015Q1", tag="recent")
@@ -633,10 +685,31 @@ def run_analysis(
     _chart_phillips_curve(results)
     _chart_parameter_posteriors(results)
 
-    ystar_analyse._LFOOTER = ystar_footer  # noqa: SLF001
-    ustar_analyse._LFOOTER = ustar_footer  # noqa: SLF001
-    ustar_analyse._LFOOTER_BAND = ustar_band_footer  # noqa: SLF001
-    ustar_analyse._EXCLUDED_WINDOW = ustar_excluded  # noqa: SLF001
+
+def run_analysis(
+    prefix: str = "ystar_ustar",
+    sigma_v_prior: float = 1.0,
+    chart_dir: Path | str | None = None,
+) -> JointResults:
+    """Load a saved run, print the diagnostics, write every chart.
+
+    `chart_dir` defaults to `charts/YStarUStar`. Pass a different one for a
+    variant run: the charting clears its directory first, so analysing a
+    variant into the default would delete the headline run's charts.
+    """
+    results = load_results(prefix=prefix)
+    print_diagnostics(results, sigma_v_prior=sigma_v_prior)
+
+    ystar_view = _as_ystar_results(results)
+    ustar_view = _as_ustar_results(results)
+
+    chart_dir = Path(chart_dir) if chart_dir is not None else CHART_DIR
+    mg.set_chart_dir(str(chart_dir))
+    mg.clear_chart_dir()
+
+    with _parent_chart_settings(results):
+        _draw_charts(results, ystar_view, ustar_view)
+
 
     print(f"Charts written to: {chart_dir}")
     return results

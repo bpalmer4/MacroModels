@@ -24,6 +24,7 @@ regenerate them into the same directory and print the fit table:
 from __future__ import annotations
 
 import logging
+from functools import cache
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -44,6 +45,9 @@ logger = logging.getLogger(__name__)
 
 COVID = (pd.Period("2020Q1", "Q-DEC"), pd.Period("2021Q2", "Q-DEC"))
 _MIN_FIT_OBS = 2
+# Quarters to step back looking for a published household CVM snapshot. One is
+# enough in normal operation; a year means a missed release is not a failure.
+_HH_SNAPSHOT_LOOKBACK = 4
 
 
 def _growth(level: pd.Series) -> pd.Series:
@@ -108,9 +112,22 @@ def _scatter(title: str, estimate: pd.Series, na: pd.Series,
     return slope, r2, len(nm)
 
 
+@cache
 def _hh_target_month() -> str:
-    """Month tag of the current nowcast target quarter (data-derived, not date-derived)."""
-    return cd.month_tag(detect_target_quarter(cd.gdp_level()))
+    """Month tag of the latest household CVM snapshot (data-derived, not date-derived).
+
+    The quarterly CVM table ships only in the quarter-end-month snapshot, so
+    inside the target quarter there is nothing yet to fetch and the loader
+    returns an empty series. These are historical fits and do not need the
+    target quarter, so step back to the most recent snapshot that has data.
+    """
+    quarter = detect_target_quarter(cd.gdp_level())
+    for back in range(_HH_SNAPSHOT_LOOKBACK):
+        tag = cd.month_tag(quarter - back)
+        if len(cd.household_spending_cvm_level(tag)):
+            return tag
+    raise RuntimeError(
+        f"no household spending CVM snapshot in the {_HH_SNAPSHOT_LOOKBACK} quarters to {quarter}")
 
 
 def plot_one_to_one_checks() -> pd.DataFrame:

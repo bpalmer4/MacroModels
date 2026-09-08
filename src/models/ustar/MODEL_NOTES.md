@@ -395,9 +395,40 @@ untouched by what happened upstream.
 2.5% anchor post-1998, so its distance from 2.5 is near zero by construction and the excess
 term would test nothing.
 
-**No phase-in.** `nairu` phases expectations to the target over 1993-1998 because its sample
-starts in 1984. This sample starts 1993Q1, inside the inflation-targeting era, so there is
-nothing to phase from — the same choice `ystar` makes from the same start date.
+**No phase-in, and it has now been tested rather than assumed.** `nairu` phases expectations to
+the target over 1993-1998 because its sample starts in 1984. This sample starts 1993Q1, and the
+reasoning used to be that 1993 is inside the inflation-targeting era so there is nothing to
+phase from. That reasoning is wrong on the data: the unanchored expectations series reads 3.50
+in 1995Q1, 3.04 in 1997Q1, 2.70 in 1998Q1 and only reaches 2.48 by 1998Q3, so for the first five
+years of this sample the target was not yet where expectations sat. The joint model added an
+`anchor_phase` option to test exactly that, and it makes the fit **worse**: the early Phillips
+residual bias roughly doubles and `beta_pi` re-weights from 0.361 to 0.697 to absorb the change.
+See `ystar_ustar/MODEL_NOTES.md`, "The early sample". So the choice stands, but on evidence
+rather than on the era argument.
+
+That test moved the gap and the Phillips baseline together, since the joint model reads one
+anchor into both. Phasing only this model's Phillips curve would isolate the nominal channel,
+because the gap arrives here as data built on a constant 2.5 upstream. Deliberately not done:
+holding this model fixed is what makes it a comparator for the joint one, and a second phased
+variant would cost that for a channel the joint result has already priced.
+
+**Okun's timing was checked, and nothing survives prewhitening.** The Okun equation is
+contemporaneous, `u_t = u*_t − beta·gap_t + e`, and its residual has a lag-1 autocorrelation of
+0.821, which invites the thought that unemployment and an inflation-defined gap are misaligned
+in time — the more so early, where the environment moves 25 to 30% faster per quarter. Raw
+cross-correlation of the residual against the gap looks like it confirms this, peaking at
+−0.371 three quarters out on the full sample and −0.709 over 1993-98. **It does not survive.**
+Prewhitening the gap with an AR(4) (1.435, −0.407, −0.110, −0.010, which takes its lag-1
+autocorrelation to 0.004) and filtering both series leaves nothing above two standard errors on
+the full sample: the largest is +0.103 at k = 0 against 2se = 0.175. Over 1993-98 one lag is
+marginal, −0.457 against 0.447, on 20 observations with nine lags tested.
+
+This is `ystar` item 7 repeating itself on the Okun side: the pattern was the two series' own
+persistence. `ystar` items 9 and 12 record the two attempts to act on the same intuition on the
+gap-to-inflation side, a freely estimated lag profile that would not converge and a fixed
+four-quarter lead that converged and bought nothing. The honest reading is item 7's: prewhitening
+is conservative for a low-frequency relationship, so this is not proof of absence, and the sample
+cannot settle it.
 
 **No supply-shock masking, and the live GSCPI.** `nairu` keeps GSCPI only over 2020Q1-2023Q2,
 leaving 14 non-zero quarters. Here it is unmasked, so the coefficient is identified on the
@@ -473,8 +504,36 @@ the work is being done by other imposed structure.
    7.0 → 3.5. Defensible — booking a pandemic as structural is the error smoothness priors
    exist to prevent — but it means the model has nothing to say about post-COVID structural
    change, which is the question people most want a NAIRU for.
-4. **1993 is weak.** u\* = 8.4 against unemployment of 10.9 gives a +2.5pp gap at the start of
-   the sample, and it is where the with-gap and without-gap estimates differ most.
+4. **The early sample is not identified, and the charts now shade it** (1993Q1-1995Q4, from
+   `analyse.UNIDENTIFIED_WINDOW`). Under the decay the headline run opens at u\* = 10.75
+   against unemployment of 10.93, a gap of 0.17 at the trough of the deepest recession since
+   the 1930s, which is not a credible structural statement. Three things say the level is being
+   placed by the specification rather than by inflation:
+
+   - **The decay is what puts the early level where it is.** Every saved variant other than the
+     headline runs the driftless prior this model replaced, and they open at 7.07 to 9.69 while
+     agreeing with the headline within a few tenths by 2026Q2. That is not a sensitivity band
+     across credible specifications, and should not be quoted as one: it is the current run
+     against a prior the notes reject. What it does show is that the decay, adopted because a
+     driftless walk could not descend fast enough through the late 1990s, raises the 1993 level
+     as a by-product. (An earlier version of this limitation quoted 8.4 against a +2.5pp gap,
+     which was the driftless 0.040 vintage, not this one.)
+   - **The 90% band runs 2.79x its mid-sample width in 1993**, 1.96x in 1994, 1.53x in 1995, and
+     settles near 1.3x from 1996, against the 1.1-1.2x it holds through to 2002. So the concern
+     is concentrated in 1993-94, the estimate is largely settled by 1996, and the shading stops
+     at 1995Q4 accordingly. What runs on past that is not the band but the Phillips residual
+     bias, which is systematically negative until 1999; the expectations date is 1998 as well.
+     Neither is shaded, because a flat block that far would claim 1997 is as doubtful as 1993.
+   - **Okun outweighs the Phillips curve 3.2:1** per point of u\* at 1993Q1, even with
+     `sigma_okun` free at 0.485: 1.00pp against 0.485 is 2.06 sd, while the Phillips gap moves
+     0.105 against `epsilon_pi` = 0.163, or 0.64 sd. The level is Okun's to set, and Okun says
+     u\* is wherever u is once the given gap is subtracted.
+
+   The joint model reaches the same 1993Q1 value, 10.77, at an 8:1 leverage ratio because it
+   imposes `sigma_okun` = 0.20. That its freely estimated value here is 2.4 times larger and the
+   early level does not move is the useful part: loosening Okun is not obviously the fix.
+   `ystar_ustar/MODEL_NOTES.md`, "The early sample", carries the full argument and a phased
+   inflation anchor that was tried and made the fit worse.
 5. **The inflation-band chart is illustration, not validation.** The Phillips curve fits
    inflation with `gamma × u_gap` and gamma is negative, so the estimation is not neutral about
    whether a negative gap coincides with above-band inflation. The disagreements are

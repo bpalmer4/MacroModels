@@ -64,6 +64,21 @@ MODEL_NOTES.md              # This documentation
 | business | 1989Q3 | NAB Business Survey inflation expectations | Target Anchored, Unanchored |
 | market_yoy | 1994Q3 | Market economists year-on-year | Target Anchored, Unanchored |
 
+**The union series is fetched and not used, and it has stopped.** `src/data/expectations.py`
+pulls `union_1y` (GUNIEXPY) and `union_yoy` (GUNIEXPYY) from G3 and its docstring advertises
+them, but `stage1.py` selects `["market_1y", "business", "market_yoy"]` and the union measures
+never reach any model. Both series end **2023Q3**, the unions having declined to keep
+participating, so the column remains in the RBA file and has been empty since. Nothing needs
+doing: the model's panel is unchanged and still live at every input. Recorded here because the
+end of a G3 series looks alarming in the raw data and the alarm is misplaced.
+
+**What the panel does not cover.** There is no household measure. G3's consumer series
+(GCONEXP) holds 18 observations beginning 2022-03, so it cannot serve this model's history, and
+a household series for the 1990s would have to come from the Melbourne Institute survey
+directly. The panel is therefore financial markets, forecasters and firms' stated expectations,
+which is worth remembering whenever the output is read as "inflation expectations" without
+qualification. See `long_run_ustar/MODEL_NOTES.md` for where that distinction bites.
+
 ### Market Measures (RBA Table F2)
 | Series | Start | Description | Used In |
 |--------|-------|-------------|---------|

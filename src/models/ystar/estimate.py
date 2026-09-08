@@ -376,7 +376,7 @@ def run_estimate(
     print(f"Sampler seed: {sampler_config.random_seed}")
 
     print("\nBuilding observations...")
-    obs, obs_index, chart_obs = build_observations(
+    obs, obs_index, chart_obs, sources = build_observations(
         start=config.start, end=config.end, verbose=verbose,
         smooth_pop=config.smooth_pop, spec=config.spec,
         pi_basis=config.pi_basis, supply_control=config.supply_control,
@@ -407,7 +407,9 @@ def run_estimate(
     trace = sample_model(model, sampler_config)
     print()
 
-    constants = get_fixed_constants(model)
+    # The providers behind the observations travel with the run, so the charts
+    # name what was actually loaded rather than a separately maintained string.
+    constants = {**get_fixed_constants(model), "sources": sources.to_records()}
     save_results(
         trace, obs, obs_index,
         constants=constants,

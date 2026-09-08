@@ -32,10 +32,16 @@ CHART_DIR = DEFAULT_CHART_BASE / "YStar"
 # silently deleted the other's charts.
 SPEC_CHART_DIRS = {"production": DEFAULT_CHART_BASE / "YStar-production"}
 
-_RFOOTER = "Source: ABS 5206.0, 6202.0, 6401.0"
-_RFOOTER_CORE = "Source: ABS 5206.0, 6401.0"
-# The production spec adds capital (5204.0) and the capital share.
-_RFOOTER_PRODUCTION = "Source: ABS 5204.0, 5206.0, 6202.0, 6401.0"
+# Used only for runs saved before `build_observations` began recording where its
+# series came from. A current run carries its own records and `_rfooter` reads
+# those instead, which is also how a chart drawn from the joint y*/u* run names
+# that model's sources rather than this one's.
+_RFOOTER = "Built using: ABS 5206.0, 6202.0, 6401.0"
+_RFOOTER_CORE = "Built using: ABS 5206.0, 6401.0"
+# The production spec adds the capital stock and the capital share. The stock
+# comes from the Modellers' Database, not 5204.0, which this constant used to
+# claim: see `src/data/capital.py`.
+_RFOOTER_PRODUCTION = "Built using: ABS 1364.0.15.003, 5206.0, 6202.0, 6401.0"
 
 # Shown on the inflation-defined gap chart. Not "a positive output gap is
 # consistent with inflation": that series is a positive multiple of the
@@ -202,7 +208,28 @@ def _band(posterior: pd.DataFrame) -> pd.DataFrame:
 
 
 def _rfooter(results: PotentialResults) -> str:
-    """Source line naming only the catalogues this specification actually uses."""
+    """Source line naming only the catalogues this specification actually uses.
+
+    Read from the run's own records where it has them, so the line describes
+    what was loaded rather than what this module believes about a spec name.
+    """
+    recorded = results.source_footer
+    if recorded is not None:
+        return recorded
+    return _spec_rfooter(results)
+
+
+def _decomposition_rfooter(decomposition: GrowthDecomposition) -> str:
+    """Source line for the growth-accounting charts.
+
+    The decomposition loads hours, population and participation itself, so it
+    names 6202.0 whether or not the run that produced `y*` did.
+    """
+    return decomposition.sources.footer() or _RFOOTER
+
+
+def _spec_rfooter(results: PotentialResults) -> str:
+    """Return the pre-recording fallback: what each specification used to load."""
     if results.spec == "labour":
         return _RFOOTER
     if results.spec == "production":
@@ -633,7 +660,7 @@ def plot_growth_vs_potential(
         ylabel="Year-ended per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter="Source: ABS 5206.0, 6401.0",
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER + "Actual smoothed, 7-term Henderson MA. ",
         tag=tag,
         show=False,
@@ -721,7 +748,7 @@ def plot_trend_productivity_growth(results: PotentialResults) -> None:
         ylabel="Annualised per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_RFOOTER,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER + "GDP per LFS hour worked. ",
         show=False,
     )
@@ -753,7 +780,7 @@ def plot_potential_growth(results: PotentialResults) -> None:
         ylabel="Year-ended per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_RFOOTER,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER + "Components add to potential growth exactly. ",
         show=False,
     )
@@ -791,7 +818,7 @@ def plot_growth_accounting(decomposition: GrowthDecomposition) -> None:
         ylabel="Year-ended per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_RFOOTER,
+        rfooter=_decomposition_rfooter(decomposition),
         lfooter="Australia. Accounting split. Productivity is the residual. ",
         show=False,
     )
@@ -857,7 +884,7 @@ def plot_growth_wedge(decomposition: GrowthDecomposition) -> None:
         ylabel="Year-ended per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_RFOOTER,
+        rfooter=_decomposition_rfooter(decomposition),
         lfooter="Australia. The wedge is trend productivity, the residual. ",
         show=False,
     )
@@ -902,7 +929,7 @@ def plot_growth_contributions(decomposition: GrowthDecomposition) -> None:
         ylabel="Year-ended per cent, period average",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_RFOOTER,
+        rfooter=_decomposition_rfooter(decomposition),
         lfooter="Australia. Components add to potential growth exactly. ",
         show=False,
     )
@@ -925,7 +952,7 @@ def plot_trend_hours_components(results: PotentialResults) -> None:
         title="Participation rate: trend and observed",
         ylabel="log x 100",
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_RFOOTER,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER + "Cycle removed via the estimated gap loading. ",
         show=False,
     )
@@ -950,7 +977,7 @@ def plot_gap_attribution(results: PotentialResults) -> None:
         ylabel="Percentage points",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_RFOOTER,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER + "Split by the estimated hours loading. ",
         show=False,
     )
@@ -979,7 +1006,7 @@ def plot_factor_trends(results: PotentialResults) -> None:
         annotate=False,
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_RFOOTER_PRODUCTION,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER,
         show=False,
     )
@@ -1023,7 +1050,7 @@ def plot_capital_share(results: PotentialResults) -> None:
         ylabel="Share of income",
         legend={"loc": "best", "fontsize": "small"},
         lheader="Near-constant by design: most published movement is the terms of trade, not technology",
-        rfooter="Source: ABS 5204.0, 5206.0",
+        rfooter=_rfooter(results),
         lfooter=(
             "Australia. alpha = GOS/(GOS+COE). Corr +0.85 with terms of trade, -0.08 with potential growth. "
         ),
@@ -1057,7 +1084,7 @@ def plot_trend_mfp(results: PotentialResults) -> None:
         ylabel="Year-ended growth (%)",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_RFOOTER_PRODUCTION,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER,
         show=False,
     )
@@ -1093,7 +1120,7 @@ def plot_factor_contributions(results: PotentialResults) -> None:
         ylabel="Percentage points, year-ended",
         y0=True,
         legend={"loc": "best", "fontsize": "x-small"},
-        rfooter=_RFOOTER_PRODUCTION,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER + "Capital share is observed and smoothed, not estimated. ",
         show=False,
     )

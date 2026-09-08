@@ -46,11 +46,12 @@ from src.data.gscpi_live import get_gscpi_qrtly_live
 from src.data.import_prices import get_import_price_growth_lagged_annual
 from src.data.inflation import get_trimmed_mean_annual, get_trimmed_mean_qrtly
 from src.data.labour_force import get_unemployment_rate_qrtly
+from src.models.common.sources import SourceSet
 
-_NAME_WIDTH = 28
+_NAME_WIDTH = 34
 
 
-def _gscpi_lagged(index: pd.Index, lag: int = 2) -> pd.Series:
+def _gscpi_lagged(index: pd.Index, sources: SourceSet, lag: int = 2) -> pd.Series:
     """Return the GSCPI, lagged, unmasked, from the live source.
 
     Both choices are `ustar`'s and the reasons carry over unchanged. Unmasked,
@@ -62,7 +63,7 @@ def _gscpi_lagged(index: pd.Index, lag: int = 2) -> pd.Series:
     deviations from its own mean, so zero is neutral pressure rather than a
     hole in the data, and the alternative would cost five years of sample.
     """
-    gscpi = get_gscpi_qrtly_live().data.astype(float)
+    gscpi = sources.take(get_gscpi_qrtly_live(), "GSCPI, lagged", key="gscpi").astype(float)
     return gscpi.shift(lag).reindex(index).fillna(0.0)
 
 
@@ -94,7 +95,7 @@ def build_observations(
     gap_pi_basis: str = "annual",
     include_phillips: bool = True,
     verbose: bool = False,
-) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, pd.DataFrame]:
+) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, pd.DataFrame, SourceSet]:
     """Build observation arrays for joint estimation.
 
     `gap_pi_basis` selects the series the gap is defined on. "quarterly" is the
@@ -107,28 +108,28 @@ def build_observations(
           - obs: dict of numpy arrays keyed by variable name
           - obs_index: the aligned PeriodIndex
           - chart_obs: DataFrame of the same series, for charting
+          - sources: the providers behind those series, for the chart footers
 
     """
+    sources = SourceSet()
+
     if gap_pi_basis == "quarterly":
-        gap_pi, gap_pi_label = get_trimmed_mean_qrtly().data * 4.0, "trimmed mean q/q ann. (6401.0)"
+        gap_pi = sources.take(get_trimmed_mean_qrtly(), "trimmed mean q/q ann.", key="pi_gap") * 4.0
     else:
-        gap_pi, gap_pi_label = get_trimmed_mean_annual().data, "trimmed mean y/y (6401.0)"
+        gap_pi = sources.take(get_trimmed_mean_annual(), "trimmed mean y/y", key="pi_gap")
 
     columns: dict[str, pd.Series] = {
-        "log_gdp": get_log_gdp().data,
+        "log_gdp": sources.take(get_log_gdp(), "log GDP", key="log_gdp"),
         "pi_gap": gap_pi,
-        "u": get_unemployment_rate_qrtly().data,
-    }
-    labels = {
-        "log_gdp": "log GDP (5206.0)",
-        "pi_gap": gap_pi_label,
-        "u": "unemployment rate (6202.0)",
+        "u": sources.take(get_unemployment_rate_qrtly(), "unemployment rate", key="u"),
     }
 
     if include_phillips:
-        columns["pi_qtr"] = get_trimmed_mean_qrtly().data
+        columns["pi_qtr"] = sources.take(get_trimmed_mean_qrtly(), "trimmed mean q/q", key="pi_qtr")
         try:
-            columns["pi_exp"] = get_model_expectations_unanchored().data.astype(float)
+            columns["pi_exp"] = sources.take(
+                get_model_expectations_unanchored(), "expectations", key="pi_exp",
+            ).astype(float)
         except FileNotFoundError as exc:
             raise FileNotFoundError(
                 "No saved expectations model output found. The Phillips curve reads the "
@@ -136,19 +137,17 @@ def build_observations(
                 "first: ./run-expectations.sh. To estimate without it, use --no-phillips, "
                 "but note that u* is then a trend through unemployment rather than a NAIRU.",
             ) from exc
-        columns["d4pm"] = get_import_price_growth_lagged_annual().data
-        columns["gscpi"] = _gscpi_lagged(columns["pi_qtr"].index)
-        labels["pi_qtr"] = "trimmed mean q/q (6401.0)"
-        labels["pi_exp"] = "expectations (unanchored)"
-        labels["d4pm"] = "import price growth (6457.0)"
-        labels["gscpi"] = "GSCPI (live, lagged)"
+        columns["d4pm"] = sources.take(
+            get_import_price_growth_lagged_annual(), "import price growth", key="d4pm",
+        )
+        columns["gscpi"] = _gscpi_lagged(columns["pi_qtr"].index, sources)
 
     if verbose:
         print("Input series coverage:")
         for key, series in columns.items():
             clean = series.dropna()
             print(
-                f"  {labels[key]:<{_NAME_WIDTH}} {clean.index.min()} -> "
+                f"  {sources.label(key):<{_NAME_WIDTH}} {clean.index.min()} -> "
                 f"{clean.index.max()}  n={len(clean)}",
             )
 
@@ -162,4 +161,4 @@ def build_observations(
     if not isinstance(index, pd.PeriodIndex):
         raise TypeError("aligned observations must carry a PeriodIndex")
 
-    return obs, index, df
+    return obs, index, df, sources

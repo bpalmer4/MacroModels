@@ -10,7 +10,10 @@ from src.models.rstar.results import DEFAULT_CHART_BASE, RStarResults, load_resu
 
 CHART_DIR = DEFAULT_CHART_BASE / "RStar"
 
-_RFOOTER = "Source: RBA F1/F2/F3; NY Fed HLW; ABS 6401.0"
+# Used only for runs saved before `build_observations` began recording where its
+# series came from. A current run carries its own records and `_rfooter` reads
+# those instead, including the inputs of the y*/u* run the Taylor rule reads.
+_RFOOTER = "Built using: RBA F1/F2/F3; NY Fed HLW; ABS 6401.0"
 _LFOOTER = "Australia. r* model. "
 # Deliberately terse: the full sentence ran into the source line on the right.
 _LFOOTER_BAND = "Australia. r* model. Band conditional on the imposed sigma_walk. "
@@ -106,6 +109,11 @@ def print_diagnostics(results: RStarResults) -> None:
         print(f"  Over four quarters the rule wanted {last4:+.2f}; {act4:+.2f} was delivered.")
 
 
+def _rfooter(results: RStarResults) -> str:
+    """Return the source line this run recorded, falling back for older runs."""
+    return results.source_footer or _RFOOTER
+
+
 def plot_rstar(results: RStarResults) -> None:
     """r* against the real yield it is extracted from and the world anchor."""
     rstar = results.rstar_posterior()
@@ -131,7 +139,7 @@ def plot_rstar(results: RStarResults) -> None:
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         lheader="r* is the permanent component of the real yield, anchored on world r*",
-        rfooter=_RFOOTER,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER_BAND,
         show=False,
     )
@@ -157,7 +165,7 @@ def plot_term_premium(results: RStarResults) -> None:
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         lheader="The transitory component, including whatever liquidity premium indexed bonds carry",
-        rfooter=_RFOOTER,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER_BAND,
         show=False,
     )
@@ -185,7 +193,7 @@ def plot_business_rstar(results: RStarResults) -> None:
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         lheader="What the bond market prices, and what investment actually faces",
-        rfooter=_RFOOTER,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER,
         show=False,
     )
@@ -219,7 +227,7 @@ def plot_taylor_level(results: RStarResults) -> None:
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         lheader="Taylor 0.5/0.5, supply looked through. Cash rate above nominal r* is restrictive",
-        rfooter=_RFOOTER,
+        rfooter=_rfooter(results),
         lfooter=_LFOOTER,
         show=False,
     )

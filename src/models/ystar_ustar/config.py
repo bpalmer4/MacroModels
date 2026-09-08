@@ -28,6 +28,7 @@ one of those two arguments.
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
 CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "YStarUStar"
@@ -47,6 +48,19 @@ GAP_PI_BASES = ("annual", "quarterly")
 #   "defined" — gap = c·(pi - anchor) + v, ystar's identity plus a free part
 #   "cycle"   — gap is a free AR(1) latent, and inflation observes it
 GAP_SPECS = ("defined", "cycle")
+
+# How the inflation anchor behaves across the sample. See `ModelConfig.anchor_phase`.
+#   "none"  — the anchor is `anchor` in every quarter, as it has always been
+#   "step"  — expectations until 1998Q1, blended across 1998, the target after
+#   "glide" — linear from expectations to the target over 1993Q1-1998Q4
+ANCHOR_PHASES = ("none", "step", "glide")
+
+# The dates the two phases run between. The glide reproduces the `nairu` model's
+# PHASE_START/PHASE_END; the step holds at expectations until the quarter the
+# expectations series itself drops (2.70 in 1998Q1, 2.48 by 1998Q3).
+ANCHOR_GLIDE_START = "1993Q1"
+ANCHOR_STEP_START = "1998Q1"
+ANCHOR_PHASE_END = "1998Q4"
 
 
 @dataclass
@@ -90,6 +104,27 @@ class ModelConfig:
     start: str | None = "1993Q1"
     end: str | None = None
     anchor: float = 2.5
+
+    # Whether the anchor is a constant or a series. The model's first quarter is
+    # 1993Q1, one quarter after expectations completed a five-point collapse
+    # (7.46 in 1990Q1 to 2.34 in 1993Q1), and the expectations series does not
+    # settle at the target until 1998: 3.50 in 1995Q1, 3.04 in 1997Q1, 2.70 in
+    # 1998Q1, 2.48 by 1998Q3, then 2.4-2.5 onward. Holding the anchor at 2.5
+    # from 1993 therefore asserts an anchoring that had not happened, and both
+    # the gap identity and the Phillips baseline read it, so the model sees no
+    # slack in years when inflation was running below what was expected.
+    #
+    # Under "step" or "glide" the anchor is `pi_exp` early and `anchor` late.
+    # At the pure-expectations end the gap becomes c·(pi - pi^e), the inflation
+    # surprise, and the Phillips baseline becomes q(pi^e): the accelerationist
+    # form, which is the right object before a target binds. `beta_pi` then
+    # multiplies a regressor that is identically zero there, exactly as
+    # `nairu`'s `_build_excess_expectations` holds its excess term at zero
+    # pre-1993, so read `beta_pi` as pass-through against a moving anchor.
+    #
+    # "none" is the default because it reproduces every run made before this
+    # option existed. It is not a claim that the constant anchor is right.
+    anchor_phase: str = "none"
 
     # Which trimmed mean series defines the gap: "annual" (four-quarter, as
     # `ystar`) or "quarterly" (the quarterly rate x 4, so it is on the anchor's
@@ -323,6 +358,19 @@ class ModelConfig:
 
     output_dir: Path = field(default_factory=lambda: DEFAULT_OUTPUT_DIR)
 
+    def _validate_anchor(self) -> None:
+        """Check the anchor switches. Split out to keep `__post_init__` simple."""
+        if self.anchor_phase not in ANCHOR_PHASES:
+            raise ValueError(
+                f"anchor_phase must be one of {ANCHOR_PHASES}, got {self.anchor_phase!r}",
+            )
+        if self.anchor_phase != "none" and not self.include_phillips:
+            raise ValueError(
+                "a phased anchor is built from the expectations series, which is only "
+                "loaded with the Phillips curve; drop --no-phillips or use "
+                "--anchor-phase none",
+            )
+
     def __post_init__(self) -> None:
         """Validate the switches that have a fixed set of legal values."""
         if self.exclude_scope not in EXCLUDE_SCOPES:
@@ -346,6 +394,7 @@ class ModelConfig:
                 "dropping both Okun and Phillips leaves only the GDP equation, which is "
                 "`ystar` with an unidentified extra variance — use ystar instead",
             )
+        self._validate_anchor()
         if self.ustar_drift and self.ustar_converge:
             raise ValueError(
                 "ustar_drift and ustar_converge are two stories about the same fact; "
@@ -368,9 +417,13 @@ class ModelConfig:
         }
 
     @property
-    def constants(self) -> dict[str, float]:
+    def constants(self) -> dict[str, Any]:
         """Imposed values worth recording in the trace metadata."""
-        recorded = {"sigma_ustar": self.sigma_ustar, "anchor": self.anchor}
+        recorded: dict[str, Any] = {
+            "sigma_ustar": self.sigma_ustar,
+            "anchor": self.anchor,
+            "anchor_phase": self.anchor_phase,
+        }
         if self.sigma_v is not None:
             recorded["sigma_v"] = self.sigma_v
         return recorded

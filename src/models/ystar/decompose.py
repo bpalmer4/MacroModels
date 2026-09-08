@@ -30,7 +30,7 @@ productivity measure; the level of `lp*` is not interpretable and only its
 growth is.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -41,6 +41,7 @@ from src.data.labour_force import (
     get_hours_worked_qrtly,
     get_participation_rate_qrtly,
 )
+from src.models.common.sources import SourceSet
 from src.models.ystar.observations import smooth_log_level
 from src.models.ystar.results import PotentialResults
 
@@ -86,6 +87,8 @@ class GrowthDecomposition:
             residual component can be banded.
         terms: Henderson terms used on log population.
         lamb: HP smoothing used on the two cyclical margins.
+        sources: Everything behind these numbers, the run's own inputs plus the
+            labour series loaded here, for the chart footers.
 
     """
 
@@ -95,6 +98,7 @@ class GrowthDecomposition:
     productivity_posterior: pd.DataFrame
     terms: int
     lamb: float
+    sources: SourceSet = field(default_factory=SourceSet)
 
     @property
     def productivity_growth(self) -> pd.Series:
@@ -121,7 +125,12 @@ def _hp_trend(log_level: pd.Series, lamb: float) -> pd.Series:
     return pd.Series(np.asarray(trend), index=clean.index)
 
 
-def _trend_hours_components(index: pd.PeriodIndex, terms: int, lamb: float) -> pd.DataFrame:
+def _trend_hours_components(
+    index: pd.PeriodIndex,
+    terms: int,
+    lamb: float,
+    sources: SourceSet,
+) -> pd.DataFrame:
     """Return trend log population, participation and hours per participant.
 
     Each is trended separately, so the three sum to trend hours exactly. Units
@@ -151,9 +160,9 @@ def _trend_hours_components(index: pd.PeriodIndex, terms: int, lamb: float) -> p
     accounting split is. It is not an estimate of labour supply consistent with
     inflation at target, and nothing here identifies one.
     """
-    log_hours = np.log(get_hours_worked_qrtly().data) * 100
-    log_pop = np.log(get_civilian_population_qrtly().data) * 100
-    log_pr = np.log(get_participation_rate_qrtly().data) * 100
+    log_hours = np.log(sources.take(get_hours_worked_qrtly())) * 100
+    log_pop = np.log(sources.take(get_civilian_population_qrtly())) * 100
+    log_pr = np.log(sources.take(get_participation_rate_qrtly())) * 100
 
     raw = pd.DataFrame({"pop": log_pop, "pr": log_pr, "hours": log_hours}).dropna()
     # Hours per labour-force participant, by the identity. Hours is a level in
@@ -192,7 +201,12 @@ def decompose_potential_growth(
             identity has been broken somewhere upstream.
 
     """
-    trends = _trend_hours_components(results.obs_index, terms, lamb)
+    # The labour series loaded here are the decomposition's own: they are not in
+    # the model's observations, so the charts drawn from it name a wider set of
+    # sources than the charts drawn from the run.
+    recorded = SourceSet.from_records(results.constants.get("sources"))
+    sources = recorded or SourceSet()
+    trends = _trend_hours_components(results.obs_index, terms, lamb, sources)
     trend_hours = trends.sum(axis=1)
 
     potential = results.potential_posterior()
@@ -226,6 +240,10 @@ def decompose_potential_growth(
         productivity_posterior=productivity.diff(4),
         terms=terms,
         lamb=lamb,
+        # Empty where the run recorded nothing, so a chart drawn from an older
+        # run falls back to its module's constant rather than reporting the
+        # three labour series as if they were the whole input set.
+        sources=sources if recorded is not None else SourceSet(),
     )
 
 

@@ -111,6 +111,21 @@ is not commensurate with `flow_{T-1}`).
    rather than the download-then-check-then-fallback dance — if the quarter isn't
    in it, it isn't there. Anchored to the target quarter, not to `today`.
 
+   **The diagnostics needed a fallback that the model itself does not.** Gotcha 2 means the
+   loader returns an *empty* series for a quarter whose snapshot has not shipped, and
+   `model.run_nowcast` degrades correctly: every component prints "pending release" and the
+   nowcast is `nan`, which is right for T-0 early in a quarter. `diagnostics._hh_target_month`
+   did not, and fed the empty frame straight into `np.polyfit`, which raised
+   `TypeError: expected non-empty vector for x` and took the whole run down at exit code 1. It
+   now steps back to the most recent quarter whose snapshot exists, over at most
+   `_HH_SNAPSHOT_LOOKBACK` = 4 quarters, and caches the resolved tag because the loader is not
+   itself cached and each call is a snapshot fetch.
+
+   The distinction is worth keeping in mind when adding checks here: these charts are historical
+   fits and never needed the target quarter at all, whereas the model does. On 2026-09-08 the
+   crash reproduced with the target at 2026Q3 and the fallback resolving to `jun-2026`, restoring
+   n=41 on the household fit from n=0.
+
 ## Architecture
 
 One as-of-parameterised contribution path (`model._contribute`) is shared by the

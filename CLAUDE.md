@@ -35,6 +35,7 @@ uv sync                            # Install dependencies
 ./run-ustar.sh                     # Run u* model (Okun + Phillips; needs expectations + ystar)
 ./run-rstar.sh                     # Run r* model (bond market + world r*; Taylor rule needs ystar + ustar)
 ./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free; needs expectations)
+./run-long-run-ustar.sh            # Read u* off flat-inflation stretches, back to 1959 (no estimation)
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
 uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
 uv run python -m src.models.dsge.nk_twostar_model    # Run NK two-star linear probe
@@ -53,6 +54,7 @@ src/
 │   ├── transforms.py              # Data transformations
 │   ├── series_specs.py            # Series specification definitions
 │   ├── dataseries.py              # Data series utilities
+│   ├── long_cpi.py                 # Headline CPI back to 1948, rebuilt from the quarterly change
 │   ├── retail_trade.py             # Monthly household spending (5682.0)
 │   ├── building_approvals.py       # Monthly dwelling approvals (8731.0)
 │   ├── goods_trade.py              # Monthly goods trade balance (5368.0)
@@ -111,6 +113,15 @@ src/
 │   │                              #   unidentifiable on AU data. Level Taylor rule on top.
 │   │                              #   r* ~1.2-1.6 is robust to sigma_walk; the recent PATH
 │   │                              #   is not (see MODEL_NOTES.md).
+│   ├── long_run_ustar/            # u* WITHOUT estimation, back to 1959Q3. Finds the stretches
+│   │                              #   where inflation actually stopped changing and reads
+│   │                              #   unemployment off them. Reaches where the state-space
+│   │                              #   models cannot: 1.82 in the late 1960s, 5.45-5.68 since
+│   │                              #   2002, both robust across the rule. Its main finding is
+│   │                              #   about the others: under a loose rule it reads 9-10.9 for
+│   │                              #   the early 1990s, the same as ystar_ustar, so that number
+│   │                              #   is the NAIRU concept failing in a re-anchoring rather
+│   │                              #   than a defect in the joint model (see MODEL_NOTES.md).
 │   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition. SUPERSEDED by ystar and
 │   │                              #   ystar_ustar for potential output and the output gap: its
 │   │                              #   potential path is re-anchored to actual GDP at four dates
@@ -123,7 +134,7 @@ src/
 │   │                              #   nk_twostar_model.py: NK + reduced-form wedge (linear probe)
 │   │                              #   fa_nk_bayes.py: Bayesian re-estimation (black-box Op + priors, DEMetropolis-Z); identifies the Taylor block (φ_π≈2.6)
 │   ├── expectations/              # Inflation expectations model
-│   └── common/                    # Shared model utilities (diagnostics, extraction, timeseries)
+│   └── common/                    # Shared model utilities (diagnostics, extraction, timeseries, sources)
 │
 └── utilities/                     # General utilities (rate_conversion)
 
