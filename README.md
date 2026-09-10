@@ -14,11 +14,14 @@ Australian macroeconomic modelling. Includes both Bayesian state-space estimatio
 
 - **Joint y\*/u\***: `ystar` and `ustar` in one likelihood, plus a free component `v` on the output gap. `v` cannot be estimated in `ystar` alone (it and the GDP residual are one additive term); adding the Okun equation makes the covariance between the two residuals identify it. The result is an output gap about twice `ystar`'s, sd 0.421 against 0.188. **This is the preferred source for the output gap and for u\***, because it is the only model in the package where the two can disagree and be reconciled: `ustar`'s `beta_okun` of 2.15 falls to 1.27 once the gap is estimated rather than imported. Feeds `rstar`'s Taylor rule. See [`MODEL_NOTES.md`](src/models/ystar_ustar/MODEL_NOTES.md)
 - **Long-run u\***: Not an estimate. Every other u\* here starts in 1993, because its gap is defined against an inflation target that did not exist earlier. This one finds the stretches where inflation *actually* stopped changing, reads the unemployment rate off them, and reports what it saw, so it reaches back to **1959Q3**. Two categories, kept apart: five **plateaus** where inflation held level, reading 1.82 in the late 1960s and 5.45-5.68 since 2002; and six **U-bases** where it sat at the bottom of a wide trough, which skew high because a trough usually arrives at the end of a disinflation and must not be quoted as u\* without that qualification. On the one plateau where it overlaps the `nairu` model, the two agree to two hundredths: 6.20 against 6.22. A state-space version over the same period was built and deleted; the notes record why. See [`MODEL_NOTES.md`](src/models/long_run_ustar/MODEL_NOTES.md)
-- **r\* (natural rate from the bond market)**: One latent state — an Australia-specific wedge over published world r\*, moving as a Student-t random walk — read off the indexed real 10-year yield. No IS curve, because three separate efforts in this repo found the rate-to-output-gap link too weak to identify anything on Australian data. Carries a level Taylor rule and an observed credit wedge for the cost of capital to firms. **r\* is around 1.2-1.6 and robust to its one imposed setting; the recent path is not** — see [`MODEL_NOTES.md`](src/models/rstar/MODEL_NOTES.md)
+- **r\* (natural rate from the bond market)**: One latent state — an Australia-specific wedge over a market world real rate, moving as a Student-t random walk — read off two windows on the same curve, the indexed real 10-year yield and the real cash rate. The anchor is the Cleveland Fed's 10-year expected real rate, **not** Holston-Laubach-Williams, which is identified through the IS curve and moved −0.03 between the COVID-QE era and the tightening era while every market measure moved two to three points. No IS curve here either, because three separate efforts in this repo found the rate-to-output-gap link too weak to identify anything on Australian data. Carries a level Taylor rule and observed credit wedges for firms and for households. **r\* is 1.08 with the Australian wedge at +0.05, so Australia currently sits on the world rate. The level is not identified and moved 0.83-1.22 across four defensible specifications: quote the wedge and the era pattern, not the level** — see [`MODEL_NOTES.md`](src/models/rstar_bonds/MODEL_NOTES.md)
 - **HLW r\***: Bayesian (PyMC) Holston-Laubach-Williams model estimating the natural rate of interest for Australia — see [`MODEL_NOTES.md`](src/models/rstar_hlw/MODEL_NOTES.md)
+- **r\* (from the RBA's reaction to inflation)**: The cash rate split into a slow **base** trend and a response to the inflation gap; r\* is the two together, `b_t + lambda x g_t`. Not the base alone, which is one term inside it. No IS curve, no world anchor, no bond market. **This is not an estimate of r\*: it is an estimate of what the RBA's behaviour reveals about r\*, and it reveals it imperfectly** — it conflates belief with every other systematic motive, and the longer a departure from the rule lasts the more of it is absorbed into neutral, so it cannot audit the Bank over a decade, though it can over a year or two, since anything persistent that was not inflation lands in the base and is reported as neutral. r\* is 3.49 nominal, 0.99 real. The durable result is `lambda`, 0.61 per percentage point of inflation, below the Taylor principle so the *real* rate falls when inflation rises — but it carries the labour-market response too, and the residual is autocorrelated at 0.85, so read the interval as too tight — see [`MODEL_NOTES.md`](src/models/rstar_rba/MODEL_NOTES.md)
+- **The IS curve, plotted rather than estimated** (`is_curve`): a test bench, not a model. Puts the output gap against the real rate under four r\* treatments and fits a line. Nothing is estimated and nothing downstream consumes it. The slope's sign depends on which quarters are included, the strongest relationship is contemporaneous and positive, which is the policy reaction function rather than transmission, and a sample cut can manufacture a convincing IS curve out of two clusters. **The IS-curve problem in Australian data remains unresolved** — see [`MODEL_NOTES.md`](src/models/is_curve/MODEL_NOTES.md)
+- **Bank funding and lending costs** (`bank_costs`): exploratory, charts only, no model and no notes yet. Pulls RBA bank bill, deposit and lending rates and plots them against the cash rate to see where pass-through goes
 - **DSGE** — **experimental, work in progress; none usable yet.** A family of forward-looking DSGE models (New Keynesian; financial-accelerator `FA-NK` with two natural rates and an endogenous external-finance-premium wedge; sticky-wage `FA-NK-wage` with Galí unemployment; and a reduced-form `NK-TwoStar` probe) built to explore the post-GFC "great divergence". They are research and diagnostic builds, not production tools. A Bayesian re-estimation (`fa_nk_bayes.py`, PyMC/DEMetropolis-Z) now **identifies the policy block** — the cash-rate rule responds aggressively to inflation (φ_π≈2.6), and both FA-NK models converge cleanly — but the r\* and NAIRU/U\* these models produce remain **not credible**, and the φ_π result is not yet robustness-tested. For credible r\* and NAIRU use the HLW r\* and NAIRU models above. See [`MODELS_EXPLAINED.md`](src/models/dsge/MODELS_EXPLAINED.md).
 
-**Run order:** the NAIRU model and the HLW r\* model both read the expectations model's saved output (`output/expectations/`) as an input — **run the expectations model first** whenever updating after new data. The u\* model sits one step further down: it reads both the expectations output and a completed `ystar` run. The r\* model sits below that again, and now reads all three Taylor-rule inputs from a completed **joint y\*/u\*** run so they share one potential output, one u\* and one `c` (`--input-source separate` restores the older wiring). The full chain is `expectations` → `ystar` → `ustar`, with `expectations` → `ystar_ustar` → `rstar` alongside it. The NAIRU model's operational r\* is deterministic: a fixed 35/65 convex blend of the Cobb-Douglas growth anchor (r\* ≈ potential growth) and the real bond-yield anchor. The 35/65 weight is imposed, not estimated — the rate channel cannot identify it, and the yield lean fixes the perverse Cobb-Douglas r\* profile (high in the 2010s, low now). NAIRU and output-gap estimates are near-insulated from the choice (<0.08pp); it mainly shapes the r\* level and the monetary-stance narrative.
+**Run order:** the NAIRU model and the HLW r\* model both read the expectations model's saved output (`output/expectations/`) as an input — **run the expectations model first** whenever updating after new data. The u\* model sits one step further down: it reads both the expectations output and a completed `ystar` run. The r\* model sits below that again, and now reads all three Taylor-rule inputs from a completed **joint y\*/u\*** run so they share one potential output, one u\* and one `c` (`--input-source separate` restores the older wiring). The full chain is `expectations` → `ystar` → `ustar`, with `expectations` → `ystar_ustar` → `rstar_bonds` alongside it. `rstar_rba` is independent of all of it and needs only the cash rate, inflation and GDP. `is_curve` runs last, reading completed `ystar_ustar`, `rstar_bonds` and `rstar_rba` runs. The NAIRU model's operational r\* is deterministic: a fixed 35/65 convex blend of the Cobb-Douglas growth anchor (r\* ≈ potential growth) and the real bond-yield anchor. The 35/65 weight is imposed, not estimated — the rate channel cannot identify it, and the yield lean fixes the perverse Cobb-Douglas r\* profile (high in the 2010s, low now). NAIRU and output-gap estimates are near-insulated from the choice (<0.08pp); it mainly shapes the r\* level and the monetary-stance narrative.
 
 ### GDP nowcasting
 
@@ -38,6 +41,12 @@ uv sync
 # Run the NAIRU + Output Gap model (~3 min)
 ./run-nairu.sh -v
 ```
+
+ABS and RBA data are fetched and cached automatically, no credentials needed. The only
+exception is `src/data/fred_loader.py`, used for the world real-rate comparators in the r\*
+notes: it reads a FRED API key from `fred.api` in the project root, one line, gitignored.
+A free key comes from [FRED](https://fred.stlouisfed.org/docs/api/api_key.html). Nothing in
+the default model runs depends on it.
 
 ## Running the Models
 
@@ -231,25 +240,41 @@ completed **joint y\*/u\*** run by default, so they share one potential output, 
 none of them, and the affected charts are skipped with a note if they are missing.
 
 ```bash
-./run-rstar.sh -v
+./run-rstar-bonds.sh -v
 
 # The setting the answer leans on — sweep it
-./run-rstar.sh --sigma-walk 0.03
+./run-rstar-bonds.sh --sigma-walk 0.03
+
+# Specifications tried as the default and rejected, kept as comparators
+./run-rstar-bonds.sh --curve           # a third window: r* starts absorbing the policy stance
+./run-rstar-bonds.sh --short-rate bill # the 90-day bill: mixes bank credit into the stance
 
 # Diagnostics, kept so the checks are reproducible
-./run-rstar.sh --steps           # the asserted-break comparator
-./run-rstar.sh --no-world        # does the global anchor do the work? (it does)
-./run-rstar.sh --no-look-through # respond to headline inflation instead
+./run-rstar-bonds.sh --no-short        # one window: 168 divergences, for the record
+./run-rstar-bonds.sh --assert-stance   # assert the stance, report the premium (a tighter mu_tp)
+./run-rstar-bonds.sh --steps           # the asserted-break comparator
+./run-rstar-bonds.sh --no-world        # does the global anchor do the work? (it does)
+./run-rstar-bonds.sh --no-look-through # respond to headline inflation instead
 ```
 
-**r\* is 1.24 now, against world r\* of 0.95**, with a nominal neutral cash rate of 3.74
-against an actual 4.35 — so policy is around 0.6 restrictive, and 1.26 below what a Taylor
+**r\* is 0.83 now, against world r\* of 0.95**, with a nominal neutral cash rate of 3.33
+against an actual 4.35 — so policy is around 1.0 restrictive, and 0.74 below what a Taylor
 rule wants given inflation at 3.6 and a positive output gap. Across a seven-fold sweep of
-`sigma_walk` the level holds at 1.24-1.62 and the Taylor gap stays above a point, so both
-are results rather than settings. **The recent path is not**: how far r\* fell in 2021, and
-therefore how much of the bond selloff is neutral rate rather than term premium, moves from
-1.08 to 2.66 across the same sweep. Quote the level and that today is 55-68% of the
-pre-GFC rate; not the rise. See the [`MODEL_NOTES.md`](src/models/rstar/MODEL_NOTES.md).
+`sigma_walk` the level holds at 0.81-1.13 and the Taylor prescription stays above the actual
+rate throughout, so both are results rather than settings. **Two things are not.** How far
+r\* fell in 2021 moves from −0.29 to −1.22 across the same sweep, so the rise since is a
+statement about the setting. And the pre-COVID policy stance runs −0.67 to −0.16, which
+matters because that is the quantity the standing critique of this model turns on. Quote the
+level and that today is about a third of the pre-GFC rate; not the rise, and not the stance
+without its range.
+
+Two specifications were tried as the default and rejected on the evidence, both documented
+in the notes: a third window on the belly of the curve, which identifies the premium curve's
+slope but drives r\* over 2016-19 from −0.29 to −0.74 as the natural rate starts absorbing
+the policy stance; and the 90-day bank bill as the short rate, which reads better until you
+decompose it against OIS and find that its entire 2015-19 advantage is a bank funding spread.
+Note also that the negative QE-era term premium reported in earlier write-ups **does not
+survive the second window** — see the [`MODEL_NOTES.md`](src/models/rstar_bonds/MODEL_NOTES.md).
 
 ### HLW r\* (Bayesian)
 
@@ -272,6 +297,36 @@ uv run python -m src.models.rstar_hlw.run -v
 ```
 
 The IS curve does not independently pin r\* in Australian data (the rate channel is too weak); each specification largely returns the structural assumption it imposes. The value is a diagnostic framework and an honest cross-resolution uncertainty band rather than a single point estimate — see the [`MODEL_NOTES.md`](src/models/rstar_hlw/MODEL_NOTES.md).
+
+### r* from the RBA's reaction to inflation
+
+```bash
+./run-rstar-rba.sh -v                     # the default: walking base, jumps on, floor kept
+./run-rstar-rba.sh --no-jumps             # Gaussian base throughout, two series only
+./run-rstar-rba.sh --lambda-split 2008Q1  # did the response halve after the GFC?
+./run-rstar-rba.sh --employment           # add lambda_u (u - u*); rejected, see the notes
+./run-rstar-rba.sh --sigma-r 0.05         # the imposed setting that decides the split
+```
+
+Charts land in `charts/RStarRBA/`. **Read `lambda` in the right units**: it is per band-width
+of the inflation gap, so the response per percentage point is twice it, and Taylor's 1.5 is
+0.75 in these units — see the [`MODEL_NOTES.md`](src/models/rstar_rba/MODEL_NOTES.md).
+
+### The IS curve, plotted rather than estimated
+
+```bash
+uv run python -m src.models.is_curve.run                     # lockdowns excluded (default)
+uv run python -m src.models.is_curve.run --drop-gfc-pandemic # manufactures a convincing IS curve
+uv run python -m src.models.is_curve.run --lag 5             # where the cut sample peaks
+```
+
+Charts land in `charts/ISCurve/`, one per r\* variant, points coloured by date because the
+two-cluster structure behind the sign reversal is visible before any statistic shows it —
+see the [`MODEL_NOTES.md`](src/models/is_curve/MODEL_NOTES.md).
+
+### Bank funding and lending costs
+
+Exploratory. `./run-bank-costs.sh` writes charts to `charts/BankCosts/`. No model, no notes.
 
 ### GDP Nowcasting
 
@@ -307,7 +362,7 @@ The bridge and DFM are the workhorses for production nowcasts. The BVAR is a com
 | `charts/cobb_douglas/` | MFP trends, productivity growth, potential output |
 | `charts/YStar*/` | y\* potential output, output gap, trend growth, sweeps (one dir per spec) |
 | `charts/UStar/` | u\* against unemployment (plain and RBA-band shaded), the unemployment gap, price inflation decomposition |
-| `charts/RStar/` | Taylor rule with real and nominal r\*, r\* against the real yield, the term premium, r\* for firms |
+| `charts/RStarBonds/` | Taylor rule with real and nominal r\*, r\* against the real yield, the Australian wedge, the policy stance and the policy gap, the term premium with and without the `k·g` correction, r\* for firms |
 | `charts/rstar-hlw-*/` | r\* estimates, cross-resolution comparisons, diagnostics (one dir per resolution) |
 | `charts/GDP-Nowcast-*/` | GDP nowcast fan charts and decompositions (Bridge, DFM, BVAR, Components) |
 
@@ -338,8 +393,13 @@ src/
     │                           #   (preferred for the output gap and u*)
     ├── long_run_ustar/         # u* read off flat-inflation stretches, back to 1959Q3
     │                           #   (a rule, not an estimate: no likelihood, no priors)
-    ├── rstar/                  # r* from the bond market — AU wedge over world r*, no IS curve
+    ├── rstar_bonds/            # r* from the bond market — AU wedge over world r*, two windows, no IS curve
     ├── rstar_hlw/              # HLW Bayesian r* model (AU data)
+    ├── rstar_rba/              # r* revealed by the RBA's reaction to inflation — base + response
+    │                           #   (the Bank's implied belief; a long enough departure from
+    │                           #    the rule is absorbed into neutral)
+    ├── is_curve/               # the IS curve plotted, not estimated — a test bench for the r* models
+    ├── bank_costs/             # bank funding and lending costs vs the cash rate (exploratory, charts only)
     ├── gdp_nowcast_bridge/     # GDP nowcast — bridge equations
     ├── gdp_nowcast_dfm/        # GDP nowcast — Dynamic Factor Model
     ├── gdp_nowcast_bvar/       # GDP nowcast — Bayesian VAR (T-0 only)

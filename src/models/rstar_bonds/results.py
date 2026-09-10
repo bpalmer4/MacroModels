@@ -69,6 +69,34 @@ class RStarResults:
         """Return the posterior median of r*."""
         return self.rstar_posterior().median(axis=1)
 
+    def hdi(self, var_name: str, prob: float = 0.90) -> pd.DataFrame:
+        """Return the highest-density interval of a vector latent, as lower/upper.
+
+        Unlike the equal-tailed 5th/95th percentiles used elsewhere in the
+        charts, this is the *narrowest* interval holding `prob` of the mass.
+        The two coincide for a symmetric posterior and differ for a skewed one.
+        """
+        interval = az.hdi(self.posterior[var_name], hdi_prob=prob)[var_name]
+        values = np.asarray(interval.values)
+        return pd.DataFrame(
+            {"lower": values[:, 0], "upper": values[:, 1]},
+            index=self.obs_index,
+        )
+
+    def rstar_hdi(self, prob: float = 0.90) -> pd.DataFrame:
+        """Return the highest-density interval of real r*."""
+        return self.hdi("r_star", prob)
+
+    def nominal_rstar_hdi(self, prob: float = 0.90, *, on_expectations: bool = False) -> pd.DataFrame:
+        """Return the HDI of nominal r*.
+
+        The inflation term is data — the 2.5% anchor or the observed
+        expectations series — so this is the real interval shifted, not a
+        wider one. Nominal r* carries exactly the uncertainty real r* does.
+        """
+        inflation = self._extra("pi_exp") if on_expectations else float(self.constants.get("anchor", 2.5))
+        return self.rstar_hdi(prob).add(inflation, axis=0)
+
     def term_premium_posterior(self) -> pd.DataFrame:
         """Return the term premium, everything in the yield that is not r*."""
         return self._vector("tp")
@@ -76,6 +104,60 @@ class RStarResults:
     def real_yield(self) -> pd.Series:
         """Return the observed indexed real 10-year yield."""
         return pd.Series(self.obs["y"], index=self.obs_index)
+
+    def has_curve(self) -> bool:
+        """Return whether this run used a medium maturity as a third window."""
+        return "tp_m" in self.posterior
+
+    def medium_premium_posterior(self) -> pd.DataFrame:
+        """Return the premium on the medium maturity, `m - r* - k_m·g`.
+
+        Its level is no better identified than the ten-year's, but the
+        *difference* between them is: both are read off the same r*, so
+        `tp_slope` is estimated even though neither mean is.
+        """
+        return self._vector("tp_m")
+
+    def has_short_window(self) -> bool:
+        """Return whether this run used the real cash rate as a second window."""
+        return "g" in self.posterior
+
+    def real_cash(self) -> pd.Series:
+        """Return the observed real cash rate, the second window's observable."""
+        if "r" not in self.obs:
+            return pd.Series(np.nan, index=self.obs_index)
+        return pd.Series(self.obs["r"], index=self.obs_index)
+
+    def policy_gap_posterior(self) -> pd.DataFrame:
+        """Return the policy gap, the real cash rate less r*.
+
+        Positive is restrictive. This is an output of the model rather than an
+        input to it: nothing here asks the gap to move output, which is the
+        link `is_curve` cannot find in Australian data. It only asks the gap to
+        be stationary about a mean.
+        """
+        return self._vector("g")
+
+    def carried_posterior(self) -> pd.DataFrame:
+        """Return `k·g`, the part of the long yield explained by policy stance.
+
+        The one-window model set this to zero by construction, so its term
+        premium was really `true tp + k·g`. That matters most through the QE
+        window, when `g` was at its most negative in the sample.
+        """
+        k = self._scalar("k")
+        return self.policy_gap_posterior().mul(k, axis=1)
+
+    def term_premium_one_window(self) -> pd.DataFrame:
+        """Return the premium the one-window model would have reported.
+
+        `y - r*`, without the `k·g` correction, on this run's r*. The
+        comparison against `term_premium_posterior` is the QE check: if the
+        negative premium through 2020-22 survives the correction it was a
+        finding, and if it does not it was the model reading a floored cash
+        rate through a missing coefficient.
+        """
+        return self.term_premium_posterior() + self.carried_posterior()
 
     def world_rstar(self) -> pd.Series:
         """Return the world r* series the model was anchored on."""
@@ -92,6 +174,47 @@ class RStarResults:
         NaN before 2005Q1, where the spread series begins.
         """
         return self.rstar_median() + self._extra("spread")
+
+    def real_mortgage_rate(self, *, discounted: bool = True) -> pd.Series:
+        """Return an owner-occupier mortgage rate, deflated.
+
+        Deflated by the same expectations series the policy gap uses, so the
+        two stance measures differ only in which nominal rate they start from.
+
+        `discounted` is what a borrower actually pays and is NaN before 2004Q2.
+        The advertised rate covers the whole sample. They cannot be spliced:
+        the discount runs 0.58 over 2004-07 and 1.40 over 2020-26, so the
+        advertised rate increasingly overstates what anyone paid.
+        """
+        rate = self._extra("mortgage") if discounted else self._extra("mortgage_std")
+        return rate - self._extra("pi_exp")
+
+    def borrower_stance(self, *, discounted: bool = True) -> pd.Series:
+        """Return the real mortgage rate less r*: the stance households faced.
+
+        The household analogue of `business_rstar`. `policy_gap_posterior` is
+        the *risk-free* stance, the real cash rate against a neutral rate read
+        off a government bond, and the two are the same thing only when the
+        cash rate summarises the price of credit. It stopped doing so after the
+        GFC: the discounted mortgage spread to cash went from 1.24 over 2004-07
+        to 2.99 over 2015-19 and 3.47 in 2020-21, before compressing to about
+        2.45 now. Between 2014 and 2019 the cash rate fell 1.38 and the
+        mortgage rate 0.70, so half the easing did not reach borrowers.
+
+        That is not margin. Banks' term deposit rates moved from 1.68 *below*
+        the cash rate to 0.39 above over the same window, a larger shift than
+        the mortgage spread's, while the 90-day bill spread barely moved. The
+        marginal funding dollar repriced when liquidity rules pushed banks from
+        cheap offshore wholesale funding toward competing for retail deposits.
+
+        The level is not comparable to `g`: this sets a risky borrowing rate
+        against a risk-free neutral rate, so it carries a permanent credit
+        spread and sits around 2 to 2.5 rather than near zero. Read the
+        changes, not the level. On that reading it is remarkably flat, 2.46 in
+        2004-07 against 2.10 in 2015-19, while the risk-free stance swung 2.11
+        points over the same comparison.
+        """
+        return self.real_mortgage_rate(discounted=discounted) - self.rstar_median()
 
     def supply_contribution(self, *, positive_only: bool | None = None) -> pd.Series:
         """Return the supply-driven part of four-quarter inflation.
@@ -234,9 +357,20 @@ class RStarResults:
 
     # --- Diagnostics ---
 
+    def wedge_posterior(self) -> pd.DataFrame:
+        """Return the Australia-specific wedge over world r*, draw by draw.
+
+        The model's only latent state, and in this package's framing the whole
+        local story: world r* is the imported price and the wedge is what
+        Australia adds on top. Note that with `free_world_loading` on it is
+        `r* - b_world·world`, not `r* - world`, so it cannot be read off the
+        distance between the r* and world lines on the r* chart.
+        """
+        return self._vector("wedge")
+
     def wedge_median(self) -> pd.Series:
-        """Return the Australia-specific wedge over world r*."""
-        return self._vector("wedge").median(axis=1)
+        """Return the posterior median of the wedge."""
+        return self.wedge_posterior().median(axis=1)
 
     def jumps(self) -> pd.DataFrame:
         """Return the estimated jump at each break, with its 90% interval."""
@@ -327,7 +461,7 @@ class RStarResults:
 
 def load_results(
     output_dir: Path | str | None = None,
-    prefix: str = "rstar",
+    prefix: str = "rstar_bonds",
 ) -> RStarResults:
     """Load a saved trace and observations from disk."""
     output_dir = Path(output_dir) if output_dir is not None else DEFAULT_OUTPUT_DIR

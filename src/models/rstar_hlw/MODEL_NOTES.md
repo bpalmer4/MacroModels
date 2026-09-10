@@ -2,6 +2,29 @@
 
 A Bayesian (PyMC + NumPyro NUTS) implementation of the Holston-Laubach-Williams 2017 model, applied to Australian quarterly data. Estimates the natural rate of interest r* jointly with potential output, trend growth, and the output gap.
 
+## One of three routes, all flawed
+
+This repo contains three separate attempts at Australian r\*, and the useful thing is that
+they fail differently. Read them together rather than picking one.
+
+| package | identified from | what it actually measures | how it fails |
+|---|---|---|---|
+| **`rstar_hlw`** (this one) | trend growth + the IS curve | the textbook definition: the rate at which output sits at potential | the IS curve does not identify anything on AU data, so each specification returns its own prior |
+| [`rstar_bonds`](../rstar_bonds/MODEL_NOTES.md) | asset prices | what investors price | the *level* is not identified; it rests on the stationarity prior and an asserted premium |
+| [`rstar_rba`](../rstar_rba/MODEL_NOTES.md) | the RBA's response to inflation | not r\* but what the Bank's conduct *reveals* about it, conflated with every other systematic motive | a long enough departure from the rule is absorbed into neutral, so it cannot audit the Bank over a decade |
+
+**This is the only one of the three that targets what the theory defines**, and it is the
+one that cannot be estimated. The other two measure *beliefs* about r\*, held by different
+people: bond investors in one case, the RBA in the other. Neither is the saving-investment
+equilibrium the concept names.
+
+That is worth stating plainly because it reframes what follows. The eight resolutions below
+are not a failed search for a number. They are the reason the other two packages exist, and
+the evidence that the honest object here is a belief rather than the thing itself.
+
+For a current comparison: Resolution G here gives 2.23, `rstar` gives 1.08, and
+`rstar_rba` gives 0.99 real. Nobody has reconciled them.
+
 ## The story
 
 The original goal: estimate r* for Australia with proper Bayesian uncertainty bands and feed the posterior into the NAIRU model's IS curve, replacing its deterministic Cobb-Douglas r*.
@@ -33,13 +56,13 @@ The project did not produce *the* r* estimate for Australia. That estimate canno
 
 The rest of these notes work through the eight resolutions individually, the cross-resolution evidence, the diagnostic framing, and an iteration log.
 
-### Where this went next: `src/models/rstar`
+### Where this went next: `src/models/rstar_bonds`
 
 **The finding here is not really about r\*. It is that the IS curve is fragile**, and r\* non-identification is a symptom of that. Every resolution below asks the interest rate to reveal itself through its effect on output — r\* is whatever makes the IS curve fit — so once the rate channel is established as too weak (a_r ≈ −0.04 against σ_IS ≈ 0.70, a signal-to-noise ratio of about 0.11), no specification search recovers r\*, because there is nothing to search over. Resolutions A through H are the proof of that, not a failure to find the right one.
 
 That is a claim about **monetary transmission in Australian data**, not about one latent variable, and it recurs everywhere this repo looks for it: `nairu`'s IS curve gives β_is ≈ 0.084 with fiscal touching zero; the `dsge` family found the same weak rate channel; `ustar` found its Okun channel explains a third of ΔU and shifts u\* by only 0.10pp. Any model in which a rate gap is supposed to move real activity inherits this problem.
 
-`src/models/rstar` was built on the opposite premise: **stop asking output about the interest rate, and read r\* off an asset price instead.** It has no IS curve at all. r\* is world r\* (published HLW for the US, Euro Area and Canada, used as data) plus an Australia-specific wedge that moves as a Student-t random walk, with the indexed real 10-year yield as the observable and the term premium defined as the residual. See [`rstar/MODEL_NOTES.md`](../rstar/MODEL_NOTES.md).
+`src/models/rstar_bonds` was built on the opposite premise: **stop asking output about the interest rate, and read r\* off an asset price instead.** It has no IS curve at all. r\* is world r\* (published HLW for the US, Euro Area and Canada, used as data) plus an Australia-specific wedge that moves as a Student-t random walk, with the indexed real 10-year yield as the observable and the term premium defined as the residual. See [`rstar/MODEL_NOTES.md`](../rstar_bonds/MODEL_NOTES.md).
 
 Two things follow that are worth carrying back here:
 
@@ -356,7 +379,7 @@ Iteration 12 applies a standard non-centred reparameterisation to r_innovation: 
 - **Long-run survey expectations** (Del Negro et al 2017): use Consensus Economics 6–10y forecasts of the cash rate as an additional observation. Would pin r*'s long-run mean.
 - **Convenience-yield observation** (Szoke-Vazquez-Grande-Xavier 2024 FEDS Note): would need long-history Australian AA corporate bond yield data — RBA F3 only goes back to ~2005.
 - **AR(1) trend growth**: would mean-revert g, possibly stabilising σ_g. Risk: changes the long-run interpretation.
-- **Dropping the IS curve entirely** — tried, and it worked, but as a separate package rather than a ninth resolution. See `src/models/rstar`. The reason it could not be a resolution here is structural: every resolution below shares the HLW state-space core, and removing the IS curve removes the thing that makes it HLW.
+- **Dropping the IS curve entirely** — tried, and it worked, but as a separate package rather than a ninth resolution. See `src/models/rstar_bonds`. The reason it could not be a resolution here is structural: every resolution below shares the HLW state-space core, and removing the IS curve removes the thing that makes it HLW.
 - **Reconciling with `rstar`**: Resolution G gives 2.23, `rstar` gives 1.24. Both are in this repo, neither has been reconciled with the other, and they differ by more than this model's own cross-resolution spread of ~1.0pp. Worth doing, and listed as outstanding in `rstar`'s notes too.
 
 ## File structure

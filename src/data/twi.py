@@ -7,7 +7,29 @@ import numpy as np
 import pandas as pd
 
 from src.data.dataseries import DataSeries
+from src.data.rba_loader import get_real_twi as rba_get_real_twi
 from src.data.rba_loader import get_twi as rba_get_twi
+
+
+def _as_period_index(index: pd.Index, freq: str) -> pd.PeriodIndex:
+    """Return `index` as a PeriodIndex at `freq`, narrowing the type at runtime.
+
+    Loaders hand back either a DatetimeIndex (straight from the RBA
+    spreadsheets) or a PeriodIndex (once converted here).
+
+    Args:
+        index: the index to convert
+        freq: target period frequency, e.g. "M" or "Q"
+
+    Returns:
+        The index as a PeriodIndex at the requested frequency
+
+    """
+    if isinstance(index, pd.PeriodIndex):
+        return index.asfreq(freq)
+    if isinstance(index, pd.DatetimeIndex):
+        return index.to_period(freq)
+    raise TypeError(f"expected a DatetimeIndex or PeriodIndex, got {type(index).__name__}")
 
 
 def get_twi_monthly() -> DataSeries:
@@ -19,7 +41,7 @@ def get_twi_monthly() -> DataSeries:
     """
     twi = rba_get_twi()
     data = twi.data.copy()
-    data.index = data.index.to_period("M")
+    data.index = _as_period_index(data.index, "M")
 
     return DataSeries(
         data=data,
@@ -39,7 +61,7 @@ def get_twi_qrtly() -> DataSeries:
 
     """
     monthly = get_twi_monthly()
-    quarterly = monthly.data.groupby(monthly.data.index.asfreq("Q")).mean()
+    quarterly = monthly.data.groupby(_as_period_index(monthly.data.index, "Q")).mean()
 
     return DataSeries(
         data=quarterly,
@@ -155,37 +177,28 @@ def get_twi_change_lagged_annual() -> DataSeries:
     )
 
 
-def get_real_twi_qrtly(cpi: pd.Series) -> DataSeries:
-    """Get real TWI adjusted for domestic inflation.
+def get_real_twi_qrtly() -> DataSeries:
+    """Get the RBA's real TWI with a quarterly PeriodIndex.
 
-    Real TWI = Nominal TWI × (CPI_base / CPI_t)
+    Real TWI = Nominal TWI × (P_AU / P_trade-partner), the RBA's F15
+    measure. It is a relative *price level* adjustment, not a deflation:
+    the index rises when Australian prices rise faster than partners'.
 
-    This is a simplified measure; a proper real effective exchange rate
-    would use trade-partner CPIs.
-
-    Args:
-        cpi: CPI index series (quarterly)
+    Published quarterly at source, so there is no aggregation here.
 
     Returns:
-        DataSeries with quarterly real TWI
+        DataSeries with quarterly real TWI (index, March 1995 = 100)
 
     """
-    twi = get_twi_qrtly()
-
-    # Align indices
-    common_idx = twi.data.index.intersection(cpi.index)
-    twi_aligned = twi.data.reindex(common_idx)
-    cpi_aligned = cpi.reindex(common_idx)
-
-    # Normalize CPI to latest period
-    cpi_base = cpi_aligned.iloc[-1]
-    real_twi = twi_aligned * (cpi_base / cpi_aligned)
+    real_twi = rba_get_real_twi()
+    data = real_twi.data.copy()
+    data.index = _as_period_index(data.index, "Q")
 
     return DataSeries(
-        data=real_twi,
-        source="RBA",
-        units="Index (real)",
-        description="Real Trade-Weighted Index (CPI-adjusted)",
-        table="F11",
-        series_id="FXRTWI",
+        data=data,
+        source=real_twi.source,
+        units=real_twi.units,
+        description=real_twi.description,
+        table=real_twi.table,
+        series_id=real_twi.series_id,
     )

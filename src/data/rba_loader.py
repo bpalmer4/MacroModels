@@ -33,15 +33,127 @@ def get_cash_rate() -> DataSeries:
         DataSeries with monthly OCR from RBA (1990-present)
 
     """
-    ocr = read_rba_ocr()
-    ocr = ocr.squeeze()
+    squeezed = read_rba_ocr().squeeze()
+    if not isinstance(squeezed, pd.Series):
+        raise TypeError(f"read_rba_ocr() did not squeeze to a Series, got {type(squeezed).__name__}")
 
     return DataSeries(
-        data=ocr,
+        data=squeezed,
         source="RBA",
         units="%",
         description="Official Cash Rate (Monthly)",
         table="OCR",
+    )
+
+
+F4_URL = "https://www.rba.gov.au/statistics/tables/xls/f04hist.xlsx"
+F5_URL = "https://www.rba.gov.au/statistics/tables/xls/f05hist.xlsx"
+
+# Retail deposit rates (F4) and housing lending rates (F5). Together with the
+# cash rate they measure what the RBA's policy rate actually costs a borrower
+# and pays a depositor, which stopped tracking the cash rate after the GFC:
+# term deposits moved from 1.68 below it to 0.39 above between 2004-07 and
+# 2015-19, and mortgages from 1.24 above to 2.99 above.
+DEPOSIT_RATES = {
+    "term_deposit": "FRDIRBTD10KAR",   # banks' term deposits, average of all terms
+    "online_saver": "FRDIRSAO10K",
+    "transaction": "FRDIRTAB5K",
+}
+LENDING_RATES = {
+    "housing_oo": "FILRHLBVD",         # discounted variable, owner-occupier
+    "housing_oo_standard": "FILRHLBVS",
+    "housing_investor": "FILRHLBVDI",
+    "housing_investor_io": "FILRHLBVDO",
+}
+
+
+def _load_rba_series(url: str, col: str, table: str, description: str) -> DataSeries:
+    """Load one monthly series from an RBA rates table."""
+    frame = pd.read_excel(url, sheet_name="Data", skiprows=10, index_col=0)
+    frame.index = pd.to_datetime(frame.index, errors="coerce")
+    frame = frame[frame.index.notna()]
+    if col not in frame.columns:
+        raise KeyError(f"{col} is not in RBA {table}; columns are {list(frame.columns)}")
+
+    return DataSeries(
+        data=frame[col].dropna().astype(float),
+        source="RBA",
+        units="%",
+        description=description,
+        table=table,
+        series_id=col,
+    )
+
+
+def get_deposit_rate(kind: str = "term_deposit") -> DataSeries:
+    """Get a retail deposit rate from RBA F4 (monthly, 1981-present).
+
+    Args:
+        kind: One of `DEPOSIT_RATES` — "term_deposit" (banks' term deposits,
+            average of all terms), "online_saver", or "transaction".
+
+    """
+    if kind not in DEPOSIT_RATES:
+        raise ValueError(f"kind must be one of {sorted(DEPOSIT_RATES)}, got {kind!r}")
+    return _load_rba_series(F4_URL, DEPOSIT_RATES[kind], "F4", f"Deposit rate: {kind}")
+
+
+def get_lending_rate(kind: str = "housing_oo") -> DataSeries:
+    """Get a housing lending rate from RBA F5 (monthly).
+
+    Args:
+        kind: One of `LENDING_RATES`. "housing_oo" is the discounted variable
+            owner-occupier rate, the closest thing to what a borrower pays.
+
+    """
+    if kind not in LENDING_RATES:
+        raise ValueError(f"kind must be one of {sorted(LENDING_RATES)}, got {kind!r}")
+    return _load_rba_series(F5_URL, LENDING_RATES[kind], "F5", f"Lending rate: {kind}")
+
+
+F1_URL = "https://www.rba.gov.au/statistics/tables/xls/f01hist.xlsx"
+
+BAB_TENORS = (30, 90, 180)
+
+
+def get_bank_bill_rate(tenor: int = 90) -> DataSeries:
+    """Get the bank-accepted bill / negotiable CD rate from RBA F1 (monthly).
+
+    The short rate that leads the cash rate. The overnight rate cannot move
+    before the RBA moves it, so it says nothing about a tightening the market
+    has priced but the Bank has not delivered; a 90-day bill covers the next
+    quarter's expected path and does. The gap between them is small on average
+    (+0.16 against the cash rate since 1993, sd 0.21) and opens exactly at the
+    turning points: +0.90 in 1994Q4, +0.68 in 2008Q1, +0.57 in 2018Q2, +0.87 in
+    2022Q2.
+
+    3-month OIS (`FIRMMOIS3`) is the cleaner measure of the same thing, but the
+    series ends in November 2022, so it cannot carry a current-vintage model.
+
+    Args:
+        tenor: Bill tenor in days (30, 90, or 180).
+
+    Returns:
+        DataSeries with the monthly bill rate (%), 1969-present for 90 days and
+        1992-present for the other two tenors.
+
+    """
+    if tenor not in BAB_TENORS:
+        raise ValueError(f"tenor must be one of {BAB_TENORS}, got {tenor}")
+
+    col = f"FIRMMBAB{tenor}"
+    frame = pd.read_excel(F1_URL, sheet_name="Data", skiprows=10, index_col=0)
+    frame.index = pd.to_datetime(frame.index)
+    if col not in frame.columns:
+        raise KeyError(f"{col} is not in RBA F1; columns are {list(frame.columns)}")
+
+    return DataSeries(
+        data=frame[col].dropna().astype(float),
+        source="RBA",
+        units="%",
+        description=f"{tenor}-day Bank-Accepted Bill Rate",
+        table="F1",
+        series_id=col,
     )
 
 
@@ -55,9 +167,10 @@ def get_historical_interbank_rate(path: str | Path) -> DataSeries:
         DataSeries with monthly interbank rate (pre-1990)
 
     """
-    historical = pd.read_parquet(path)
-    if isinstance(historical, pd.DataFrame):
-        historical = historical.iloc[:, 0]
+    loaded = pd.read_parquet(path)
+    historical = loaded.iloc[:, 0] if isinstance(loaded, pd.DataFrame) else loaded
+    if not isinstance(historical, pd.Series):
+        raise TypeError(f"expected a Series from {path}, got {type(historical).__name__}")
 
     return DataSeries(
         data=historical,
@@ -359,6 +472,38 @@ def get_twi() -> DataSeries:
     )
 
 
+def get_real_twi() -> DataSeries:
+    """Get the real Trade-Weighted Index from RBA F15 table.
+
+    The real TWI is the nominal TWI multiplied by relative consumer price
+    levels (AU over trade-weighted partners), so it measures what a dollar
+    buys in foreign goods relative to Australian goods. It is *not* the
+    nominal TWI deflated: it rises when Australian prices rise faster than
+    partners', which is the opposite direction to deflating a nominal value.
+
+    Published quarterly (quarter-average), base March 1995 = 100, from
+    1970Q2. Only the .xlsx path exists for this table.
+
+    Returns:
+        DataSeries with quarterly real TWI (index), DatetimeIndex
+
+    """
+    url = "https://www.rba.gov.au/statistics/tables/xls/f15hist.xlsx"
+    table = pd.read_excel(url, sheet_name="Data", index_col=0, skiprows=10)
+
+    series = table["FRERTWI"].astype(float).dropna()
+    series.index = pd.to_datetime(series.index)
+
+    return DataSeries(
+        data=series,
+        source="RBA",
+        units="Index, March 1995 = 100",
+        description="Real Trade-Weighted Index (March 1995 = 100)",
+        table="F15",
+        series_id="FRERTWI",
+    )
+
+
 # --- Testing ---
 
 if __name__ == "__main__":
@@ -367,8 +512,8 @@ if __name__ == "__main__":
     # Test cash rate
     print("Cash rate (modern only):")
     cash_rates = get_cash_rate()
-    print(f"Monthly: {cash_rates['monthly']}")
-    print(f"Quarterly: {cash_rates['quarterly']}")
+    print(f"Monthly: {cash_rates.description}")
+    print(f"Latest: {cash_rates.data.tail()}")
 
     # Test inflation expectations
     print("\nInflation expectations:")

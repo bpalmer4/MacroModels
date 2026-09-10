@@ -33,7 +33,10 @@ uv sync                            # Install dependencies
 ./run-rstar-hlw.sh                 # Run HLW Bayesian r-star model
 ./run-ystar.sh                     # Run y* potential output model (inflation-defined output gap)
 ./run-ustar.sh                     # Run u* model (Okun + Phillips; needs expectations + ystar)
-./run-rstar.sh                     # Run r* model (bond market + world r*; Taylor rule needs ystar + ustar)
+./run-rstar-bonds.sh               # Run r* from the bond market (needs ystar_ustar for the Taylor rule)
+./run-rstar-rba.sh                 # Run r* revealed by the RBA's reaction to inflation (self-contained)
+./run-bank-costs.sh                # Bank funding and lending costs vs the cash rate (charts only)
+uv run python -m src.models.is_curve.run   # IS-curve scatter: a test bench for the r* models
 ./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free; needs expectations)
 ./run-long-run-ustar.sh            # Read u* off flat-inflation stretches, back to 1959 (no estimation)
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
@@ -106,13 +109,26 @@ src/
 │   │                              #   model and for its own diagnostics (the wage check, the
 │   │                              #   sigma_ustar sweep). HEADLINE IS CONDITIONAL: u*'s level is
 │   │                              #   set by the imposed sigma_ustar (see MODEL_NOTES.md).
-│   ├── rstar/                     # r* from the bond market: one state, an AU wedge over
-│   │                              #   published world r* moving as a StudentT random walk,
-│   │                              #   read off the indexed real 10y yield. NO IS CURVE —
-│   │                              #   three efforts here found the rate/output-gap link
-│   │                              #   unidentifiable on AU data. Level Taylor rule on top.
-│   │                              #   r* ~1.2-1.6 is robust to sigma_walk; the recent PATH
-│   │                              #   is not (see MODEL_NOTES.md).
+│   ├── rstar_bonds/               # r* from the bond market: one state, an AU wedge over
+│   │                              #   a market world real rate, moving as a StudentT random
+│   │                              #   walk, read off TWO windows on one curve: the indexed
+│   │                              #   real 10y yield and the real cash rate. Anchor is the
+│   │                              #   Cleveland Fed 10y expected real rate (FRED), NOT HLW,
+│   │                              #   which is inert across the whole monetary cycle. The
+│   │                              #   loading is estimated: b_world 0.481, which is NOT
+│   │                              #   credible as a pass-through and is partly stripping a US
+│   │                              #   term premium. NO IS CURVE — three efforts here found the
+│   │                              #   rate/output-gap link unidentifiable on AU data. Level
+│   │                              #   Taylor rule on top. r* 1.08 with the wedge at +0.05,
+│   │                              #   so Australia currently sits ON the world rate. The
+│   │                              #   LEVEL is not identified (wedge_0 vs mu_tp at -0.87) and
+│   │                              #   moved 0.83-1.22 across four defensible specs; the PATH
+│   │                              #   and the pre-COVID STANCE are not robust either. Quote
+│   │                              #   the wedge and the era pattern, not the level.
+│   │                              #   A third window (--curve) and the 90-day bank bill
+│   │                              #   (--short-rate bill) were both tried as defaults and
+│   │                              #   rejected; the QE term-premium finding does not survive
+│   │                              #   the second window (see MODEL_NOTES.md).
 │   ├── long_run_ustar/            # u* WITHOUT estimation, back to 1959Q3. Finds the stretches
 │   │                              #   where inflation actually stopped changing and reads
 │   │                              #   unemployment off them. Reaches where the state-space
@@ -133,6 +149,42 @@ src/
 │   │                              #   fa_nk_wage_model.py: FA-NK + sticky wages + Galí unemployment / U*
 │   │                              #   nk_twostar_model.py: NK + reduced-form wedge (linear probe)
 │   │                              #   fa_nk_bayes.py: Bayesian re-estimation (black-box Op + priors, DEMetropolis-Z); identifies the Taylor block (φ_π≈2.6)
+│   ├── rstar_rba/                 # r* REVEALED BY THE RBA's REACTION FUNCTION. The cash rate
+│   │                              #   split into a slow BASE trend and a response to the
+│   │                              #   inflation gap; r* is the two together, b_t + lambda.g_t,
+│   │                              #   NOT the base alone. Reading the base as r* is the standard
+│   │                              #   way to misuse it and broke two charts and one is_curve
+│   │                              #   variant before being caught.
+│   │                              #   NOT AN ESTIMATE OF r*: an estimate of what the RBA's
+│   │                              #   behaviour reveals about it, imperfectly. It conflates
+│   │                              #   belief with every other systematic motive, since
+│   │                              #   anything persistent that was not inflation lands in
+│   │                              #   the base. And the longer a departure from the rule
+│   │                              #   lasts, the more of it the base absorbs, so it cannot
+│   │                              #   audit the Bank over a decade (it can over a year or
+│   │                              #   two: the residual sd is 0.74 against 1.98 for the cash
+│   │                              #   rate, and era means are NOT zero). Only the residual's
+│   │                              #   whole-sample mean is pinned, which is a normalisation.
+│   │                              #   r* 3.49 nominal / 0.99 real. The durable result is
+│   │                              #   lambda = 0.61 per pp of inflation, below the Taylor
+│   │                              #   principle. UNITS TRAP: lambda is stored per BAND-WIDTH
+│   │                              #   (0.303), so per pp is twice it and Taylor's 1.5 is 0.75.
+│   │                              #   Residual autocorrelation 0.85 (no smoothing term), so
+│   │                              #   every interval is too tight. Self-contained apart from
+│   │                              #   GDP, which only times the base's jump permissions
+│   │                              #   (see MODEL_NOTES.md).
+│   ├── is_curve/                  # THE IS CURVE PLOTTED, NOT ESTIMATED. A test bench, not a
+│   │                              #   model: nothing estimated, nothing downstream consumes it.
+│   │                              #   Output gap against the real rate under four r* treatments.
+│   │                              #   The slope's sign depends on the sample; the strongest
+│   │                              #   relationship is contemporaneous and POSITIVE, which is the
+│   │                              #   policy reaction function rather than transmission; and
+│   │                              #   dropping 2008Q4-2021Q3 manufactures a convincing IS curve
+│   │                              #   out of two clusters that individually disagree.
+│   │                              #   THE IS-CURVE PROBLEM IN AU DATA REMAINS UNRESOLVED
+│   │                              #   (see MODEL_NOTES.md).
+│   ├── bank_costs/                # Bank funding and lending costs against the cash rate.
+│   │                              #   EXPLORATORY: charts only, no model, no MODEL_NOTES.
 │   ├── expectations/              # Inflation expectations model
 │   └── common/                    # Shared model utilities (diagnostics, extraction, timeseries, sources)
 │

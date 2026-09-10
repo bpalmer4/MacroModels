@@ -100,5 +100,11 @@ lint.ignore = [
 mypy_path = "."
 explicit_package_bases = true
 
+# statsmodels ships no py.typed marker, so every import of it is an error that
+# no amount of narrowing in our own code can fix.
+[[tool.mypy.overrides]]
+module = ["statsmodels.*"]
+ignore_missing_imports = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

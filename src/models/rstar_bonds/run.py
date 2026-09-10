@@ -2,24 +2,71 @@
 
 import argparse
 
-from src.models.rstar.analyse import run_analysis
-from src.models.rstar.config import WORLD_SOURCES, ModelConfig
-from src.models.rstar.estimate import run_estimate
+from src.models.rstar_bonds.analyse import run_analysis
+from src.models.rstar_bonds.config import DEFLATORS, SHORT_RATES, WORLD_SOURCES, ModelConfig
+from src.models.rstar_bonds.estimate import run_estimate
 from src.models.ystar.base import SamplerConfig
 
 
 def main() -> None:
     """Estimate r*, then chart it."""
     parser = argparse.ArgumentParser(description="Estimate r* from the bond market")
-    parser.add_argument("--start", default="1986Q3", help="Sample start (default 1986Q3)")
+    parser.add_argument("--start", default="1993Q1", help="Sample start (default 1993Q1)")
     parser.add_argument("--end", default=None, help="Sample end (default: latest)")
     parser.add_argument(
-        "--world-source", default="mean", choices=list(WORLD_SOURCES),
-        help="Which published r* anchors the state (default: mean of the three)",
+        "--world-source", default="cleveland", choices=list(WORLD_SOURCES),
+        help="What anchors the state: a market real rate (default: cleveland, the "
+             "Cleveland Fed 10y expected real rate) or an HLW model estimate "
+             "(mean, US, Euro Area, Canada)",
     )
     parser.add_argument(
         "--no-world", action="store_true",
         help="Diagnostic: drop the world equation, leaving one observable for two components",
+    )
+    parser.add_argument(
+        "--no-short", action="store_true",
+        help="Drop the real cash rate equation, leaving the one-window model in which "
+             "mu_tp carries the level on its own",
+    )
+    parser.add_argument(
+        "--deflator", default="expectations", choices=list(DEFLATORS),
+        help="Inflation series used to make the cash rate real (default: expectations, "
+             "matching is_curve)",
+    )
+    parser.add_argument(
+        "--short-rate", default="cash", choices=list(SHORT_RATES),
+        help="Which short rate the second window uses: the overnight cash rate (default, "
+             "risk-free) or the 90-day bank bill, which prices the expected policy path "
+             "but carries a bank credit spread with it (see ModelConfig.short_rate)",
+    )
+    parser.add_argument(
+        "--us-premium", action="store_true",
+        help="Pin the term premium to the published US one (Kim-Wright) and estimate only "
+             "the Australian spread over it, instead of letting the level rest on mu_tp",
+    )
+    parser.add_argument(
+        "--impose-world-loading", action="store_true",
+        help="Impose one-for-one pass-through of world r* instead of estimating it, "
+             "taking the 'r* is imported' premise as given rather than putting it at risk",
+    )
+    parser.add_argument(
+        "--curve", action="store_true",
+        help="Add a medium-maturity real CGS yield as a third window. Off by default: "
+             "it identifies the premium curve's slope, at the cost of r* absorbing the "
+             "policy stance (see ModelConfig.use_curve)",
+    )
+    parser.add_argument(
+        "--curve-maturity", type=int, default=3,
+        help="Maturity in years for the third window (default 3)",
+    )
+    parser.add_argument(
+        "--assert-stance", action="store_true",
+        help="Assert the average policy stance and report the implied term premium, "
+             "instead of asserting mu_tp and reporting the implied stance",
+    )
+    parser.add_argument(
+        "--mu-g-sigma", type=float, default=0.5,
+        help="Prior sd on the asserted stance (only used with --assert-stance)",
     )
     parser.add_argument(
         "--breaks", nargs="*", default=None,
@@ -34,7 +81,11 @@ def main() -> None:
         help="Where the Taylor rule's inputs come from: one joint ystar_ustar run "
              "(default) or separate ystar and ustar runs",
     )
-    parser.add_argument("--sigma-walk", type=float, default=0.08, help="Imposed wedge innovation sd")
+    parser.add_argument(
+        "--sigma-walk", type=float, default=0.12,
+        help="Imposed wedge innovation sd (default 0.12; at 0.08 the estimated nu falls to "
+             "3.64, inside the infinite-kurtosis regime, which is the model straining)",
+    )
     parser.add_argument(
         "--nu-walk", type=float, default=None,
         help="fix the StudentT degrees of freedom instead of estimating them "
@@ -66,7 +117,7 @@ def main() -> None:
     parser.add_argument("--chains", type=int, default=4)
     parser.add_argument("--seed", type=int, default=None)
 
-    parser.add_argument("--prefix", default="rstar", help="Output filename prefix")
+    parser.add_argument("--prefix", default="rstar_bonds", help="Output filename prefix")
     parser.add_argument("--analyse-only", action="store_true", help="Skip estimation")
     parser.add_argument("--no-analyse", action="store_true", help="Estimate without charting")
     parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed output")
@@ -78,6 +129,16 @@ def main() -> None:
             end=args.end,
             world_source=args.world_source,
             use_world=not args.no_world,
+            free_world_loading=not args.impose_world_loading,
+            use_short=not args.no_short,
+            deflator=args.deflator,
+            short_rate=args.short_rate,
+            us_premium_anchor=args.us_premium,
+            use_curve=args.curve,
+            curve_maturity=args.curve_maturity,
+            curve_horizon_quarters=args.curve_maturity * 4,
+            assert_stance=args.assert_stance,
+            mu_g_sigma=args.mu_g_sigma,
             wedge_drift=args.wedge_drift,
             free_wedge=not args.steps,
             input_source=args.input_source,
