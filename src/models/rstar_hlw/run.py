@@ -9,26 +9,33 @@ Usage:
 
 import argparse
 
+
 def main(
+    *,
     verbose: bool = False,
     estimate: bool = True,
     analyse: bool = True,
     start: str = "1980Q1",
     end: str | None = None,
-    resolution: str = "G",
+    resolution: str = "A",
+    rate_lag: int | None = 6,
+    sigma_ystar_prior: float = 0.12,
     seed: int | None = None,
 ) -> None:
     """Run estimation and/or analysis stages."""
     prefix = f"rstar_hlw_{resolution}"
 
     if estimate:
+        lag_desc = "t-1,t-2 averaged" if rate_lag is None else f"t-{rate_lag}"
         print("=" * 60)
-        print(f"ESTIMATE [HLW r-star, Resolution {resolution}, start={start}]")
+        print(f"ESTIMATE [HLW r-star, Resolution {resolution}, start={start}, "
+              f"rate lag {lag_desc}]")
         print("=" * 60)
         from src.models.rstar_hlw.estimate import run_estimate  # noqa: PLC0415
         run_estimate(
             start=start, end=end, verbose=verbose,
-            prefix=prefix, resolution=resolution, seed=seed,
+            prefix=prefix, resolution=resolution, rate_lag=rate_lag,
+            sigma_ystar_prior=sigma_ystar_prior, seed=seed,
         )
         print()
 
@@ -67,18 +74,39 @@ if __name__ == "__main__":
         help="Sample end period (default: latest available)",
     )
     parser.add_argument(
+        "--rate-lag",
+        type=int,
+        default=6,
+        help=(
+            "single lag on the IS curve's rate gap (default 6, matching the is_curve "
+            "bench and rstar_invert; pass 0 for HLW's own averaged t-1, t-2 shape). "
+            "A longer lag carries less of the RBA's reaction to the economy"
+        ),
+    )
+    parser.add_argument(
+        "--sigma-ystar-prior",
+        type=float,
+        default=0.12,
+        help=(
+            "HalfNormal scale on potential output's innovation (default 0.12, median "
+            "0.081, matching ystar's imposed 0.078). Was 0.55, which let the posterior "
+            "pile up at 1.11 and made potential more volatile than GDP. Pass 0.55 to "
+            "reproduce the old behaviour"
+        ),
+    )
+    parser.add_argument(
         "--resolution",
         type=str,
         choices=["A", "B", "C", "D", "E", "F", "G", "H"],
-        default="G",
+        default="A",
         help=(
-            "r* identity: A (canonical HLW, r* = g + z), "
+            "r* identity: A (default; canonical HLW, r* = g + z), "
             "B (canonical + indexed bond observation), "
             "C (blend, fixed alpha prior), "
             "D (canonical r* + open-economy IS curve: fiscal + ToT + TWI + ICP), "
             "E (blend + AR(1) z: r* = alpha*g + (1-alpha)*(indexed-k) + z), "
             "F (E's r* identity + open-economy IS curve), "
-            "G (default; C with hierarchical Beta(a, b) on alpha; a, b ~ Uniform(0.25, 2)), "
+            "G (C with hierarchical Beta(a, b) on alpha; a, b ~ Uniform(0.25, 2)), "
             "H (blend with time-varying alpha_t via logit-RW)"
         ),
     )
@@ -96,5 +124,8 @@ if __name__ == "__main__":
         start=args.start,
         end=args.end,
         resolution=args.resolution,
+        # 0 means HLW's own averaged (t-1, t-2) shape rather than a single lag.
+        rate_lag=None if args.rate_lag == 0 else args.rate_lag,
+        sigma_ystar_prior=args.sigma_ystar_prior,
         seed=args.seed,
     )

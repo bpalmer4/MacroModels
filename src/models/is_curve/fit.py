@@ -45,8 +45,29 @@ MIN_ABS_T = 2.0
 # averages t-1 and t-2.
 DEFAULT_LAGS = tuple(range(9))
 
-# `nairu`'s choice, and so the default for the headline chart.
-DEFAULT_LAG = 2
+# SIX QUARTERS, and the reason is the sweep below rather than convention.
+#
+# This was 2, `nairu`'s choice. It moved because every piece of evidence in the
+# package points further out. The slope here strengthens monotonically with the
+# lag and only turns negative around 4 to 5 on the full sample, reaching -0.015
+# by 6; on the sample that drops 2008Q4-2021Q3 it strengthens to -0.139 at five
+# quarters and peaks at lag 6. `rstar_invert`'s single-lag sweep finds the same
+# shape inside a state-space model, -0.007 at lag 1 rising to -0.034 at lag 5,
+# with the posterior only coming off its sign bound at 5.
+#
+# The reason is simultaneity rather than fit-chasing. The RBA reacts to
+# conditions within a quarter or two while output responds to rates over one to
+# two years, so a short lag mostly measures the reaction function and returns
+# the WRONG SIGN (+0.081 at lag 0). Reaching further back is a partial fix. It
+# is only partial: the real cash rate is persistent, so r_{t-6} stays
+# correlated with recent rates that are reacting.
+#
+# Six is also what `rstar_hlw` and `rstar_invert` now use, so the three are
+# directly comparable on the timing. They are still NOT comparable on the
+# coefficient: HLW has gap persistence, so its `a_r` is an impact coefficient
+# whose level counterpart is a_r/(1 - a_y1 - a_y2), while this bench and
+# `rstar_invert` fit level slopes.
+DEFAULT_LAG = 6
 
 
 @dataclass

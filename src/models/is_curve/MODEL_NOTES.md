@@ -62,6 +62,51 @@ and the choice of r\* only changes how loudly it says so.
 
 ---
 
+## The default lag is now 6, not 2
+
+**Changed 2026-09-11.** `DEFAULT_LAG` was 2, inherited from `nairu`. It is now **6**, and
+`rstar_hlw` and `rstar_invert` were moved to match so the three are comparable on timing
+(`rstar_invert` uses a weighted pair at 4 and 8 whose effective mean lag is 6.3).
+
+The reason is this package's own sweep rather than convention. The slope strengthens
+monotonically with the lag and only turns negative around 4 to 5 on the full sample; on the
+sample that drops 2008Q4-2021Q3 it reaches −0.139 at five quarters and peaks at lag 6.
+`rstar_invert`'s single-lag sweep finds the same shape inside a state-space model, −0.007 at
+lag 1 rising to −0.034 at lag 5, with the posterior only coming off its sign bound at 5.
+
+That is simultaneity, not fit-chasing: the RBA reacts to conditions within a quarter or two
+while output responds over one to two years, so a short lag mostly measures the reaction
+function and returns the wrong sign (+0.081 at lag 0). Reaching back is a partial fix only,
+since the real cash rate is persistent and `r_{t-6}` stays correlated with recent rates that
+are reacting.
+
+**Every "lag 2" number below is still correct as a lag-2 number**, and they have not been
+restated. What changed is which lag the headline chart uses. At lag 6 on the default sample:
+
+| variant | slope | t | R² | n |
+|---|---|---|---|---|
+| `none` | −0.015 | −0.70 | 0.004 | 122 |
+| `rstar` | −0.028 | −0.63 | 0.003 | 122 |
+| `rule` | +0.014 | +0.28 | 0.001 | 122 |
+| `constant` | −0.015 | −0.70 | 0.004 | 122 |
+
+All four are indistinguishable from zero. The longer lag removes the wrongly-signed reaction
+function without putting an IS curve in its place.
+
+**And the block split at lag 6 is the sharpest version of this package's central finding:**
+
+| block | n | slope | t | R² |
+|---|---|---|---|---|
+| 1993Q1-2020Q1 | 103 | **+0.099** | +4.58 | 0.172 |
+| 2021Q4-2026Q2 | 19 | **−0.136** | −4.76 | 0.571 |
+
+Twenty-seven years give a significantly *positive* slope. The last nineteen quarters give a
+significantly negative one. The whole negative reading of Australian data sits in the
+post-pandemic tightening, which is also the period in which a reaction function and
+transmission are hardest to tell apart.
+
+---
+
 ## Read this first
 
 **The slope's sign is a function of which quarters you include, and the honest answer is

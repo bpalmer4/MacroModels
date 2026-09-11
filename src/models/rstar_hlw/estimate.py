@@ -27,7 +27,9 @@ DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs
 def build_model(
     obs: dict[str, np.ndarray],
     constants: dict[str, Any] | None = None,
-    resolution: str = "G",
+    resolution: str = "A",
+    rate_lag: int | None = 6,
+    sigma_ystar_prior: float = 0.12,
 ) -> pm.Model:
     """Build the HLW r-star PyMC model.
 
@@ -106,7 +108,11 @@ def build_model(
         desc = r_star_equation(obs, model, latents, constant=constants.get("r_star"))
         descriptions.append(f"r-star:       {desc}")
 
-        desc = potential_output_equation(obs, model, latents, constant=constants.get("potential"))
+        desc = potential_output_equation(
+            obs, model, latents,
+            constant=constants.get("potential"),
+            sigma_ystar_prior=sigma_ystar_prior,
+        )
         descriptions.append(f"Potential:    {desc}")
     elif resolution == "H":
         # Time-varying alpha via logit-RW.
@@ -115,7 +121,11 @@ def build_model(
         )
         descriptions.append(f"r-star:       {desc}")
 
-        desc = potential_output_equation(obs, model, latents, constant=constants.get("potential"))
+        desc = potential_output_equation(
+            obs, model, latents,
+            constant=constants.get("potential"),
+            sigma_ystar_prior=sigma_ystar_prior,
+        )
         descriptions.append(f"Potential:    {desc}")
     elif resolution in ("E", "F"):
         # Blend + AR(1) z: r* = alpha*g + (1-alpha)*(indexed-k) + z
@@ -125,18 +135,30 @@ def build_model(
         )
         descriptions.append(f"r-star:       {desc}")
 
-        desc = potential_output_equation(obs, model, latents, constant=constants.get("potential"))
+        desc = potential_output_equation(
+            obs, model, latents,
+            constant=constants.get("potential"),
+            sigma_ystar_prior=sigma_ystar_prior,
+        )
         descriptions.append(f"Potential:    {desc}")
     else:  # Resolution A, B, or D (canonical r* = g + z)
         # Order: trend_growth -> potential -> z_star (uses sigma_ystar via lambda_z)
-        desc = potential_output_equation(obs, model, latents, constant=constants.get("potential"))
+        desc = potential_output_equation(
+            obs, model, latents,
+            constant=constants.get("potential"),
+            sigma_ystar_prior=sigma_ystar_prior,
+        )
         descriptions.append(f"Potential:    {desc}")
 
         desc = z_star_equation(obs, model, latents, constant=constants.get("z_star"))
         descriptions.append(f"z-star:       {desc}")
 
     # --- Observation equations ---
-    desc = is_curve_equation(obs, model, latents, constant=constants.get("is_curve"))
+    desc = is_curve_equation(
+        obs, model, latents,
+        constant=constants.get("is_curve"),
+        rate_lag=rate_lag,
+    )
     descriptions.append(f"IS curve:     {desc}")
 
     desc = phillips_curve_equation(obs, model, latents, constant=constants.get("phillips"))
@@ -164,6 +186,7 @@ def save_results(
     trace: az.InferenceData,
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
+    *,
     constants: dict[str, Any] | None = None,
     chart_obs: pd.DataFrame | None = None,
     output_dir: Path | str | None = None,
@@ -198,12 +221,15 @@ def save_results(
 
 
 def run_estimate(
+    *,
     start: str | None = "1980Q1",
     end: str | None = None,
     sampler_config: SamplerConfig | None = None,
     output_dir: Path | str | None = None,
     prefix: str = "rstar_hlw",
-    resolution: str = "G",
+    resolution: str = "A",
+    rate_lag: int | None = 6,
+    sigma_ystar_prior: float = 0.12,
     verbose: bool = False,
     seed: int | None = None,
 ) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex]:
@@ -229,7 +255,10 @@ def run_estimate(
     )
 
     print(f"Building model (Resolution {resolution})...")
-    model = build_model(obs, resolution=resolution)
+    model = build_model(
+        obs, resolution=resolution, rate_lag=rate_lag,
+        sigma_ystar_prior=sigma_ystar_prior,
+    )
 
     print("\nSampling...")
     trace = sample_model(model, sampler_config)

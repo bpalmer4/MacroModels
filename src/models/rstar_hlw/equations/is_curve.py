@@ -37,12 +37,33 @@ import pymc as pm
 
 from src.models.nairu.base import set_model_coefficients
 
+# The optional open-economy and fiscal regressors, each included only when
+# `build_observations` supplied it: resolutions D and F carry the SOE block,
+# A and B carry none of this, C/E/G/H carry the fiscal impulse alone.
+#
+# Held as a table rather than as eight separate branches so adding one does
+# not push this function past the complexity limit again.
+_OPTIONAL_REGRESSORS: tuple[tuple[str, str, dict[str, float]], ...] = (
+    # Fiscal impulse. Positive: a fiscal expansion adds to demand.
+    ("fiscal_impulse_1", "gamma_fi", {"mu": 0.05, "sigma": 0.20, "lower": 0.0}),
+    # ToT growth is in % per quarter; gamma_tot translates 1pp of ToT change
+    # into log-points of output gap. Positive sign expected.
+    ("tot_change_1", "gamma_tot", {"mu": 0.05, "sigma": 0.10, "lower": 0.0}),
+    # AUD appreciation suppresses demand (net exports + competitiveness).
+    # Sign expected negative.
+    ("twi_change_1", "gamma_twi", {"mu": -0.05, "sigma": 0.10, "upper": 0.0}),
+    # RBA ICP (AUD) growth: an upstream commodity-price demand signal for
+    # Asian buyers. Positive sign expected.
+    ("icp_change_1", "gamma_icp", {"mu": 0.05, "sigma": 0.10, "lower": 0.0}),
+)
+
 
 def is_curve_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     latents: dict[str, Any],
     constant: dict[str, Any] | None = None,
+    rate_lag: int | None = None,
 ) -> str:
     """HLW (2017) IS curve in level form, with fiscal impulse.
 
@@ -56,6 +77,24 @@ def is_curve_equation(
 
     where r_gap = (cash_rate - pi_exp) - r*, all annualised %.
     Output gap is in log x 100 units.
+
+    `rate_lag` replaces the averaged (t-1, t-2) rate gap with a SINGLE lag, so
+    the rate term becomes `a_r * r_gap_{t-rate_lag}`. HLW's own shape is the
+    default (None). A longer single lag is what the `is_curve` bench and
+    `rstar_invert` both point at: the slope there strengthens monotonically
+    from lag 1 to 5 and the bench's negative-slope sample peaks near 6, because
+    a regressor further from t carries less of the RBA's reaction to the
+    economy. Setting it also makes `a_r` directly comparable with
+    `rstar_invert`'s single-lag runs, ONCE persistence is accounted for:
+    `a_r` here is an IMPACT coefficient and the comparable level response is
+    `a_r / (1 - a_y1 - a_y2)`.
+
+    UNITS WARNING. Both forms take the coefficient on a rate gap in annualised
+    percentage points, but the averaged form applies `a_r/2` to each of two
+    lags while the single-lag form applies the whole of `a_r` to one. `a_r`
+    means the same thing in both (the response to a SUSTAINED rate gap), so
+    the two are comparable with each other; what is not comparable is `a_r`
+    against a level slope from a model without persistence.
     """
     if constant is None:
         constant = {}
@@ -70,20 +109,8 @@ def is_curve_equation(
             "a_r": {"mu": -0.15, "sigma": 0.08, "upper": 0.0},
             "sigma_IS": {"sigma": 0.4},
         }
-        if "fiscal_impulse_1" in obs:
-            settings["gamma_fi"] = {"mu": 0.05, "sigma": 0.20, "lower": 0.0}
-        if "tot_change_1" in obs:
-            # ToT growth is in % per quarter; gamma_tot translates 1pp of ToT
-            # change into log-points of output gap. Positive sign expected.
-            settings["gamma_tot"] = {"mu": 0.05, "sigma": 0.10, "lower": 0.0}
-        if "twi_change_1" in obs:
-            # AUD appreciation suppresses demand (net exports + competitiveness).
-            # Sign expected negative.
-            settings["gamma_twi"] = {"mu": -0.05, "sigma": 0.10, "upper": 0.0}
-        if "icp_change_1" in obs:
-            # RBA ICP (AUD) growth — upstream commodity-price demand signal
-            # for Asian buyers. Positive sign expected.
-            settings["gamma_icp"] = {"mu": 0.05, "sigma": 0.10, "lower": 0.0}
+        present = [entry for entry in _OPTIONAL_REGRESSORS if entry[0] in obs]
+        settings.update({name: prior for _, name, prior in present})
         mc = set_model_coefficients(model, settings, constant)
 
         real_rate = obs["cash_rate"] - obs["pi_exp"]
@@ -91,40 +118,42 @@ def is_curve_equation(
 
         output_gap = obs["log_gdp"] - potential_output
 
-        # t = 2 .. T-1 (we predict log_gdp from index 2 onwards)
+        # The first quarter that has every lag the equation needs. HLW's own
+        # shape needs two; a longer single rate lag needs that many.
+        start = 2 if rate_lag is None else max(2, rate_lag)
+        end = len(obs["log_gdp"])
+
+        if rate_lag is None:
+            rate_term = (mc["a_r"] / 2) * (
+                r_gap[start - 1:end - 1] + r_gap[start - 2:end - 2]
+            )
+        else:
+            rate_term = mc["a_r"] * r_gap[start - rate_lag:end - rate_lag]
+
         predicted_log_gdp = (
-            potential_output[2:]
-            + mc["a_y1"] * output_gap[1:-1]
-            + mc["a_y2"] * output_gap[:-2]
-            + (mc["a_r"] / 2) * (r_gap[1:-1] + r_gap[:-2])
+            potential_output[start:]
+            + mc["a_y1"] * output_gap[start - 1:end - 1]
+            + mc["a_y2"] * output_gap[start - 2:end - 2]
+            + rate_term
         )
 
-        if "fiscal_impulse_1" in obs:
-            predicted_log_gdp = predicted_log_gdp + mc["gamma_fi"] * obs["fiscal_impulse_1"][2:]
-        if "tot_change_1" in obs:
-            predicted_log_gdp = predicted_log_gdp + mc["gamma_tot"] * obs["tot_change_1"][2:]
-        if "twi_change_1" in obs:
-            predicted_log_gdp = predicted_log_gdp + mc["gamma_twi"] * obs["twi_change_1"][2:]
-        if "icp_change_1" in obs:
-            predicted_log_gdp = predicted_log_gdp + mc["gamma_icp"] * obs["icp_change_1"][2:]
+        for key, name, _ in present:
+            predicted_log_gdp = predicted_log_gdp + mc[name] * obs[key][start:]
 
         pm.Normal(
             "observed_IS",
             mu=predicted_log_gdp,
             sigma=mc["sigma_IS"],
-            observed=obs["log_gdp"][2:],
+            observed=obs["log_gdp"][start:],
         )
 
-    parts = [
-        "y_gap_t = a_y1*y_gap_{t-1} + a_y2*y_gap_{t-2} + (a_r/2)*(r_gap_{t-1}+r_gap_{t-2})",
-    ]
-    if "fiscal_impulse_1" in obs:
-        parts.append("gamma_fi*fiscal_{t-1}")
-    if "tot_change_1" in obs:
-        parts.append("gamma_tot*tot_change_{t-1}")
-    if "twi_change_1" in obs:
-        parts.append("gamma_twi*twi_change_{t-1}")
-    if "icp_change_1" in obs:
-        parts.append("gamma_icp*icp_change_{t-1}")
+    rate_desc = (
+        "(a_r/2)*(r_gap_{t-1}+r_gap_{t-2})" if rate_lag is None
+        else f"a_r*r_gap_{{t-{rate_lag}}}"
+    )
+    parts = [f"y_gap_t = a_y1*y_gap_{{t-1}} + a_y2*y_gap_{{t-2}} + {rate_desc}"]
+    parts.extend(
+        f"{name}*{key.removesuffix('_1')}_{{t-1}}" for key, name, _ in present
+    )
     parts.append("e_IS")
     return " + ".join(parts)

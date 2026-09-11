@@ -36,6 +36,10 @@ uv sync                            # Install dependencies
 ./run-rstar-bonds.sh               # Run r* from the bond market (needs ystar_ustar for the Taylor rule)
 ./run-rstar-rba.sh                 # Run neutral revealed by the RBA's reaction to inflation (two series;
                                    #   also runs the sigma_r ensemble and the injection test, ~38s)
+./run-rstar-invert.sh              # r* by conditional inversion of an ASSERTED IS curve
+                                   #   (--ensemble sweeps how slow r* is; --lag-sweep the rate lag)
+./run-rstar-summary.sh             # every r* model on one nominal scale; re-runs any whose
+                                   #   saved trace is not from today, which regenerates THEIR charts
 ./run-bank-costs.sh                # Bank funding and lending costs vs the cash rate (charts only)
 uv run python -m src.models.is_curve.run   # IS-curve scatter: a test bench for the r* models
 ./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free; needs expectations)
@@ -81,7 +85,13 @@ src/
 │   ├── gdp_nowcast_dfm/            # GDP nowcasting via Dynamic Factor Model (see MODEL_NOTES.md)
 │   ├── gdp_nowcast_bvar/           # GDP nowcasting via Bayesian VAR, T-0 only (see MODEL_NOTES.md)
 │   ├── gdp_nowcast_components/     # GDP nowcasting via expenditure-identity components, T-0 only (see MODEL_NOTES.md)
-│   ├── rstar_hlw/                 # HLW Bayesian r-star model, AU data (see MODEL_NOTES.md)
+│   ├── rstar_hlw/                 # HLW Bayesian r-star model, AU data. IT DOES NOT WORK.
+│   │                              #   No resolution identifies an r* path, and its potential
+│   │                              #   output is more volatile than GDP, so its coefficients
+│   │                              #   are measured against a decomposition that means little.
+│   │                              #   NOT A SOURCE OF r*: excluded from rstar_summary, kept
+│   │                              #   for what it documents. Default is Resolution A
+│   │                              #   (canonical, r* = g + z) (see MODEL_NOTES.md).
 │   ├── ystar_ustar/               # ** PREFERRED for the output gap and u*. ** y* and u*
 │   │                              #   estimated JOINTLY, gap = c x (pi - 2.5) + v, so the gap is
 │   │                              #   not frozen and the GDP and Okun equations negotiate over
@@ -173,6 +183,29 @@ src/
 │   │                              #   sigma_r and phi decide the same thing and two series
 │   │                              #   cannot pin both. Two published series only
 │   │                              #   (see MODEL_NOTES.md for everything else).
+│   ├── rstar_invert/              # r* by CONDITIONAL INVERSION of an asserted IS curve.
+│   │                              #   Asserts the line (negative slope, through the origin on
+│   │                              #   gap-vs-gap axes) and a slow r*, takes the ystar_ustar gap
+│   │                              #   and the real cash rate as GIVEN, and reports the r* path
+│   │                              #   those assertions force. NOT AN ESTIMATE.
+│   │                              #   THE ANSWER IS DECIDED BY sigma_rstar, which nothing
+│   │                              #   measures: below 0.05-0.10 the model explains nothing and
+│   │                              #   r* is flat, above it r* swings 5pp and the 2016-19 stance
+│   │                              #   flips sign (-3.19 to +0.52). sigma_e falls monotonically
+│   │                              #   as r* is loosened, so the data cannot choose.
+│   │                              #   A DEFENSIBLE SLOPE AND A USABLE r* ARE INCOMPATIBLE:
+│   │                              #   -0.09 (matching is_curve's -0.108) gives r* of -3.9 to
+│   │                              #   +7.0; a well-behaved r* needs -0.38, which survives only
+│   │                              #   because the r*-prior parameterisation rewards inflating it.
+│   │                              #   What it measures well is the GAP's own slow component
+│   │                              #   (44% of gap variance vs the rate term's 14%), divided by a
+│   │                              #   small number. Quote the conditioning (see MODEL_NOTES.md).
+│   ├── rstar_summary/             # NOT A MODEL. Loads every r* the repo produces, re-runs any
+│   │                              #   whose trace is not from TODAY (which regenerates that
+│   │                              #   model's own charts), converts all to NOMINAL and charts
+│   │                              #   them. rstar_hlw is deliberately EXCLUDED: no resolution
+│   │                              #   identifies an r* path. The central line is a MEAN, not a
+│   │                              #   median (n=3), and is not an estimate (see MODEL_NOTES.md).
 │   ├── is_curve/                  # THE IS CURVE PLOTTED, NOT ESTIMATED. A test bench, not a
 │   │                              #   model: nothing estimated, nothing downstream consumes it.
 │   │                              #   Output gap against the real rate under four r* treatments.
@@ -181,6 +214,11 @@ src/
 │   │                              #   policy reaction function rather than transmission; and
 │   │                              #   dropping 2008Q4-2021Q3 manufactures a convincing IS curve
 │   │                              #   out of two clusters that individually disagree.
+│   │                              #   Default lag 6, matching rstar_hlw and rstar_invert. At
+│   │                              #   that lag all four variants are indistinguishable from
+│   │                              #   zero, and the block split is the sharpest form of the
+│   │                              #   finding: 1993-2020 +0.099, 2021Q4-2026Q2 -0.136, so the
+│   │                              #   whole negative reading sits in 19 quarters.
 │   │                              #   THE IS-CURVE PROBLEM IN AU DATA REMAINS UNRESOLVED
 │   │                              #   (see MODEL_NOTES.md).
 │   ├── bank_costs/                # Bank funding and lending costs against the cash rate.

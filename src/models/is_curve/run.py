@@ -20,7 +20,11 @@ def main() -> None:
     parser.add_argument("--end", default=None, help="Sample end (default: latest)")
     parser.add_argument(
         "--lag", type=int, default=DEFAULT_LAG,
-        help=f"Quarters by which the rate is lagged (default {DEFAULT_LAG}, as in nairu)",
+        help=(
+            f"Quarters by which the rate is lagged (default {DEFAULT_LAG}, where "
+            "transmission should live and where the RBA's reaction to the economy "
+            "has partly decayed; matches rstar_hlw and rstar_invert)"
+        ),
     )
     parser.add_argument(
         "--joint-prefix", default="ystar_ustar",

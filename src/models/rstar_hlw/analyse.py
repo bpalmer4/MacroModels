@@ -439,9 +439,9 @@ def plot_alpha_posterior(results: RStarResults, show: bool = False) -> None:
 
 
 def run_analyse(
-    prefix: str = "rstar_hlw_C",
+    prefix: str = "rstar_hlw_A",
     chart_dir: Path | str | None = None,
-    resolution: str = "C",
+    resolution: str = "A",
     verbose: bool = False,
     show: bool = False,
 ) -> None:

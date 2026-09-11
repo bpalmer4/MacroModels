@@ -40,7 +40,30 @@ The eight specifications (Resolutions A–H below) were not designed upfront as 
 
 What began as "estimate r* for Australia" became "understand why r* cannot be estimated from Australian data" — and the resolutions are the record of that shift, not a menu of alternatives.
 
-Across the eight, the same pattern returned. **Each spec gave back the structural assumption it imposed**, plus a Monte Carlo whisker. The IS curve does not pin r* in Australian data. The rate channel is too weak: a_r ≈ −0.04 against σ_IS ≈ 0.70 and an in-sample r-gap sd of ~2pp — a signal-to-noise ratio of about 0.11. The signal sits more than an order of magnitude below the noise floor. The IS curve cannot resolve r* out of the data independently of whatever structural assumption is imposed on it.
+Across the eight, the same pattern returned. **Each spec gave back the structural assumption it imposed**, plus a Monte Carlo whisker. The IS curve does not pin r* in Australian data.
+
+**CORRECTED 2026-09-11, AND THE OLD WORDING WAS WRONG.** This section used to say "the rate channel is too weak: a_r ≈ −0.04". That compared an **impact** coefficient against **level** slopes from models without gap persistence, which is not a like-for-like comparison. Measured on Resolution A at a single lag 6:
+
+| | |
+|---|---|
+| `a_r`, impact | −0.044, 90% [−0.081, −0.005] |
+| `a_y1`, `a_y2` | 0.979, −0.115 |
+| divisor `1 − a_y1 − a_y2` | 0.136, 90% [0.088, 0.184], never crosses zero |
+| **long-run slope** `a_r/(1 − a_y1 − a_y2)` | **−0.32, 90% [−0.66, −0.09]** |
+
+The long-run slope **excludes zero** and is close to what a believer in monetary transmission would assert a priori. The channel is not negligible. The gap is persistent, so a sustained rate gap accumulates into a substantial output response.
+
+**What actually fails is r\*, and for a different reason.** Identification of r* does not run through the long-run multiplier. Each quarter's likelihood contribution uses the impact coefficient:
+
+```
+a_r / sigma_IS  =  0.044 / 0.685  =  0.064
+```
+
+Getting r* wrong by one percentage point moves the predicted gap by 0.044, against quarterly noise of 0.685. To shift the likelihood by one standard deviation, **r\* would have to be wrong by about 15 percentage points**. So r* is free to sit anywhere, which is exactly what the runs show: flat at 2.2 to 2.6 across thirty years.
+
+So the finding, restated: *not* "the rate channel is negligible", but **"the per-quarter signal is 6% of the noise, so the IS curve cannot locate r*, however strong the cumulative channel is."** The conclusion about r* is unchanged; the reason given for it was wrong.
+
+The near-unit-root persistence predates the lag change, so the same correction applies to the original averaged (t−1, t−2) shape. The long-run slopes of Resolutions B through H have NOT been re-measured.
 
 This is **Buncic-Pagan-Robinson 2023** ("On Constructing a Country-Specific Time Series for the Natural Rate of Interest") made concrete on Australian data: when latent shocks meet or exceed identifying observables, the latent is not point-identified — the posterior is essentially the prior projected through the structural model. We confirm it three independent ways inside the project:
 
@@ -58,9 +81,9 @@ The rest of these notes work through the eight resolutions individually, the cro
 
 ### Where this went next: `src/models/rstar_bonds`
 
-**The finding here is not really about r\*. It is that the IS curve is fragile**, and r\* non-identification is a symptom of that. Every resolution below asks the interest rate to reveal itself through its effect on output — r\* is whatever makes the IS curve fit — so once the rate channel is established as too weak (a_r ≈ −0.04 against σ_IS ≈ 0.70, a signal-to-noise ratio of about 0.11), no specification search recovers r\*, because there is nothing to search over. Resolutions A through H are the proof of that, not a failure to find the right one.
+**The finding here is about r\*, and the older claim that it was "really about the IS curve being fragile" is now doubtful.** Every resolution below asks the interest rate to reveal itself through its effect on output — r\* is whatever makes the IS curve fit — and none of them recovers r*. That much stands. But the reason is the **per-quarter signal-to-noise ratio**, `a_r/σ_IS` ≈ 0.064, not a weak channel: the long-run slope is −0.32 and excludes zero (see the correction above). Resolutions A through H are proof that no specification search locates r*, not proof that rates do not move Australian output.
 
-That is a claim about **monetary transmission in Australian data**, not about one latent variable, and it recurs everywhere this repo looks for it: `nairu`'s IS curve gives β_is ≈ 0.084 with fiscal touching zero; the `dsge` family found the same weak rate channel; `ustar` found its Okun channel explains a third of ΔU and shifts u\* by only 0.10pp. Any model in which a rate gap is supposed to move real activity inherits this problem.
+What does survive, and is not in doubt: a reduced-form scatter of the output gap on the lagged real rate is flat or wrongly signed at every lag (`is_curve`), and no r* model here identifies its latent from the IS curve alone.
 
 `src/models/rstar_bonds` was built on the opposite premise: **stop asking output about the interest rate, and read r\* off an asset price instead.** It has no IS curve at all. r\* is world r\* (published HLW for the US, Euro Area and Canada, used as data) plus an Australia-specific wedge that moves as a Student-t random walk, with the indexed real 10-year yield as the observable and the term premium defined as the residual. See [`rstar/MODEL_NOTES.md`](../rstar_bonds/MODEL_NOTES.md).
 
@@ -72,6 +95,77 @@ Two things follow that are worth carrying back here:
 What `rstar` does *not* do is rescue the IS curve. It sidesteps it, and the fragility documented below is untouched.
 
 **That leaves a tension worth stating plainly, in both packages.** `rstar` carries a Taylor rule that prescribes a cash rate, and a policy rule is only worth prescribing if moving the rate moves the economy. The evidence assembled here says that link is weak enough that r\* cannot be recovered from it. So the rule should be read as a normative statement about what a central bank following a standard reaction function *would* do, not as a forecast of what would happen if it did. The transmission the prescription relies on is precisely what this model failed to find.
+
+## Second correction, 2026-09-11: potential output is broken
+
+Separate from the `a_r` units error above, and arguably worse, because it means the gap that
+every coefficient is measured against is not a gap.
+
+```
+potential output, quarterly change sd    1.073
+log GDP,          quarterly change sd    0.947
+```
+
+**Potential was more volatile than output.** The implied gap had sd 1.92 and ran −3.0 to
++7.6, against `ystar_ustar`'s gap sd of 0.42.
+
+The cause is the classic unconstrained-trend pile-up. `sigma_ystar` had a HalfNormal(0.55)
+prior and the posterior sat at **1.112**, three times that prior's median of 0.371: the
+likelihood would rather let potential absorb GDP's movements than explain them. **The
+original HLW has a device to prevent exactly this, and this implementation dropped it** —
+Holston-Laubach-Williams fix the signal-to-noise ratios λ_g and λ_z by Stock-Watson
+median-unbiased estimation instead of estimating the variances freely. See the note at the
+top of `z_star.py`: "sigma_z is a free parameter with a HalfNormal prior (no lambda_z)".
+
+**The prior was tightened to HalfNormal(0.12)**, whose median of 0.081 matches what this
+repo's own potential model uses (`ystar` fixes `sigma_ystar` at ratio_ystar × sigma_c =
+0.13 × 0.60 = 0.078). An improvement, **not a fix**:
+
+| | before (0.55) | after (0.12) |
+|---|---|---|
+| `sigma_ystar` posterior | 1.112 | 0.862, 90% [0.777, 0.951] |
+| potential, quarterly change sd | 1.073 | 0.923 |
+| gap sd | 1.92 | 1.85 |
+| `sigma_IS` | 0.682 | 0.640 |
+| `a_r` | −0.044 | −0.044 |
+| long-run slope | −0.32 | −0.354, 90% [−0.743, −0.104] |
+| divergences | 148 | **15** |
+| r\* range | 2.22 to 2.59 | 2.06 to 2.69 |
+
+The posterior sits about **seven standard deviations into the tightened prior's tail**. A
+prior cannot fix this; the likelihood insists. The right device is to *impose* the ratio, as
+the original does, not to put a prior on it.
+
+**And imposing it alone probably will not be enough**, because the worst of the damage is a
+level error rather than a volatility problem. The extreme gaps are not the lockdown quarters:
+
+```
+largest |gap|:  2022Q3 +7.03, 2022Q4 +6.76, 2022Q2 +6.02, 2023Q1 +5.64
+gap sd, all quarters       1.857
+gap sd, ex 2020Q2-2021Q3   1.879      (dropping the lockdowns changes nothing)
+potential change sd, all   0.926
+potential change sd, ex    0.734      (they do drive potential's volatility)
+```
+
+Potential took part of the 2020 collapse as a fall in *potential* and never caught back up,
+so the recovery reads as Australia running **seven per cent above capacity through 2022-23**.
+Fixing this needs the λ_g device plus explicit handling of the COVID level break, the way
+`ystar` does. That is a project, not a run, and it has not been done.
+
+**Until it is, treat `a_r`, `sigma_IS` and the long-run slope as measured against a
+decomposition that does not mean much.** They cannot settle the transmission question either
+way.
+
+## The IS-curve rate lag is now a single t−6
+
+**Changed 2026-09-11.** The rate gap entered as the average of t−1 and t−2, HLW's own shape.
+It is now a single lag 6, matching the `is_curve` bench and `rstar_invert` (whose weighted
+4/8 pair has an effective mean lag of 6.3), so the three are comparable on timing.
+`--rate-lag 0` restores the averaged form.
+
+The evidence is `is_curve`'s own lag sweep and `rstar_invert`'s: the slope strengthens
+monotonically with the lag because a regressor further from t carries less of the RBA's
+reaction to the economy. Resolution A has been re-run on it; **B through H have not**.
 
 ## Sample, data, and the indexed-yield fill
 
@@ -180,7 +274,9 @@ E combined with D's SOE-block IS curve. Tests whether softening the anchor (givi
 - α 0.53 [0.06, 0.95]; r* range [0.63, 4.13], latest 2.15%.
 - 249 divergences; r_star R-hat 1.000, ESS 16,565 (cleanest of any resolution).
 
-**What we learnt**: closes the empirical loop. Across A–F, σ_IS sits at 0.70 ± 0.02 and a_r at −0.04 ± 0.01. The IS curve's rate channel is a property of Australian data; no choice of r* identification or IS-curve regressor specification makes it strong.
+**What we learnt**: closes the empirical loop. Across A–F, σ_IS sits at 0.70 ± 0.02 and the IMPACT coefficient a_r at −0.04 ± 0.01, so no choice of r* identification or IS-curve regressor specification moves either. That stability is the finding.
+
+Read it as a statement about the per-quarter signal, not about the channel: `a_r/σ_IS` ≈ 0.06 everywhere, which is why r* never identifies. The LONG-RUN slope, `a_r/(1 − a_y1 − a_y2)`, is a different and much larger number (−0.32 on Resolution A at lag 6) and has not been computed for B through F.
 
 ### Resolution G — blend with hierarchical Beta(a, b) on α
 
@@ -205,7 +301,9 @@ r* in G is a blend of two anchors — trend growth (structural) and the real bon
 
 The blended median is the average of those two stories, not a value the model actually settles on — almost no single posterior draw sits at it. Quoting it as "the estimate" overstates what the data identifies.
 
-Why so weak? The IS curve's rate channel sits an order of magnitude below the quarterly noise (a_r ≈ −0.04 against σ_IS ≈ 0.70 — see "The story" above), so the model returns the prior with a thin layer of likelihood: the Buncic-Pagan-Robinson non-identification result, on Australian data.
+Why so weak? Because the PER-QUARTER signal sits an order of magnitude below the quarterly noise: `a_r/σ_IS` ≈ 0.044/0.685 ≈ 0.06, so r* would have to be wrong by about 15pp to move the likelihood by one standard deviation. The model therefore returns the prior with a thin layer of likelihood: the Buncic-Pagan-Robinson non-identification result, on Australian data.
+
+Note this is NOT the same as the channel being weak. The long-run slope is −0.32 and excludes zero — see the correction in "The story" above.
 
 So which anchor? The data won't say, but two outside pieces of evidence lean to the bond/market reading: the post-GFC decade (a low yield-anchored r* fits the low-inflation outcome better than a high growth-anchored one), and RBA commentary describing the policy stance as having eased materially with no change in the cash rate (see the Bullock cross-validation section below) — only a yield-anchored r* can move that fast; trend growth can't.
 
@@ -233,8 +331,12 @@ Same r* identity as C but with α_t a time-varying latent on the logit scale: lo
 | r* latest (2025Q4) | 2.43% | 1.48% | 2.19% | 1.77% | 2.20% | 2.15% | 2.20% | 2.20% |
 | z status | dead | wild | n/a | dead | dead | dead | n/a | n/a |
 | `r_star` R-hat (ESS) | 1.020 (243) | 1.010 (366) | 1.000 (6,133) | 1.010 (548) | 1.000 (12,420) | 1.000 (16,565) | 1.000 (6,169) | 1.000 (6,246) |
-| `a_r` median | −0.033 | −0.031 | −0.035 | −0.032 | −0.035 | −0.036 | −0.034 | −0.034 |
+| `a_r` median (IMPACT) | −0.033 | −0.031 | −0.035 | −0.032 | −0.035 | −0.036 | −0.034 | −0.034 |
 | `σ_IS` median | 0.68 | 0.68 | 0.68 | 0.67 | 0.67 | 0.67 | 0.67 | 0.67 |
+
+`a_r` in that row is the IMPACT coefficient and is NOT comparable with a level slope from a model without gap persistence. The long-run counterpart is `a_r/(1 − a_y1 − a_y2)`, which on Resolution A at lag 6 is **−0.32, 90% [−0.66, −0.09]**. It has not been computed for the other seven. The row that matters for why r* never identifies is `a_r/σ_IS` ≈ 0.05 across all eight.
+
+These eight were run at the original averaged (t−1, t−2) rate gap. The default is now a **single lag 6**, matching the `is_curve` bench and `rstar_invert`; Resolution A has been re-run on it (a_r −0.044, σ_IS 0.685, r* 2.22 to 2.59, 148 divergences) and the other seven have not.
 | `α` posterior | n/a | n/a | 0.56 [0.07, 0.96] | n/a | 0.57 [0.08, 0.96] | 0.53 [0.06, 0.95] | 0.58 [0.03, 0.99] | α_t flat at ~0.59 |
 
 The picture: **σ_IS and a_r are flat across all eight specs**. r* tracks whichever observable the structural identity admits — g (A, D), bond yield (B), or the blend (C, E, F, G, H). The IS curve does not adjudicate.

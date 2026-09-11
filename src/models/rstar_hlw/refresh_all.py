@@ -17,13 +17,13 @@ from src.models.rstar_hlw.observations import build_observations
 
 RUNS = [
     # (resolution, prefix, chart_subdir, label)
-    ("A", "rstar_hlw_A", "rstar-hlw-A", "A (canonical, r* = g + z)"),
+    ("A", "rstar_hlw_A", "rstar-hlw-A", "A (default; canonical, r* = g + z)"),
     ("B", "rstar_hlw_B", "rstar-hlw-B", "B (canonical + indexed-bond observation)"),
     ("C", "rstar_hlw_C", "rstar-hlw-C", "C (blend, fixed Beta(1,1))"),
     ("D", "rstar_hlw_D", "rstar-hlw-D", "D (canonical r* + open-economy IS)"),
     ("E", "rstar_hlw_E", "rstar-hlw-E", "E (blend + AR(1) z)"),
     ("F", "rstar_hlw_F", "rstar-hlw-F", "F (E + open-economy IS)"),
-    ("G", "rstar_hlw_G", "rstar-hlw-G", "G (default; blend + hierarchical Beta)"),
+    ("G", "rstar_hlw_G", "rstar-hlw-G", "G (blend + hierarchical Beta)"),
 ]
 
 
