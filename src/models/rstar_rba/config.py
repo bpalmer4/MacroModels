@@ -1,15 +1,16 @@
 """Configuration for the rstar_rba model.
 
-    pi_t        = (4/w) · sum_{j<w} q_{t-j}          annualised, w-quarter average
-    r_t - r*_t  = lambda · (pi_t - anchor) + u_t     the two gaps, proportional
+    pi_t       = (4/w) · sum_{j<w} q_{t-j}           annualised, w-quarter average
+    r_t - b_t  = lambda · (pi_t - anchor) + eps_t    the two gaps, proportional
 
-`r*` is the neutral nominal cash rate: set `pi_t = anchor` and `r_t = r*_t`.
-Real neutral is `r* - anchor`.
+`b_t` is NEUTRAL, the slow nominal cash rate; real neutral is `b_t - anchor`.
+`b_t + lambda · (pi_t - anchor)` is the rule's PRESCRIBED rate, which carries
+the inflation response on top of neutral and is not itself neutral.
 
 The target is not cosmetic here. In a specification without it the constant is
-absorbed by `r*` and the two are observationally equivalent, so subtracting it
+absorbed by `b_t` and the two are observationally equivalent, so subtracting it
 would be a re-centring. Written as two gaps it defines the point at which both
-are simultaneously zero, which is what makes `r*` interpretable.
+are simultaneously zero, which is what makes `b_t` interpretable.
 """
 
 from dataclasses import dataclass
@@ -80,10 +81,10 @@ class ModelConfig:
     # The truncation was 12 and that turned out to be the binding choice rather
     # than a harmless bound. Across max_lag of 4, 6, 8 and 12, `rho` barely
     # moves (0.87 to 0.89) while the mean lag scales with the window (1.72,
-    # 2.50, 3.26, 4.10, roughly max_lag/3) and `sigma_u` is flat to three
+    # 2.50, 3.26, 4.10, roughly max_lag/3) and `sigma_eps` is flat to three
     # decimals (0.786, 0.776, 0.768, 0.770). So the data cannot distinguish
-    # them, and yet `lambda` runs 0.61 to 0.96 and r* today 2.99 to 2.53 across
-    # the same range. The memory was being set by the truncation.
+    # them, and yet `lambda` runs 0.61 to 0.96 across the same range. The memory
+    # was being set by the truncation.
     #
     # The reason is that `rho` = 0.87 implies an untruncated mean lag of
     # rho/(1-rho) = 6.6 quarters, so every window tried cuts the geometric tail
@@ -106,7 +107,7 @@ class ModelConfig:
     # brief it lands in the residual and is reported as timing. Neither is what
     # it was. On:
     #
-    #     r_t = b_t + lambda x g_t + lambda_u x (u_t - u*_t) + u_t
+    #     r_t = b_t + lambda x g_t + lambda_u x (u_t - u*_t) + eps_t
     #
     # `lambda_u` is expected NEGATIVE: unemployment above u* is slack, and the
     # RBA cuts. Its prior is centred there but wide enough to reach zero and to
@@ -121,7 +122,7 @@ class ModelConfig:
     # OFF, AND IT STAYS OFF. Built, run, and rejected on collinearity, not on
     # principle: the omission is real and the fix is worse.
     #
-    #                   lambda_pi              lambda_u               sigma_u
+    #                   lambda_pi              lambda_u               sigma_eps
     #   inflation only  0.303                  -                      0.775
     #   two targets     -0.011 (-0.14, +0.15)  -1.228 (-1.52, -0.93)   0.629
     #
@@ -139,8 +140,8 @@ class ModelConfig:
     # choosing both coefficients and letting the sampler decorate them. A tight
     # prior on `lambda_pi` is the same choice in Bayesian dress.
     #
-    # THE USEFUL FINDING IS ABOUT THE BASE. It barely moves: 3.01 to 3.06, r*
-    # 3.49 to 3.52, corr(base, cash rate) 0.89 to 0.88. So the inflation-only
+    # THE USEFUL FINDING IS ABOUT NEUTRAL. It barely moves: 3.01 to 3.06, with
+    # corr(neutral, cash rate) 0.89 to 0.88. So the inflation-only
     # rule was NOT parking the employment response in neutral, which was the
     # worry that prompted this. What it was doing is loading both responses
     # into `lambda`. Quote `lambda` as the response to inflation AND the labour
@@ -171,8 +172,8 @@ class ModelConfig:
     band: float = 0.5
 
     # --- Is the response linear in the gap? ---
-    # Off: r_t - r*_t = lambda_1 · g_t.
-    # On:  r_t - r*_t = lambda_1 · g_t + lambda_2 · g_t · |g_t|.
+    # Off: r_t - b_t = lambda_1 · g_t.
+    # On:  r_t - b_t = lambda_1 · g_t + lambda_2 · g_t · |g_t|.
     #
     # `g·|g|` is the quadratic term with the sign kept, so the response stays
     # odd-symmetric: a two-point overshoot and a two-point undershoot get equal
@@ -232,8 +233,8 @@ class ModelConfig:
     # dropping quarters cannot repair it: rate smoothing would.
     floor: float | None = None
 
-    # --- How r* is allowed to move ---
-    # False: `r*` is one constant, so the model is a regression and `lambda` is
+    # --- How neutral is allowed to move ---
+    # False: neutral is one constant, so the model is a regression and `lambda` is
     # identified by covariation alone. Start here. It cannot tell you whether
     # neutral has fallen, only what it averaged.
     #
@@ -242,13 +243,13 @@ class ModelConfig:
     # the walk and `lambda` compete to explain the same downward drift in the
     # cash rate since 1993, and with `sigma_r` free the walk wins outright. In
     # the real-rate version of this model that collapse was total, with
-    # `sigma_u` going to 0.045 and neutral correlating 1.00 with the cash rate.
+    # `sigma_eps` going to 0.045 and neutral correlating 1.00 with the cash rate.
     #
     # True by default, and the alternative is REJECTED rather than merely
     # disliked. With `walk=False` the residual is a trending near-unit-root
     # series, lag-1 autocorrelation 0.974 against 0.857, a trend of -1.54 a
     # decade, and era means running +2.05 (1994-99) to -1.99 (2016-26), while
-    # `sigma_u` goes 0.786 -> 1.930 and the residual sd of 1.91 is essentially
+    # `sigma_eps` goes 0.786 -> 1.930 and the residual sd of 1.91 is essentially
     # the cash rate's own 1.98. The likelihood says the residual is iid; it
     # plainly is not. See "The fixed-neutral alternative is rejected by its own
     # residual" in MODEL_NOTES.md.
@@ -288,8 +289,8 @@ class ModelConfig:
     # the 2022-24 problem recorded under `jump_source`.
     #
     # OFF BY DEFAULT, ON THE EVIDENCE OF ITS OWN RESULT. Offered the licence the
-    # model barely uses it: `lambda` 0.305 -> 0.303, `sigma_u` 0.786 -> 0.775,
-    # r* 3.48 -> 3.49. Nothing measurable is bought, and three things are paid
+    # model barely uses it: `lambda` 0.305 -> 0.303, `sigma_eps` 0.786 -> 0.775.
+    # Nothing measurable is bought, and three things are paid
     # for: the ABS GDP dependency (the headline otherwise needs two published
     # series and nothing else), a series the RBA did not have in real time, and
     # the admission under `jump_source` that `gdp` is the default because its
@@ -409,7 +410,11 @@ class ModelConfig:
     # on the sample mean cash rate, wide.
     base_mu: float = 4.0
     base_sigma: float = 3.0
-    sigma_u_sigma: float = 2.0
+    # Prior scale for the observation error. `eps` not `u`: this is a
+    # state-space model, where the convention is eps_t for the observation
+    # error and eta_t for the state disturbance, and `u` is already the
+    # unemployment rate here (see `employment` and `lambda_u`).
+    sigma_eps_sigma: float = 2.0
 
     # --- Partial adjustment ---
     # OFF by default, and EXPERIMENTAL. With it on the observation equation is
@@ -494,7 +499,7 @@ class ModelConfig:
             "rho_b": self.rho_b,
             "base_mu": self.base_mu,
             "base_sigma": self.base_sigma,
-            "sigma_u_sigma": self.sigma_u_sigma,
+            "sigma_eps_sigma": self.sigma_eps_sigma,
             "partial_adjustment": float(self.partial_adjustment),
             "phi_a": self.phi_a,
             "phi_b": self.phi_b,

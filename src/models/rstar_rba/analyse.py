@@ -59,7 +59,7 @@ _FLOOR_DISPLAY = 0.5
 
 # One style per ensemble member, in the order the values are run, so the two
 # ensemble charts agree line for line. No brown or orange: those vanish into the
-# envelope fill on the r* chart. The default member carries the heavy solid line
+# envelope fill on the neutral chart. The default member carries a heavy solid line
 # and everything else is dashed, so the shipped value is readable at a glance.
 _ENSEMBLE_COLORS = ["darkgreen", "darkblue", "darkred", "purple"]
 _ENSEMBLE_WIDTHS = [1.5, 2.5, 1.5, 1.5]
@@ -72,7 +72,7 @@ _PARAM_LABEL = {
     "lambda_late": "lambda_late: the same response from the split quarter on",
     "lambda_2": "lambda_2: extra response per unit, squared",
     "rho": "rho: decay of the weights on past inflation (0 = latest quarter only)",
-    "sigma_u": "sigma_u: sd of the cash rate around the rule, percentage points",
+    "sigma_eps": "sigma_eps: sd of the cash rate around the rule, percentage points",
     "base_0": "base_0: neutral at 1993Q1, per cent (before the inflation response)",
 }
 
@@ -165,8 +165,8 @@ def _prior_curve(name: str, constants: dict, xs: np.ndarray) -> np.ndarray | Non
         return _normal_pdf(
             xs, float(constants.get("base_mu", 4.0)), float(constants.get("base_sigma", 3.0)),
         )
-    if name == "sigma_u":
-        scale = float(constants.get("sigma_u_sigma", 2.0))
+    if name == "sigma_eps":
+        scale = float(constants.get("sigma_eps_sigma", 2.0))
         return np.where(xs >= 0.0, 2.0 * _normal_pdf(xs, 0.0, scale), 0.0)
     return None
 
@@ -178,7 +178,7 @@ def plot_prior_posterior(trace: az.InferenceData, constants: dict) -> None:
     its prior means the data said nothing, which is exactly what happened to the
     Dirichlet weights and nearly happened to `lambda_2`.
     """
-    for name in ("lambda", "lambda_late", "lambda_2", "rho", "sigma_u", "base_0"):
+    for name in ("lambda", "lambda_late", "lambda_2", "rho", "sigma_eps", "base_0"):
         if name not in _group(trace, "posterior"):
             continue
         draws = np.asarray(_group(trace, "posterior")[name].values).ravel()
@@ -187,7 +187,7 @@ def plot_prior_posterior(trace: az.InferenceData, constants: dict) -> None:
         xs = np.linspace(lo - pad, hi + pad, 400)
         if name == "rho":
             xs = np.linspace(0.0, 1.0, 400)
-        if name == "sigma_u":
+        if name == "sigma_eps":
             xs = np.linspace(0.0, hi + pad, 400)
 
         _, ax = plt.subplots()
@@ -216,7 +216,7 @@ def print_diagnostics(
 ) -> None:
     """Print the parameters and the checks that would show the model failing."""
     scalars = [
-        name for name in ("lambda", "lambda_late", "lambda_2", "phi", "rho", "sigma_u", "base_0")
+        name for name in ("lambda", "lambda_late", "lambda_2", "phi", "rho", "sigma_eps", "base_0")
         if name in _group(trace, "posterior")
     ]
     print("\nEquation")
@@ -277,17 +277,17 @@ def print_diagnostics(
 
 
 def plot_decomposition(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> None:
-    """Split r* into its two parts: the slow base and the inflation response.
+    """Split the prescribed rate into neutral and the inflation response.
 
-    r*_t = b_t + lambda x g_t, so this is the whole model on one chart. The base
-    is the hidden trend that anchors neutral; the response is what the RBA adds
-    or subtracts for inflation being off target.
+    d_t = b_t + lambda x g_t, so this is the whole model on one chart. Neutral
+    is the slow trend; the response is what the RBA adds or subtracts for
+    inflation being away from target.
 
-    The point it makes is why this r* can turn quickly without the base ever
-    jumping. Over the COVID exit, 2021Q4 to 2023Q2, r* rises 2.41 points: 1.74
-    of that is the response and 0.67 the base. Fast movement is available
-    through lambda by construction, which is why permitting the base to jump
-    buys little (see `ModelConfig.jumps`).
+    The point it makes is why the prescribed rate can turn quickly without
+    neutral ever jumping. Over the COVID exit, 2021Q4 to 2023Q2, it rises 2.41
+    points: 1.74 of that is the response and 0.67 neutral. Fast movement is
+    available through lambda by construction, which is why permitting neutral to
+    jump buys little (see `ModelConfig.jumps`).
 
     Both series are in percentage points on one axis, so the base can be read as
     a level and the response as a deviation around zero.
@@ -311,7 +311,7 @@ def plot_decomposition(trace: az.InferenceData, frame: pd.DataFrame, constants: 
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         lheader=equation(trace, constants),
-        rheader="The two add to r*: the base sets the level, the response the turns",
+        rheader="Neutral sets the level, the response supplies the turns",
         axvspan=_floor_span(frame),
         rfooter=footer_from_constants(constants) or "Built using: RBA F1; ABS 6401.0",
         lfooter=_LFOOTER + _floor_note(frame, constants),
@@ -362,8 +362,8 @@ def plot_rule(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> 
 # how much of a decade-long stance has already been absorbed. The title invited
 # readers to take it as a stance measure anyway.
 #
-# Nothing is lost: the same quantity is the gap between the cash rate and r* on
-# the rule chart, and the size of the residual is reported as `sigma_u` and in
+# Nothing is lost: the same quantity is the gap between the cash rate and the
+# prescribed rate on the rule chart, and its size is reported as `sigma_eps` and in
 # the printed era table, where the caveat can travel with the number.
 #
 # For a level judgement on policy, the neutral rate has to come from outside the
@@ -377,9 +377,9 @@ def plot_two_gaps(trace: az.InferenceData, frame: pd.DataFrame, constants: dict)
     not identified and no amount of state machinery will rescue it. Raw
     matplotlib because mgplot has no scatter; `finalise_plot` still styles it.
 
-    The rate gap here is measured against the BASE, not against r*. The base is
-    the hidden trend the rule reacts around; the gap against r* is the residual
-    by construction and would show nothing.
+    The rate gap here is measured against NEUTRAL, not against the prescribed
+    rate. Neutral is the trend the rule reacts around; the gap against the
+    prescribed rate is the residual by construction and would show nothing.
     """
     base = posterior_median(trace, "neutral", _period_index(frame))
     gap = posterior_median(trace, "inflation_gap", _period_index(frame))
@@ -453,7 +453,7 @@ def posterior_band(
 
 
 def plot_rstar_real_nominal(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> None:
-    """Real and nominal r*, each with a 90% credible interval.
+    """Real and nominal neutral, each with a 90% credible interval.
 
     The same chart `rstar_bonds` draws, for this model's estimate.
 
@@ -555,9 +555,10 @@ def plot_sigma_r_ensemble(
     the band drawn here is one member's. Read the envelope as where the line
     could sit, and the band as how sharply any one choice pins it.
 
-    `lambda` deliberately does not appear. It is stable across the ensemble and
-    is the result that survives the conditioning; this chart is about the one
-    that does not.
+    `lambda` deliberately does not appear. It is stable across this ensemble, so
+    the chart is about the quantity that is not. Read that stability narrowly
+    though: it holds across `sigma_r` while policy smoothing is held at zero,
+    and not across `phi`. See MODEL_NOTES.md point 6.
     """
     index = _period_index(frame)
     anchor = float(constants.get("anchor", 2.5))

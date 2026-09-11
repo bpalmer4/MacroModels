@@ -168,23 +168,21 @@ def _rstar_median(prefix: str, sources: SourceSet) -> pd.Series:
 def _rule_rstar_median(prefix: str, sources: SourceSet) -> pd.Series:
     """Return the *real* neutral rate implied by a completed `rstar_rba` run.
 
-    Read off that model's recorded `prescribed_real`, the rule's prescribed rate
-    less the target.
+    Read off that model's recorded `neutral_real`: the slow intercept `b_t` less
+    the target. NOT `prescribed_real`, which is `b_t + lambda·g_t` and carries
+    the RBA's own inflation response on top, so a rate gap against it is close
+    to that model's rule residual: high-frequency timing noise that fits nothing
+    and says nothing.
 
-    UNRESOLVED: `rstar_rba` now calls the slow intercept `neutral` and the
-    prescribed rate something else, so on its own naming the comparable input
-    here is `neutral_real`, not `prescribed_real`. This variant was left on the
-    prescribed rate through that rename so no recorded slope moved. Switching it
-    would change the `rule` row of the table in this package's notes and is a
-    decision, not a tidy-up.
-
-    Know what this variant therefore is. `rstar_rba` defines r* as the cash rate
-    less its residual, so the rate gap here is close to that residual: mostly
-    the RBA moving early or late against its own inflation response. That is a
-    narrow, high-frequency signal, not the broad rate gap the bond-market
-    variant supplies, and it is the reason this variant fits well while saying
-    little. Read the slope with that in mind rather than as a competing IS
-    estimate.
+    This variant used to read `prescribed_real`, which made it the least
+    informative of the four. On `neutral_real` it becomes the strongest
+    relationship in the package and the most wrongly signed. That is not an IS
+    curve. `b_t` is a slow-moving neutral, so the rate gap against it is the
+    policy STANCE, and the RBA sets a positive stance when the economy is
+    running hot. The regression therefore recovers the reaction function with
+    the sign reversed, which is the simultaneity this package exists to
+    document. Read it as evidence for the central negative finding, not against
+    it.
     """
     from src.models.rstar_rba.estimate import (  # noqa: PLC0415 — optional dependency
         load_results,
@@ -208,9 +206,9 @@ def _rule_rstar_median(prefix: str, sources: SourceSet) -> pd.Series:
         index = pd.PeriodIndex(index, freq="Q")
     # Recorded by the model, so the deflator is its choice and not guessed at
     # here. Older traces predate it and are rebuilt from the nominal series.
-    if "prescribed_real" in getattr(trace, "posterior", {}):
-        return posterior_median(trace, "prescribed_real", index)
-    nominal = posterior_median(trace, "prescribed", index)
+    if "neutral_real" in getattr(trace, "posterior", {}):
+        return posterior_median(trace, "neutral_real", index)
+    nominal = posterior_median(trace, "neutral", index)
     return nominal - float(constants.get("anchor", 2.5))
 
 
@@ -243,7 +241,7 @@ def build_observations(
         joint_prefix: prefix of the saved `ystar_ustar` run supplying the gap
         rstar_prefix: prefix of the saved `rstar` run supplying r*
         rule_prefix: prefix of the saved `rstar_rba` run supplying the
-            reaction-function r*, converted from nominal to real
+            reaction-function neutral `b_t`, read as `neutral_real`
         exclude_windows: (first, last) windows to leave out of the fits, or
             None to keep every quarter
 

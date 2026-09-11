@@ -31,16 +31,34 @@ rate, `cash - pi_exp`, under one of three treatments of r\*:
 |---|---|---|
 | `none` | `cash - pi_exp` | the zero-gap crossing *is* an estimate of r\* |
 | `rstar` | `cash - pi_exp - r*_t` | how far [`rstar_bonds`](../rstar_bonds/MODEL_NOTES.md)'s r\* sits from what the scatter wants |
-| `rule` | `cash - pi_exp - r*_t` | the same, against [`rstar_rba`](../rstar_rba/MODEL_NOTES.md)'s r\* |
+| `rule` | `cash - pi_exp - b_t` | the same, against [`rstar_rba`](../rstar_rba/MODEL_NOTES.md)'s neutral `b_t` |
 | `constant` | `cash - pi_exp - 1.37` | the same, against a flat r\* (the sample mean) |
 
-The `rule` variant reads that model's **complete** r\*, `base + lambda x g`, converted to
-real by subtracting the target. Not its base. An earlier version took the base and reported
-a slope of +0.201 with t = 4.53, "the best fit and the most wrongly-signed slope of the
-four"; that is withdrawn. On the r\* it is meant to test, the slope is **-0.009** with
-t = -0.19 and an R\u00b2 of 0.000: correctly signed and indistinguishable from zero, which is
-what its construction predicts, since that model's rate gap is close to its own residual
-and carries only high-frequency timing.
+The `rule` variant reads `neutral_real`, that model's slow intercept `b_t` less the target,
+not `prescribed_real`, which carries the RBA's own inflation response on top. Against neutral
+the slope at lag 2 is **+0.201**, R\u00b2 0.143: the largest of the four and the most wrongly
+signed. The rate gap against a slow-moving neutral is the policy stance, and the RBA sets a
+positive stance when the economy runs hot, so the regression recovers the reaction function
+with the sign reversed.
+
+Its t of +4.54 is not significance. Residuals are autocorrelated at **0.892**, inflating the
+classical standard error by about 4.2, which puts corrected t near **+1.1** and the 90%
+interval at roughly **[\u22120.10, +0.51]**. The tilt survives detrending, at +0.196, but is not
+distinguishable from zero. The same correction applies to every row below, per Limitation 1.
+
+Slopes by lag, all four variants:
+
+| variant | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|---|
+| `none` | +0.081 | +0.062 | +0.041 | +0.022 | +0.005 | −0.006 | −0.015 |
+| `rstar` | +0.238 | +0.185 | +0.123 | | | | |
+| `rule` | **+0.325** | +0.270 | +0.201 | +0.129 | +0.068 | +0.033 | +0.014 |
+| `constant` | +0.081 | +0.062 | +0.041 | +0.022 | +0.005 | −0.006 | −0.015 |
+
+Every one is strongest **contemporaneously** and decays to zero within four to six quarters.
+Transmission would be the mirror image: weak on impact, strengthening over three to six
+quarters, and **negative**. The scatter contains the policy reaction, not the policy effect,
+and the choice of r\* only changes how loudly it says so.
 
 ---
 
@@ -222,9 +240,12 @@ macro data. Refinement 3 below is the test that would tell the two apart.
 
 ## Limitations
 
-1. **OLS on autocorrelated series.** Standard errors are classical, not HAC. Both sides
-   are highly persistent, so every t-statistic here is overstated, and badly so on the
-   19-quarter block where t = −3.4 is quoted. Nothing in this package corrects for it.
+1. **OLS on autocorrelated series.** Standard errors are classical, not HAC. Both sides are
+   highly persistent: on the `rule` variant at lag 2 the residuals are autocorrelated at
+   **0.892**, inflating the standard error by about **4.2** on the textbook AR(1) correction,
+   which takes t from +4.69 to +1.1. Divide every t here by something of that order, worst on
+   the 19-quarter block where t = −3.4 is quoted. **No slope reported here survives as
+   significant.** Nothing in the package corrects for it.
 2. **Nineteen observations is not a sample.** The post-pandemic block is the only
    IS-shaped piece in the exercise, and over those quarters rates rose steadily while the
    gap narrowed. Two trending series with no causal link between them would produce the

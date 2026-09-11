@@ -11,9 +11,10 @@ from src.models.ystar.base import SamplerConfig
 
 
 def main() -> None:
-    """Estimate r* from the RBA's response to inflation, then chart it."""
+    """Estimate neutral from the RBA's response to inflation, then chart it."""
     parser = argparse.ArgumentParser(
-        description="r* from two proportional gaps: cash-to-neutral and inflation-to-target",
+        description="Neutral from two proportional gaps: cash-to-neutral and "
+                    "inflation-to-target",
     )
     parser.add_argument("--start", default="1993Q1", help="Sample start (default 1993Q1)")
     parser.add_argument("--end", default=None, help="Sample end (default: latest)")

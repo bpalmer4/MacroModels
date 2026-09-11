@@ -1,14 +1,14 @@
 # Neutral from the RBA's reaction to inflation
 
 **What the model assumes, in one sentence: there is a neutral cash rate that moves slowly
-over time, and on top of it the RBA reacts fast to inflation sitting above or below the 2.5%
+over time, and on top of it the RBA responds to inflation sitting above or below the 2.5%
 target. The model splits the observed cash rate into those two pieces.**
 
-The slow piece is neutral. The fast piece is the reaction function. Everything else follows,
-including the model's limits, because **both speeds are asserted rather than estimated**:
-`sigma_r` says how fast neutral is allowed to move, and having no smoothing term in the
-observation equation says the reaction is immediate. It is a frequency decomposition of the
-cash rate with an economic label on each band.
+The slow piece is neutral. The other piece is the reaction function. Everything else follows,
+including the model's limits, because the split rests on an **asserted** speed: `sigma_r`
+says how fast neutral is allowed to move, and it is not estimated. The default also gives the
+response no lag of its own, which is a second assertion and a weaker one, since the residual
+autocorrelation says the cash rate plainly does adjust gradually (point 6).
 
 **It is not an estimate of the neutral rate. It is an estimate of what the RBA's behaviour
 reveals about it, and it reveals it imperfectly.** That sentence governs everything below.
@@ -18,7 +18,7 @@ pi_t   = 4 · sum_{j=0}^{4} w_j · q_{t-j},   w_j ∝ rho^j,  sum w_j = 1
 g_t    = (pi_t - 2.5) / 0.5                  the inflation gap, in band-widths
 b_t    = b_{t-1} + sigma_r · e_t             NEUTRAL: the slow piece, sigma_r imposed
 d_t    = b_t + lambda · g_t                  the rule's PRESCRIBED rate, not neutral
-r_t    = d_t + u_t,   u_t ~ Normal(0, sigma_u)
+r_t    = d_t + eps_t,  eps_t ~ Normal(0, sigma_eps)   observation error
 ```
 
 **The response is to the deviation from 2.5, not to being outside the band.** Inflation of
@@ -45,6 +45,24 @@ Fisher pass-through and the real response summed and the model cannot separate t
 Putting `pi_t` on the right-hand side with a fixed unit coefficient would make `b_t` an
 unambiguous *real* neutral and settle the deflator. That has not been done.
 
+## What it tells you
+
+Two statements. Both are conditional, and both are worth quoting whole rather than as a
+number.
+
+**On the level.** Decompose the RBA's cash-rate decisions into a persistent neutral component
+and a systematic response to inflation, and its conduct implies a real neutral rate of roughly
+**zero to one per cent** today. Over horizons beyond a year or two the decomposition cannot
+distinguish a persistent policy stance, a change in the reaction function, and a change in
+perceived neutral.
+
+**On the response.** Conditional on a contemporaneous reaction function, the Bank moved the
+nominal cash rate by roughly **0.5 to 0.7 points** for each point that persistent underlying
+inflation sat away from target. Allow realistic policy smoothing and the distinction between
+the immediate and the long-run response is not identified.
+
+Neither of those is "Australian r\* is 0.49%".
+
 ## One of three routes, all flawed
 
 This repo contains three separate attempts at Australian r\*, and the useful thing is that
@@ -60,11 +78,17 @@ Only the first targets what the theory defines, and it is the one that cannot be
 The other two measure *beliefs* about r\*, held by different people.
 
 Current comparison, real: `rstar_hlw` Resolution G gives 2.23, `rstar_bonds` 1.08, this
-**0.49** (−0.05 to 1.05 across `sigma_r`). Nobody has reconciled them, and the spread is now
-wider than it looked. Until recently this package published 0.98, which sat next to
-`rstar_bonds` and read as corroboration. That was an artefact of comparing `b + lambda·g`,
-which contains a policy response, against two measures that estimate an intercept. On
-like-for-like terms the three span two full points.
+**0.49** (−0.05 to 1.05 across `sigma_r`). On like-for-like terms the three span two full
+points, and note that this one is substantially the policy rate smoothed while the other two
+are not, so agreement between them would not be corroboration.
+
+**Each fails at a different point, and that is the finding rather than an inconvenience.**
+`rstar_hlw` needs an IS curve the data do not contain. `rstar_bonds` observes a market price
+but cannot identify its equilibrium level. This one identifies a policy-implied level only by
+deciding which frequencies count as neutral rather than as policy. Three different
+identification failures, not three bad models: the concept is coherent, and mapping Australian
+data onto a number for it is not. That is a stronger statement about "neutral is 3.5%" than
+any of the three makes alone.
 
 ---
 
@@ -73,46 +97,26 @@ like-for-like terms the three span two full points.
 It assumes the RBA set the cash rate as neutral plus a response to inflation, and recovers
 neutral as the rate minus the response. Everything below follows from that.
 
-### It assumes the Bank was competent
+### The level of neutral comes from an assumption, and here is what it costs
 
-The level of neutral comes from the residual having mean zero, which says the Bank was right
-**on average over the sample**. The injection test below says neutral absorbs anything
-persistent, so the Bank is also assumed right **over any multi-year window**. Grant both and
-the low-frequency component of the cash rate simply *is* neutral, by construction.
+The level comes from the rule residual `eps_t` having mean zero, which asserts that policy
+averaged neutral over the sample, conditional on inflation. Neutral also absorbs anything persistent, per the
+injection test below.
 
-Which is what the data shows: `b_t` correlates **0.95** with a centred 13-quarter moving
-average of the cash rate. A smoothed cash rate is not a rival estimate, it is what the
-assumption entails.
+*Note.* That is the identifying assumption and the data cannot check it, which is normal for
+a latent variable. Two consequences worth holding. It makes `b_t` close to a smoothed cash
+rate, `corr` 0.95 against a 13-quarter moving average, which is the assumption showing
+through rather than a defect. And it means `b_t` is not independent of policy, so agreement
+with `rstar_bonds` is not corroboration: one is substantially the policy rate smoothed, the
+other is not.
 
-**What the model adds to smoothing is an adjustment for inflation away from target**, and it
-is systematic: the departure from the moving average correlates **−0.73** with the inflation
-gap. It is largest in the episodes where inflation was furthest from 2.5, which happen also
-to be the episodes outside the band, but the adjustment is proportional throughout and has no
-threshold.
+The model is not only smoothing, though. Against a naive filter the stance sits within 0.13
+of zero in every era; against `b_t` it is +1.36 today and −0.51 in 2016-19. That difference
+is the inflation adjustment, and it is where the model's content is.
 
-| | `b_t` less the 13q moving average | mean inflation |
-|---|---|---|
-| 1994-99 | −0.03 | 2.25 |
-| 2000-07 | −0.24 | 2.78 |
-| 2008-15 | −0.07 | 2.75 |
-| **2016-19** | **+0.56** | 1.68 |
-| **2020-21** | **+0.77** | 1.60 |
-| **2022-26** | **−1.02** | 4.16 |
-
-Near zero through the quiet decades; above the naive smooth when inflation ran below band,
-because a low cash rate then reads as partly a response rather than a fall in neutral; below
-it when inflation ran above band. **In quiet periods this model tells you the RBA did what the
-RBA did. Its content is `lambda`, and the excursions.**
-
-**The competence assumption is indirectly testable and broadly holds.** If the Bank had been
-systematically too loose, inflation would have averaged above target. Over 1993-2026 it
-averaged **2.64**, a gap of +0.14, so the assumption misses mildly loose and not by much.
-Flipping today's +1.36 stance would need a uniform bias of 1.36 points sustained for three
-decades, and an RBA that loose would not have delivered 2.64.
-
-That qualifies one conclusion. The sign of the current stance is robust to `sigma_r`, positive
-at every ensemble member, but **not** to this assumption, since a uniform bias shifts every
-member together. It survives on the 2.64 figure, not on the ensemble.
+A common level bias in the Bank's belief is exactly what the normalisation assumes away, so
+**the positive current stance is conditional on it** and the `sigma_r` ensemble says nothing
+about that, since a uniform bias shifts every member together.
 
 ### It sees short departures from the rule and progressively less of long ones
 
@@ -180,7 +184,7 @@ third decimal, and point 4 gives it.
 | `lambda`, per band-width | **0.305** [0.213, 0.399] |
 | `lambda`, per percentage point of inflation | **0.61**, 0.52-0.72 across defensible `sigma_r` |
 | `rho` | 0.869 [0.727, 0.994] |
-| `sigma_u` | 0.786 |
+| `sigma_eps` | 0.786 |
 | **neutral `b_t`, nominal** | **2.99** [2.50, 3.46] |
 | **neutral `b_t`, real** (less 2.5) | **0.49**, and **−0.05 to 1.05 across defensible `sigma_r`**: quote the range |
 | the rule's prescribed rate, `b_t + lambda·g_t` | 3.48 |
@@ -196,7 +200,10 @@ than the estimate says. That units trap is now the second reason not to put the 
 side by side; the first is that they are not comparable at all in nominal terms, per "The
 Taylor comparison does not work in nominal terms".
 
-**`lambda` is the durable result, and it is not about r\*.** It is an estimate of the RBA's
+**`lambda` is the most durable result, conditional on zero policy smoothing.** It is stable
+across the whole `sigma_r` ensemble, but not across `phi`: allow interest-rate smoothing and
+it runs 0.61 to 2.57, because the contemporaneous form makes one coefficient carry both the
+immediate and the ultimate response (point 6). It is an estimate of the RBA's
 systematic response and it survives every respecification tried.
 
 It does **not** follow that the RBA fell short of the Taylor principle. A sub-unit *nominal*
@@ -205,10 +212,10 @@ is an assumption the model neither makes nor tests. `lambda` is a nominal respon
 the real one is positive is not established here either way. See "The Taylor comparison does
 not work in nominal terms".
 
-**Neutral is a smoothed cash rate, adjusted for bouts of above- and below-band inflation.**
+**Neutral is close to a smoothed cash rate, adjusted for inflation away from target.**
 `corr(b_t, cash)` is 0.88, and 0.95 against a 13-quarter moving average. The smoothing is the
 identifying assumption showing through rather than a defect; the adjustment is what the model
-adds. See "The model assumes the RBA was competent".
+adds. See "The level of neutral comes from an assumption".
 
 ---
 
@@ -221,10 +228,10 @@ reaction function is hardest to estimate precisely when the central bank is good
 In practice `lambda` is identified largely by the two episodes where the gap was large,
 2008 and 2022-24.
 
-**The level of neutral** comes from `u` having mean zero, which asserts that policy averaged
-neutral over the sample, conditional on inflation.
+**The level of neutral** comes from the rule residual `eps_t` having mean zero, which asserts
+that policy averaged neutral over the sample, conditional on inflation.
 
-**The split between base and response** comes from `sigma_r`, and **0.10 is an arbitrary
+**The split between neutral and the response** comes from `sigma_r`, and **0.10 is an arbitrary
 choice**. Not a calibration, not an estimate, and not the value the data prefers, because the
 data does not prefer one: it is a round number inside a band of defensible values, picked so
 the model has a default. Everything the package reports about the LEVEL of neutral is
@@ -241,16 +248,12 @@ one. What moves is the fit and the level, not the response.
 The walk is usually defended as a prior, that neutral moves slowly. It does not have to be:
 the fixed-neutral specification, `--no-walk`, fails a test it sets itself.
 
-| | `lambda`/pp | `sigma_u` | resid sd | lag-1 ac | trend | 1994-99 | 2016-26 |
-|---|---|---|---|---|---|---|---|
-| default walk | 0.61 | 0.786 | 0.75 | 0.857 | −0.04/decade | +0.16 | −0.08 |
-| **flat base** | 0.53 | 1.930 | 1.91 | **0.974** | **−1.54/decade** | **+2.05** | **−1.99** |
-
-The likelihood asserts the residual is iid Normal(0, `sigma_u`). Under a flat base it is a
-trending, near-unit-root series: era means march from +2.05 to −1.99 and the residual sd of
-1.91 is essentially the cash rate's own 1.98, so the model explains almost nothing. **That is
-a direct contradiction of the model's own assumption, not a fit-versus-flexibility argument**,
-and it holds however many parameters you are willing to spend.
+The likelihood asserts the residual is iid Normal(0, `sigma_eps`). With neutral held constant
+it is nothing of the kind: **autocorrelation 0.974 against 0.857 for the walk, a trend of
+−1.54 a decade, and era means marching from +2.05 in 1994-99 to −1.99 in 2016-26**, with a
+residual sd of 1.91 against the cash rate's own 1.98, so the model explains almost nothing.
+**That is a direct contradiction of the model's own assumption, not a fit-versus-flexibility
+argument**, and it holds however many parameters you are willing to spend.
 
 The economics is plain. The cash rate fell about three points over the sample while inflation
 spent most of it inside the band, so no coefficient on the inflation gap can track that drift.
@@ -321,11 +324,14 @@ fails.
 Read the rest in three parts.
 
 *`lambda` moves, but not enough to change what it says.* 0.72 to 0.52 per point over the
-defensible range, 0.49 out at the boundary, straddling the headline 0.61 and staying well
-short of Taylor's 1.50 everywhere including at the degenerate end. It moves in the direction
-the frequency-cutoff reading predicts: a smoother base leaves more for `lambda`. **This is
-the result that survives the conditioning**, and the range to quote is 0.52 to 0.72 rather
-than 0.61 alone.
+defensible range, 0.49 out at the boundary, straddling the headline 0.61. It moves in the
+direction the frequency-cutoff reading predicts: a smoother neutral leaves more for `lambda`.
+The range to quote is 0.52 to 0.72 rather than 0.61 alone.
+
+**State that narrowly.** What this shows is that *conditional on zero policy smoothing*, the
+inflation response is insensitive to how fast neutral is permitted to move. It is not
+insensitive to the smoothing assumption itself: free `phi` and it runs to 2.57 (point 6).
+`sigma_r` and `phi` decide the same thing and only one of them is being varied here.
 
 *The level does not survive it.* Real neutral runs **−0.05 to 1.05** over the defensible
 range, a spread of 1.10 points against a 90% credible interval of 0.96 at the default, and
@@ -371,12 +377,14 @@ so the standard reaction function is partial-adjustment,
 `r_t = phi·r_{t-1} + (1−phi)·(b_t + response) + e_t`, and it is not implemented.
 
 **What it costs.** With residuals this correlated the information in 134 quarters is far
-less than 134 independent observations. The standard AR(1) correction factor is
-√((1+ρ)/(1−ρ)) ≈ 3.6, so `lambda`'s posterior sd of 0.050 is probably closer to 0.18. The
-estimate survives; the precision does not, and every interval quoted here is too tight.
+less than 134 independent observations. **The nominal posterior intervals should not be
+read literally.** The estimates survive; the precision does not.
 
-UNVERIFIED: that factor is the textbook approximation applied to a posterior sd, not a
-re-estimation.
+On the scale of the problem: the textbook effective-sample-size calculation for a mean under
+AR(1) dependence, √((1+ρ)/(1−ρ)), is about 3.6 at ρ = 0.857, which would put `lambda`'s
+posterior sd nearer 0.18 than 0.050. Treat that as an indication of magnitude only. It is a
+heuristic for a sample mean, not a corrected posterior for a parameter in a non-linear
+state-space model, and no corrected intervals have been computed.
 
 ---
 
@@ -385,12 +393,12 @@ re-estimation.
 ### 1. Inflation must be averaged, and the memory is a judgement not an estimate
 
 The raw quarterly print is the wrong object: annualised it has an sd of 1.12 and correlates
-0.09 with the cash rate. Fitted on it the model collapses completely, `sigma_u` → 0.045,
+0.09 with the cash rate. Fitted on it the model collapses completely, `sigma_eps` → 0.045,
 `lambda` straddling zero, and the base correlating **1.00** with the cash rate.
 
 Averaging fixes that, but the memory length cannot be estimated. Sweeping the truncation:
 
-| `max_lag` | `rho` | mean lag | `lambda` per pp | `sigma_u` |
+| `max_lag` | `rho` | mean lag | `lambda` per pp | `sigma_eps` |
 |---|---|---|---|---|
 | 4 | 0.869 | 1.72 | 0.61 | 0.786 |
 | 6 | 0.882 | 2.50 | 0.71 | 0.776 |
@@ -398,7 +406,7 @@ Averaging fixes that, but the memory length cannot be estimated. Sweeping the tr
 | 12 | 0.865 | 4.10 | 0.96 | 0.770 |
 
 `rho` does not adjust, the mean lag scales with the truncation at roughly `max_lag`/3, and
-`sigma_u` is flat to three decimals, so the fit cannot tell these apart. Meanwhile `lambda`
+`sigma_eps` is flat to three decimals, so the fit cannot tell these apart. Meanwhile `lambda`
 runs 0.61 to 0.96 per point, a range wide enough to matter for anything built on it. `rho` = 0.87 implies an untruncated mean lag of 6.6 quarters, so every window
 tried cuts the geometric tail and renormalises. **`max_lag` = 4 is a stated judgement**, and
 `lambda` should be quoted as a range across it.
@@ -407,7 +415,7 @@ Free Dirichlet weights over 13 lags are not identified at all: every weight retu
 uniform prior mean. One shape parameter is recoverable from this data; thirteen are not.
 
 **Whether the memory is constant cannot be tested here.** Splitting `rho` at 2008Q1 moves
-`sigma_u` from 0.786 to 0.787 and returns `rho_early` at 0.575 [0.24, 0.87], an interval
+`sigma_eps` from 0.786 to 0.787 and returns `rho_early` at 0.575 [0.24, 0.87], an interval
 spanning nearly the whole admissible range and overlapping the late one. The early sample
 cannot adjudicate, which is the same weakness that gives `lambda_early` an sd three times
 `lambda_late`'s. Not exposed as a flag, since the point estimates would be read as a result.
@@ -416,25 +424,15 @@ cannot adjudicate, which is the same weakness that gives `lambda_early` an sd th
 
 Adding `lambda_2 · g·|g|`, `lambda_2` came back **negative in every specification tried** and
 positive in none, across six variants of scaling, `max_lag`, sample and floor treatment, and
-`sigma_u` never improved on the linear model. The band-scaled default gives −0.056
+`sigma_eps` never improved on the linear model. The band-scaled default gives −0.056
 [−0.094, −0.018]. Run with `--nonlinear`.
 
-**There is no deadband either.** The rule responds to any deviation from 2.5, so inflation of
-2.7 draws a response even though it is inside the band. Tested by replacing the response with
-`lambda · sgn(g) · max(|g| − d, 0)`:
-
-| deadband each side of 2.5 | `lambda`/pp | `sigma_u` |
-|---|---|---|
-| **0.00pp** (shipped) | 0.61 | **0.786** |
-| 0.125pp | 0.63 | 0.791 |
-| 0.25pp | 0.63 | 0.800 |
-| 0.50pp | 0.63 | 0.816 |
-
-Imposing one makes the fit monotonically worse, and estimated freely `d` comes back at
-**0.072pp [0.004, 0.199]**, excluding 0.25. The test has power: 41 of 134 quarters sit within
-0.25pp of target and 73 within 0.5pp, so a third of the sample is in the region where a
-deadband would bite. A deadband is also a form of convexity, which is the opposite sign to
-`lambda_2` above, so the two shape tests agree.
+**There is no deadband either**, so inflation of 2.7 draws a response despite sitting inside
+the band. Tested with `lambda · sgn(g) · max(|g| − d, 0)`: imposing a deadband makes the fit
+monotonically worse, and estimated freely `d` returns **0.072pp [0.004, 0.199]**, excluding a
+quarter-point. The test has power, since a third of the sample sits within 0.25pp of target.
+A deadband is a form of convexity, the opposite sign to `lambda_2`, so the two shape tests
+agree.
 
 **The floor is not the explanation.** Dropping the nine quarters at the effective lower bound
 makes `lambda_2` slightly *more* negative, not less. What remains is adjustment speed:
@@ -459,9 +457,10 @@ Fitting two coefficients split at 2008Q1, everything else pooled:
 `lambda_break` = −0.364, 90% [−0.612, −0.116]. Consistent with the international record of
 central banks under-responding since the GFC.
 
-**Read it as suggestive, not established.** The nominal P(break < 0) is 0.991, but on
-residuals autocorrelated at 0.85 the standard errors are understated by roughly 3.6, which
-would take it to something nearer 0.75. The pre-2008 coefficient is also the weak one, sd
+**Read it as suggestive, not established.** The nominal P(break < 0) is 0.991, but the
+residuals are autocorrelated at 0.85 so that interval cannot be read literally; on the
+heuristic scaling above it would be something nearer 0.75, which is an indication rather
+than a corrected figure. The pre-2008 coefficient is also the weak one, sd
 0.147 against 0.050, because 1994-2007 had a mean inflation gap of 0.10 and so contributes
 little identifying variation.
 
@@ -497,7 +496,7 @@ GDP at the 95th percentile.
 
 **This is permission, not a step.** At `nu` = 3 most of the mass is still near zero, so the
 likelihood has to want the step, which is why the result carries information. It barely takes
-it: `lambda` 0.305 → 0.303, `sigma_u` 0.786 → 0.775. At the COVID quarters neutral steps 0.08
+it: `lambda` 0.305 → 0.303, `sigma_eps` 0.786 → 0.775. At the COVID quarters neutral steps 0.08
 instead of 0.04, a faster crawl rather than a step.
 
 **That is why jumps are off by default.** A permission the model declines changes no number
@@ -541,25 +540,29 @@ test was never run where a step was most arguable. See below.
 The RBA tightened 275bp while realised inflation sat slightly **below** target. It was aimed
 at a forecast, and the inflation did arrive, reaching +0.6 through 1995. The rule as written
 cannot see any of that: it has the largest pre-GFC rate rise in the sample beside a negative
-inflation gap, so the whole move must go to the base or the residual, and `sigma_r` alone
-decides which. Across the ensemble the base rises by **0.00, 0.25 and 0.79 points** from
+inflation gap, so the whole move must go to neutral or the residual, and `sigma_r` alone
+decides which. Across the ensemble neutral rises by **0.00, 0.25 and 0.79 points** from
 1994Q2 to 1995Q4. At 0.05 the model says policy was tight; at 0.15 it says neutral rose most
 of a point. That is the widest disagreement anywhere in the sample and it is visible at the
-left edge of the base chart.
+left edge of the neutral chart.
 
-**The adjustment speed is not constant either**, which compounds it. AR(1) inertia in the
-cash rate runs 0.904, 0.912, 0.916 and 0.975 across 1993-99, 2000-07, 2008-15 and 2016-26,
-and persistence of the quarterly change runs 0.34, 0.48, 0.32 and 0.69. The first three eras
-are indistinguishable and the recent decade is markedly more gradual, and it is not the lower
-bound doing it: excluding 2020-21 the recent figure is still 0.96. The model assumes one
-speed throughout.
+**Substituting a forecast does not fix it**, which was tested and is the reason Refinement 1
+is struck. A constructed forecast turns the 1994 gap from −0.30 into +1.17 and still buys
+only about 0.47 of cash rate. The obstacle is the size of the move, not the inflation
+measure: 275bp is beyond what any plausible response coefficient times any plausible
+inflation signal can produce.
 
-### 5. The employment leg cannot be added as a level, and the reason is instructive
+**The adjustment speed is not constant either**, which compounds it. Inertia in the cash rate
+sits around 0.91 through 1993-2015 and rises to 0.975 after 2016, and it is not the lower
+bound doing it: excluding 2020-21 it is still 0.96. The Bank became markedly more gradual,
+and the model assumes one speed throughout.
+
+### 5. The employment leg cannot be added, and the reason is instructive
 
 The RBA's mandate is inflation **and** full employment, so the inflation-only rule omits a
 statutory objective. Adding `lambda_u · (u − u*)`, with u\* from `ystar_ustar`:
 
-| | `lambda_pi` | `lambda_u` | `sigma_u` |
+| | `lambda_pi` | `lambda_u` | `sigma_eps` |
 |---|---|---|---|
 | inflation only | 0.303 | — | 0.775 |
 | two targets | −0.011 [−0.14, +0.15] | −1.228 [−1.52, −0.93] | 0.629 |
@@ -576,62 +579,75 @@ means. `lambda_u` mixes the Bank cutting when the labour market is weak with the
 being weak because the Bank tightened. No prior fixes that, and weighting the two responses by
 hand is just choosing both coefficients.
 
-**Two things survive the rejection.** Neutral barely moves, 3.01 → 3.06, so the inflation-only
+**One thing survives the rejection.** Neutral barely moves, 3.01 → 3.06, so the inflation-only
 rule was **not** parking the employment response in neutral, which was the worry that prompted
-the test. What it *was* doing is loading both responses into `lambda`. **Quote `lambda` as the
-response to inflation and the labour market together, never to inflation alone.**
+the test.
 
-**What was rejected is the LEVEL specification, not the labour market.** `u − u*` is a level,
-and on this sample the level gets the 1990s backwards: unemployment in 1994 was 10.3% against
-a long-run `u*` nearer 5.5, so a level term prescribes easing in the quarters the RBA
-tightened 275bp. The *change* says the opposite, and it is the change that carries the
-information: in the forecasting check under Refinement 1, the level of `u` adds essentially
-nothing to an AR (rmse 1.17 against 1.20) while the four-quarter change is the strongest term
-tried (0.86). The RBA in 1994 was responding to the speed of improvement, not the amount of
-slack.
+What does *not* follow is that `lambda` therefore carries the labour-market response, which
+these notes used to claim. The augmented regression shows the two terms compete for the same
+variation; it does not say how much of the employment mandate sits in each. The defensible
+statement is weaker and applies more broadly: **`lambda` is not a structural response to
+inflation alone.** Any omitted systematic motive that covaries with inflation can affect it,
+and labour-market conditions are one candidate among several. Persistent omitted motives
+affect neutral instead, per "It conflates belief with everything else systematic".
 
-So the honest statement is that a level-based second objective is rejected, and a
-change-based labour term has not been tried in the rule. It would still face the
-simultaneity problem above, which is why it is not simply the obvious next step. The repo
-already carries the concept as `get_unemployment_speed_limit_qrtly()`, used in wage equations.
+**What was tested is the LEVEL, `u − u*`.** A change-based labour term in the rule has never
+been tried, and the simultaneity objection above applies to it too, since unemployment
+responds to policy over exactly the horizon such a term would measure. Whether the change
+would behave differently is unknown here. The first thing to look at would be whether
+`lambda_pi` survives its addition, since its collapse is what made the level version
+uninterpretable.
 
 Run with `--employment`; off by default.
 
-### 6. Partial adjustment works, and costs more than it buys
+### 6. Partial adjustment exposes a second non-identification
 
-The fix for the autocorrelation: `r_t = phi·r_{t-1} + (1 − phi)·(b_t + lambda·g_t) + eps_t`,
-so the rule's rate becomes what the Bank moves *toward* and it closes `(1 − phi)` of the gap
-each quarter. Built and tested. `--partial-adjustment`, off by default.
+`r_t = phi·r_{t-1} + (1 − phi)·(b_t + lambda·g_t) + eps_t`, so the rule's rate becomes what the
+Bank moves *toward* and it closes `(1 − phi)` of the gap each quarter. Built and tested.
+`--partial-adjustment`, off by default.
 
-| `phi` | `lambda`/pp | `sigma_u` | residual ac1 | neutral | prescribed 2022-26 |
-|---|---|---|---|---|---|
-| 0.00 (default) | **0.61** | 0.790 | 0.857 | 2.99 | 3.39 |
-| 0.50 | 0.72 | 0.518 | 0.703 | 2.77 | 3.55 |
-| 0.70 | 0.87 | 0.448 | 0.566 | 2.57 | 3.79 |
-| 0.85 | 1.19 | 0.422 | 0.458 | 2.62 | 4.56 |
-| free → 0.953 | **2.57** [1.14, 4.44] | 0.424 | 0.414 | 3.20 | **7.30** |
+**This makes it a three-way split rather than a two-way one.** The contemporaneous model
+divides cash-rate movement between neutral and response. Adding `phi` divides it between
+neutral, adjustment speed and response, and that separates two things the default cannot tell
+apart: moving *little* and moving *slowly*.
 
-It halves the autocorrelation, 0.857 to 0.414, and cuts `sigma_u` nearly in half. It does not
-eliminate either, so the persistence is not only adjustment lag.
+Swept over `phi` from 0 to 0.95, the long-run `lambda` rises from 0.61 to 2.57 while the
+immediate response `(1 − phi)·lambda` falls from 0.61 to 0.12; `sigma_eps` improves from 0.790
+to about 0.42 and stops improving around `phi` = 0.85; and the residual autocorrelation falls
+from 0.857 to 0.414. Neither the autocorrelation nor the error is eliminated, so the
+persistence is not only adjustment lag.
 
-**The cost is that it destroys the one durable result.** `lambda` is 0.52 to 0.72 per point
-across the whole `sigma_r` ensemble; across `phi` it runs 0.61 to 2.57. It stops being a range
-and becomes whatever `phi` says. `phi` would have to be imposed exactly as `sigma_r` is,
-leaving two arbitrary smoothness parameters instead of one.
+**The headline `lambda` answers a question with two answers.** At `phi` = 0.85 the immediate
+response is 0.18 and the ultimate one 1.19; the contemporaneous estimate of 0.61 is neither,
+sitting between them because a persistent inflation gap gives the rate time to travel. One
+coefficient is carrying both concepts.
 
-**And the free estimate is not usable.** `phi` = 0.953 implies a 3.6-year half-life, which is
-not how a bank moving in 25bp steps behaves; the fit does not support it either, since
-`sigma_u` saturates around `phi` ≈ 0.85 and is fractionally worse at 0.953. It produces a
-prescribed rate averaging 7.30 through 2022-26 with the Bank persistently 3.8 points below it,
+**So `lambda` = 0.61 was only ever stable conditional on imposing no smoothing.** Across the
+`sigma_r` ensemble it runs 0.52 to 0.72; across `phi` it runs 0.61 to 2.57. That does not
+vindicate `phi` = 0, it exposes a **second** non-identification beside `sigma_r`. Both
+parameters decide the same thing, whether a movement in the cash rate is called neutral,
+adjustment dynamics, or systematic response, and two published series cannot pin both. The
+claim these notes make elsewhere should be read narrowly: *conditional on zero policy
+smoothing, the inflation response is insensitive to how fast neutral is permitted to move.*
+
+**The free estimate is separately incoherent**, which is a different objection from weak
+identification and survives it. `phi` = 0.953 implies a 3.6-year half-life, which is not how a
+bank moving in 25bp steps behaves; the fit does not support it either, since `sigma_eps`
+saturates around `phi` ≈ 0.85 and is fractionally worse at 0.953. It produces a prescribed rate
+averaging 7.30 through 2022-26 with the Bank persistently 3.8 points below it for four years,
 and `phi·r_{t-1}` displaces neutral, `corr` with the cash rate falling to 0.759 and neutral
 going nearly flat after 2012.
 
-`lambda` also changes meaning: with `phi` free it is the LONG-RUN response, in the default the
-same-quarter one. The two are not comparable.
+**Why the default keeps `phi` = 0.** For parsimony and interpretability, **not because the data
+reject interest-rate smoothing** — they plainly do not, given the autocorrelation. A
+partial-adjustment model improves the residual dynamics substantially but is itself weakly
+identified against the drifting neutral rate, and imposing `phi` by hand would give the package
+two arbitrary smoothness parameters where it currently has one. The honest next step is a joint
+`phi`/`sigma_r` surface, per Refinement 2, not a choice between them.
 
 ---
 
-## 2016-2019: the rule itself was too tight
+## 2016-2019: the rule prescribed less easing than a Taylor benchmark
 
 A Taylor rule on this model's own neutral, less the actual cash rate. Negative means policy
 tighter than Taylor wants:
@@ -648,8 +664,12 @@ robust to `sigma_r`; this is.
 
 **The contrast with the model's own residual is the finding.** Over the same window that
 residual is **−0.01**, so policy was entirely typical for this RBA. Taylor on the same neutral
-says it was a full point too tight. The model is not reporting a deviation from the rule, it
-is reporting that **the rule was too tight**. The arithmetic is clean: core inflation averaged
+prescribes a full point lower. So this is not a deviation from the rule, it is **the rule
+itself sitting a point above the benchmark**. Note what that does and does not establish: the
+Taylor rule is a benchmark, not an authority, so the comparison shows the RBA's revealed
+reaction function prescribing substantially less easing than a conventional rule would, and
+does not by itself adjudicate what policy should have been. The outcome evidence below is what
+carries the normative weight. The arithmetic is clean: core inflation averaged
 0.92 below target, Taylor responds 1.5 per point and wants 1.38 lower, the RBA's revealed 0.61
 per point wants only 0.56 lower, a difference of 0.82, plus Taylor's output-gap term at 0.5 ×
 −0.33 ≈ −0.17. Together ≈ −0.99 of the −1.03.
@@ -664,12 +684,16 @@ inflation at 3.66.
 quarter below 2. Four consecutive years wholly outside the target on the low side is the
 mandate not being met, and the model corroborates rather than carries that.
 
-**−1.03 is a floor, not a central estimate.** The two obvious objections both bias it the same
-way. If policy really was persistently tight, the base absorbed part of it and sits too high,
-raising the Taylor prescription and understating the gap. And if the Bank was holding rates up
-for financial-stability reasons, this model books that as a higher neutral rather than a second
-objective (see "It conflates belief with everything else systematic"), which again raises it. The
-main contemporary defence of the stance, if true, makes the measured undercooking larger.
+**−1.03 is arguably a floor rather than a central estimate**, and this is the most contestable
+claim in these notes. The two obvious objections bias it the same way: if policy really was
+persistently tight, neutral absorbed part of it and sits too high, raising the Taylor
+prescription and understating the gap; and if the Bank was holding rates up for
+financial-stability reasons, this model books that as a higher neutral rather than a second
+objective (see "It conflates belief with everything else systematic"), which again raises it.
+
+**Treat that as an interpretive argument, not a result.** Enough endogenous quantities interact
+here that giving the bias an unambiguous direction is a judgement. Nothing important rests on
+it: the gap is negative throughout 2016-19 at every `sigma_r` regardless.
 
 **One limit.** "Should have been lower" needs the counterfactual that lower rates would have
 lifted inflation, and this repo's central negative finding is that the rate-to-activity link is
@@ -683,33 +707,43 @@ that withdrew the "squibbed the Taylor principle" reading. `pi_core` and `ygap` 
 
 ---
 
-## This r\* cannot be used to test an IS curve
+## This neutral cannot be used to test an IS curve
 
-In this model the rate gap against the base *is* the inflation response by construction, so
-an IS regression on it is a Phillips curve in disguise. The `rule` variant in `is_curve`
-uses this model's **r\***, the complete estimate:
+[`is_curve`](../is_curve/MODEL_NOTES.md)'s `rule` variant puts the output gap against the
+real cash rate less this model's **neutral**, `neutral_real`. At lag 2:
 
 | variant | slope | t | R² |
 |---|---|---|---|
 | none (raw real cash) | +0.041 | +1.86 | 0.027 |
 | bond-market r\* | +0.123 | +2.82 | 0.060 |
-| **reaction-function r\*** | **−0.009** | **−0.19** | **0.000** |
+| **reaction-function neutral** | **+0.201** | **+4.54** | **0.143** |
 | flat r\* | +0.041 | +1.86 | 0.027 |
 
-Correctly signed and indistinguishable from zero: the least informative of the four, which
-is what its construction predicts, since its rate gap is close to the rule's own residual
-and carries only high-frequency timing.
+**The largest of the four and the most wrongly signed.** An IS curve needs a negative slope.
+This says the output gap is *higher* when the real rate sits above neutral, which is the
+reaction function reversed: the RBA sets a positive stance when the economy runs hot.
 
-**An earlier version of this table reported +0.201 with t = 4.53**, "the best fit and the
-most wrongly-signed slope". That was built on the **base** while the row was labelled r\*,
-so the table did not report what it said it did, and it is withdrawn on that ground. The two
-quantities give materially different answers here, +0.201 against −0.009, which is the
-sharpest illustration of why a number from this model has to say which line it came from.
+**But none of these t-statistics means anything.** The `rule` residuals are autocorrelated at
+0.892, so the classical standard error is understated roughly fourfold; corrected, t falls
+from +4.54 to about +1.1 and the slope's 90% interval spans [−0.10, +0.51]. The scatter is a
+blob with a tilt. The right conclusion is not "wrongly signed and significant" but **wrongly
+signed and not significantly anything**, which buries the IS curve rather than rescuing it.
 
-Note the two variants that do reach significance are both *positively* sloped, which is the
-wrong sign for an IS curve. Nothing here supports one. The likely reason is the same
-simultaneity as in point 5: the RBA raises rates when the gap is positive, so the reaction
-function sits inside the regression and biases the slope upward.
+The lag structure is the more informative part. The `rule` slope decays monotonically from
++0.325 at lag 0 to zero by lag five or six, and every other variant does the same.
+Transmission would be the mirror image, weak on impact and strengthening over three to six
+quarters with a negative sign.
+
+**This variant used to read the prescribed rate and returned −0.009 with an R² of 0.000.**
+That looked like a clean null and was an artefact: a rate gap measured against
+`b_t + lambda·g_t` is close to this model's own rule residual, which is high-frequency
+timing noise. Switching to neutral on 2026-09-11 restored the +0.201 an earlier note had
+recorded and then withdrawn. **The withdrawal was the mistake**, not the number: the base is
+neutral, and neutral is the input the comparison wants.
+
+So the result stands as evidence *for* the repo's central negative finding rather than
+against it. Nothing here supports an IS curve, and the strongest-looking fit is the
+simultaneity showing through.
 
 ---
 
@@ -725,7 +759,7 @@ the entries say which.
    four, 0.25 at ten. **It can audit the Bank over one to two years and not beyond.** See
    "What this model can and cannot say".
 1a. **The reaction function is assumed constant over 33 years, and there is reason to doubt
-   it.** What is held fixed: `lambda`, `rho`, `sigma_u`, the objective set, and the
+   it.** What is held fixed: `lambda`, `rho`, `sigma_eps`, the objective set, and the
    adjustment speed, which is not a parameter at all because the equation is
    contemporaneous. The model's own split test says `lambda` halved after 2008; inertia in
    the cash rate rises from about 0.91 before 2016 to 0.975 after; and 1994 shows the Bank
@@ -753,15 +787,16 @@ the entries say which.
    residual changes sign. The ensemble runs by default.
 5. **The memory length is a judgement**, not an estimate, and `lambda` moves 0.61 to 0.96
    per point across defensible truncations.
-6. **`lambda` carries the labour-market response too**, per "What the exploration
-   established", point 5. It is not a pure inflation coefficient.
-7. **Realised inflation stands in for forecast inflation, and in the 1990s that is not a
-   small thing.** The RBA responds to forecasts; realised inflation puts measurement error
-   in the regressor and attenuates `lambda`. The scale of it: the 1994 tightening of 275bp
-   happened with the inflation gap at −0.3, so the single largest pre-GFC policy move in the
-   sample is **entirely invisible to the rule** and is absorbed by `sigma_r`'s choice
-   instead. A first-order problem for the first half of the sample, not a mild attenuation.
-   See point 4a.
+6. **`lambda` is not a structural response to inflation alone.** Any omitted systematic
+   motive that covaries with inflation can affect it, labour-market conditions among them.
+   How much of any of them it carries is not identified. See "What the exploration
+   established", point 5.
+7. **The 1994 tightening is invisible to the rule, and swapping the inflation measure does
+   not help.** The RBA raised 275bp with the inflation gap at −0.3, so the single largest
+   pre-GFC policy move is absorbed by `sigma_r`'s choice instead. Realised inflation standing
+   in for forecast inflation looked like the cause; it is not. A constructed forecast flips
+   the 1994 gap to +1.17 and still prescribes only about 0.47 of cash rate, because the
+   binding constraint is **magnitude**, not the measure. See point 4a and Refinement 1.
 8. **The floor quarters are in by default.** `--floor 0.5` excludes them; it did not change
    any conclusion.
 9. ~~**The default depends on ABS GDP**, because jumps are on.~~ Resolved: jumps are off by
@@ -773,39 +808,28 @@ the entries say which.
 
 ## Refinements
 
-1. **Forecast inflation** in place of realised, per Observation 7 and point 4a. The largest
-   open item, and now buildable with a design rather than blocked on data.
+1. ~~**Forecast inflation** in place of realised.~~ **Tried and it does not deliver.** The
+   case for it was 1994: the RBA tightened 275bp with realised inflation at 2.2, a gap of
+   −0.3, so the rule cannot see the episode at all. No RBA forecast series is held, so a
+   forecast was constructed, an expanding-window regression of annualised trimmed-mean
+   inflation four quarters ahead on its own lags plus the four-quarter change in
+   unemployment, and fed to the model in place of realised inflation.
 
-   **No RBA forecast series is held**, and none of the loaders provides one, so the forecast
-   has to be constructed, and a check settles what it needs. Refitting a regression each
-   quarter on an expanding window, so the coefficients never see the outcomes they forecast,
-   predicting annualised trimmed-mean inflation four quarters ahead, and asking what it said
-   through 1994:
+   It fixes the sign and not the size. The 1994 gap goes from −0.30 to **+1.17**, but at the
+   fitted response that prescribes **0.47** of cash rate against −0.18 before, a swing of
+   about 0.65 where 275bp needs accounting for. Everything else is slightly worse:
+   `sigma_eps` 0.833 against 0.786, `lambda` 0.40 against 0.61, residual autocorrelation
+   unchanged, `corr(neutral, cash)` up to 0.902.
 
-   | activity term | 1994 forecasts, Q1-Q4 | in-sample rmse |
-   |---|---|---|
-   | none, AR only | 2.55 2.67 2.72 2.44 | 1.20 |
-   | `u` level | 2.40 2.66 2.81 2.66 | 1.17 |
-   | `du`, 1q | 3.43 3.55 3.22 2.94 | 0.99 |
-   | **`du`, 4q** | 3.34 3.55 **3.95 3.85** | **0.86** |
+   **The diagnosis was wrong, and that is the finding.** 1994 is not a realised-versus-
+   forecast problem. It is a **magnitude** problem: explaining 275bp needs either an
+   implausible response coefficient or an inflation signal several times larger than any on
+   offer, so no inflation-based regressor reaches it. Observation 7 and point 4a should be
+   read that way.
 
-   Actual outturns were 2.20, 2.50, 2.90, 3.10. **An AR alone is useless**: it forecasts
-   target throughout 1994, so the episode stays as invisible as it is with realised
-   inflation. Extrapolating inflation from inflation cannot see a turning point. **The
-   four-quarter change in unemployment transforms it**, forecasting 3.3 to 4.0 in exactly the
-   quarters the RBA tightened.
-
-   **It does not fully close the puzzle.** Averaged over 1994 the forecast gap is about
-   +0.79pp, prescribing roughly +0.48 of cash rate at `lambda` = 0.61, against −0.18 on
-   realised inflation. A swing of 0.66 where the RBA moved 275bp: it flips the sign of the
-   problem and explains perhaps a quarter of the move.
-
-   **Two constraints on the build.** The activity term must not be inflation-derived, which
-   rules out the `ystar` and `ystar_ustar` output gaps, since `ystar` defines the gap as
-   `c·(pi − anchor)` and subtracting `y*` from GDP returns the same thing plus a residual.
-   The change in unemployment needs no other model. And it reintroduces the endogeneity that
-   sank the employment leg, weaker here because the term enters as a forecast input rather
-   than a second objective, but the same mechanism.
+   ONE-OFF, 2026-09-11: run from a throwaway script, not reproducible from this package, and
+   its charts have been deleted. The forecast also carried four of its own coefficients
+   outside the posterior, so its intervals would have been too tight even had it worked.
 2. **A joint `phi`/`sigma_r` surface**, per point 6. Partial adjustment on its own is built
    and rejected because a free `phi` rescales `lambda` fourfold. Exploring the two imposed
    parameters together is the honest form of the same idea, and `ensemble.py` is the

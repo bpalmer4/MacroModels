@@ -152,7 +152,7 @@ src/
 │   │                              #   fa_nk_bayes.py: Bayesian re-estimation (black-box Op + priors, DEMetropolis-Z); identifies the Taylor block (φ_π≈2.6)
 │   ├── rstar_rba/                 # Neutral revealed by the RBA's reaction function. Assumes a
 │   │                              #   neutral cash rate that moves SLOWLY, with the RBA reacting
-│   │                              #   FAST on top of it to inflation away from the 2.5 TARGET
+│   │                              #   responding on top of it to inflation away from the 2.5 TARGET
 │   │                              #   (not to being outside the band: g_t is linear in
 │   │                              #   pi - 2.5, and the band half-width only sets lambda's
 │   │                              #   units), and splits the cash rate into those two pieces.
@@ -166,7 +166,12 @@ src/
 │   │                              #   wider than the credible interval. Quote the range.
 │   │                              #   lambda = 0.61 per pp is a NOMINAL response; not comparable
 │   │                              #   with Taylor's 1.5. UNITS: stored per BAND-WIDTH (0.305),
-│   │                              #   so per pp is twice it. Two published series only
+│   │                              #   so per pp is twice it. It is stable across sigma_r only
+│   │                              #   CONDITIONAL ON ZERO POLICY SMOOTHING: allow partial
+│   │                              #   adjustment and it runs to 2.57, because one coefficient
+│   │                              #   carries both the immediate and the ultimate response.
+│   │                              #   sigma_r and phi decide the same thing and two series
+│   │                              #   cannot pin both. Two published series only
 │   │                              #   (see MODEL_NOTES.md for everything else).
 │   ├── is_curve/                  # THE IS CURVE PLOTTED, NOT ESTIMATED. A test bench, not a
 │   │                              #   model: nothing estimated, nothing downstream consumes it.

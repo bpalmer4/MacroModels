@@ -32,7 +32,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--rule-prefix", default="rstar_rba",
-        help="Prefix of the rstar_rba run supplying the reaction-function r*",
+        help="Prefix of the rstar_rba run supplying the reaction-function neutral b_t",
     )
     parser.add_argument(
         "--keep-all", action="store_true",

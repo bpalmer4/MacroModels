@@ -228,7 +228,7 @@ def _lambda(frame: pd.DataFrame, config: ModelConfig) -> pt.TensorVariable:
 
     Must be called inside the model context. With `lambda_split` set, two
     coefficients share one prior and are selected by quarter. Written as a mask
-    rather than two likelihoods so the base, the weights and `sigma_u` stay
+    rather than two likelihoods so neutral, the weights and `sigma_eps` stay
     pooled: only the response is allowed to break, which is the question.
     """
     if config.lambda_split is None:
@@ -252,9 +252,13 @@ def _print_spec(frame: pd.DataFrame, config: ModelConfig, weights_desc: str) -> 
 
     print("\nModel specification:")
     print(f"  Inflation:  pi_t = 4 x sum_j w_j q_{{t-j}},  weights {weights_desc}")
-    print(f"  Two gaps:   r_t - b_t = {shape} + u_t,  g_t = pi_t - {config.anchor:g}")
-    print(f"  r*:         r*_t = b_t + {shape}")
-    print(f"  Base b_t:   {form}")
+    # The band division has to be printed. Without it the line reads as though
+    # `lambda` were per percentage point, which is the units trap MODEL_NOTES.md
+    # warns about: it is per band-width, so per point is twice it.
+    print(f"  Two gaps:   r_t - b_t = {shape} + eps_t,  "
+          f"g_t = (pi_t - {config.anchor:g})/{config.band:g}")
+    print(f"  Prescribed: d_t = b_t + {shape}")
+    print(f"  Neutral b_t: {form}")
 
     kept = _unconstrained(frame, config)
     dropped = frame.index[~kept]
@@ -279,8 +283,8 @@ def _print_spec(frame: pd.DataFrame, config: ModelConfig, weights_desc: str) -> 
 def build_model(frame: pd.DataFrame, config: ModelConfig, *, verbose: bool = True) -> pm.Model:
     """Build the two-gaps model.
 
-        r_t - b_t = lambda · (pi_t - anchor) + u_t
-        r*_t      = b_t + lambda · (pi_t - anchor)
+        r_t - b_t = lambda · (pi_t - anchor) + eps_t
+        d_t       = b_t + lambda · (pi_t - anchor)
 
     `b_t` is NEUTRAL, the slow-moving trend, recorded as `neutral`. Adding the
     inflation response gives the rule's prescribed rate, recorded as
@@ -325,7 +329,7 @@ def build_model(frame: pd.DataFrame, config: ModelConfig, *, verbose: bool = Tru
             lam2 = pm.Normal("lambda_2", mu=config.lambda2_mu, sigma=config.lambda2_sigma)
             response = response + lam2 * gap * pt.abs(gap)
         pm.Deterministic("response", response)
-        sigma_u = pm.HalfNormal("sigma_u", sigma=config.sigma_u_sigma)
+        sigma_eps = pm.HalfNormal("sigma_eps", sigma=config.sigma_eps_sigma)
         base_0 = pm.Normal("base_0", mu=config.base_mu, sigma=config.base_sigma)
 
         # NEUTRAL: the slow-moving piece, which is what this package calls the
@@ -356,20 +360,21 @@ def build_model(frame: pd.DataFrame, config: ModelConfig, *, verbose: bool = Tru
         pm.Deterministic("prescribed_real", prescribed - config.anchor)
         pm.Deterministic("stance", pt.as_tensor_variable(rate) - neutral)
         pm.Deterministic("rule_residual", pt.as_tensor_variable(rate) - prescribed)
-        # Excluded quarters keep their place in the state, so `r*` still evolves
+        # Excluded quarters keep their place in the state, so neutral still evolves
         # through the floor years, but carry no likelihood: the rule did not
         # generate them. Same treatment `ystar` gives the lockdown quarters.
         kept = _unconstrained(frame, config)
         if not config.partial_adjustment:
-            pm.Normal("obs", mu=prescribed[kept], sigma=sigma_u, observed=rate[kept])
+            pm.Normal("obs", mu=prescribed[kept], sigma=sigma_eps, observed=rate[kept])
         else:
             # r_t = phi·r_{t-1} + (1 - phi)·d_t + eps_t, with d_t the desired
             # rate the rule is moving toward. The lag is the OBSERVED cash rate,
             # so the first quarter has no predictor and leaves the likelihood.
             #
-            # `sigma_u` is `sigma_eps` here, the innovation sd rather than the
-            # sd of the level around the rule, and is far smaller for that
-            # reason alone. Do not compare it with the default run's.
+            # `sigma_eps` means something different here: the sd of the
+            # quarterly INNOVATION rather than of the level around the rule, so
+            # it is far smaller for that reason alone. Do not compare it with
+            # the default run's.
             phi = pm.Beta("phi", alpha=config.phi_a, beta=config.phi_b)
             lagged = pt.as_tensor_variable(np.concatenate([[rate[0]], rate[:-1]]))
             usable = kept.copy()
@@ -378,7 +383,7 @@ def build_model(frame: pd.DataFrame, config: ModelConfig, *, verbose: bool = Tru
             pm.Normal(
                 "obs",
                 mu=(phi * lagged + (1.0 - phi) * prescribed)[usable],
-                sigma=sigma_u,
+                sigma=sigma_eps,
                 observed=rate[usable],
             )
 

@@ -1,7 +1,7 @@
 """Re-estimate across `sigma_r`, so the imposed smoothness is visible as a range.
 
 `sigma_r` is the one imposed number that decides the split between the base and
-the inflation response, and hence the LEVEL of r* and the era residuals. The
+the inflation response, and hence the LEVEL of neutral and the era residuals. The
 posterior band on the headline chart is conditional on it: it is the uncertainty
 GIVEN the smoothness assumption, not the whole of it. This module supplies the
 other half, by re-sampling at each of several defensible values and keeping the
@@ -85,7 +85,7 @@ def run_sigma_r_ensemble(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Sample the model once per `sigma_r` and return the paths and the table.
 
-    The paths are posterior MEDIANS of real r*, one column per value. Medians
+    The paths are posterior MEDIANS of real neutral, one column per value. Medians
     rather than bands because the chart draws the envelope across assumptions;
     the within-assumption band comes from the default run and is drawn from the
     saved trace, not from here.
@@ -146,8 +146,8 @@ def load_ensemble(
     """Return a saved ensemble, or None if the run has not been done.
 
     `bases` is absent from files written before the base paths were kept, so
-    read it with `.get`: an older ensemble still charts r*, it just cannot draw
-    the base alongside it.
+    read it with `.get`: an older ensemble still charts real neutral, it just
+    cannot draw the nominal series alongside it.
     """
     directory = Path(output_dir) if output_dir else DEFAULT_OUTPUT_DIR
     target = directory / f"{prefix}_sigma_r_ensemble.pkl"

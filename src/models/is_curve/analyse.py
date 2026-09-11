@@ -40,13 +40,13 @@ _LFOOTER = "Australia. Output gap from the joint y*/u* model. "
 _X_LABEL = {
     "none": "Real cash rate (cash - expectations), %",
     "rstar": "Real rate gap using the bond-market r*, ppt",
-    "rule": "Real rate gap using the reaction-function r*, ppt",
+    "rule": "Real rate gap against the reaction-function neutral b_t, ppt",
     "constant": "Real rate gap using a flat r*, ppt",
 }
 _TITLE = {
     "none": "IS curve: no r* imposed",
     "rstar": "IS curve: bond-market r*",
-    "rule": "IS curve: reaction-function r*",
+    "rule": "IS curve: reaction-function neutral",
     "constant": "IS curve: flat r*",
 }
 
