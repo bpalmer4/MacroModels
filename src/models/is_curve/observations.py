@@ -168,9 +168,15 @@ def _rstar_median(prefix: str, sources: SourceSet) -> pd.Series:
 def _rule_rstar_median(prefix: str, sources: SourceSet) -> pd.Series:
     """Return the *real* neutral rate implied by a completed `rstar_rba` run.
 
-    That model's r*, the complete estimate, read straight off its recorded
-    `real_rstar`. NOT its base. The base is one term inside r*, and a variant
-    built on the base is not testing that model's r* whatever it is labelled.
+    Read off that model's recorded `prescribed_real`, the rule's prescribed rate
+    less the target.
+
+    UNRESOLVED: `rstar_rba` now calls the slow intercept `neutral` and the
+    prescribed rate something else, so on its own naming the comparable input
+    here is `neutral_real`, not `prescribed_real`. This variant was left on the
+    prescribed rate through that rename so no recorded slope moved. Switching it
+    would change the `rule` row of the table in this package's notes and is a
+    decision, not a tidy-up.
 
     Know what this variant therefore is. `rstar_rba` defines r* as the cash rate
     less its residual, so the rate gap here is close to that residual: mostly
@@ -202,9 +208,9 @@ def _rule_rstar_median(prefix: str, sources: SourceSet) -> pd.Series:
         index = pd.PeriodIndex(index, freq="Q")
     # Recorded by the model, so the deflator is its choice and not guessed at
     # here. Older traces predate it and are rebuilt from the nominal series.
-    if "real_rstar" in getattr(trace, "posterior", {}):
-        return posterior_median(trace, "real_rstar", index)
-    nominal = posterior_median(trace, "nominal_rstar", index)
+    if "prescribed_real" in getattr(trace, "posterior", {}):
+        return posterior_median(trace, "prescribed_real", index)
+    nominal = posterior_median(trace, "prescribed", index)
     return nominal - float(constants.get("anchor", 2.5))
 
 

@@ -11,11 +11,13 @@ import pandas as pd
 import xarray as xr
 
 from src.models.common.sources import footer_from_constants
+from src.models.rstar_rba.ensemble import load_ensemble, print_ensemble
 from src.models.rstar_rba.estimate import load_results, posterior_median
+from src.models.rstar_rba.injection import load_injection, print_injection
 
 CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "RStarRBA"
 
-_LFOOTER = "Australia. r* from the RBA's response to inflation. "
+_LFOOTER = "Australia. Neutral inferred from the RBA's response to inflation. "
 _ERAS = {
     "1994-2007": ("1994Q1", "2007Q4"),
     "2008-2011": ("2008Q1", "2011Q4"),
@@ -55,6 +57,14 @@ def _era(series: pd.Series, start: str, end: str | None) -> pd.Series:
 # bound for *display*, whether or not the run excluded them from the likelihood.
 _FLOOR_DISPLAY = 0.5
 
+# One style per ensemble member, in the order the values are run, so the two
+# ensemble charts agree line for line. No brown or orange: those vanish into the
+# envelope fill on the r* chart. The default member carries the heavy solid line
+# and everything else is dashed, so the shipped value is readable at a glance.
+_ENSEMBLE_COLORS = ["darkgreen", "darkblue", "darkred", "purple"]
+_ENSEMBLE_WIDTHS = [1.5, 2.5, 1.5, 1.5]
+_ENSEMBLE_STYLES = ["--", "-", ":", "-."]
+
 # Plain-English axis labels for the prior/posterior charts. A parameter name is
 # not a label: nobody outside this file knows what `base_0` is measured in.
 _PARAM_LABEL = {
@@ -63,7 +73,7 @@ _PARAM_LABEL = {
     "lambda_2": "lambda_2: extra response per unit, squared",
     "rho": "rho: decay of the weights on past inflation (0 = latest quarter only)",
     "sigma_u": "sigma_u: sd of the cash rate around the rule, percentage points",
-    "base_0": "base_0: the base trend at 1993Q1, per cent (not r*)",
+    "base_0": "base_0: neutral at 1993Q1, per cent (before the inflation response)",
 }
 
 
@@ -100,8 +110,9 @@ def equation(trace: az.InferenceData, constants: dict) -> str:
     base walks both change with the specification, and a chart that states the
     linear form while fitting the quadratic one is worse than no header.
 
-    `b_t` is the base, the slow part. r* is `b_t` plus the response, so the
-    first line is both the rule and the definition of r*.
+    `b_t` is neutral, the slow part. Adding the response gives the rule's
+    prescribed rate, so the first line is the rule, not the definition of
+    neutral.
     """
     anchor = float(constants.get("anchor", 2.5))
     response = (
@@ -120,7 +131,7 @@ def equation(trace: az.InferenceData, constants: dict) -> str:
         if "band" in constants
         else f"g_t = pi_t - {anchor:g}"
     )
-    return f"r*_t = b_t + {response},  {gap},  {state}"
+    return f"d_t = b_t + {response},  {gap},  {state}"
 
 
 def _normal_pdf(xs: np.ndarray, mu: float, sigma: float) -> np.ndarray:
@@ -205,7 +216,7 @@ def print_diagnostics(
 ) -> None:
     """Print the parameters and the checks that would show the model failing."""
     scalars = [
-        name for name in ("lambda", "lambda_late", "lambda_2", "rho", "sigma_u", "base_0")
+        name for name in ("lambda", "lambda_late", "lambda_2", "phi", "rho", "sigma_u", "base_0")
         if name in _group(trace, "posterior")
     ]
     print("\nEquation")
@@ -222,40 +233,47 @@ def print_diagnostics(
         print(f"divergences: {int(diverging.sum())} of {int(diverging.size)}")
 
     lam = float(_group(trace, "posterior")["lambda"].mean())
-    base = posterior_median(trace, "base", _period_index(frame))
-    rstar = posterior_median(trace, "nominal_rstar", _period_index(frame))
-    stance = posterior_median(trace, "stance", _period_index(frame))
+    neutral = posterior_median(trace, "neutral", _period_index(frame))
+    prescribed = posterior_median(trace, "prescribed", _period_index(frame))
+    residual = posterior_median(trace, "rule_residual", _period_index(frame))
     gap = posterior_median(trace, "inflation_gap", _period_index(frame))
 
     print("\nDoes the identification hold?")
     print("-" * 70)
-    # Against the BASE, which is the gap the rule is written on. Against r*
-    # itself this is the residual and tells you nothing.
-    print(f"  correlation of the two gaps        {(frame['r'] - base).corr(gap):6.2f}")
+    # Against NEUTRAL, which is the gap the rule is written on. Against the
+    # prescribed rate this is the residual and tells you nothing.
+    print(f"  correlation of the two gaps        {(frame['r'] - neutral).corr(gap):6.2f}")
     # Both units. Quoting the band-width figure alone reads as a much weaker
     # response than it is, since a band-width is half a percentage point.
     band = float(constants.get("band", 1.0))
     print(f"  lambda, per band-width             {lam:6.2f}")
-    print(f"  lambda, per pp of inflation        {lam / band:6.2f}   (Taylor is 1.50)")
-    print(f"  r* (neutral nominal cash rate)     {rstar.iloc[-1]:6.2f}")
-    print(f"  implied real neutral (less anchor) {rstar.iloc[-1] - float(constants.get('anchor', 2.5)):6.2f}")
-    print(f"  base b_t (the slow part alone)     {base.iloc[-1]:6.2f}")
-    print(f"  residual sd against cash rate sd   {stance.std():6.2f} vs {frame['r'].std():.2f}")
-    # The tell. If the BASE is just the cash rate smoothed, the identification
+    # No Taylor comparison here any more. It is not the same object: `lambda`
+    # per pp is the Fisher pass-through plus the real response, one coefficient
+    # doing two jobs, and Taylor's 1.5 is the threshold only under full
+    # pass-through. Separating them needs an expectations series this package
+    # deliberately does not import. See MODEL_NOTES.md.
+    print(f"  lambda, per pp of inflation        {lam / band:6.2f}   (nominal)")
+    anchor = float(constants.get("anchor", 2.5))
+    print(f"  neutral b_t, nominal               {neutral.iloc[-1]:6.2f}")
+    print(f"  neutral b_t, real (less anchor)    {neutral.iloc[-1] - anchor:6.2f}")
+    print(f"  prescribed rate b_t + lambda.g     {prescribed.iloc[-1]:6.2f}")
+    print(f"  stance, cash rate less neutral     {frame['r'].iloc[-1] - neutral.iloc[-1]:+6.2f}")
+    print(f"  rule residual sd vs cash rate sd   {residual.std():6.2f} vs {frame['r'].std():.2f}")
+    # The tell. If NEUTRAL is just the cash rate smoothed, the identification
     # has collapsed into the state and lambda is decoration.
-    print(f"  corr(base, cash rate)              {base.corr(frame['r']):6.2f}")
+    print(f"  corr(neutral, cash rate)           {neutral.corr(frame['r']):6.2f}")
 
-    print("\nResidual by era (cash rate less what the rule implies)")
+    print("\nRule residual by era (cash rate less the rule's prescribed rate)")
     print("-" * 70)
-    # Only the WHOLE-SAMPLE mean is pinned, by the free starting level of the
-    # base. Era means are estimated and are not zero, so these can say policy
+    # Only the WHOLE-SAMPLE mean is pinned, by the free starting level of
+    # neutral. Era means are estimated and are not zero, so these can say policy
     # sat away from the rule. What weakens with duration is how much of a
-    # departure survives here rather than being taken up by the base.
-    print("  The longer a departure lasts, the more of it the base absorbs.")
+    # departure survives here rather than being taken up by neutral.
+    print("  The longer a departure lasts, the more of it neutral absorbs.")
     for label, (start, end) in _ERAS.items():
-        window = _era(stance, start, end)
+        window = _era(residual, start, end)
         infl = _era(gap, start, end)
-        print(f"  {label:<11} stance {window.mean():6.2f}   inflation gap {infl.mean():6.2f}")
+        print(f"  {label:<11} residual {window.mean():6.2f}   inflation gap {infl.mean():6.2f}")
 
 
 def plot_decomposition(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> None:
@@ -275,15 +293,15 @@ def plot_decomposition(trace: az.InferenceData, frame: pd.DataFrame, constants: 
     a level and the response as a deviation around zero.
     """
     index = _period_index(frame)
-    base = posterior_median(trace, "base", index)
-    response = posterior_median(trace, "nominal_rstar", index) - base
+    base = posterior_median(trace, "neutral", index)
+    response = posterior_median(trace, "prescribed", index) - base
 
     mg.line_plot_finalise(
         pd.DataFrame({
             "Base b_t: the slow trend anchoring neutral": base,
             "Response lambda x g_t: added for inflation off target": response,
         }),
-        title="What r* is made of: a slow base and a response to inflation",
+        title="What the rule prescribes: neutral plus a response to inflation",
         ylabel="Per cent, and percentage points",
         color=["darkblue", "darkred"],
         width=[2.5, 2.0],
@@ -303,13 +321,13 @@ def plot_decomposition(trace: az.InferenceData, frame: pd.DataFrame, constants: 
 
 def plot_rule(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> None:
     """Plot the cash rate against what the two-gaps rule implies."""
-    rstar = posterior_median(trace, "nominal_rstar", _period_index(frame))
-    base = posterior_median(trace, "base", _period_index(frame))
+    rstar = posterior_median(trace, "prescribed", _period_index(frame))
+    base = posterior_median(trace, "neutral", _period_index(frame))
     mg.line_plot_finalise(
         pd.DataFrame({
             "Cash rate": frame["r"],
-            "r* (neutral nominal): base + lambda x inflation gap": rstar,
-            "Base b_t (the slow part alone, not r*)": base,
+            "Prescribed rate: b_t + lambda x inflation gap": rstar,
+            "Neutral b_t (the slow base)": base,
         }),
         title="The cash rate, the RBA's estimated rule, and neutral",
         ylabel="Cash rate, per cent a year",
@@ -329,13 +347,17 @@ def plot_rule(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> 
 
 
 # The residual chart, `plot_stance`, was built and removed. It plotted
-# `u_t = r_t - r*_t` under the title "How far the cash rate sat from the RBA's
-# estimated reaction function", which reads as a stance measure and is not one.
+# `rule_residual`, the cash rate less the rule's prescribed rate, under the
+# title "How far the cash rate sat from the RBA's estimated reaction function",
+# which reads as a stance measure and is not one.
 #
-# The base is a random walk fitted to the same cash rate, so the longer a
+# Neutral is a random walk fitted to the same cash rate, so the longer a
 # departure lasts the more of it is taken up by neutral rather than left here.
 # The line therefore understates any lasting stance, by an amount that grows
-# with its duration and that nobody has quantified. It is not zero by
+# with its duration and that the injection test has now quantified: a known
+# stance shows up here at 0.78 of its size after a year, 0.44 after four and
+# 0.25 after ten, so the understatement is severe well inside the horizons
+# people want to read it over. It is not zero by
 # construction, and the era means are not zero: what it cannot do is tell you
 # how much of a decade-long stance has already been absorbed. The title invited
 # readers to take it as a stance measure anyway.
@@ -359,7 +381,7 @@ def plot_two_gaps(trace: az.InferenceData, frame: pd.DataFrame, constants: dict)
     the hidden trend the rule reacts around; the gap against r* is the residual
     by construction and would show nothing.
     """
-    base = posterior_median(trace, "base", _period_index(frame))
+    base = posterior_median(trace, "neutral", _period_index(frame))
     gap = posterior_median(trace, "inflation_gap", _period_index(frame))
     rate_gap = frame["r"] - base
     lam = float(_group(trace, "posterior")["lambda"].mean())
@@ -435,11 +457,15 @@ def plot_rstar_real_nominal(trace: az.InferenceData, frame: pd.DataFrame, consta
 
     The same chart `rstar_bonds` draws, for this model's estimate.
 
-    r* here is the model's COMPLETE estimate of the neutral cash rate,
-    `rstar` = b_t + lambda x g_t, not the base `base` alone. The base is the
-    hidden trend that roughly anchors neutral; the reaction function is the
-    part tied directly to the inflation gap. What the model says the neutral
-    cash rate is at a point in time is the two together.
+    The line is `b_t`, the slow base, which is what this package now calls the
+    neutral rate. The complete systematic term `b_t + lambda x g_t` is the rule's
+    prescribed cash rate, not neutral: the inflation response is a departure
+    FROM neutral, which is the conventional reading of a policy rule and the one
+    MODEL_NOTES.md now adopts.
+
+    This chart used to plot the complete term. Building it on the base lowers
+    today's real reading from 0.98 to 0.49 and makes it comparable for the first
+    time with `rstar_bonds` and `rstar_hlw`, which both estimate an intercept.
 
     Real is that less the target, which is what `rstar_bonds` and `rstar_hlw`
     also do, so the three are comparable and the two lines here have the same
@@ -453,8 +479,10 @@ def plot_rstar_real_nominal(trace: az.InferenceData, frame: pd.DataFrame, consta
     """
     index = _period_index(frame)
     anchor = float(constants.get("anchor", 2.5))
-    nominal_draws = posterior_draws(trace, "nominal_rstar", index)
-    real_draws = posterior_draws(trace, "real_rstar", index)
+    # `neutral`, not `prescribed`. The deflator is applied to the draws rather
+    # than reading `neutral_real`, so the two bands come from one draw matrix.
+    nominal_draws = posterior_draws(trace, "neutral", index)
+    real_draws = nominal_draws - anchor
 
     nominal_median = nominal_draws.median(axis=1)
     real_median = real_draws.median(axis=1)
@@ -463,8 +491,8 @@ def plot_rstar_real_nominal(trace: az.InferenceData, frame: pd.DataFrame, consta
 
     last = index[-1]
     ends = " | ".join(
-        f"{name} {band.loc[last, 'lower']:.2f} to {band.loc[last, 'upper']:.2f} "
-        f"(median {median.loc[last]:.2f})"
+        f"{name} {band['lower'].iloc[-1]:.2f} to {band['upper'].iloc[-1]:.2f} "
+        f"(median {median.iloc[-1]:.2f})"
         for name, band, median in (
             ("real", real, real_median),
             ("nominal", nominal, nominal_median),
@@ -475,8 +503,8 @@ def plot_rstar_real_nominal(trace: az.InferenceData, frame: pd.DataFrame, consta
     mg.fill_between_plot(real, ax=ax, color="darkorange", alpha=0.20, label="Real 90% HDI")
     mg.line_plot(
         pd.DataFrame({
-            "Nominal r* (base trend + inflation response)": nominal_median,
-            f"Real r* (less the {anchor:g}% target)": real_median,
+            "Nominal neutral b_t (the slow base)": nominal_median,
+            f"Real neutral (less the {anchor:g}% target)": real_median,
         }),
         ax=ax,
         color=["darkblue", "darkorange"],
@@ -487,11 +515,11 @@ def plot_rstar_real_nominal(trace: az.InferenceData, frame: pd.DataFrame, consta
     )
     mg.finalise_plot(
         ax,
-        title="Australia's real and nominal r-star, from the RBA's reaction function",
+        title="Australia's neutral cash rate, from the RBA's reaction function",
         ylabel="Per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        lheader="r*_t = b_t + lambda x g_t",
+        lheader="Neutral = b_t. The rule prescribes b_t + lambda x g_t on top of it",
         rheader=f"{last} 90%: {ends}",
         axvspan=_floor_span(frame),
         rfooter=footer_from_constants(constants) or "Built using: RBA F1; ABS 6401.0",
@@ -499,6 +527,192 @@ def plot_rstar_real_nominal(trace: az.InferenceData, frame: pd.DataFrame, consta
         show=False,
     )
 
+
+
+def plot_sigma_r_ensemble(
+    trace: az.InferenceData,
+    frame: pd.DataFrame,
+    constants: dict,
+    paths: pd.DataFrame,
+) -> None:
+    """Real neutral across defensible `sigma_r`, against the conditional band.
+
+    Neutral is `b_t`, so this is the base less the target, matching the headline
+    chart. The companion chart is the same object in nominal terms drawn against
+    the cash rate; the two differ in units and in what they are compared with,
+    which is a thin distinction and a candidate for merging.
+
+    The point of the chart is the COMPARISON, so both are drawn. The narrow
+    fill is the 90% credible interval from the default run, which is the
+    uncertainty the data supplies once the smoothness is granted. The wide fill
+    is the spread of posterior medians across `sigma_r` in 0.05 to 0.15, which
+    is the smoothness assumption moving. Where the second is wider than the
+    first, the headline interval is understating what is not known, and the
+    level should be quoted as a range.
+
+    NOT ADDITIVE. These are uncertainty of two different kinds and stacking
+    them would double-count: every ensemble member has a band of its own, and
+    the band drawn here is one member's. Read the envelope as where the line
+    could sit, and the band as how sharply any one choice pins it.
+
+    `lambda` deliberately does not appear. It is stable across the ensemble and
+    is the result that survives the conditioning; this chart is about the one
+    that does not.
+    """
+    index = _period_index(frame)
+    anchor = float(constants.get("anchor", 2.5))
+    default = float(constants.get("sigma_r", 0.10))
+
+    # On the base less the target, matching the ensemble paths: neutral is b_t.
+    band = posterior_band(trace, "neutral", index) - anchor
+    envelope = pd.DataFrame({"lower": paths.min(axis=1), "upper": paths.max(axis=1)})
+    spread = float((envelope["upper"] - envelope["lower"]).iloc[-1])
+    width = float((band["upper"] - band["lower"]).iloc[-1])
+
+    ax = mg.fill_between_plot(
+        envelope, color="darkorange", alpha=0.22,
+        label=f"Across sigma_r {paths.columns[0]} to {paths.columns[-1]}",
+    )
+    mg.fill_between_plot(
+        band, ax=ax, color="darkblue", alpha=0.18,
+        label=f"90% credible interval at sigma_r = {default:g}",
+    )
+    mg.line_plot(
+        paths.rename(columns={col: f"sigma_r = {col}" for col in paths.columns}),
+        ax=ax,
+        # Not a brown for the third line: it disappears into the orange
+        # envelope fill it is meant to be read against.
+        color=_ENSEMBLE_COLORS[: paths.shape[1]],
+        width=_ENSEMBLE_WIDTHS[: paths.shape[1]],
+        style=_ENSEMBLE_STYLES[: paths.shape[1]],
+        annotate=True,
+        rounding=2,
+    )
+    mg.finalise_plot(
+        ax,
+        title="How much of Australia's neutral rate is the smoothness we imposed",
+        ylabel="Per cent",
+        y0=True,
+        legend={"loc": "best", "fontsize": "small"},
+        lheader=f"Ensemble test. Real neutral = b_t - {anchor:g}",
+        rheader=f"{index[-1]}: assumption spread {spread:.2f}pp vs credible interval {width:.2f}pp",
+        axvspan=_floor_span(frame),
+        rfooter=footer_from_constants(constants) or "Built using: RBA F1; ABS 6401.0",
+        lfooter=_LFOOTER + "sigma_r is imposed, never estimated. ",
+        show=False,
+    )
+
+
+def plot_base_ensemble(
+    frame: pd.DataFrame, constants: dict, bases: pd.DataFrame, table: pd.DataFrame,
+) -> None:
+    """Plot the BASE across `sigma_r`, with the cash rate it is being read off.
+
+    This is `b_t`, the slow trend on its own, and the companion chart is
+    `b_t + lambda x g_t`. Which of those two deserves the name "neutral" is an
+    open question in this package, set out at the top of MODEL_NOTES.md, so the
+    chart names the line it draws and gives the other one in the header rather
+    than ruling on it. What is not in doubt is that they are different lines and
+    give materially different answers downstream, so a number taken from here
+    has to say which one it is.
+
+    Why it is worth drawing. The companion chart shows the assumption
+    spread on the published number; this shows where that spread comes from, and
+    the two are not the same size. `sigma_r` decides how much of the cash rate's
+    movement counts as drift in the trend rather than response to inflation, so
+    raising it moves the base bodily while `lambda` shrinks to compensate, and
+    the sum moves less than the base does, 0.95 against 1.10 points. The gap
+    between the two spreads is the response absorbing what the base gives up.
+
+    The cash rate is drawn behind because it is what the failure mode looks
+    like: `corr(base, cash rate)` runs 0.80, 0.88, 0.93 across the ensemble, so
+    the upper member is visibly the cash rate smoothed, and at some larger
+    `sigma_r` the base would be nothing else and `lambda` would be decoration.
+    That is the reason not to read the top of the range as equally defensible
+    with the bottom, and it is easier to see than to assert.
+
+    Nominal, like the base figures in the notes and on the rule chart, and so
+    directly comparable with the cash rate drawn beside it. The companion chart
+    is real, so the two are not on the same level.
+    """
+    columns = {f"Base b_t at sigma_r = {col}": bases[col] for col in bases.columns}
+    ax = mg.line_plot(
+        pd.DataFrame({"Cash rate": frame["r"], **columns}),
+        color=["black", *_ENSEMBLE_COLORS[: bases.shape[1]]],
+        width=[1.2, *_ENSEMBLE_WIDTHS[: bases.shape[1]]],
+        style=["-", *_ENSEMBLE_STYLES[: bases.shape[1]]],
+        annotate=True,
+        rounding=2,
+    )
+    # The other half of the trade, and the reason the base moving this much does
+    # not move the sum as much. Written on the chart because the base lines
+    # alone look like pure disagreement about the level, and they are not: each
+    # is paired with a different response.
+    lines = ["lambda, per pp of inflation"] + [
+        f"  sigma_r {value:g}:   {row['lambda_pp']:.2f}" for value, row in table.iterrows()
+    ]
+    ax.text(
+        0.985, 0.97, "\n".join(lines), transform=ax.transAxes,
+        ha="right", va="top", fontsize="small", family="monospace",
+        bbox={"boxstyle": "round", "facecolor": "white", "edgecolor": "grey", "alpha": 0.85},
+    )
+    mg.finalise_plot(
+        ax,
+        title="The slow base across the smoothness assumption",
+        ylabel="Per cent a year, nominal",
+        legend={"loc": "best", "fontsize": "small"},
+        lheader="Ensemble test. b_t alone; the complete systematic term is b_t + lambda x g_t",
+        rheader="A higher sigma_r buys a base that tracks the cash rate more closely",
+        axvspan=_floor_span(frame),
+        rfooter=footer_from_constants(constants) or "Built using: RBA F1; ABS 6401.0",
+        lfooter=_LFOOTER + "b_t is the slow trend, before the inflation response. ",
+        show=False,
+    )
+
+
+def plot_injection(saved: dict, constants: dict) -> None:
+    """How much of a known stance comes back, against how long it lasted.
+
+    A known +1pp was added to the cash rate over windows of several lengths and
+    the model re-estimated. The bars split that point in two: what the residual
+    reports, which is the model getting it right, and what the base takes
+    instead, which the model reports as neutral having moved.
+
+    This is the model's honesty curve, and it is the thing the notes previously
+    inferred from `sigma_r x sqrt(T)` rather than measured. Read the crossover:
+    to the left of it a departure from the rule is mostly seen, to the right it
+    is mostly reported as a change in neutral.
+
+    The two bars sum to slightly under the whole because a little of the
+    injected point is taken up by `lambda` shifting, which is reported in the
+    printed table and is small.
+    """
+    table = saved["table"]
+    size = float(saved["size"])
+    shares = pd.DataFrame({
+        "Reported as a departure from the rule": table["recovered"],
+        "Absorbed: reported as neutral having moved": 1.0 - table["recovered"],
+    })
+    shares.index = pd.Index([f"{int(years)}y" for years in table.index], name="Length of the imposed stance")
+
+    ax = mg.bar_plot(
+        shares, stacked=True, color=["darkgreen", "darkred"], annotate=True, rounding=2,
+    )
+    mg.finalise_plot(
+        ax,
+        title="How much of a known policy stance this model still sees",
+        ylabel="Share of the imposed stance",
+        xlabel="Length of the imposed stance",
+        # Stacked shares fill the axis to 1.0, so there is no gap for a legend
+        # to find. The headroom is what makes "best" a real choice here.
+        ylim=(0.0, 1.22),
+        legend={"loc": "best", "fontsize": "small"},
+        lheader=f"+{size:.2f}pp added to the cash rate, windows ending {saved['end']}",
+        rheader="Inflation held at what it actually did",
+        rfooter=footer_from_constants(constants) or "Built using: RBA F1; ABS 6401.0",
+        lfooter=_LFOOTER + "Measured, not inferred from the prior. ",
+        show=False,
+    )
 
 
 def _taylor_inputs(prefix: str = "rstar_bonds") -> tuple[pd.Series, pd.Series]:
@@ -520,24 +734,22 @@ def _taylor_inputs(prefix: str = "rstar_bonds") -> tuple[pd.Series, pd.Series]:
 
 
 def plot_taylor(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> None:
-    """Plot a Taylor rule built on this model's r*.
+    """Plot a Taylor rule built on this model's neutral rate.
 
-        i* = real r* + pi_core + 0.5 (pi_core - 2.5) + 0.5 ygap
+        i* = real neutral + pi_core + 0.5 (pi_core - 2.5) + 0.5 ygap
 
-    On R*, the complete estimate `b_t + lambda x g_t` less the target. Not on
-    the base. The base is one term inside r*, and a Taylor rule fed the base is
-    a Taylor rule on something this model never calls neutral.
+    On `b_t` less the target, which is the intercept a Taylor rule wants.
+
+    THE DOUBLE-COUNT IS GONE. This chart used to be built on the complete term
+    `b_t + lambda x g_t`, which already contains the RBA's own response to
+    inflation, so Taylor's `0.5 (pi_core - 2.5)` added a second one and the
+    prescription overstated whenever inflation was away from target. That was a
+    stated bias on a chart. Feeding the intercept removes it rather than
+    documenting it, and is the clearest practical gain from the naming change.
 
     `pi_core` and `ygap` come from the joint y*/u* run, because a Taylor rule
     wants a broad core measure and an activity term, neither of which this model
     carries. So the blue line is not built purely from this model.
-
-    Known and deliberate: r* already contains the RBA's own response to
-    inflation, and Taylor's rule adds a second one, so the inflation gap is
-    counted twice. That makes the level of the prescription an overstatement
-    whenever inflation is away from target. It is recorded on the chart rather
-    than fixed, because the alternative, substituting the base, is the error
-    this docstring exists to prevent.
     """
     pi_core, ygap = _taylor_inputs()
     if pi_core.empty:
@@ -545,7 +757,7 @@ def plot_taylor(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -
 
     index = _period_index(frame)
     anchor = float(constants.get("anchor", 2.5))
-    rstar_real = posterior_median(trace, "real_rstar", index)
+    rstar_real = posterior_median(trace, "neutral", index) - anchor
 
     frame_t = pd.DataFrame({
         "rstar_real": rstar_real,
@@ -560,8 +772,8 @@ def plot_taylor(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -
     mg.line_plot_finalise(
         pd.DataFrame({
             "Cash rate": frame["r"],
-            "Taylor rule on this model's r*": taylor,
-            "This model's r* (nominal)": posterior_median(trace, "nominal_rstar", index),
+            "Taylor rule on this model's neutral rate": taylor,
+            "This model's neutral rate b_t (nominal)": posterior_median(trace, "neutral", index),
         }).dropna(how="all"),
         title="A Taylor rule on the neutral rate the RBA's behaviour implies",
         ylabel="Cash rate, per cent a year",
@@ -571,8 +783,8 @@ def plot_taylor(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -
         annotate=True,
         rounding=2,
         legend={"loc": "best", "fontsize": "small"},
-        lheader=f"i* = r* + pi_core + 0.5(pi_core - {anchor:g}) + 0.5 x output gap",
-        rheader="Counts the inflation gap twice: r* already carries the RBA's own response",
+        lheader=f"i* = b_t - {anchor:g} + pi_core + 0.5(pi_core - {anchor:g}) + 0.5 x output gap",
+        rheader="Core inflation and the output gap come from the joint y*/u* model",
         axvspan=_floor_span(frame),
         rfooter=footer_from_constants(constants) or "Built using: RBA F1; ABS 6401.0",
         lfooter=_LFOOTER + _floor_note(frame, constants),
@@ -589,11 +801,28 @@ def run_analysis(
     trace, frame, constants = load_results(output_dir=output_dir, prefix=prefix)
     print_diagnostics(trace, frame, constants)
 
+    # Optional: only present once --sigma-r-ensemble has been run. Absent, the
+    # rest of the analysis is unaffected, so a saved run from before the
+    # ensemble existed still charts.
+    ensemble = load_ensemble(output_dir=output_dir, prefix=prefix)
+    if ensemble is not None:
+        print_ensemble(ensemble["table"])
+    injection = load_injection(output_dir=output_dir, prefix=prefix)
+    if injection is not None:
+        print_injection(injection)
+
     if chart_dir is None:
         chart_dir = CHART_DIR if prefix == "rstar_rba" else CHART_DIR.parent / f"RStarRBA_{prefix}"
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
     plot_rstar_real_nominal(trace, frame, constants)
+    if ensemble is not None:
+        plot_sigma_r_ensemble(trace, frame, constants, ensemble["paths"])
+        bases = ensemble.get("bases")
+        if bases is not None:
+            plot_base_ensemble(frame, constants, bases, ensemble["table"])
+    if injection is not None:
+        plot_injection(injection, constants)
     plot_rule(trace, frame, constants)
     plot_decomposition(trace, frame, constants)
     plot_two_gaps(trace, frame, constants)

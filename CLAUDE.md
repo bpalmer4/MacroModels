@@ -34,7 +34,8 @@ uv sync                            # Install dependencies
 ./run-ystar.sh                     # Run y* potential output model (inflation-defined output gap)
 ./run-ustar.sh                     # Run u* model (Okun + Phillips; needs expectations + ystar)
 ./run-rstar-bonds.sh               # Run r* from the bond market (needs ystar_ustar for the Taylor rule)
-./run-rstar-rba.sh                 # Run r* revealed by the RBA's reaction to inflation (self-contained)
+./run-rstar-rba.sh                 # Run neutral revealed by the RBA's reaction to inflation (two series;
+                                   #   also runs the sigma_r ensemble and the injection test, ~38s)
 ./run-bank-costs.sh                # Bank funding and lending costs vs the cash rate (charts only)
 uv run python -m src.models.is_curve.run   # IS-curve scatter: a test bench for the r* models
 ./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free; needs expectations)
@@ -149,30 +150,24 @@ src/
 │   │                              #   fa_nk_wage_model.py: FA-NK + sticky wages + Galí unemployment / U*
 │   │                              #   nk_twostar_model.py: NK + reduced-form wedge (linear probe)
 │   │                              #   fa_nk_bayes.py: Bayesian re-estimation (black-box Op + priors, DEMetropolis-Z); identifies the Taylor block (φ_π≈2.6)
-│   ├── rstar_rba/                 # r* REVEALED BY THE RBA's REACTION FUNCTION. The cash rate
-│   │                              #   split into a slow BASE trend and a response to the
-│   │                              #   inflation gap; r* is the two together, b_t + lambda.g_t,
-│   │                              #   NOT the base alone. Reading the base as r* is the standard
-│   │                              #   way to misuse it and broke two charts and one is_curve
-│   │                              #   variant before being caught.
-│   │                              #   NOT AN ESTIMATE OF r*: an estimate of what the RBA's
-│   │                              #   behaviour reveals about it, imperfectly. It conflates
-│   │                              #   belief with every other systematic motive, since
-│   │                              #   anything persistent that was not inflation lands in
-│   │                              #   the base. And the longer a departure from the rule
-│   │                              #   lasts, the more of it the base absorbs, so it cannot
-│   │                              #   audit the Bank over a decade (it can over a year or
-│   │                              #   two: the residual sd is 0.74 against 1.98 for the cash
-│   │                              #   rate, and era means are NOT zero). Only the residual's
-│   │                              #   whole-sample mean is pinned, which is a normalisation.
-│   │                              #   r* 3.49 nominal / 0.99 real. The durable result is
-│   │                              #   lambda = 0.61 per pp of inflation, below the Taylor
-│   │                              #   principle. UNITS TRAP: lambda is stored per BAND-WIDTH
-│   │                              #   (0.303), so per pp is twice it and Taylor's 1.5 is 0.75.
-│   │                              #   Residual autocorrelation 0.85 (no smoothing term), so
-│   │                              #   every interval is too tight. Self-contained apart from
-│   │                              #   GDP, which only times the base's jump permissions
-│   │                              #   (see MODEL_NOTES.md).
+│   ├── rstar_rba/                 # Neutral revealed by the RBA's reaction function. Assumes a
+│   │                              #   neutral cash rate that moves SLOWLY, with the RBA reacting
+│   │                              #   FAST on top of it to inflation away from the 2.5 TARGET
+│   │                              #   (not to being outside the band: g_t is linear in
+│   │                              #   pi - 2.5, and the band half-width only sets lambda's
+│   │                              #   units), and splits the cash rate into those two pieces.
+│   │                              #   NEUTRAL IS b_t, stored as `neutral`. b_t + lambda.g_t is
+│   │                              #   the rule's PRESCRIBED rate, stored as `prescribed`, and is
+│   │                              #   not neutral. `stance` = cash less neutral,
+│   │                              #   `rule_residual` = cash less prescribed. Say which one a
+│   │                              #   number is: 2.99 vs 3.48 nominal at 2026Q2.
+│   │                              #   The LEVEL is conditional on an arbitrary sigma_r: real
+│   │                              #   neutral 0.49, but -0.05 to 1.05 across defensible values,
+│   │                              #   wider than the credible interval. Quote the range.
+│   │                              #   lambda = 0.61 per pp is a NOMINAL response; not comparable
+│   │                              #   with Taylor's 1.5. UNITS: stored per BAND-WIDTH (0.305),
+│   │                              #   so per pp is twice it. Two published series only
+│   │                              #   (see MODEL_NOTES.md for everything else).
 │   ├── is_curve/                  # THE IS CURVE PLOTTED, NOT ESTIMATED. A test bench, not a
 │   │                              #   model: nothing estimated, nothing downstream consumes it.
 │   │                              #   Output gap against the real rate under four r* treatments.

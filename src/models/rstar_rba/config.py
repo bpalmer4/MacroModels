@@ -116,7 +116,7 @@ class ModelConfig:
     # `ystar_ustar`, so this model stops being estimable from published series
     # and inherits that model's conditioning, including its imposed sigma_okun.
     # Different in kind from the `jumps` dependency, which only times a
-    # variance. Default off for that reason.
+    # variance and is itself off by default now. Default off for that reason.
     #
     # OFF, AND IT STAYS OFF. Built, run, and rejected on collinearity, not on
     # principle: the omission is real and the fix is worse.
@@ -237,19 +237,31 @@ class ModelConfig:
     # identified by covariation alone. Start here. It cannot tell you whether
     # neutral has fallen, only what it averaged.
     #
-    # True: `r*_t` drifts as a Gaussian random walk. This is what anyone wants
-    # from the model, and it is where the identification gets difficult: the
-    # walk and `lambda` compete to explain the same downward drift in the cash
-    # rate since 1993, and with `sigma_r` free the walk wins outright. In the
-    # real-rate version of this model that collapse was total, with `sigma_u`
-    # going to 0.045 and r* correlating 1.00 with the cash rate.
-    # True by default. A constant r* cannot answer the question the model exists
-    # for, whether neutral has moved, and it fails visibly: the residual carries
-    # a monotone 4.6-point drift from +1.69 in 1994-2007 to -2.95 in 2020-21,
-    # which is the fall in neutral with nowhere to go. Run `--no-walk`-equivalent
-    # by constructing ModelConfig(walk=False) if the regression is wanted.
+    # True: neutral `b_t` drifts as a Gaussian random walk. This is what anyone
+    # wants from the model, and it is where the identification gets difficult:
+    # the walk and `lambda` compete to explain the same downward drift in the
+    # cash rate since 1993, and with `sigma_r` free the walk wins outright. In
+    # the real-rate version of this model that collapse was total, with
+    # `sigma_u` going to 0.045 and neutral correlating 1.00 with the cash rate.
+    #
+    # True by default, and the alternative is REJECTED rather than merely
+    # disliked. With `walk=False` the residual is a trending near-unit-root
+    # series, lag-1 autocorrelation 0.974 against 0.857, a trend of -1.54 a
+    # decade, and era means running +2.05 (1994-99) to -1.99 (2016-26), while
+    # `sigma_u` goes 0.786 -> 1.930 and the residual sd of 1.91 is essentially
+    # the cash rate's own 1.98. The likelihood says the residual is iid; it
+    # plainly is not. See "The fixed-neutral alternative is rejected by its own
+    # residual" in MODEL_NOTES.md.
     walk: bool = True
     # Imposed when `walk` is on, for the reason above. Swept, never estimated.
+    #
+    # 0.10 IS ARBITRARY. It is a round number inside the defensible band of
+    # roughly 0.05 to 0.15, chosen so the model has a default, and it is not the
+    # value the data prefers because the data does not prefer one. The LEVEL of
+    # neutral is conditional on it and moves -0.05 to 1.05 real across that
+    # band, which is wider than the credible interval at any single value. That
+    # is why the ensemble runs by default: the range is the result, and this
+    # number is a convention for drawing one line through it.
     sigma_r: float = 0.10
     # --- Discontinuities ---
     # Neutral normally crawls, but the world occasionally turns over and a
@@ -274,7 +286,18 @@ class ModelConfig:
     # likelihood cannot separate the base from the response, permission is not
     # neutral: it lets the base take movement that belongs to `lambda`. That is
     # the 2022-24 problem recorded under `jump_source`.
-    jumps: bool = True
+    #
+    # OFF BY DEFAULT, ON THE EVIDENCE OF ITS OWN RESULT. Offered the licence the
+    # model barely uses it: `lambda` 0.305 -> 0.303, `sigma_u` 0.786 -> 0.775,
+    # r* 3.48 -> 3.49. Nothing measurable is bought, and three things are paid
+    # for: the ABS GDP dependency (the headline otherwise needs two published
+    # series and nothing else), a series the RBA did not have in real time, and
+    # the admission under `jump_source` that `gdp` is the default because its
+    # flags happen to miss 2022-24, which is luck rather than design. A
+    # permission that changes nothing is not worth those. Kept as a sensitivity
+    # test, `--jumps`, where the "neutral does not jump in Australia" result is
+    # what it always was: a finding, not a default.
+    jumps: bool = False
     # Which series times the flags.
     #
     #   "world"  the quarterly change in the Cleveland Fed 10-year expected real
@@ -354,10 +377,15 @@ class ModelConfig:
     # point is 0.75 here, not 1.5 and not 0.5.
     #
     # Centred deliberately on 0.5, which is 1.0 per percentage point: the cash
-    # rate moves one for one with inflation and real neutral is unchanged. That
-    # is the atheoretical centre in a nominal model. It asserts neither the
-    # Taylor principle (0.75 here) nor its failure, and it is NOT "the Taylor
-    # coefficient", which an earlier version of this comment claimed.
+    # rate moves one for one with inflation. It is NOT "the Taylor coefficient",
+    # which an earlier version of this comment claimed.
+    #
+    # Nor is one-for-one the point at which the real rate is unchanged, which
+    # this comment also used to say. That holds only under full pass-through of
+    # inflation into expectations. `lambda/band` is the pass-through and the
+    # real response summed, and this model cannot separate them, so it asserts
+    # nothing about the real response in either direction. See "The Taylor
+    # comparison does not work in nominal terms" in MODEL_NOTES.md.
     #
     # Zero is the strong claim, that there is no response at all, and it would
     # falsify the whole identification. The prior is wide enough to reach it.
@@ -377,11 +405,38 @@ class ModelConfig:
     # pooled value with wide posteriors, the trend has taken the difference and
     # the run is uninformative rather than evidence of no break.
     lambda_split: str | None = None
-    # The BASE, not r*: the slow part r* is built on. Centred on the sample
-    # mean cash rate, wide.
+    # The BASE: the slow part, before the inflation response is added. Centred
+    # on the sample mean cash rate, wide.
     base_mu: float = 4.0
     base_sigma: float = 3.0
     sigma_u_sigma: float = 2.0
+
+    # --- Partial adjustment ---
+    # OFF by default, and EXPERIMENTAL. With it on the observation equation is
+    #
+    #   r_t = phi·r_{t-1} + (1 - phi)·(b_t + lambda·g_t) + eps_t
+    #
+    # so `b_t + lambda·g_t` becomes the rate the Bank is moving TOWARD rather
+    # than the rate it sets, and the Bank closes (1 - phi) of the distance each
+    # quarter. It is the fix for the residual autocorrelation of 0.857, which is
+    # the largest known defect of the default: the likelihood there assumes an
+    # independent error and the error is mostly last quarter's cash rate.
+    #
+    # UNITS CHANGE, AND THIS HAS TO BE SAID. With `phi` free, `lambda` is the
+    # LONG-RUN response; in the default it is the same-quarter one. The two are
+    # not comparable and quoting them side by side is an error.
+    #
+    # `r_{t-1}` is the OBSERVED lagged cash rate, not a latent, so the first
+    # quarter drops out of the likelihood. That is conditioning on the initial
+    # observation, which is standard and costs one of 134 quarters.
+    partial_adjustment: bool = False
+    # Beta prior on `phi`. Centred near 0.8 and wide: the measured inertia in
+    # the cash rate runs 0.90 to 0.97, but that is an AR(1) on the level, which
+    # is not the same object as the adjustment speed, so this prior should not
+    # be read as asserting either figure. Reaches 0 (no smoothing, the default
+    # model) and stays clear of 1 (no adjustment at all, which is not a model).
+    phi_a: float = 4.0
+    phi_b: float = 1.5
 
     output_dir: Path | None = None
 
@@ -440,4 +495,7 @@ class ModelConfig:
             "base_mu": self.base_mu,
             "base_sigma": self.base_sigma,
             "sigma_u_sigma": self.sigma_u_sigma,
+            "partial_adjustment": float(self.partial_adjustment),
+            "phi_a": self.phi_a,
+            "phi_b": self.phi_b,
         }

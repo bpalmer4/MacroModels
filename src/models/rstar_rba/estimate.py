@@ -70,10 +70,10 @@ def build_observations(
     this model had to import an expectations series, which is itself a model
     output, and this avoids it.
 
-    The rule itself still uses two series and nothing else. A third is loaded
-    when `jumps` is on, the default, and it never enters the rule: it only says
-    which quarters may carry a wider innovation. `--no-jumps` drops it and
-    returns the package to two series.
+    The rule uses two series and nothing else, which is the default. A third is
+    loaded only when `jumps` is on, and it never enters the rule: it only says
+    which quarters may carry a wider innovation. `--jumps` is a sensitivity test
+    and brings that dependency with it.
     """
     sources = SourceSet()
     cash = sources.take(get_cash_rate_qrtly()).astype(float)
@@ -282,10 +282,10 @@ def build_model(frame: pd.DataFrame, config: ModelConfig, *, verbose: bool = Tru
         r_t - b_t = lambda · (pi_t - anchor) + u_t
         r*_t      = b_t + lambda · (pi_t - anchor)
 
-    `b_t` is the BASE, the slow-moving part of the neutral rate. It is not r*
-    on its own: r* is the whole systematic term, base plus inflation response,
-    which is what the cash rate is compared against and what the model calls
-    `rstar`.
+    `b_t` is NEUTRAL, the slow-moving trend, recorded as `neutral`. Adding the
+    inflation response gives the rule's prescribed rate, recorded as
+    `prescribed`, which is what the cash rate is compared against in the
+    likelihood but is NOT neutral: the response is a departure from it.
 
     With `walk` off the base is one constant. With it on, `b_t` is a Gaussian
     random walk whose innovation sd is imposed, because the walk and `lambda`
@@ -328,35 +328,59 @@ def build_model(frame: pd.DataFrame, config: ModelConfig, *, verbose: bool = Tru
         sigma_u = pm.HalfNormal("sigma_u", sigma=config.sigma_u_sigma)
         base_0 = pm.Normal("base_0", mu=config.base_mu, sigma=config.base_sigma)
 
-        # The BASE is not r*. It is the slow-moving part of the neutral rate,
-        # the piece the inflation response does not explain. r* is the whole
-        # right-hand side, base + response, which is what the cash rate is
-        # actually compared against.
+        # NEUTRAL: the slow-moving piece, which is what this package calls the
+        # neutral rate. The inflation response is a departure FROM it, not part
+        # of it, so `neutral + response` is the rule's prescribed rate below.
         if config.walk:
             innovations = _innovations(frame, config, n)
-            base = pm.Deterministic(
-                "base",
+            neutral = pm.Deterministic(
+                "neutral",
                 base_0 + config.sigma_r * pt.concatenate([pt.zeros(1), pt.cumsum(innovations[1:])]),
             )
         else:
-            base = pm.Deterministic("base", base_0 * pt.ones(n))
+            neutral = pm.Deterministic("neutral", base_0 * pt.ones(n))
 
-        # What the rule says the cash rate should be, given inflation. This is
-        # r*: the base trend plus the inflation response, and the thing the
-        # cash rate is compared against. The stance is the rate less it, `u`.
-        #
         # Both scales are recorded, so anything downstream reads the one it
         # wants rather than re-deriving it and guessing at the deflator. Real
         # is nominal less the target, because a neutral rate is defined at
         # target inflation, not at whatever inflation happened to be.
-        rstar = pm.Deterministic("nominal_rstar", base + response)
-        pm.Deterministic("real_rstar", rstar - config.anchor)
-        pm.Deterministic("stance", pt.as_tensor_variable(rate) - rstar)
+        #
+        # NAMES MATTER HERE and these ones were wrong until they were fixed.
+        # `neutral` is the slow piece on its own. `prescribed` is what the rule
+        # says the cash rate should be today, neutral plus the inflation
+        # response, and it is NOT neutral. `stance` is the cash rate against
+        # neutral, which is what the word means. `rule_residual` is the cash
+        # rate against the rule, which is what the old `stance` actually held.
+        prescribed = pm.Deterministic("prescribed", neutral + response)
+        pm.Deterministic("neutral_real", neutral - config.anchor)
+        pm.Deterministic("prescribed_real", prescribed - config.anchor)
+        pm.Deterministic("stance", pt.as_tensor_variable(rate) - neutral)
+        pm.Deterministic("rule_residual", pt.as_tensor_variable(rate) - prescribed)
         # Excluded quarters keep their place in the state, so `r*` still evolves
         # through the floor years, but carry no likelihood: the rule did not
         # generate them. Same treatment `ystar` gives the lockdown quarters.
         kept = _unconstrained(frame, config)
-        pm.Normal("obs", mu=rstar[kept], sigma=sigma_u, observed=rate[kept])
+        if not config.partial_adjustment:
+            pm.Normal("obs", mu=prescribed[kept], sigma=sigma_u, observed=rate[kept])
+        else:
+            # r_t = phi·r_{t-1} + (1 - phi)·d_t + eps_t, with d_t the desired
+            # rate the rule is moving toward. The lag is the OBSERVED cash rate,
+            # so the first quarter has no predictor and leaves the likelihood.
+            #
+            # `sigma_u` is `sigma_eps` here, the innovation sd rather than the
+            # sd of the level around the rule, and is far smaller for that
+            # reason alone. Do not compare it with the default run's.
+            phi = pm.Beta("phi", alpha=config.phi_a, beta=config.phi_b)
+            lagged = pt.as_tensor_variable(np.concatenate([[rate[0]], rate[:-1]]))
+            usable = kept.copy()
+            usable[0] = False
+            pm.Deterministic("adjustment_gap", pt.as_tensor_variable(rate) - prescribed)
+            pm.Normal(
+                "obs",
+                mu=(phi * lagged + (1.0 - phi) * prescribed)[usable],
+                sigma=sigma_u,
+                observed=rate[usable],
+            )
 
     if verbose:
         _print_spec(frame, config, weights_desc)
