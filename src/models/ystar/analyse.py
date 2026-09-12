@@ -667,6 +667,107 @@ def plot_growth_vs_potential(
     )
 
 
+def _growth_against_potential(
+    results: PotentialResults,
+    comparison: pd.Series,
+    *,
+    label: str,
+    colour: str,
+    title: str,
+    lfooter: str,
+    plot_from: str | None = None,
+    tag: str = "",
+) -> None:
+    """Plot a year-ended growth rate against potential growth, with g*'s band.
+
+    Distinct from `plot_growth_vs_potential`, which smooths GDP with a Henderson
+    filter before differencing and shades by which side of potential it falls.
+    This is the raw year-ended series: noisier, and the noise is the point when
+    the question is how far the actual series swings around a trend that barely
+    moves.
+    """
+    potential = results.potential_growth_posterior()
+    data = pd.DataFrame({
+        label: comparison,
+        "Potential growth (g*)": potential.median(axis=1),
+    }).dropna()
+    band = _band(potential).reindex(data.index)
+    if plot_from:
+        start = pd.Period(plot_from, "Q")
+        data, band = data.loc[data.index >= start], band.loc[band.index >= start]
+
+    ax = mg.fill_between_plot(band, **_BAND_KWARGS)
+    mg.line_plot(
+        data,
+        ax=ax,
+        color=[colour, "darkorange"],
+        width=[1.5, 2.5],
+        style=["-", "--"],
+        annotate=True,
+        rounding=1,
+    )
+    _finalise(
+        ax,
+        title=title,
+        ylabel="Year-ended per cent",
+        y0=True,
+        legend={"loc": "best", "fontsize": "small"},
+        rfooter=_rfooter(results),
+        lfooter=_LFOOTER + lfooter,
+        tag=tag,
+        show=False,
+    )
+
+
+def plot_gdp_growth_against_potential(
+    results: PotentialResults,
+    plot_from: str | None = None,
+    tag: str = "",
+) -> None:
+    """Year-ended GDP growth against potential growth."""
+    log_gdp = pd.Series(results.obs["log_gdp"], index=results.obs_index)
+    _growth_against_potential(
+        results,
+        log_gdp.diff(4),
+        label="GDP growth (g)",
+        colour="black",
+        title="GDP growth and potential growth",
+        # Kept short: a long left footer collides with the source line on the
+        # right. "Year-ended" is on the y-axis already.
+        lfooter="Unsmoothed. ",
+        plot_from=plot_from,
+        tag=tag,
+    )
+
+
+def plot_gov_growth_against_potential(
+    results: PotentialResults,
+    plot_from: str | None = None,
+    tag: str = "",
+) -> None:
+    """Year-ended government consumption growth against potential growth.
+
+    Government consumption is a component of the GDP whose trend the model is
+    estimating, so this is not an independent check on g*. It is a question
+    about composition: whether the public component has been running above or
+    below the pace the economy's supply side can sustain.
+    """
+    from src.data.gov_spending import get_gov_consumption_qrtly  # noqa: PLC0415
+
+    gov = get_gov_consumption_qrtly()
+    log_gov = np.log(gov.data) * 100
+    _growth_against_potential(
+        results,
+        log_gov.diff(4),
+        label="Government consumption growth",
+        colour="seagreen",
+        title="Government spending growth and potential growth",
+        lfooter="Govt final consumption, chain volume. ",
+        plot_from=plot_from,
+        tag=tag,
+    )
+
+
 def plot_trend_growth(results: PotentialResults) -> None:
     """Trend potential growth — the core specification's headline.
 
@@ -1174,6 +1275,10 @@ def run_analysis(
     # which otherwise dominates the scale and hides the recent story.
     plot_growth_vs_potential(results, tag="full")
     plot_growth_vs_potential(results, plot_from="2015Q1", tag="recent")
+    plot_gdp_growth_against_potential(results, tag="full")
+    plot_gdp_growth_against_potential(results, plot_from="2015Q1", tag="recent")
+    plot_gov_growth_against_potential(results, tag="full")
+    plot_gov_growth_against_potential(results, plot_from="2015Q1", tag="recent")
 
     if results.spec == "production":
         plot_factor_trends(results)

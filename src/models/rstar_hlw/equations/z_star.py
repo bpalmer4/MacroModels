@@ -27,13 +27,21 @@ def z_star_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     latents: dict[str, Any],
+    *,
     constant: dict[str, Any] | None = None,
+    sigma_z_prior: float = 0.10,
 ) -> str:
     """Gaussian random walk in the latent r* component beyond trend growth.
 
     Model:
         z_t  = z_{t-1} + e_z,  e_z ~ N(0, sigma_z)
         r*_t = g_t + z_t
+
+    `sigma_z_prior` is the HalfNormal scale on sigma_z, which governs how fast
+    r* is allowed to wander. It is exposed so it can be swept: sigma_z is the
+    one quantity here the data may have nothing to say about, and the only way
+    to find out is to vary its prior and watch what the r* posterior does. See
+    `sigma_z_prior_sweep.py`.
     """
     if constant is None:
         constant = {}
@@ -46,7 +54,7 @@ def z_star_equation(
 
     with model:
         settings = {
-            "sigma_z": {"sigma": 0.10},
+            "sigma_z": {"sigma": sigma_z_prior},
         }
         mc = set_model_coefficients(model, settings, constant)
 

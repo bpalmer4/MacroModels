@@ -14,6 +14,7 @@ import numpy as np
 import pymc as pm
 
 from src.models.nairu.base import set_model_coefficients
+from src.models.rstar_hlw.equations.exclusion import drop_excluded
 
 
 def phillips_curve_equation(
@@ -21,6 +22,7 @@ def phillips_curve_equation(
     model: pm.Model,
     latents: dict[str, Any],
     constant: dict[str, Any] | None = None,
+    keep: np.ndarray | None = None,
 ) -> str:
     """Anchor-augmented Phillips curve on annual trimmed mean.
 
@@ -28,6 +30,14 @@ def phillips_curve_equation(
 
     pi_4 and pi_exp are both annualised %; y_gap is in log x 100 units, so b_y
     translates 1 log-point of output gap into pp of annual inflation.
+
+    `keep` drops a window of quarters (see `exclusion.py`). It is applied here
+    as well as in the IS curve, and on purpose: the lockdown output gap is a
+    shuttered economy rather than deficient demand, so asking b_y to price it
+    into inflation would pull potential down towards GDP through a second
+    route, which is the thing the exclusion exists to stop. The gap is lagged
+    one quarter here, so the mask is applied on the inflation date, meaning the
+    quarter whose GAP is excluded is the one before each dropped row.
     """
     if constant is None:
         constant = {}
@@ -45,11 +55,17 @@ def phillips_curve_equation(
 
         predicted_pi = obs["pi_exp"][1:] + mc["b_y"] * output_gap[:-1]
 
+        # first=0: row i uses the gap dated i, so the mask is read on the gap's
+        # own date rather than the inflation date one quarter later.
+        fitted, observed = drop_excluded(
+            keep, 0, predicted_pi, np.asarray(obs["pi_4"][1:], dtype=float),
+        )
+
         pm.Normal(
             "observed_pi",
-            mu=predicted_pi,
+            mu=fitted,
             sigma=mc["sigma_pi"],
-            observed=obs["pi_4"][1:],
+            observed=observed,
         )
 
     return "pi_4_t = pi_exp_t + b_y * y_gap_{t-1} + e_pi"

@@ -27,6 +27,7 @@ SIGMA_Z_GRID = [0.05, 0.15, 0.30, 0.50, 1.00]
 
 
 def main() -> None:
+    """Re-estimate Resolution E once per sigma_z in the grid, charting each."""
     print("Building observations once (shared across sweep)...")
     obs, obs_index, chart_obs = build_observations(start="1980Q1", verbose=True)
 
@@ -39,7 +40,7 @@ def main() -> None:
     )
 
     for sigma_z in SIGMA_Z_GRID:
-        suffix = f"{int(round(sigma_z * 100)):03d}"  # 0.05 -> "005"
+        suffix = f"{round(sigma_z * 100):03d}"  # 0.05 -> "005"
         prefix = f"rstar_hlw_E_sigma_z_{suffix}"
 
         print()
@@ -48,7 +49,9 @@ def main() -> None:
         print("=" * 70)
 
         constants_override = {"r_star": {"sigma_z": sigma_z}}
-        model = build_model(obs, constants=constants_override, resolution="E")
+        model = build_model(
+            obs, constants=constants_override, resolution="E", obs_index=obs_index,
+        )
 
         trace = sample_model(model, sampler_config)
 

@@ -33,14 +33,32 @@ def trend_growth_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     latents: dict[str, Any],
+    *,
     constant: dict[str, Any] | None = None,
+    sigma_g_fixed: float | None = None,
 ) -> str:
     """Random walk in trend growth.
 
     Model: g_t = g_{t-1} + e_g,  e_g ~ N(0, sigma_g)
+
+    `sigma_g_fixed` imposes sigma_g instead of sampling it, and is how the
+    lambda_g ratio reaches this equation: the caller works out
+    lambda_g x sigma_ystar (see `estimate.py:_sigma_g_from_lambda`, which also
+    handles the annualisation) and passes the result here.
+
+    WHY IT MATTERS. With sigma_ystar imposed but sigma_g free, the posterior
+    on sigma_g came back at 0.105 against this prior's scale of 0.04, and g
+    ran 1.51 to 4.17 over the sample: the volatility that used to pile into
+    potential piled into trend growth instead. HLW prevent that by fixing the
+    RATIO of the two, not either one alone. Leave it None to sample sigma_g
+    under the prior below, which is what the eight resolutions in
+    MODEL_NOTES.md were run on.
     """
     if constant is None:
         constant = {}
+
+    if sigma_g_fixed is not None and "sigma_g" not in constant:
+        constant = {**constant, "sigma_g": sigma_g_fixed}
 
     # Fixed (very-soft) measurement sigma on the linear-trend anchor.
     # Kept fixed rather than estimated because the previous run with a free
@@ -80,7 +98,11 @@ def trend_growth_equation(
             )
 
     latents["trend_growth"] = trend_growth
-    desc = "g_t = g_{t-1} + e_g,  e_g ~ N(0, sigma_g)"
+    sigma_desc = (
+        f";  sigma_g = {constant['sigma_g']:.4f} imposed"
+        if "sigma_g" in constant else ""
+    )
+    desc = f"g_t = g_{{t-1}} + e_g,  e_g ~ N(0, sigma_g){sigma_desc}"
     if soft_anchor_active:
         desc += f";  linear_trend ~ N(g, {SIGMA_TREND_OBS:.1f})"
     return desc

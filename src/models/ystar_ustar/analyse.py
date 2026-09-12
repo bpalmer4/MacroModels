@@ -656,6 +656,14 @@ def _draw_charts(
     ystar_analyse.plot_gap_composition(ystar_view)
     ystar_analyse.plot_growth_vs_potential(ystar_view, tag="full")
     ystar_analyse.plot_growth_vs_potential(ystar_view, plot_from="2015Q1", tag="recent")
+    ystar_analyse.plot_gdp_growth_against_potential(ystar_view, tag="full")
+    ystar_analyse.plot_gdp_growth_against_potential(
+        ystar_view, plot_from="2015Q1", tag="recent",
+    )
+    ystar_analyse.plot_gov_growth_against_potential(ystar_view, tag="full")
+    ystar_analyse.plot_gov_growth_against_potential(
+        ystar_view, plot_from="2015Q1", tag="recent",
+    )
     ystar_analyse.plot_trend_growth(ystar_view)
 
     # The post-modelling split of potential growth into hours and productivity.

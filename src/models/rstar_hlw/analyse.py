@@ -1,12 +1,17 @@
 """Analysis and charts for the HLW r-star model."""
 
-from pathlib import Path
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import mgplot as mg
 import pandas as pd
 
 from src.data.world_rstar import get_world_rstar
 from src.models.rstar_hlw.results import DEFAULT_CHART_BASE, RStarResults, load_results
+
+if TYPE_CHECKING:
+    from collections.abc import Container, Hashable
+    from pathlib import Path
 
 LFOOTER = "Australia. "
 RFOOTER = "HLW Bayesian r-star model. "
@@ -16,13 +21,53 @@ def _chart_dir_for(resolution: str) -> Path:
     return DEFAULT_CHART_BASE / f"rstar-hlw-{resolution}"
 
 
+def _rstar_caveat(flags: _ResolutionFlags) -> str:
+    """Build the health warning that goes on every chart plotting r*.
+
+    These charts are the one place the package still asserts an r* path, and a
+    chart asserts more confidently than a caveat three sections into
+    MODEL_NOTES. The wording differs by resolution because the failure does:
+    canonical HLW returns trend growth, B returns the bond yield, and the
+    blends return whatever alpha was assumed.
+    """
+    if flags.is_b:
+        return ("NOT AN ESTIMATE: r* here is the indexed bond yield less a constant premium. "
+                "See MODEL_NOTES.md.")
+    if flags.is_blend:
+        return ("NOT AN ESTIMATE: r* here is a blend whose weight the data does not identify, "
+                "so its level is the analyst's prior. See MODEL_NOTES.md.")
+    return ("NOT AN ESTIMATE: z has no observation equation, so r* here is trend growth plus a "
+            "level (corr 0.998). See MODEL_NOTES.md.")
+
+
+def _excluded_span(results: RStarResults) -> dict[str, Any] | None:
+    """Shading for the window dropped from the likelihood, if there was one.
+
+    The states still run through the window, so the fan is drawn there like
+    anywhere else. The shading is the warning that nothing in it was fitted.
+    """
+    window = results.constants.get("exclude_window")
+    if window is None:
+        return None
+    lo, hi = window
+    return {
+        "xmin": pd.Period(lo, freq="Q"),
+        "xmax": pd.Period(hi, freq="Q"),
+        "color": "grey",
+        "alpha": 0.15,
+        "zorder": -1,
+    }
+
+
 def _fan_chart(
     posterior: pd.DataFrame,
     title: str,
     ylabel: str,
+    *,
     rfooter: str = "",
     y0: bool = True,
     show: bool = False,
+    axvspan: dict[str, Any] | None = None,
 ) -> None:
     """Plot a fan chart from posterior samples (50% and 90% credible bands)."""
     q05 = posterior.quantile(0.05, axis=1)
@@ -52,11 +97,17 @@ def _fan_chart(
         y0=y0,
         legend=False,
         show=show,
+        axvspan=axvspan,
     )
 
 
-def plot_r_star(results: RStarResults, show: bool = False) -> None:
-    """r* fan chart with the real cash rate overlaid for monetary policy context."""
+def plot_r_star(results: RStarResults, show: bool = False, caveat: str = "") -> None:
+    """r* fan chart with the real cash rate overlaid for monetary policy context.
+
+    `caveat` is the health warning from `_rstar_caveat`, and it is not optional
+    in practice: this chart puts an r* path next to the policy rate, which is
+    exactly the reading the model cannot support.
+    """
     posterior = results.r_star_posterior()
     q05 = posterior.quantile(0.05, axis=1)
     q25 = posterior.quantile(0.25, axis=1)
@@ -93,6 +144,7 @@ def plot_r_star(results: RStarResults, show: bool = False) -> None:
         ax,
         title="Natural Rate of Interest (r*) and Real Cash Rate",
         ylabel="Per cent per annum",
+        lheader=caveat,
         lfooter=LFOOTER,
         rfooter=RFOOTER + "Real cash rate = cash rate − π_exp.",
         y0=True,
@@ -102,6 +154,7 @@ def plot_r_star(results: RStarResults, show: bool = False) -> None:
 
 
 def plot_trend_growth(results: RStarResults, show: bool = False) -> None:
+    """Fan chart of the latent trend growth rate g."""
     _fan_chart(
         results.trend_growth_posterior(),
         title="Trend Output Growth (g)",
@@ -112,12 +165,16 @@ def plot_trend_growth(results: RStarResults, show: bool = False) -> None:
 
 
 def plot_output_gap(results: RStarResults, show: bool = False) -> None:
+    """Fan chart of the output gap, with any excluded window shaded."""
+    span = _excluded_span(results)
+    note = " Shaded: dropped from the likelihood." if span else ""
     _fan_chart(
         results.output_gap_posterior(),
         title="Output Gap (HLW)",
         ylabel="Per cent of potential GDP",
-        rfooter="log-difference x 100. 50% and 90% credible bands.",
+        rfooter=f"log-difference x 100. 50% and 90% credible bands.{note}",
         show=show,
+        axvspan=span,
     )
 
 
@@ -135,12 +192,15 @@ def _mode_conditional_r_star(
     """
     import numpy as np  # noqa: PLC0415
 
-    posterior = results.trace.posterior
-    r_star_stacked = posterior["r_star"].stack(sample=("chain", "draw"))
+    posterior = results.trace["posterior"]
+    # xarray's stack/.values throughout this function, not pandas': the PD
+    # rules cannot tell the two apart, and `.melt` / `.to_numpy` are not
+    # xarray methods.
+    r_star_stacked = posterior["r_star"].stack(sample=("chain", "draw"))  # noqa: PD013
     # PyMC time dim is auto-named (e.g. 'r_star_dim_0'); pick whichever is not 'sample'.
     time_dim = next(d for d in r_star_stacked.dims if d != "sample")
-    r_star_arr = r_star_stacked.transpose(time_dim, "sample").values
-    alpha_arr = posterior["alpha_rstar"].stack(sample=("chain", "draw")).values
+    r_star_arr = r_star_stacked.transpose(time_dim, "sample").values  # noqa: PD011
+    alpha_arr = posterior["alpha_rstar"].stack(sample=("chain", "draw")).values  # noqa: PD011, PD013
 
     low_mask = alpha_arr < low_thresh
     high_mask = alpha_arr > high_thresh
@@ -157,6 +217,7 @@ def _mode_conditional_r_star(
 
 def plot_r_star_bimodal_decomposition(
     results: RStarResults,
+    *,
     show: bool = False,
     n_draws: int = 500,
     seed: int = 42,
@@ -183,11 +244,14 @@ def plot_r_star_bimodal_decomposition(
     """
     import numpy as np  # noqa: PLC0415
 
-    posterior = results.trace.posterior
-    r_star_stacked = posterior["r_star"].stack(sample=("chain", "draw"))
+    posterior = results.trace["posterior"]
+    # xarray's stack/.values throughout this function, not pandas': the PD
+    # rules cannot tell the two apart, and `.melt` / `.to_numpy` are not
+    # xarray methods.
+    r_star_stacked = posterior["r_star"].stack(sample=("chain", "draw"))  # noqa: PD013
     # PyMC time dim is auto-named (e.g. 'r_star_dim_0'); pick whichever is not 'sample'.
     time_dim = next(d for d in r_star_stacked.dims if d != "sample")
-    r_star_arr = r_star_stacked.transpose(time_dim, "sample").values  # shape (T, n_samples)
+    r_star_arr = r_star_stacked.transpose(time_dim, "sample").values  # noqa: PD011  # (T, n_samples)
     n_samples = r_star_arr.shape[1]
 
     rng = np.random.default_rng(seed)
@@ -300,7 +364,10 @@ def plot_r_star_decomposition(results: RStarResults, show: bool = False) -> None
         annotate=True,
         rounding=1,
         y0=True,
-        lheader="r* is robustly estimated - the g / bond-anchor split is interpretive scaffolding — these components are not independently estimated.",
+        lheader=(
+            "The g / bond-anchor split is interpretive scaffolding: "
+            "these components are not independently estimated."
+        ),
         lfooter=LFOOTER,
         rfooter=RFOOTER,
         legend=True,
@@ -309,7 +376,7 @@ def plot_r_star_decomposition(results: RStarResults, show: bool = False) -> None
 
 
 def plot_world_rstar_overlay(
-    results: RStarResults, show: bool = False, bond_mode: bool = False,
+    results: RStarResults, show: bool = False, bond_mode: bool = False, caveat: str = "",
 ) -> None:
     """r*_AU vs the NY Fed HLW r* estimates for US, Euro Area, Canada.
 
@@ -343,6 +410,7 @@ def plot_world_rstar_overlay(
         df,
         title="r* Comparison: Australia, US, Canada and Euro Area",
         ylabel="Per cent per annum",
+        lheader=caveat,
         color=["navy", "steelblue", "seagreen", "firebrick"],
         width=[2.5, 1.4, 1.4, 1.4],
         style=["-", "--", "--", "--"],
@@ -365,9 +433,11 @@ def plot_alpha_path(results: RStarResults, show: bool = False) -> None:
     drift in the structural-vs-market anchor weight (e.g. toward 0 in
     recent years if Bullock's "shifts in r*" framing is data-supported).
     """
-    posterior = results.trace.posterior["alpha_rstar"].stack(sample=("chain", "draw"))
+    # xarray stack/.values again, not pandas: see the note in
+    # `_mode_conditional_r_star`.
+    posterior = results.trace["posterior"]["alpha_rstar"].stack(sample=("chain", "draw"))  # noqa: PD013
     time_dim = next(d for d in posterior.dims if d != "sample")
-    alpha = posterior.transpose(time_dim, "sample").values  # (T, n_samples)
+    alpha = posterior.transpose(time_dim, "sample").values  # noqa: PD011  # (T, n_samples)
     dates = results.obs_index
 
     df = pd.DataFrame(alpha, index=dates)
@@ -411,14 +481,15 @@ def plot_alpha_posterior(results: RStarResults, show: bool = False) -> None:
     alpha=1 means r* tracks trend growth (Resolution A);
     alpha=0 means r* tracks the bond-implied real rate (Resolution B).
     """
-    from src.models.common.extraction import get_scalar_var  # noqa: PLC0415
     import matplotlib.pyplot as plt  # noqa: PLC0415
+
+    from src.models.common.extraction import get_scalar_var  # noqa: PLC0415
 
     alpha = get_scalar_var("alpha_rstar", results.trace)
     median = float(alpha.median())
     hdi_lo, hdi_hi = float(alpha.quantile(0.05)), float(alpha.quantile(0.95))
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    _fig, ax = plt.subplots(figsize=(8, 5))
     ax.hist(alpha, bins=40, color="navy", alpha=0.7, density=True)
     ax.axvline(median, color="red", linestyle="--", linewidth=2,
                label=f"Median = {median:.2f}")
@@ -438,6 +509,125 @@ def plot_alpha_posterior(results: RStarResults, show: bool = False) -> None:
     )
 
 
+@dataclass(frozen=True)
+class _ResolutionFlags:
+    """Which resolution a saved trace came from, read off its posterior vars.
+
+    The resolution is not recorded in the trace, so it is inferred from which
+    parameters exist: only the blends have `alpha_rstar`, only E and F have
+    `rho_z`, only B has `tp`, and so on.
+    """
+
+    label: str
+    is_blend: bool
+    is_b: bool
+    is_g: bool
+    is_h: bool
+    has_blended_z: bool
+    has_alpha_hierarchical: bool
+
+
+def _detect_resolution(posterior_vars: Container[Hashable]) -> _ResolutionFlags:
+    """Work out which resolution produced a trace from its posterior variables."""
+    has_blend = "alpha_rstar" in posterior_vars
+    has_blended_z = "rho_z" in posterior_vars  # E and F use AR(1) z
+    has_soe = "gamma_icp" in posterior_vars or "gamma_twi" in posterior_vars
+    has_indexed_bond_obs = "tp" in posterior_vars
+    has_alpha_hierarchical = "alpha_a_hyper" in posterior_vars  # G
+    has_logit_alpha = "logit_alpha" in posterior_vars  # H — time-varying alpha
+
+    is_h = has_blend and has_logit_alpha
+    is_g = has_blend and has_alpha_hierarchical and not is_h
+    plain_blend = has_blend and not is_g and not is_h
+    is_f = plain_blend and has_blended_z and has_soe
+    is_e = plain_blend and has_blended_z and not has_soe
+    is_c = plain_blend and not has_blended_z
+    is_b = (not has_blend) and has_indexed_bond_obs
+    is_d = (not has_blend) and (not is_b) and has_soe
+
+    label = (
+        "H (blend with time-varying alpha_t via logit-RW)" if is_h
+        else "G (blend + hierarchical Beta(a,b) on alpha)" if is_g
+        else "F (blend + AR(1) z + SOE IS)"               if is_f
+        else "E (blend + AR(1) z)"                        if is_e
+        else "C (blend)"                                  if is_c
+        else "B (canonical + indexed bond)"               if is_b
+        else "D (canonical r* + SOE IS curve)"            if is_d
+        else "A (canonical, r* = g + z)"
+    )
+
+    return _ResolutionFlags(
+        label=label,
+        is_blend=is_c or is_e or is_f or is_g or is_h,
+        is_b=is_b,
+        is_g=is_g,
+        is_h=is_h,
+        has_blended_z=has_blended_z,
+        has_alpha_hierarchical=has_alpha_hierarchical,
+    )
+
+
+def _print_blend_summary(results: RStarResults, flags: _ResolutionFlags) -> None:
+    """Print the alpha / k / z lines that only the blend resolutions have."""
+    from src.models.common.extraction import (  # noqa: PLC0415
+        get_scalar_var,
+        get_vector_var,
+    )
+
+    if flags.is_h:
+        # alpha_rstar is a vector (T,) under H — show first, last and range.
+        alpha_path = get_vector_var("alpha_rstar", results.trace)
+        alpha_path.index = results.obs_index
+        alpha_med = alpha_path.median(axis=1)
+        print(f"  alpha_t (time-varying): start {alpha_med.iloc[0]:.3f}, "
+              f"latest {alpha_med.iloc[-1]:.3f}, "
+              f"range [{alpha_med.min():.3f}, {alpha_med.max():.3f}]")
+    else:
+        alpha_scalar = float(get_scalar_var("alpha_rstar", results.trace).median())
+        bimodal_note = (
+            "  (note: median is misleading for bimodal posteriors, see chart)"
+            if flags.is_g else ""
+        )
+        print(f"  alpha median:  {alpha_scalar:.3f}{bimodal_note}")
+
+    print(f"  k median:      {float(get_scalar_var('k', results.trace).median()):.3f}")
+
+    if flags.has_alpha_hierarchical:
+        a_med = float(get_scalar_var("alpha_a_hyper", results.trace).median())
+        b_med = float(get_scalar_var("alpha_b_hyper", results.trace).median())
+        shape_note = (
+            "data prefers near-Jeffreys (sub-1)"
+            if (a_med < 1 and b_med < 1) else "data prefers central-mass (>1)"
+        )
+        print(f"  alpha_a_hyper: {a_med:.3f}  alpha_b_hyper: {b_med:.3f}  ({shape_note})")
+
+    if flags.has_blended_z:
+        rho_med = float(get_scalar_var("rho_z", results.trace).median())
+        z = results.trace["posterior"]["z_star"].stack(s=("chain", "draw")).values  # noqa: PD011, PD013
+        z_median_path = pd.DataFrame(z).median(axis=1)
+        print(f"  rho_z median:  {rho_med:.3f}")
+        print(f"  |z| mean:      {abs(z_median_path).mean():.3f} pp"
+              f"  (range [{z_median_path.min():.2f}, {z_median_path.max():.2f}])")
+
+
+def _print_summary(results: RStarResults, flags: _ResolutionFlags) -> None:
+    """Print the headline numbers for a loaded trace."""
+    from src.models.common.extraction import get_scalar_var  # noqa: PLC0415
+
+    r_star = results.r_star_median()
+    g = results.trend_growth_median()
+    print(f"  Sample:        {results.obs_index[0]} to {results.obs_index[-1]}")
+    print(f"  Resolution:    {flags.label}")
+    print(f"  r* range:      [{r_star.min():.2f}, {r_star.max():.2f}]%")
+    print(f"  r* latest:     {r_star.iloc[-1]:.2f}%")
+    print(f"  g  latest:     {g.iloc[-1]:.2f}%")
+
+    if flags.is_blend:
+        _print_blend_summary(results, flags)
+    elif flags.is_b:
+        print(f"  tp median:     {float(get_scalar_var('tp', results.trace).median()):.3f}")
+
+
 def run_analyse(
     prefix: str = "rstar_hlw_A",
     chart_dir: Path | str | None = None,
@@ -455,93 +645,30 @@ def run_analyse(
     print(f"Loading results: {prefix}")
     results = load_results(prefix=prefix)
 
-    posterior_vars = results.trace.posterior.data_vars
-    has_blend = "alpha_rstar" in posterior_vars
-    has_blended_z = "rho_z" in posterior_vars  # E and F use AR(1) z
-    has_soe = "gamma_icp" in posterior_vars or "gamma_twi" in posterior_vars
-    has_indexed_bond_obs = "tp" in posterior_vars
-    has_alpha_hierarchical = "alpha_a_hyper" in posterior_vars  # G
-    has_logit_alpha = "logit_alpha" in posterior_vars  # H — time-varying alpha
-
-    is_resolution_h = has_blend and has_logit_alpha
-    is_resolution_g = has_blend and has_alpha_hierarchical and not is_resolution_h
-    is_resolution_f = has_blend and has_blended_z and has_soe and not is_resolution_g and not is_resolution_h
-    is_resolution_e = has_blend and has_blended_z and not has_soe and not is_resolution_g and not is_resolution_h
-    is_resolution_c = has_blend and not has_blended_z and not is_resolution_g and not is_resolution_h
-    is_resolution_b = (not has_blend) and has_indexed_bond_obs
-    is_resolution_d = (not has_blend) and (not is_resolution_b) and has_soe
-    is_blend = is_resolution_c or is_resolution_e or is_resolution_f or is_resolution_g or is_resolution_h
-
-    label = (
-        "H (blend with time-varying alpha_t via logit-RW)" if is_resolution_h
-        else "G (blend + hierarchical Beta(a,b) on alpha)" if is_resolution_g
-        else "F (blend + AR(1) z + SOE IS)"               if is_resolution_f
-        else "E (blend + AR(1) z)"                        if is_resolution_e
-        else "C (blend)"                                  if is_resolution_c
-        else "B (canonical + indexed bond)"               if is_resolution_b
-        else "D (canonical r* + SOE IS curve)"            if is_resolution_d
-        else "A (canonical, r* = g + z)"
-    )
+    flags = _detect_resolution(results.trace["posterior"].data_vars)
 
     if verbose:
-        from src.models.common.extraction import get_scalar_var  # noqa: PLC0415
+        _print_summary(results, flags)
 
-        r_star = results.r_star_median()
-        g = results.trend_growth_median()
-        print(f"  Sample:        {results.obs_index[0]} to {results.obs_index[-1]}")
-        print(f"  Resolution:    {label}")
-        print(f"  r* range:      [{r_star.min():.2f}, {r_star.max():.2f}]%")
-        print(f"  r* latest:     {r_star.iloc[-1]:.2f}%")
-        print(f"  g  latest:     {g.iloc[-1]:.2f}%")
-        if is_blend:
-            k_med = float(get_scalar_var("k", results.trace).median())
-            if is_resolution_h:
-                # alpha_rstar is a vector (T,) — show first/last/range
-                from src.models.common.extraction import get_vector_var  # noqa: PLC0415
-                alpha_path = get_vector_var("alpha_rstar", results.trace)
-                alpha_path.index = results.obs_index
-                alpha_med = alpha_path.median(axis=1)
-                print(f"  alpha_t (time-varying): start {alpha_med.iloc[0]:.3f}, "
-                      f"latest {alpha_med.iloc[-1]:.3f}, "
-                      f"range [{alpha_med.min():.3f}, {alpha_med.max():.3f}]")
-            else:
-                alpha_med = float(get_scalar_var("alpha_rstar", results.trace).median())
-                print(f"  alpha median:  {alpha_med:.3f}  (note: median is misleading for bimodal posteriors — see chart)" if is_resolution_g else f"  alpha median:  {alpha_med:.3f}")
-            print(f"  k median:      {k_med:.3f}")
-            if has_alpha_hierarchical:
-                a_med = float(get_scalar_var("alpha_a_hyper", results.trace).median())
-                b_med = float(get_scalar_var("alpha_b_hyper", results.trace).median())
-                print(f"  alpha_a_hyper: {a_med:.3f}  alpha_b_hyper: {b_med:.3f}  "
-                      f"({'data prefers near-Jeffreys (sub-1)' if (a_med < 1 and b_med < 1) else 'data prefers central-mass (>1)'})")
-            if has_blended_z:
-                rho_med = float(get_scalar_var("rho_z", results.trace).median())
-                z = results.trace.posterior["z_star"].stack(s=("chain", "draw")).values
-                z_median_path = pd.DataFrame(z).median(axis=1)
-                print(f"  rho_z median:  {rho_med:.3f}")
-                print(f"  |z| mean:      {abs(z_median_path).mean():.3f} pp"
-                      f"  (range [{z_median_path.min():.2f}, {z_median_path.max():.2f}])")
-        elif is_resolution_b:
-            tp_med = float(get_scalar_var("tp", results.trace).median())
-            print(f"  tp median:     {tp_med:.3f}")
-
-    plot_r_star(results, show=show)
+    caveat = _rstar_caveat(flags)
+    plot_r_star(results, show=show, caveat=caveat)
     plot_trend_growth(results, show=show)
     plot_output_gap(results, show=show)
-    if is_blend:
-        if is_resolution_g:
+    if flags.is_blend:
+        if flags.is_g:
             # Median-based decomposition is misleading under G's bimodal α
             # posterior — replace with the draw-cloud + mode-conditional version.
             plot_r_star_bimodal_decomposition(results, show=show)
-        elif is_resolution_h:
+        elif flags.is_h:
             # Time-varying alpha — alpha_t per period; standard decomposition
             # using a scalar alpha doesn't apply.
             plot_alpha_path(results, show=show)
         else:
             plot_r_star_decomposition(results, show=show)
         plot_g_vs_anchor(results, show=show)
-        if not is_resolution_h:
+        if not flags.is_h:
             # plot_alpha_posterior assumes scalar alpha — skip for H.
             plot_alpha_posterior(results, show=show)
-    plot_world_rstar_overlay(results, show=show, bond_mode=is_resolution_g)
+    plot_world_rstar_overlay(results, show=show, bond_mode=flags.is_g, caveat=caveat)
 
     print(f"Charts saved to: {chart_dir}")

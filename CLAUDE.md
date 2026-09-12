@@ -30,7 +30,7 @@ uv sync                            # Install dependencies
 ./run-gdp-nowcast-dfm.sh           # Run GDP nowcast (Dynamic Factor Model)
 ./run-gdp-nowcast-bvar.sh          # Run GDP nowcast (Bayesian VAR, T-0 only)
 ./run-gdp-nowcast-components.sh    # Run GDP nowcast (expenditure-identity components, T-0 only)
-./run-rstar-hlw.sh                 # Run HLW Bayesian r-star model
+./run-rstar-hlw.sh                 # Run HLW: trend/cycle decomposition. NOT a source of r*
 ./run-ystar.sh                     # Run y* potential output model (inflation-defined output gap)
 ./run-ustar.sh                     # Run u* model (Okun + Phillips; needs expectations + ystar)
 ./run-rstar-bonds.sh               # Run r* from the bond market (needs ystar_ustar for the Taylor rule)
@@ -40,6 +40,9 @@ uv sync                            # Install dependencies
                                    #   (--ensemble sweeps how slow r* is; --lag-sweep the rate lag)
 ./run-rstar-summary.sh             # every r* model on one nominal scale; re-runs any whose
                                    #   saved trace is not from today, which regenerates THEIR charts
+./run-gstar-summary.sh             # every g* (potential growth) estimate on one chart; refresh
+                                   #   is OFF by default (--refresh would overwrite ystar's
+                                   #   production spec with the inflation spec)
 ./run-bank-costs.sh                # Bank funding and lending costs vs the cash rate (charts only)
 uv run python -m src.models.is_curve.run   # IS-curve scatter: a test bench for the r* models
 ./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free; needs expectations)
@@ -85,13 +88,16 @@ src/
 │   ├── gdp_nowcast_dfm/            # GDP nowcasting via Dynamic Factor Model (see MODEL_NOTES.md)
 │   ├── gdp_nowcast_bvar/           # GDP nowcasting via Bayesian VAR, T-0 only (see MODEL_NOTES.md)
 │   ├── gdp_nowcast_components/     # GDP nowcasting via expenditure-identity components, T-0 only (see MODEL_NOTES.md)
-│   ├── rstar_hlw/                 # HLW Bayesian r-star model, AU data. IT DOES NOT WORK.
-│   │                              #   No resolution identifies an r* path, and its potential
-│   │                              #   output is more volatile than GDP, so its coefficients
-│   │                              #   are measured against a decomposition that means little.
-│   │                              #   NOT A SOURCE OF r*: excluded from rstar_summary, kept
-│   │                              #   for what it documents. Default is Resolution A
-│   │                              #   (canonical, r* = g + z) (see MODEL_NOTES.md).
+│   ├── rstar_hlw/                 # NOT A SOURCE OF r*, and cannot be: z has no observation
+│   │                              #   equation, so r* is trend growth (corr 0.998) and sigma_z
+│   │                              #   only picks which answer to report. Excluded from
+│   │                              #   rstar_summary; use rstar_bonds or rstar_rba instead.
+│   │                              #   THE DECOMPOSITION IS A SEPARATE CLAIM AND IT WORKS:
+│   │                              #   repaired 2026-09-12 (sigma_ystar imposed at 0.078,
+│   │                              #   lockdowns excluded) and the output gap now matches Okun
+│   │                              #   at 1993-95, 2008-09 and 2026Q2. Do not read that as a
+│   │                              #   rehabilitated r*. Default: Resolution A, start 1993Q1,
+│   │                              #   rate lag t-6, lambda_g off (see MODEL_NOTES.md).
 │   ├── ystar_ustar/               # ** PREFERRED for the output gap and u*. ** y* and u*
 │   │                              #   estimated JOINTLY, gap = c x (pi - 2.5) + v, so the gap is
 │   │                              #   not frozen and the GDP and Okun equations negotiate over
@@ -149,7 +155,14 @@ src/
 │   │                              #   the early 1990s, the same as ystar_ustar, so that number
 │   │                              #   is the NAIRU concept failing in a re-anchoring rather
 │   │                              #   than a defect in the joint model (see MODEL_NOTES.md).
-│   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition. SUPERSEDED by ystar and
+│   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition. NOT COVID-ROBUST: its
+│   │                              #   three HP filters run through the pandemic, leaving a
+│   │                              #   COVID-shaped wobble of a few tenths in g* from 2020 on.
+│   │                              #   Excluding a window was tried several ways and abandoned
+│   │                              #   (it changes the wobble's sign, not its existence), so
+│   │                              #   gstar_summary excludes this model and its post-2019
+│   │                              #   potential growth should not be quoted. The growth
+│   │                              #   ACCOUNTING is unaffected. Also SUPERSEDED by ystar and
 │   │                              #   ystar_ustar for potential output and the output gap: its
 │   │                              #   potential path is re-anchored to actual GDP at four dates
 │   │                              #   and is not disciplined by inflation. Use it only for the
@@ -203,9 +216,20 @@ src/
 │   ├── rstar_summary/             # NOT A MODEL. Loads every r* the repo produces, re-runs any
 │   │                              #   whose trace is not from TODAY (which regenerates that
 │   │                              #   model's own charts), converts all to NOMINAL and charts
-│   │                              #   them. rstar_hlw is deliberately EXCLUDED: no resolution
-│   │                              #   identifies an r* path. The central line is a MEAN, not a
-│   │                              #   median (n=3), and is not an estimate (see MODEL_NOTES.md).
+│   │                              #   them. rstar_hlw is EXCLUDED: its z state has no
+│   │                              #   observation equation, so its r* is trend growth. The
+│   │                              #   central line is a MEAN, not a median (n=3), and is not an
+│   │                              #   estimate (see MODEL_NOTES.md).
+│   ├── gstar_summary/            # NOT A MODEL. Potential growth on one chart: ystar
+│   │                              #   (inflation + production specs) and the joint model.
+│   │                              #   They agree to 0.09pp (1.90-1.99 at 2026Q2) against
+│   │                              #   ~1.0pp for r*, which is the point of the package. BUT
+│   │                              #   all three share the y* core, so nothing here would catch
+│   │                              #   a smoothing assumption common to them. cobb_douglas was
+│   │                              #   the outside check and is EXCLUDED for COVID artefacts.
+│   │                              #   Refresh is OFF by default (--refresh would overwrite
+│   │                              #   ystar's production spec). rstar_hlw also excluded
+│   │                              #   (see MODEL_NOTES.md).
 │   ├── is_curve/                  # THE IS CURVE PLOTTED, NOT ESTIMATED. A test bench, not a
 │   │                              #   model: nothing estimated, nothing downstream consumes it.
 │   │                              #   Output gap against the real rate under four r* treatments.

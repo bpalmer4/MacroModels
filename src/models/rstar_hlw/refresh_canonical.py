@@ -1,5 +1,7 @@
-"""Refresh the canonical C, E, F traces with the new Beta(1, 1) default,
-and run C with the hierarchical Beta(a, b) where a, b ~ HalfNormal(1).
+"""Refresh the canonical C, E, F traces, and run the hierarchical-Beta variant.
+
+C, E and F are re-estimated under the Beta(1, 1) default, and C is also run
+with the hierarchical Beta(a, b) where a, b ~ HalfNormal(1).
 
 Background: the Beta(2, 2) prior on alpha was symmetrically tightening the
 posterior toward 0.5 and masking the (weak) data preference for higher
@@ -22,16 +24,23 @@ from src.models.rstar_hlw.observations import build_observations
 
 RUNS = [
     # (resolution, constants_override, prefix, chart_subdir, label)
-    ("C", None,                                         "rstar_hlw_C",                 "rstar-hlw-C",                "C (new default Beta(1,1))"),
-    ("E", None,                                         "rstar_hlw_E",                 "rstar-hlw-E",                "E (new default Beta(1,1))"),
-    ("F", None,                                         "rstar_hlw_F",                 "rstar-hlw-F",                "F (new default Beta(1,1))"),
-    ("C", {"r_star": {"alpha_hierarchical": True}},     "rstar_hlw_C_alpha_hier",      "rstar-hlw-C-alpha-hier",     "C with hierarchical Beta(a,b)"),
+    ("C", None, "rstar_hlw_C", "rstar-hlw-C", "C (new default Beta(1,1))"),
+    ("E", None, "rstar_hlw_E", "rstar-hlw-E", "E (new default Beta(1,1))"),
+    ("F", None, "rstar_hlw_F", "rstar-hlw-F", "F (new default Beta(1,1))"),
+    (
+        "C",
+        {"r_star": {"alpha_hierarchical": True}},
+        "rstar_hlw_C_alpha_hier",
+        "rstar-hlw-C-alpha-hier",
+        "C with hierarchical Beta(a,b)",
+    ),
 ]
 
 
 def main() -> None:
+    """Re-estimate and re-chart each entry in RUNS from one set of observations."""
     print("Building observations once...")
-    obs, obs_index, chart_obs = build_observations(start="1980Q1", verbose=True)
+    obs, obs_index, chart_obs = build_observations(verbose=True)
 
     sampler_config = SamplerConfig(
         draws=10_000,
@@ -48,7 +57,9 @@ def main() -> None:
         print("=" * 70)
 
         constants_override = override or {}
-        model = build_model(obs, constants=constants_override, resolution=resolution)
+        model = build_model(
+            obs, constants=constants_override, resolution=resolution, obs_index=obs_index,
+        )
 
         trace = sample_model(model, sampler_config)
 

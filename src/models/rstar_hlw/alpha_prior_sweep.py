@@ -36,6 +36,7 @@ ALPHA_PRIORS = [
 
 
 def main() -> None:
+    """Re-estimate Resolution C once per alpha prior in the grid, charting each."""
     print("Building observations once (shared across sweep)...")
     obs, obs_index, chart_obs = build_observations(start="1980Q1", verbose=True)
 
@@ -57,7 +58,9 @@ def main() -> None:
         print("=" * 70)
 
         constants_override = {"r_star": {"alpha_prior": (a, b)}}
-        model = build_model(obs, constants=constants_override, resolution="C")
+        model = build_model(
+            obs, constants=constants_override, resolution="C", obs_index=obs_index,
+        )
 
         trace = sample_model(model, sampler_config)
 

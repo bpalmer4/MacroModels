@@ -33,15 +33,19 @@ class RStarResults:
     # --- Posteriors ---
 
     def r_star_posterior(self) -> pd.DataFrame:
+        """Draws of r*, quarters down the rows."""
         return self._vector("r_star")
 
     def trend_growth_posterior(self) -> pd.DataFrame:
+        """Draws of trend growth g, quarters down the rows."""
         return self._vector("trend_growth")
 
     def potential_posterior(self) -> pd.DataFrame:
+        """Draws of potential output, quarters down the rows."""
         return self._vector("potential_output")
 
     def output_gap_posterior(self) -> pd.DataFrame:
+        """Draws of the output gap: observed log GDP less each potential draw."""
         log_gdp = pd.Series(self.obs["log_gdp"], index=self.obs_index)
         potential = self.potential_posterior()
         return potential.rsub(log_gdp, axis=0)
@@ -49,15 +53,24 @@ class RStarResults:
     # --- Point estimates (posterior median) ---
 
     def r_star_median(self) -> pd.Series:
+        """Posterior median r* path."""
         return self.r_star_posterior().median(axis=1)
 
     def trend_growth_median(self) -> pd.Series:
+        """Posterior median trend growth path."""
         return self.trend_growth_posterior().median(axis=1)
 
     def potential_median(self) -> pd.Series:
+        """Posterior median potential output path."""
         return self.potential_posterior().median(axis=1)
 
     def output_gap_median(self) -> pd.Series:
+        """Output gap against the median potential path.
+
+        Not the median of the gap draws: it is log GDP less the median
+        potential, which is the same thing only because the median is
+        order-preserving and log GDP is data.
+        """
         log_gdp = pd.Series(self.obs["log_gdp"], index=self.obs_index)
         return log_gdp - self.potential_median()
 
@@ -73,7 +86,7 @@ def load_results(
 
     trace = az.from_netcdf(str(output_dir / f"{prefix}_trace.nc"))
     with (output_dir / f"{prefix}_obs.pkl").open("rb") as f:
-        saved = pickle.load(f)
+        saved = pickle.load(f)  # noqa: S301 — our own file, written by save_results
 
     return RStarResults(
         trace=trace,

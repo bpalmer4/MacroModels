@@ -29,9 +29,26 @@ from src.data.twi import get_twi_change_lagged_qrtly
 
 _NAME_WIDTH = 20
 
+# Sample start. 1993Q1 is the inflation-targeting era, and the change from the
+# old 1980Q1 default (which the indexed bond yield pinned to an effective
+# 1986Q3) is not cosmetic:
+#
+#   output gap at 2026Q2   +4.39 on 1986Q3   ->   +2.56 on 1993Q1
+#   gap change 2022Q4-2026Q2  -0.56          ->   -1.87   (Okun implies -1.71)
+#   b_y                       0.169          ->    0.273
+#
+# On the longer sample the gap barely moved through the 2022-26 disinflation,
+# which unemployment flatly contradicts. On this one it closes at about the
+# rate Okun implies and lands just above the plausible range. The Phillips
+# slope nearly doubling is the clue to why: the pre-1993 quarters have no
+# inflation target, and asking one b_y to span that regime change flattens it.
+#
+# Pass `--start 1980Q1` to reproduce the older runs, including the sweeps.
+DEFAULT_START = "1993Q1"
+
 
 def build_observations(
-    start: str | None = "1980Q1",
+    start: str | None = DEFAULT_START,
     end: str | None = None,
     verbose: bool = False,
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, pd.DataFrame]:
@@ -55,7 +72,9 @@ def build_observations(
     pi_q = get_trimmed_mean_qrtly().data
     pi_4 = get_trimmed_mean_annual().data
     fiscal_impulse_1 = get_fiscal_impulse_lagged_qrtly().data
-    indexed_10y = get_indexed_yield_filled().data  # 10y inflation-linked bond yield (real); 2013Q3-2014Q3 gap filled via nominal − interpolated breakeven
+    # 10y inflation-linked bond yield (real); the 2013Q3-2014Q3 gap is filled
+    # with nominal 10y less interpolated breakeven.
+    indexed_10y = get_indexed_yield_filled().data
     # SOE-block IS-curve regressors (used by Resolution D)
     tot_change_1 = get_tot_change_qrtly().data.shift(1)  # quarterly ToT % change, lag 1
     twi_change_1 = get_twi_change_lagged_qrtly().data    # quarterly TWI change (lag 1)
@@ -73,6 +92,11 @@ def build_observations(
         "twi_change_1": twi_change_1,
         "icp_change_1": icp_change_1,
     })
+    # Every input series is quarterly, so this is a re-labelling rather than a
+    # conversion. Checked rather than assumed: a non-period index here would
+    # otherwise fail much later, inside the model.
+    if not isinstance(df.index, pd.PeriodIndex):
+        raise TypeError(f"expected a PeriodIndex after joining the series, got {type(df.index)}")
     df.index = df.index.asfreq("Q")
     df = df.dropna()
 
@@ -87,7 +111,7 @@ def build_observations(
     yoy_growth_full = get_log_gdp().data.diff(4)
     yoy_in_sample = yoy_growth_full.reindex(df.index).dropna()
     t = np.arange(len(yoy_in_sample))
-    slope, intercept = np.polyfit(t, yoy_in_sample.values, 1)
+    slope, intercept = np.polyfit(t, yoy_in_sample.to_numpy(dtype=float), 1)
     linear_trend = pd.Series(intercept + slope * t, index=yoy_in_sample.index)
     df["trend_growth_obs"] = linear_trend.reindex(df.index)
     df = df.dropna()
@@ -101,4 +125,8 @@ def build_observations(
 
     obs = {col: df[col].to_numpy() for col in df.columns}
 
-    return obs, df.index, df
+    obs_index = df.index
+    if not isinstance(obs_index, pd.PeriodIndex):
+        raise TypeError(f"sample index is no longer a PeriodIndex, got {type(obs_index)}")
+
+    return obs, obs_index, df

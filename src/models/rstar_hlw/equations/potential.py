@@ -17,8 +17,10 @@ def potential_output_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     latents: dict[str, Any],
+    *,
     constant: dict[str, Any] | None = None,
     sigma_ystar_prior: float = 0.12,
+    sigma_ystar_fixed: float | None = 0.078,
 ) -> str:
     """Potential output with time-varying trend drift.
 
@@ -49,9 +51,30 @@ def potential_output_equation(
     ratio_ystar x sigma_c = 0.13 x 0.60 = 0.078. So the number is not invented
     here, it is the view `ystar` already takes of how fast potential can move.
     Pass 0.55 to reproduce the old behaviour.
+
+    AND TIGHTENING THE PRIOR WAS NOT ENOUGH. Under HalfNormal(0.12) the
+    posterior still landed at 0.862, about seven standard deviations into that
+    prior's tail: the likelihood would rather let potential chase GDP than
+    explain it, and a prior cannot win an argument the likelihood insists on.
+    Potential still moved with a quarterly sd of 0.923 against GDP's 0.947.
+
+    `sigma_ystar_fixed` is the actual HLW device, and it is now the default.
+    Holston-Laubach-Williams do not estimate this variance at all: they fix the
+    signal-to-noise ratio lambda_g by Stock-Watson median-unbiased estimation
+    and impose it. Fixing sigma_ystar at 0.078 is the same move with the ratio
+    taken from `ystar` rather than re-estimated, and it is an IMPOSED setting,
+    recorded as such in the run log and on the charts. Set it to None to go
+    back to estimating sigma_ystar under `sigma_ystar_prior`, which is what
+    the eight resolutions in MODEL_NOTES.md were run on.
     """
     if constant is None:
         constant = {}
+
+    # The imposed value is passed through the same `constant` channel a caller
+    # would use, so it lands in model._fixed_constants and shows up wherever
+    # imposed settings are reported. An explicit caller-supplied constant wins.
+    if sigma_ystar_fixed is not None and "sigma_ystar" not in constant:
+        constant = {**constant, "sigma_ystar": sigma_ystar_fixed}
 
     with model:
         settings = {
@@ -85,4 +108,9 @@ def potential_output_equation(
 
     latents["potential_output"] = potential_output
     latents["sigma_ystar"] = mc["sigma_ystar"]
-    return "y*_t = y*_{t-1} + g_{t-1}/4 + e_ystar,  e ~ N(0, sigma_ystar)"
+    sigma_desc = (
+        f"sigma_ystar = {constant['sigma_ystar']:.3f} imposed"
+        if "sigma_ystar" in constant
+        else f"sigma_ystar ~ HalfNormal({sigma_ystar_prior})"
+    )
+    return f"y*_t = y*_{{t-1}} + g_{{t-1}}/4 + e_ystar,  e ~ N(0, sigma_ystar);  {sigma_desc}"

@@ -36,6 +36,7 @@ import numpy as np
 import pymc as pm
 
 from src.models.nairu.base import set_model_coefficients
+from src.models.rstar_hlw.equations.exclusion import drop_excluded
 
 # The optional open-economy and fiscal regressors, each included only when
 # `build_observations` supplied it: resolutions D and F carry the SOE block,
@@ -62,8 +63,10 @@ def is_curve_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     latents: dict[str, Any],
+    *,
     constant: dict[str, Any] | None = None,
     rate_lag: int | None = None,
+    keep: np.ndarray | None = None,
 ) -> str:
     """HLW (2017) IS curve in level form, with fiscal impulse.
 
@@ -95,6 +98,10 @@ def is_curve_equation(
     means the same thing in both (the response to a SUSTAINED rate gap), so
     the two are comparable with each other; what is not comparable is `a_r`
     against a level slope from a model without persistence.
+
+    `keep` drops a window of quarters from this likelihood (see
+    `exclusion.py`). This equation is the one that makes potential track GDP,
+    so it is where the lockdown quarters did their damage.
     """
     if constant is None:
         constant = {}
@@ -140,11 +147,17 @@ def is_curve_equation(
         for key, name, _ in present:
             predicted_log_gdp = predicted_log_gdp + mc[name] * obs[key][start:]
 
+        # This is the equation that ties potential to GDP, so it is the one
+        # that made potential absorb the lockdown collapse. See exclusion.py.
+        fitted, observed = drop_excluded(
+            keep, start, predicted_log_gdp, np.asarray(obs["log_gdp"][start:], dtype=float),
+        )
+
         pm.Normal(
             "observed_IS",
-            mu=predicted_log_gdp,
+            mu=fitted,
             sigma=mc["sigma_IS"],
-            observed=obs["log_gdp"][start:],
+            observed=observed,
         )
 
     rate_desc = (

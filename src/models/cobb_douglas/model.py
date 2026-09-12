@@ -49,6 +49,16 @@ HP_LAMBDA = 1600  # HP filter smoothing parameter for quarterly data
 # Anchor points for potential GDP re-anchoring (business cycle peaks)
 ANCHOR_POINTS = ["1990Q1", "2000Q1", "2008Q1", "2019Q4"]
 
+# NO COVID HANDLING, and that is settled rather than an oversight. The three HP
+# filters run through the pandemic, which leaves a COVID-shaped wobble of a few
+# tenths in potential growth from 2020 on. Excluding a window was tried in
+# several forms on 2026-09-12 and abandoned: every window merely changes the
+# wobble's sign and size, and the windows that minimise it were chosen by
+# comparing against the state-space models, which is tuning rather than fixing.
+# So `gstar_summary` does not use this model, and its post-2019 potential growth
+# should not be quoted. The growth ACCOUNTING, which is what it is for, is
+# unaffected.
+
 
 # --- Data Loading ---
 
@@ -250,6 +260,7 @@ def extract_mfp_trend(
 def calculate_potential_gdp(
     growth: pd.DataFrame,
     mfp_trend: pd.Series,
+    *,
     alpha: float = ALPHA,
     anchor_points: list[str] | None = None,
     hp_lambda: float = HP_LAMBDA,
@@ -486,6 +497,7 @@ class DecompositionResult:
 
 
 def run_decomposition(
+    *,
     start: str | None = None,
     end: str | None = None,
     alpha: float = ALPHA,

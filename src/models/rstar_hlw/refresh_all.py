@@ -28,8 +28,9 @@ RUNS = [
 
 
 def main() -> None:
+    """Re-estimate and re-chart every resolution in RUNS from one set of observations."""
     print("Building observations once (shared across all 7 runs)...")
-    obs, obs_index, chart_obs = build_observations(start="1980Q1", verbose=True)
+    obs, obs_index, chart_obs = build_observations(verbose=True)
     print(f"\nSample length: {len(obs_index)}  (158 contiguous quarters with indexed_10y gap filled)\n")
 
     sampler_config = SamplerConfig(
@@ -46,7 +47,7 @@ def main() -> None:
         print(f"{label}  (resolution={resolution}, prefix={prefix})")
         print("=" * 70)
 
-        model = build_model(obs, resolution=resolution)
+        model = build_model(obs, resolution=resolution, obs_index=obs_index)
         trace = sample_model(model, sampler_config)
 
         constants = get_fixed_constants(model)

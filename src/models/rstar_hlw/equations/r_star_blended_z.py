@@ -129,7 +129,12 @@ def r_star_blended_z_equation(
             # Stationary initial value: z_0 ~ N(0, sigma_z / sqrt(1 - rho^2))
             z_0 = z_raw[0] * sigma_z / pt.sqrt(1 - rho_z ** 2)
 
-            def _ar1_step(eps_t, z_prev, rho, sig):
+            def _ar1_step(
+                eps_t: pt.TensorVariable,
+                z_prev: pt.TensorVariable,
+                rho: pt.TensorVariable,
+                sig: pt.TensorVariable,
+            ) -> pt.TensorVariable:
                 return rho * z_prev + sig * eps_t
 
             z_rest, _ = pytensor.scan(
