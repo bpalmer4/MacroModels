@@ -2,7 +2,7 @@
 
 T-0 only nowcast using a Bayesian VAR with Minnesota prior, conditioned on the contemporaneous values of the other quarterly indicators in the panel. Built as a third comparator alongside the bridge equations and Dynamic Factor Model.
 
-> **Status**: Interesting comparator but **not recommended for operational point forecasts**. The conditional VAR forecast formulation is structurally over-volatile (nowcast std ~2× actual GDP std), so headline RMSE is high. The model still has merits — decent correlation with actual GDP, honest uncertainty intervals, simple closed-form maths — but the bridge and DFM are the workhorses for production use.
+> **Status**: Interesting comparator but **not recommended for operational point forecasts**. The conditional VAR forecast formulation is structurally over-volatile (nowcast std ~2× actual GDP std), so headline RMSE is high. The model still has merits: decent correlation with actual GDP, honest uncertainty intervals, simple closed-form maths, but the bridge and DFM are the workhorses for production use.
 
 ## Summary
 
@@ -74,14 +74,14 @@ Standard OLS estimation requires N²p coefficients per equation, where N is the 
 
 The **Minnesota prior** (Litterman 1986) shrinks coefficients toward a sensible default:
 1. **Each variable follows AR(1)**: own first-lag coefficient is shrunk toward 1, all other coefficients toward 0
-2. **Higher lags shrink toward zero**: coefficient on lag k has variance (λ/k)² — quadratically tighter for distant lags
+2. **Higher lags shrink toward zero**: coefficient on lag k has variance (λ/k)², quadratically tighter for distant lags
 3. **Cross-variable coefficients shrink harder than own**: variance scaled by an additional factor λ_cross < 1
 4. **Constant has diffuse prior**: not shrunk
 
 Hyperparameters:
-- `λ_tight` (default 0.2) — overall tightness; smaller = more shrinkage toward random walks
-- `λ_cross` (default 0.5) — relative shrinkage of cross-variable vs own-variable coefficients
-- `λ_decay` (default 1.0) — exponent on lag decay (1 = harmonic, 2 = quadratic)
+- `λ_tight` (default 0.2): overall tightness; smaller = more shrinkage toward random walks
+- `λ_cross` (default 0.5): relative shrinkage of cross-variable vs own-variable coefficients
+- `λ_decay` (default 1.0): exponent on lag decay (1 = harmonic, 2 = quadratic)
 
 ### Closed-form posterior
 
@@ -127,16 +127,16 @@ This is equivalent to a Bayesian update of the GDP nowcast, treating the joint f
 
 The binding constraint is **WPI growth (1997Q4)**, giving ~112 quarterly observations of complete data after dropna.
 
-**Labour series aggregation note**: `employment_growth` and `hours_growth` are sourced from the *monthly* Labour Force Survey (cat 6202.0) and aggregated to quarterly — employment by quarterly mean (it's a stock), hours by quarterly sum (it's a flow). Earlier versions of this model sourced these from cat 1364.0.15.003 (Modellers' Database, employment) and cat 5206.0 table 5206001 (National Accounts hours-worked index). Those quarterly publications release alongside GDP itself, making them useless for forward nowcasting — by the time they arrive, the GDP they were meant to predict is already out. The LFS-aggregated versions release ~3 weeks after quarter-end, so all three months of a quarter are typically in hand 5–6 weeks before the GDP print, providing a real conditioning lead. The tradeoff is slightly higher Q/Q variance (the NA hours index is reconciled within the National Accounts framework; LFS hours is the direct survey estimate).
+**Labour series aggregation note**: `employment_growth` and `hours_growth` are sourced from the *monthly* Labour Force Survey (cat 6202.0) and aggregated to quarterly: employment by quarterly mean (it's a stock), hours by quarterly sum (it's a flow). Earlier versions of this model sourced these from cat 1364.0.15.003 (Modellers' Database, employment) and cat 5206.0 table 5206001 (National Accounts hours-worked index). Those quarterly publications release alongside GDP itself, making them useless for forward nowcasting: by the time they arrive, the GDP they were meant to predict is already out. The LFS-aggregated versions release ~3 weeks after quarter-end, so all three months of a quarter are typically in hand 5–6 weeks before the GDP print, providing a real conditioning lead. The tradeoff is slightly higher Q/Q variance (the NA hours index is reconciled within the National Accounts framework; LFS hours is the direct survey estimate).
 
 ### Indicators tested but excluded
 
 - **Retail growth (5682.0)**: short history (from 2012Q4) shrinks the training sample materially
 - **Business profits growth (5676.0)**: short history (from 2001Q2) shrinks the training sample
-- **Household spending CVM (5682.0 table 5682015)**: short history (from 2014Q3, ~46 growth obs) would force the panel start from 1997Q4 to 2014Q3, hurting *every* coefficient in the VAR not just consumption. The Bridge and DFM both use this series — they handle short-history series gracefully via per-bridge estimation and ragged-edge EM respectively, but the BVAR cannot
+- **Household spending CVM (5682.0 table 5682015)**: short history (from 2014Q3, ~46 growth obs) would force the panel start from 1997Q4 to 2014Q3, hurting *every* coefficient in the VAR not just consumption. The Bridge and DFM both use this series: they handle short-history series gracefully via per-bridge estimation and ragged-edge EM respectively, but the BVAR cannot
 - **Government consumption growth (5206.0 + GFS spliced)**: hurt RMSE and correlation despite long history. The bridge model uses this series usefully because each bridge is fit independently; the BVAR's joint conditional update treats it as noise that pollutes Σ_oo.
-- **BoP goods+services balance change**: hurt correlation more sharply than gov consumption — same failure mode through the joint covariance structure.
-- **BoP services-only balance change**: re-tested 2026-05-28 as the 11th panel variable (SA "Services ;" change from 5302.0 table 530204), on the theory that stripping out the goods component would isolate a cleaner signal. **Still degraded** the model — T-0 RMSE 0.625% → 0.640%, T-0 correlation +0.680 → +0.580, and nowcast variance climbed (NCstd 0.722% → 0.737%). Same Σ_oo pollution as the aggregate case: even a small noisy variable participates in every conditional update via the inverse covariance matrix.
+- **BoP goods+services balance change**: hurt correlation more sharply than gov consumption, the same failure mode through the joint covariance structure.
+- **BoP services-only balance change**: re-tested 2026-05-28 as the 11th panel variable (SA "Services ;" change from 5302.0 table 530204), on the theory that stripping out the goods component would isolate a cleaner signal. **Still degraded** the model: T-0 RMSE 0.625% → 0.640%, T-0 correlation +0.680 → +0.580, and nowcast variance climbed (NCstd 0.722% → 0.737%). Same Σ_oo pollution as the aggregate case: even a small noisy variable participates in every conditional update via the inverse covariance matrix.
 - **Westpac-MI consumer sentiment (quarterly mean)**: raised nowcast volatility without improving correlation. The DFM absorbs the same series usefully because its factor structure *extracts* the shared variance with NAB and discards the idiosyncratic noise.
 - **Productivity-adjusted labour input**: tried in DFM, didn't help there, not retried here
 
@@ -164,7 +164,7 @@ In live mode, the BVAR refines its nowcast of the next quarter's GDP as each ind
 | Week 10 | CPI trimmed mean (Q) | 9/9 |
 | Week 10 | **GDP for Q published by ABS** | (everything in) |
 
-Each new release tightens the conditional forecast. The point estimate typically doesn't move dramatically as the conditioning set fills in (since most indicators correlate strongly with GDP and pull in similar directions); the main practical benefit is **CI tightening** — confidence in the nowcast grows substantially as more indicators arrive. Going from 1/9 to 6/9 indicators typically halves the 90% CI width.
+Each new release tightens the conditional forecast. The point estimate typically doesn't move dramatically as the conditioning set fills in (since most indicators correlate strongly with GDP and pull in similar directions); the main practical benefit is **CI tightening**: confidence in the nowcast grows substantially as more indicators arrive. Going from 1/9 to 6/9 indicators typically halves the 90% CI width.
 
 The BVAR is therefore most useful in the mid-cycle window (weeks 4–9) when you have meaningful information about the current quarter but GDP hasn't published yet. Right after a GDP release (weeks 1–2) the model has nothing to work with and falls back to hindcasting the last published quarter.
 
@@ -181,11 +181,11 @@ The backtest reports RMSE, MAE, bias, direction accuracy, correlation with actua
 
 ### Qualitative findings
 
-- **The BVAR is structurally over-volatile** — its nowcast standard deviation runs roughly 2× actual GDP standard deviation. This is a property of the conditional VAR formulation (see derivation below), not a hyperparameter or variable-selection issue. It can be reduced but not eliminated.
-- **Among the three nowcast models, the BVAR sits in the middle on correlation** with actual GDP — better than bridge, worse than DFM. It overshoots magnitudes, so its headline RMSE is the worst of the three despite reasonable directional accuracy.
-- **Bias is concentrated in 2022** (post-COVID productivity shock). Mirrors what the DFM showed. As the test sample rolls forward, the headline numbers improve naturally — by 2025 the model is essentially unbiased.
-- **No `lambda_tight` setting brings RMSE or NCstd into a competitive range.** The hyperparameter sweep documents that the over-volatility is structurally bounded — tightening the prior actually *increases* volatility (see below).
-- **The 90% CIs are reasonably calibrated** despite the headline volatility — coverage tracks close to nominal.
+- **The BVAR is structurally over-volatile**: its nowcast standard deviation runs roughly 2× actual GDP standard deviation. This is a property of the conditional VAR formulation (see derivation below), not a hyperparameter or variable-selection issue. It can be reduced but not eliminated.
+- **Among the three nowcast models, the BVAR sits in the middle on correlation** with actual GDP: better than bridge, worse than DFM. It overshoots magnitudes, so its headline RMSE is the worst of the three despite reasonable directional accuracy.
+- **Bias is concentrated in 2022** (post-COVID productivity shock). Mirrors what the DFM showed. As the test sample rolls forward, the headline numbers improve naturally, by 2025 the model is essentially unbiased.
+- **No `lambda_tight` setting brings RMSE or NCstd into a competitive range.** The hyperparameter sweep documents that the over-volatility is structurally bounded: tightening the prior actually *increases* volatility (see below).
+- **The 90% CIs are reasonably calibrated** despite the headline volatility: coverage tracks close to nominal.
 
 ### Why the BVAR is structurally over-volatile
 
@@ -194,9 +194,9 @@ The conditional forecast formula:
 cond_mean[GDP] = uncond[GDP] + Σ_yo · Σ_oo⁻¹ · (observed_others − uncond[others])
 ```
 
-is essentially a regression of GDP on the contemporaneous "surprises" in the other 9 indicators, using the residual covariance matrix. In macro data, GDP has strong contemporaneous correlations with every activity indicator (employment, hours, construction, retail, etc.) — so this regression has high explanatory power and produces large updates.
+is essentially a regression of GDP on the contemporaneous "surprises" in the other 9 indicators, using the residual covariance matrix. In macro data, GDP has strong contemporaneous correlations with every activity indicator (employment, hours, construction, retail, etc.), so this regression has high explanatory power and produces large updates.
 
-The DFM avoids this because the indicators feed through a 2-factor bottleneck, which dampens overreaction. The bridge model avoids it because each bridge is fit independently, with no joint conditional update. The BVAR has no such damping mechanism — it uses the full residual covariance matrix to compute the conditional update, and that's too aggressive.
+The DFM avoids this because the indicators feed through a 2-factor bottleneck, which dampens overreaction. The bridge model avoids it because each bridge is fit independently, with no joint conditional update. The BVAR has no such damping mechanism, it uses the full residual covariance matrix to compute the conditional update, and that's too aggressive.
 
 **The over-volatility is structural to the conditional VAR forecast formulation, not a hyperparameter or variable-selection problem.** It's the reason DFM-style factor models dominate the central-bank nowcasting literature.
 
@@ -208,21 +208,21 @@ The DFM avoids this because the indicators feed through a 2-factor bottleneck, w
 
 - **Conditional rather than unconditional forecast**: Uses the Gaussian conditioning formula to incorporate contemporaneous indicator values. This is what makes it a "nowcast" rather than a one-step forecast. The downside is the over-volatility documented above.
 
-- **10-variable panel, not 5**: The 5-variable version was strictly worse — fewer collinear variables removed the natural dampening from conflicting indicator surprises.
+- **10-variable panel, not 5**: The 5-variable version was strictly worse, because fewer collinear variables removed the natural dampening from conflicting indicator surprises.
 
 - **`lambda_tight` = 0.2**: Default chosen to maximise correlation with actual GDP. A looser prior (~0.5) gives marginally lower RMSE but at meaningfully reduced correlation. Since the model is interesting mainly for its tracking ability rather than its point accuracy, the higher-correlation default is preferred.
 
-- **VAR(2)**: Two lags is the standard for quarterly macro VARs. Tested VAR(1) — slightly worse. Higher orders are not feasible with 112 observations and 10 variables.
+- **VAR(2)**: Two lags is the standard for quarterly macro VARs. Tested VAR(1): slightly worse. Higher orders are not feasible with 112 observations and 10 variables.
 
 - **No COVID dummy**: The DFM showed that masking COVID quarters destroys the correlation. Same logic applies here. Like the DFM, the BVAR's bias is concentrated in 2022 and is already fading.
 
-- **No productivity adjustment**: The DFM showed that pre-adjusting labour indicators with the productivity trend reduces correlation more than it helps bias. Same logic applies here — the BVAR keeps raw labour variables.
+- **No productivity adjustment**: The DFM showed that pre-adjusting labour indicators with the productivity trend reduces correlation more than it helps bias. Same logic applies here, the BVAR keeps raw labour variables.
 
 - **T-0 only**: The model has no mechanism for handling earlier information sets. Unlike the DFM's Kalman filter or the bridge model's SARIMA completion, the BVAR's clean closed-form posterior assumes a complete panel. Building a mixed-frequency BVAR (Schorfheide-Song style) would require state-space estimation and lose the closed-form simplicity. Out of scope for this comparator.
 
 - **Partial-data conditioning** (added after initial implementation): The conditional forecast uses *whichever subset* of indicators is observed for the target quarter. As each indicator publishes, the conditioning subset grows and the forecast tightens. The Σ_oo and Σ_yo blocks of the residual covariance matrix are partitioned to only the available indices each call. If zero indicators are available, the model falls back to the unconditional VAR forecast (lagged dynamics only). This means the BVAR is genuinely usable as a continuously-updating forward nowcast through the publication cycle, not just at the moment all indicators land.
 
-- **Hindcast fallback for live mode**: When *no* indicators have been published yet for the next quarter (typical for the first ~1-2 weeks after a GDP release), the live `run_nowcast()` falls back to hindcasting the most recent published GDP quarter. This gives a sanity check showing what the model would have predicted for the last quarter given all the indicators. The auto-detect threshold is `min_indicators=1` — the model switches to forward-mode nowcasting as soon as any single indicator publishes for the next quarter.
+- **Hindcast fallback for live mode**: When *no* indicators have been published yet for the next quarter (typical for the first ~1-2 weeks after a GDP release), the live `run_nowcast()` falls back to hindcasting the most recent published GDP quarter. This gives a sanity check showing what the model would have predicted for the last quarter given all the indicators. The auto-detect threshold is `min_indicators=1`: the model switches to forward-mode nowcasting as soon as any single indicator publishes for the next quarter.
 
 - **Indicator availability reporting**: In live mode, the model prints which indicators are available and which are missing for the target quarter. In hindcast mode, it also prints why the next quarter cannot be nowcast yet (which indicators are still missing). This makes it easy to see at a glance how far through the publication cycle you are and which release is the next to update the nowcast.
 
@@ -263,20 +263,20 @@ After each nowcast, the print summary appends a shared diagnostic from `src/mode
 
 **How it works:**
 - Equipment capex QoQ change (5625.0 CVM SA, all industries) and goods imports QoQ change (5368.0 SA, quarterly sum of monthly) are each expressed as a percentage of contemporaneous GDP.
-- Each is compared against its mean (and σ) from 1997Q4 onward — the BVAR's own estimation frame, so the historical baseline is exactly the sample the BVAR coefficients are fit on.
+- Each is compared against its mean (and σ) from 1997Q4 onward, the BVAR's own estimation frame, so the historical baseline is exactly the sample the BVAR coefficients are fit on.
 - Hotness = (capex deviation from mean) − (imports deviation from mean).
 
 **Interpretation:**
-- Positive hotness (> +0.10pp): capex is unusually high relative to its history, *and more so than imports are unusually high*. The BVAR absorbs the I/M relationship via the joint covariance matrix Σ, but the conditional update at T-0 uses fixed coefficients estimated over the full sample — a fresh regime change (e.g. AI capex surge) is treated as a draw from the historical distribution, not a structural shift. In the meantime, the headline nowcast may be over-stating GDP growth by roughly this amount.
-- Negative hotness (< −0.10pp): imports surging by more than capex — possibly an under-stated nowcast.
+- Positive hotness (> +0.10pp): capex is unusually high relative to its history, *and more so than imports are unusually high*. The BVAR absorbs the I/M relationship via the joint covariance matrix Σ, but the conditional update at T-0 uses fixed coefficients estimated over the full sample, a fresh regime change (e.g. AI capex surge) is treated as a draw from the historical distribution, not a structural shift. In the meantime, the headline nowcast may be over-stating GDP growth by roughly this amount.
+- Negative hotness (< −0.10pp): imports surging by more than capex, possibly an under-stated nowcast.
 - |hotness| ≤ 0.10pp: negligible, flagged as such.
 
-The diagnostic was added specifically to flag the AI / data-centre buildout starting in mid-2025, which lifts the I-component sharply while the corresponding goods/services imports do not yet show up symmetrically in the BVAR's conditioning information. The diagnostic is purely post-hoc — it does not change the BVAR estimation or the nowcast — so it is a transparency tool for the user, not a model correction.
+The diagnostic was added specifically to flag the AI / data-centre buildout starting in mid-2025, which lifts the I-component sharply while the corresponding goods/services imports do not yet show up symmetrically in the BVAR's conditioning information. The diagnostic is purely post-hoc: it does not change the BVAR estimation or the nowcast, so it is a transparency tool for the user, not a model correction.
 
 ## Running
 
 ```bash
-# Live nowcast — switches to forward-mode as soon as any indicator publishes
+# Live nowcast: switches to forward-mode as soon as any indicator publishes
 # for the next quarter; falls back to hindcasting the last published quarter
 # if no indicators are available yet
 ./run-gdp-nowcast-bvar.sh

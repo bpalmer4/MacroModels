@@ -1,4 +1,4 @@
-# HLW Bayesian r-star Model — Model Notes
+# HLW Bayesian r-star Model: Model Notes
 
 A Bayesian (PyMC + NumPyro NUTS) implementation of the Holston-Laubach-Williams 2017 model,
 applied to Australian quarterly data. It sets out to estimate the natural rate of interest r*
@@ -172,6 +172,53 @@ other setting here.** See "The sample start is the biggest single choice" below.
    the economy was shut. The Phillips curve is masked too, deliberately: the lockdown gap is
    a shuttered economy rather than deficient demand, so pricing it into inflation would drag
    potential down by a second route.
+
+### The window does not cover the IS curve's own lags
+
+`exclusion.py` drops a row whose **own date** is in the window. It does not mask the lagged
+regressors, which are still built from the full series. The Phillips curve is safe, because it
+passes `first=0` and so masks on the output gap's date rather than the inflation date a quarter
+later. The IS curve is not: at `t` it uses `output_gap[t−1]`, `output_gap[t−2]` and
+`r_gap[t−rate_lag]`, so with the window ending 2021Q3, 2021Q4 and 2022Q1 still take lockdown
+output gaps, and at the default rate lag of 6, every quarter from 2021Q4 to 2023Q1 takes a
+lockdown-window rate gap. With `a_y1+a_y2` ≈ 0.94 (half-life ~12 quarters) those rows do not
+wash out quickly either.
+
+**Tested 2026-09-14 by widening the window to 2022Q1**, which covers the AR(2) gap lags but
+deliberately not the rate lag: the rate lags carry ELB-era policy rates, which are real data,
+not shutdown-distorted GDP. Same 134-quarter sample, 8 quarters dropped instead of 6.
+
+| | to 2021Q3 | to 2022Q1 |
+|---|---|---|
+| `a_r` | −0.044 | **−0.021** |
+| `sigma_IS` | 0.559 | 0.481 |
+| `a_r`/`sigma_IS` | 0.079 | **0.044** |
+| long-run slope | −0.84 | **−0.42** |
+| persistence `a_y1+a_y2` | 0.947 | 0.950 |
+| `b_y` / `sigma_pi` | 0.273 / 0.556 | 0.272 / 0.553 |
+| r* range / latest | [1.29, 3.64]% / 2.25% | [0.97, 3.63]% / **2.08%** |
+| g latest | 2.23% | 2.24% |
+| output gap sd | 2.04 | 2.05 |
+| gap, 2022Q4 → 2026Q2 | +4.43 → +2.56 | +4.46 → +2.66 |
+| divergences | 12 | **0** |
+| overall R-hat / min ESS | 1.200 / 8 | **1.040 / 72** |
+| `r_star` R-hat / min ESS | 1.090 / 39 | **1.010 / 395** |
+| BFMI | 0.03 | 0.03 |
+
+**It buys sampling, and it costs the rate channel.** Divergences go to zero, `r_star` mixes
+properly (ESS 39 → 395), and overall R-hat falls from 1.20 to 1.04. Five of six diagnostics
+still fail, `sigma_z` is still the worst parameter on every measure, and **BFMI is unchanged at
+0.03**: the posterior got smoother, not identified. Meanwhile `a_r` halves, the per-quarter
+signal falls from 0.079 to 0.044, and the long-run slope goes from −0.84 to −0.42 with its 90%
+band reaching −0.039, close enough to zero to be doing no work. The Phillips curve, the gap and
+potential growth are all untouched.
+
+Read plainly: the 2021Q4–2022Q1 quarters were carrying much of what identified the rate channel,
+so protecting potential from them also removes the identification. That is the trade, and it is
+the same shape as the sample-start trade below.
+
+**The code default is still 2020Q2–2021Q3.** The wider window is a tested alternative, not the
+shipped setting: `./run-rstar-hlw.sh --exclude-window 2020Q2:2022Q1`.
 
 `lambda_g`, the σ_g/σ_ystar ratio, is implemented (`--lambda-g`) and **off by default**.
 
@@ -509,7 +556,7 @@ The differences between resolutions are entirely in the **r\* identity** and in 
 are the record of what those specifications did, not current output, and are not comparable
 with A's.
 
-### Resolution A — canonical HLW (closed economy)
+### Resolution A: canonical HLW (closed economy)
 
 `r*_t = g_t + z_t`, z a random walk. No anchor on g. **The live resolution**; current numbers
 in "What the model does produce" above.
@@ -523,7 +570,7 @@ McCririck-Rees (RBA 2017) and Ellis (RBA 2022) report similar identification fai
 current sample r*'s own sampling is poor (R-hat 1.090, min ESS 39); on the longer one it was
 clean and σ_z alone sampled badly. The failure moves around; it does not go away.
 
-### B — canonical + indexed-bond observation
+### B: canonical + indexed-bond observation
 
 Adds `indexed_10y_t = r*_t + tp + ε_tp`, constant tp. z absorbs all r* dynamics; r* becomes the
 bond yield less a constant ~0.93pp premium. r* latest 1.48%, trough −1.64% (2020Q4), 3,349
@@ -535,7 +582,7 @@ is post-GFC term-premium compression pushed into r* by the constant-tp assumptio
 nonetheless closest to the RBA's stated working view, and its mechanism is the implicit
 framework most central banks use.
 
-### C — deterministic blend
+### C: deterministic blend
 
 `r*_t = α·g_t + (1−α)·(indexed_10y_t − k) + ε_t`, α ~ Uniform. Replaces the unidentified third
 latent with a scalar. α median 0.56, 90% HDI [0.07, 0.96], tracking the prior almost 1:1.
@@ -544,7 +591,7 @@ r* latest 2.19%.
 **What we learnt**: collapsing the unidentified state to one scalar produces a clean, in-range
 r* path whose level is mostly the α prior, dressed in Bayesian language.
 
-### D — canonical r* + open-economy IS curve
+### D: canonical r* + open-economy IS curve
 
 A's identity plus ToT, TWI and ICP regressors. All three coefficients land near zero; σ_IS and
 `a_r` unchanged; z still dead. r* latest 1.77%.
@@ -553,7 +600,7 @@ A's identity plus ToT, TWI and ICP regressors. All three coefficients land near 
 the finding from "weak rate channel in a closed-economy model" to "weak rate channel even with
 the SOE block".
 
-### E — blend + AR(1) z
+### E: blend + AR(1) z
 
 C plus an AR(1) z with σ_z fixed at 0.15, so the IS curve may disagree with the blend. It
 doesn't: z mean absolute 0.041pp over 40 years. r* latest 2.20%, near-identical to C.
@@ -561,7 +608,7 @@ doesn't: z mean absolute 0.041pp over 40 years. r* latest 2.20%, near-identical 
 **What we learnt**: C's deterministic identity is not over-constraining the answer. The blend
 is what r* is.
 
-### F — E + open-economy IS curve
+### F: E + open-economy IS curve
 
 Both extensions at once. z mean absolute 0.051pp; SOE coefficients dead as in D; r* latest 2.15%.
 
@@ -569,7 +616,7 @@ Both extensions at once. z mean absolute 0.051pp; SOE coefficients dead as in D;
 `a_r` at −0.04 ± 0.01. No choice of r* identification or IS-curve regressor moves either. That
 stability is the finding.
 
-### G — blend with hierarchical Beta(a, b) on α
+### G: blend with hierarchical Beta(a, b) on α
 
 Lets the data choose the prior shape: a, b ~ Uniform(0.25, 2). Both hyperparameters straddle 1
 with very wide HDIs; α 0.58 [0.03, 0.99]. r* latest 2.20%. **The implementation default among
@@ -594,7 +641,7 @@ produced a strongly bimodal α. **Endpoint stacking appears only when the hyperp
 shape parameters below 1**, putting the Beta in U-shape territory: a constraint-structure effect,
 not a data preference for extreme α.
 
-### H — blend with time-varying α_t (logit-RW)
+### H: blend with time-varying α_t (logit-RW)
 
 α_t free to drift ~1pp/quarter. It lands flat: sd 0.002 across 158 quarters, total drift 0.01pp.
 r* latest 2.20%.
@@ -789,9 +836,9 @@ External data dependencies for the SOE block and the comparison chart: `src/data
 ## References
 
 - Holston, Laubach, Williams (2017): "Measuring the Natural Rate of Interest"; (2023 update): NY Fed Staff Report 1063
-- Buncic (2021): "On a standard method for measuring the natural rate of interest" — MUE critique. Code: https://github.com/4db83/Issues-with-HLWs-natural-rate-Code
-- **Buncic, Pagan, Robinson (2023)**: "On Constructing a Country-Specific Time Series for the Natural Rate of Interest" — the formal identification critique these notes confirm on AU data
-- Lewis, Vazquez-Grande (2019): "Measuring the Natural Rate of Interest" — λ_z reparameterisation, AR(1) z. Code: https://github.com/kflewis/rStarLVGPublic
+- Buncic (2021): "On a standard method for measuring the natural rate of interest": MUE critique. Code: https://github.com/4db83/Issues-with-HLWs-natural-rate-Code
+- **Buncic, Pagan, Robinson (2023)**: "On Constructing a Country-Specific Time Series for the Natural Rate of Interest", the formal identification critique these notes confirm on AU data
+- Lewis, Vazquez-Grande (2019): "Measuring the Natural Rate of Interest": λ_z reparameterisation, AR(1) z. Code: https://github.com/kflewis/rStarLVGPublic
 - Del Negro, Giannone, Giannoni, Tambalotti (2017): "Safety, Liquidity, and the Natural Rate of Interest". Code: https://github.com/FRBNY-DSGE/rstarBrookings2017
 - Bauer, Rudebusch (2020): "Interest Rates Under Falling Stars"
 - Szoke, Vazquez-Grande, Xavier (2024 FEDS Note): "Convenience Yield as a Driver of r*"

@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from src.models.common.diagnostics import save_diagnostics
 from src.models.common.sources import footer_from_constants
 from src.models.rstar_rba.ensemble import load_ensemble, print_ensemble
 from src.models.rstar_rba.estimate import load_results, posterior_median
@@ -816,6 +817,7 @@ def run_analysis(
         chart_dir = CHART_DIR if prefix == "rstar_rba" else CHART_DIR.parent / f"RStarRBA_{prefix}"
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
+    save_diagnostics(trace, chart_dir, prefix, model="rstar_rba")
     plot_rstar_real_nominal(trace, frame, constants)
     if ensemble is not None:
         plot_sigma_r_ensemble(trace, frame, constants, ensemble["paths"])

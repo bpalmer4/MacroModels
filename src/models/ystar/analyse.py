@@ -8,6 +8,7 @@ import pandas as pd
 from mgplot.finalisers import DataT, LPFKwargs
 
 from src.data.henderson import hma
+from src.models.common.diagnostics import save_diagnostics
 from src.models.ystar.decompose import (
     GrowthDecomposition,
     decompose_potential_growth,
@@ -1259,6 +1260,7 @@ def run_analysis(
 
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
+    save_diagnostics(results.trace, chart_dir, prefix, model="ystar")
 
     plot_potential(results, tag="full")
     plot_potential(results, plot_from="2015Q1", tag="recent")

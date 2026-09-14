@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import gaussian_kde, halfnorm, norm
 
+from src.models.common.diagnostics import save_diagnostics
 from src.models.ustar import analyse as ustar_analyse
 from src.models.ustar.results import UStarResults
 from src.models.ystar import analyse as ystar_analyse
@@ -714,6 +715,7 @@ def run_analysis(
     chart_dir = Path(chart_dir) if chart_dir is not None else CHART_DIR
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
+    save_diagnostics(results.trace, chart_dir, prefix, model="ystar_ustar")
 
     with _parent_chart_settings(results):
         _draw_charts(results, ystar_view, ustar_view)

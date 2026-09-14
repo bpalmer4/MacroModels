@@ -1,4 +1,4 @@
-# Joint y\* / u\* — one likelihood, and a gap that is not entirely inflation
+# Joint y\* / u\*, one likelihood, and a gap that is not entirely inflation
 
 `ystar` and `ustar` estimated together, plus one addition. Three states, three observation
 equations, nine estimated parameters and two initial conditions, five imposed.
@@ -362,8 +362,8 @@ moves 0.092, so with `gamma_pi` = −1.150 fitted quarterly inflation moves 0.10
 Nothing on the nominal side can outvote it.
 
 **Tried and failed: a phased anchor** (`anchor_phase`, kept and defaulting to `"none"`). The
-expectations series does not reach the target until 1998 — 3.50 in 1995Q1, 3.04 in 1997Q1, 2.70 in
-1998Q1, 2.48 by 1998Q3 — so holding the anchor at 2.5 from 1993 asserts an anchoring that had not
+expectations series does not reach the target until 1998: 3.50 in 1995Q1, 3.04 in 1997Q1, 2.70 in
+1998Q1, 2.48 by 1998Q3, so holding the anchor at 2.5 from 1993 asserts an anchoring that had not
 happened. Under `"step"` the anchor is expectations until 1998Q1, blended across 1998, the target
 after. The prediction, registered before running, was that the 1996-98 residual bias would shrink
 toward zero and 1999-2019 would not move. Result:
@@ -385,7 +385,7 @@ toward 3.4 where observed was 2.0. Everything else was stable: `c` 0.275 to 0.27
 
 **What that settles.** The early level is not an anchor problem and cannot be fixed from the
 nominal side. Okun is the binding constraint. The remaining untried candidate is a window-specific
-`sigma_okun`, which would need to reach 0.70 before Okun's edge falls to 2.2:1 — see the sweep in
+`sigma_okun`, which would need to reach 0.70 before Okun's edge falls to 2.2:1. See the sweep in
 *Why `sigma_okun` is imposed* for why loosening it across the whole sample degenerates the model
 into `ystar`.
 

@@ -102,6 +102,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--skip-estimate",
+        "--analyse-only",
+        dest="skip_estimate",
         action="store_true",
         help="Skip estimation (use saved results for analysis)",
     )

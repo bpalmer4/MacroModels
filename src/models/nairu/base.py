@@ -124,6 +124,51 @@ def get_fixed_constants(model: pm.Model) -> dict[str, Any]:
     return getattr(model, "_fixed_constants", {})
 
 
+def add_scalar_priors(
+    model: pm.Model,
+    trace: az.InferenceData,
+    *,
+    draws: int = 40_000,
+    random_seed: int = 42,
+) -> list[str]:
+    """Attach prior draws for every free SCALAR parameter to `trace`.
+
+    Sampling the model's own prior is the only way to chart prior against
+    posterior without writing the priors down a second time. A hand-kept table
+    of "name -> density" drifts from the model the first time an equation
+    changes, and it cannot cover priors built outside
+    `set_model_coefficients` at all (Beta, Uniform hyperpriors, and so on).
+    Here the densities come from the same graph that was sampled, so they are
+    right by construction.
+
+    Scalars only. The latent states are random walks of sample length, and
+    their priors are neither scalar nor interesting on a density chart; they
+    would also multiply the trace file's size for nothing.
+
+    No likelihood is evaluated, so this is a forward pass and cheap, which is
+    why `draws` is set well above the posterior's: the prior is charted as a
+    histogram outline and a thin one reads as a ragged line. Returns the names
+    sampled, empty if the model has no free scalars. An existing `prior` group
+    is left alone rather than overwritten.
+    """
+    if "prior" in trace.groups():
+        return []
+
+    names = [rv.name for rv in model.free_RVs if rv.ndim == 0]
+    if not names:
+        return []
+
+    with model:
+        prior = pm.sample_prior_predictive(
+            draws=draws, var_names=names, random_seed=random_seed,
+        )
+
+    # add_groups rather than extend: `prior` carries its own observed_data,
+    # which would collide with the posterior's.
+    trace.add_groups(prior=prior.prior)
+    return names
+
+
 def save_trace(trace: az.InferenceData, path: str | Path) -> None:
     """Save trace to NetCDF file."""
     trace.to_netcdf(str(path))

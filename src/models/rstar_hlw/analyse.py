@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import mgplot as mg
+import numpy as np
 import pandas as pd
 
 from src.data.world_rstar import get_world_rstar
+from src.models.common.diagnostics import save_diagnostics
 from src.models.rstar_hlw.results import DEFAULT_CHART_BASE, RStarResults, load_results
 
 if TYPE_CHECKING:
@@ -509,6 +511,107 @@ def plot_alpha_posterior(results: RStarResults, show: bool = False) -> None:
     )
 
 
+# What each free scalar is, for the x-axis label. A name missing from here is
+# charted under its own name rather than skipped, so a new parameter appears
+# the moment it is added to an equation.
+_PARAM_LABEL = {
+    "sigma_g": "sigma_g: innovation sd of trend growth (pp p.a.)",
+    "sigma_ystar": "sigma_ystar: innovation sd of potential (log points x 100)",
+    "initial_potential": "initial_potential: y* at the first quarter",
+    "sigma_z": "sigma_z: innovation sd of z (pp)",
+    "a_y1": "a_y1: output gap at t-1",
+    "a_y2": "a_y2: output gap at t-2",
+    "a_r": "a_r: real rate gap (the IS slope)",
+    "sigma_IS": "sigma_IS: residual sd of the IS curve",
+    "b_y": "b_y: output gap in the Phillips curve (the slope)",
+    "sigma_pi": "sigma_pi: residual sd of the Phillips curve",
+    "gamma_fi": "gamma_fi: fiscal impulse at t-1",
+    "gamma_tot": "gamma_tot: terms of trade growth at t-1",
+    "gamma_twi": "gamma_twi: TWI change at t-1",
+    "gamma_icp": "gamma_icp: ICP growth at t-1",
+    "alpha_rstar": "alpha: weight on trend growth g vs the bond anchor",
+    "alpha_a_hyper": "a: first shape of the hierarchical Beta on alpha",
+    "alpha_b_hyper": "b: second shape of the hierarchical Beta on alpha",
+    "logit_alpha_0": "logit_alpha_0: starting level of time-varying alpha",
+    "k": "k: term-premium offset on the indexed bond (pp)",
+    "sigma_r": "sigma_r: i.i.d. noise on r* (pp)",
+    "rho_z": "rho_z: AR(1) persistence of z",
+    "tp": "tp: term premium in the indexed-bond equation (pp)",
+    "sigma_tp": "sigma_tp: residual sd of the indexed-bond equation",
+}
+
+
+def _density(draws: np.ndarray, edges: np.ndarray) -> np.ndarray:
+    """Density of `draws` on `edges`, normalised over ALL draws, not the range.
+
+    numpy's own density=True renormalises to the bins it was given, which would
+    redraw a prior that is mostly off the chart as though it were concentrated
+    on the part that is visible. Dividing by the full draw count instead keeps
+    the two curves on one scale: a prior far wider than the posterior then
+    reads as the near-flat line it is.
+    """
+    counts, _ = np.histogram(draws, bins=edges)
+    return counts / (len(draws) * np.diff(edges))
+
+
+def plot_prior_posterior(results: RStarResults, show: bool = False) -> None:
+    """One chart per free scalar parameter: its posterior against its own prior.
+
+    The question these answer is how much of each number is data. A posterior
+    sitting on top of its prior means the sample said nothing and the figure is
+    the prior read back; a posterior well inside it means the likelihood moved
+    it. For this model that matters most for `sigma_z`, which decides how fast
+    r* is allowed to wander and which the sweep suggests the data cannot pin.
+
+    The prior draws come from the model itself at estimation time (see
+    `base.add_scalar_priors`), so traces saved before that was added have no
+    `prior` group and are skipped with a message rather than charted against a
+    guess.
+    """
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+
+    from src.models.common.extraction import get_scalar_var  # noqa: PLC0415
+
+    if "prior" not in results.trace.groups():
+        print("  no prior group in this trace — re-estimate to get prior/posterior charts")
+        return
+
+    prior_group = results.trace["prior"]
+    for name in prior_group.data_vars:
+        if name not in results.trace["posterior"].data_vars:
+            continue
+        post = np.asarray(get_scalar_var(str(name), results.trace)).ravel()
+        pri = np.asarray(prior_group[name].values).ravel()
+
+        # Window on the POSTERIOR, padded, so a parameter the data has pinned
+        # stays readable no matter how wide its prior is.
+        lo, hi = float(post.min()), float(post.max())
+        pad = 0.5 * (hi - lo) if hi > lo else max(abs(hi), 1.0)
+        edges = np.linspace(lo - pad, hi + pad, 81)
+        centres = 0.5 * (edges[:-1] + edges[1:])
+
+        _fig, ax = plt.subplots()
+        ax.fill_between(
+            centres, _density(post, edges), step="mid", color="darkblue", alpha=0.45,
+            label=f"posterior: {np.median(post):.3f} (sd {post.std():.3f})",
+        )
+        ax.step(
+            centres, _density(pri, edges), where="mid", color="darkred", lw=2, ls="--",
+            label=f"prior: {np.median(pri):.3f} (sd {pri.std():.3f})",
+        )
+        ax.set_xlabel(_PARAM_LABEL.get(str(name), str(name)))
+
+        mg.finalise_plot(
+            ax,
+            title=f"Prior and posterior: {name}",
+            ylabel="Density",
+            legend={"loc": "best", "fontsize": "small"},
+            lfooter=LFOOTER,
+            rfooter=RFOOTER + "Prior drawn from the model.",
+            show=show,
+        )
+
+
 @dataclass(frozen=True)
 class _ResolutionFlags:
     """Which resolution a saved trace came from, read off its posterior vars.
@@ -644,6 +747,7 @@ def run_analyse(
 
     print(f"Loading results: {prefix}")
     results = load_results(prefix=prefix)
+    save_diagnostics(results.trace, chart_dir, prefix, model="rstar_hlw")
 
     flags = _detect_resolution(results.trace["posterior"].data_vars)
 
@@ -670,5 +774,6 @@ def run_analyse(
             # plot_alpha_posterior assumes scalar alpha — skip for H.
             plot_alpha_posterior(results, show=show)
     plot_world_rstar_overlay(results, show=show, bond_mode=flags.is_g, caveat=caveat)
+    plot_prior_posterior(results, show=show)
 
     print(f"Charts saved to: {chart_dir}")

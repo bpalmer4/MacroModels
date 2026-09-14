@@ -113,7 +113,7 @@ The innovation variance switches at 1994Q1 (inflation targeting bedded down). Fo
 
 Student-t with ν=4 allows occasional larger jumps (e.g., 1988-92 disinflation) while remaining smooth otherwise. The larger early variance reflects that expectations genuinely were more volatile before inflation targeting. The 1994 switchpoint (rather than 1993) gives a year for inflation targeting to bed down.
 
-### 2. Series Effects (α) — Target Anchored and Unanchored Only
+### 2. Series Effects (α): Target Anchored and Unanchored Only
 
 Each measure has its own systematic level effect:
 - **market_1y**: α ≈ -0.44 (reads below latent)
@@ -258,7 +258,7 @@ hcoe_adjustment ~ N(0, 0.5)  # Estimated ≈ 0
 
 ## Per-Model Equations
 
-### Long Run (10-Year Bond) — `market`
+### Long Run (10-Year Bond): `market`
 
 The simplest model. Uses only breakeven inflation (no α, λ) and nominal bonds with 2-year overlap to anchor r*.
 
@@ -285,7 +285,7 @@ nominal_t = πᵉ_t + real_rate + (πᵉ_t × real_rate / 100) + ε_t   [pre-198
 
 **Note:** The 2-year overlap (1986Q3-1988Q3) provides limited data for separating r* from π_exp. The lower r* estimate (~3.8%) compared to Target/Unanchored (~5.3-5.4%) reflects this identification uncertainty. The π_exp path adjusts to compensate.
 
-### Short Run (1 Year) — `short`
+### Short Run (1 Year): `short`
 
 Simplified model with estimated innovation variance. Uses market_1y survey and inflation with shared σ. No survey bias terms (α, λ), no nominal bonds, no HCOE.
 
@@ -313,7 +313,7 @@ headline_{t-1} ~ N(πᵉ_t, σ_headline)                            [pre-1993 on
 σ_obs ~ HalfNormal(1.0)                                         [estimated, typical ~0.46]
 ```
 
-### Target Anchored — `target`
+### Target Anchored: `target`
 
 The full model. Uses market_1y, breakeven, business, market_yoy (all with α, λ), plus inflation, headline CPI, nominal bonds, HCOE, and the 2.5% target anchor. Innovation variance is estimated.
 
@@ -359,7 +359,7 @@ hcoe_t = πᵉ_t + mfp_t + hcoe_adjustment + ε_t
 2.5 ~ N(πᵉ_t, 0.35)                                             [post-1998Q4 only]
 ```
 
-### Unanchored — `unanchored`
+### Unanchored: `unanchored`
 
 Same as Target Anchored but **without the 2.5% target anchor**. Uses fixed innovation variance (matching Target estimates) to avoid funnel geometry in the posterior. This model answers: "What do expectations look like if we don't impose credibility?"
 
@@ -389,8 +389,8 @@ hcoe_t = πᵉ_t + mfp_t + hcoe_adjustment + ε_t
 ```
 
 **Key difference from Target:** Without the anchor, the bias parameters (α, λ) shift to absorb the difference. Typical estimates:
-- `λ` for market_1y: ~0 (vs 0.18 in Target) — backward-looking component disappears
-- `α` for market_yoy: ~+0.48 (vs +0.04 in Target) — larger positive bias
+- `λ` for market_1y: ~0 (vs 0.18 in Target), backward-looking component disappears
+- `α` for market_yoy: ~+0.48 (vs +0.04 in Target), larger positive bias
 
 ---
 

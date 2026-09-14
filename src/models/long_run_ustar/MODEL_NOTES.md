@@ -1,4 +1,4 @@
-# Long-run u\* — read off the quarters where inflation was flat
+# Long-run u\*: read off the quarters where inflation was flat
 
 ## Read this first: there is no estimate here
 
@@ -399,7 +399,7 @@ inflation-defined gap, an imposed `sigma_okun`, a decay state law, a left endpoi
 break.
 
 **It is not.** This model shares none of that machinery, and under a loose rule it reads
-**9.0 to 10.9 for the early 1990s** — the same answer. Inflation was flat in 1993-94 because
+**9.0 to 10.9 for the early 1990s**: the same answer. Inflation was flat in 1993-94 because
 expectations had collapsed and were settling at a new level, not because the labour market was
 in balance, and *any* non-accelerating-inflation rule reads that as equilibrium.
 
@@ -464,13 +464,13 @@ src/data/long_cpi.py  # headline CPI back to 1948, rebuilt from the quarterly ch
 
 Four charts land in `charts/LongRunUStar/`:
 
-- **where-inflation-stopped-moving** — inflation raw and smoothed, with plateaus shaded green and
+- **where-inflation-stopped-moving**: inflation raw and smoothed, with plateaus shaded green and
   U-bases purple.
-- **what-inflation-says-u-was-two-ways** — the unemployment rate with each reading drawn across
+- **what-inflation-says-u-was-two-ways**: the unemployment rate with each reading drawn across
   its own span, orange for plateaus and purple for troughs, and nothing in between. The gaps are
   the point: the rule is silent where inflation was moving.
-- **where-unemployment-held-still-and-whether-it-counted** — every stretch where unemployment was
+- **where-unemployment-held-still-and-whether-it-counted**: every stretch where unemployment was
   flat, green where inflation was flat too and red where it was not. Shows which levels were
   excluded and why, and that the excluded ones skew low.
-- **unemployment-by-what-inflation-was-doing** — the direction contrast by decade, which is the
+- **unemployment-by-what-inflation-was-doing**: the direction contrast by decade, which is the
   model's test rather than its reading.

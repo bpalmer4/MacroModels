@@ -1,4 +1,4 @@
-# g* Summary — Model Notes
+# g* Summary: Model Notes
 
 **NOT A MODEL.** This loads potential output growth from every model in the repo that
 estimates one, puts them on a single chart, and charts the spread between them. Nothing here

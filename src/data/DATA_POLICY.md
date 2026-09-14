@@ -4,7 +4,7 @@ This document defines the conventions for functions in `src/data/`.
 
 ## Naming Conventions
 
-### `get_*` — Data Retrieval Only
+### `get_*`: Data Retrieval Only
 
 Functions prefixed with `get_` retrieve raw data or perform pure algebraic derivations. They must NOT apply smoothing, filtering, or other statistical transformations.
 
@@ -25,7 +25,7 @@ Functions prefixed with `get_` retrieve raw data or perform pure algebraic deriv
 - Truncating date ranges
 
 **Data range policy:**
-- Return ALL available data from the source — do not truncate or filter date ranges
+- Return ALL available data from the source: do not truncate or filter date ranges
 - Date range alignment happens downstream in `observations.py`, not in individual getters
 - This ensures maximum flexibility and avoids data loss
 
@@ -36,7 +36,7 @@ get_mfp_growth(...)             # Algebraic: LP - α × capital_deepening
 get_labour_productivity_growth(...) # Algebraic: Δhcoe - Δulc
 ```
 
-### `compute_*` — Transformations Allowed
+### `compute_*`: Transformations Allowed
 
 Functions prefixed with `compute_` perform calculations that may include statistical transformations like smoothing or filtering.
 

@@ -639,7 +639,7 @@ and `phi·r_{t-1}` displaces neutral, `corr` with the cash rate falling to 0.759
 going nearly flat after 2012.
 
 **Why the default keeps `phi` = 0.** For parsimony and interpretability, **not because the data
-reject interest-rate smoothing** — they plainly do not, given the autocorrelation. A
+reject interest-rate smoothing**: they plainly do not, given the autocorrelation. A
 partial-adjustment model improves the residual dynamics substantially but is itself weakly
 identified against the drifting neutral rate, and imposing `phi` by hand would give the package
 two arbitrary smoothness parameters where it currently has one. The honest next step is a joint

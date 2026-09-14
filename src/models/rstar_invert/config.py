@@ -48,9 +48,28 @@ DEFAULT_CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts"
 # An IS curve has a negative slope. At or above this it is a sign error.
 MAX_SLOPE = 0.0
 
-# Two lags share one free weight. Three or more would need a Dirichlet, and
-# with regressors this collinear it would not be identified anyway.
-MAX_LAGS = 2
+# Two lags share one free weight; three share a Dirichlet. The cap is three
+# because that is where it has been looked at, not because four would break.
+#
+# THE OLD NOTE HERE SAID three lags "would not be identified anyway" because
+# the regressors are collinear. That reason is wrong and the measurement is
+# recorded so it is not reinstated: on 127 usable quarters the real cash rate
+# at t-1, t-4 and t-7 correlates 0.73 to 0.87, but the design's condition
+# number is 5.4 and the pairwise differences have sd 0.93 to 1.32pp. There is
+# independent variation to read weights off.
+#
+# THE REAL CONSTRAINT is that the weights reach the likelihood only multiplied
+# by the slope: what separates two weight vectors is is_slope x (the difference
+# between the lagged rates). At the 4/8 default that is 0.38 x 0.93 = 0.35pp
+# against sigma_e 0.24, readable. At 1/2 it is 0.008 x 0.9 = 0.007pp against
+# sigma_e 0.43, invisible, and w came back at [0.119, 0.851]. So the weights
+# are identified only where the slope survives.
+MAX_LAGS = 3
+
+# Two lags are the case that keeps the scalar Beta weight `lag_weight`; three
+# switch to the Dirichlet vector `lag_weights`. Named so the branch on it reads
+# as a specification choice rather than an arithmetic coincidence.
+PAIR_LAGS = 2
 
 # HOW SLOW r* IS, expressed as a shape rather than only a scale.
 #   "walk"      a random walk, one innovation per quarter, scaled by
@@ -139,8 +158,25 @@ class ModelConfig:
     # strengthening monotonically from -0.007 at lag 1 to -0.034 at lag 5. It
     # is a weak fix: the real cash rate is persistent, so r_{t-8} stays
     # correlated with recent rates that ARE reacting.
-    # A WEIGHTED PAIR at 4 and 8 quarters. Kept because it works: the slope
-    # comes off its sign bound here, which it does not at any single short lag.
+    #
+    # KEPT BECAUSE IT WORKS: the slope comes off its sign bound at this pair,
+    # which it does not at any single short lag.
+    #
+    # AND BECAUSE THE MODE IS REAL, which was checked rather than assumed
+    # (2026-09-14). At (1, 4, 7) the chains do not mix: they spread across a
+    # ridge between the slope and r*'s amplitude, -0.030 to -0.319 with r*'s sd
+    # running 0.16 to 1.47, and 227 of 258 divergences land at the steep end.
+    # This pair shows none of it. Its four chains agree to a between-chain sd
+    # of 0.0011 against a pooled posterior sd of 0.0350, r*'s amplitude agrees
+    # to three decimals (1.615 to 1.617), and an independent seed returns
+    # -0.3836 against -0.3827. Across 16,000 draws from the two seeds nothing
+    # gets closer to zero than -0.20, so the flat-slope basin carries no
+    # posterior mass here. Not a stuck chain.
+    #
+    # WHAT THAT DOES NOT SETTLE: the answer. Changing the lags moves the slope
+    # by hundredths; changing sigma_rstar moves it twentyfold, at this pair as
+    # much as anywhere. See MODEL_NOTES, "The ridge between the slope and r*'s
+    # amplitude".
     #
     # COMPARABLE WITH LAG 6 ANYWAY, which is what `is_curve` and `rstar_hlw`
     # now use. The estimated weight is 0.435 on lag 4, so the effective mean
@@ -149,14 +185,16 @@ class ModelConfig:
     #
     # The weight itself buys little: 0.5 sits inside its interval, and when the
     # slope is not inflated that interval widens to [0.099, 0.608], close to
-    # the Beta prior. Two lagged real rates four quarters apart are collinear.
-    # Fixing w at 0.5 (`--fix-lag-weight`) costs almost nothing.
+    # the Beta prior. Fixing w at 0.5 (`--fix-lag-weight`) costs almost
+    # nothing.
     #
-    # WHY LONG LAGS. Distance from t is a partial fix for simultaneity: the RBA
-    # reacts to conditions within a quarter or two while output responds over
-    # one to two years, so a regressor further back carries less of the
-    # reaction function. The single-lag sweep shows it working, the slope
-    # strengthening monotonically from -0.007 at lag 1 to -0.034 at lag 5.
+    # NOT BECAUSE THE TWO LAGS ARE COLLINEAR, which this comment used to say.
+    # They correlate 0.805, the design's condition number is 3.0 and their
+    # difference has sd 1.127pp, all mild. The width is the slope again: what
+    # separates two weights is |is_slope| x (the difference between the lagged
+    # rates), so at -0.383 the signal is 0.43pp against sigma_e 0.239 and the
+    # interval is tight at [0.328, 0.527], while at -0.092 it is 0.10pp against
+    # 0.225 and the interval opens up. One story, both widths.
     #
     # NOT YET TESTED: whether the response ACCUMULATES across many lags. These
     # weights sum to one, so this measures the response to a SUSTAINED stance,
@@ -173,6 +211,19 @@ class ModelConfig:
     lag_weight_a: float = 2.0
     lag_weight_b: float = 2.0
     lag_weight: float = 0.5
+
+    # THREE LAGS instead of two: the weights become a Dirichlet, stored as the
+    # vector `lag_weights`. The concentration is the same 2.0 on every stick,
+    # which for two lags IS Beta(2, 2), so the two-lag default is unchanged in
+    # distribution and its saved traces stay comparable.
+    #
+    # WEIGHTS THAT SUM TO ONE, deliberately, as with the pair. The stance is
+    # then the response to a SUSTAINED level, and a constant shift in r* shifts
+    # the stance one for one, which is what makes r*'s level mean anything.
+    # Three unconstrained coefficients would rescale r* silently.
+    #
+    # When `lag_weight_free` is off, three lags share equally (1/3 each).
+    lag_weight_conc: float = 2.0
 
     # --- Sample ---
     # Inflation targeting. Before it the cash rate is not set by a reaction
@@ -228,9 +279,11 @@ class ModelConfig:
             raise ValueError("rate_lags must name at least one lag")
         if len(self.rate_lags) > MAX_LAGS:
             raise ValueError(
-                f"rate_lags supports at most {MAX_LAGS} lags (a free weight between "
-                f"two); more would need a Dirichlet, got {self.rate_lags}",
+                f"rate_lags supports at most {MAX_LAGS} lags (a Beta weight between "
+                f"two, a Dirichlet across three), got {self.rate_lags}",
             )
+        if self.lag_weight_conc <= 0:
+            raise ValueError(f"lag_weight_conc must be positive, got {self.lag_weight_conc}")
         if any(lag < 1 for lag in self.rate_lags):
             raise ValueError(f"rate_lags must all be positive, got {self.rate_lags}")
         if len(set(self.rate_lags)) != len(self.rate_lags):
@@ -255,11 +308,15 @@ class ModelConfig:
             "rstar_trend_sigma": self.rstar_trend_sigma,
             "rate_lag": float(self.rate_lags[0]),
             "rate_lag_2": float(self.rate_lags[1]) if len(self.rate_lags) > 1 else float("nan"),
+            "rate_lag_3": (
+                float(self.rate_lags[2]) if len(self.rate_lags) > PAIR_LAGS else float("nan")
+            ),
             "n_rate_lags": float(len(self.rate_lags)),
             "lag_weight_free": float(self.lag_weight_free),
             "lag_weight": self.lag_weight,
             "lag_weight_a": self.lag_weight_a,
             "lag_weight_b": self.lag_weight_b,
+            "lag_weight_conc": self.lag_weight_conc,
             "exclude_qe": float(self.exclude_qe),
             "sigma_e_prior": self.sigma_e_prior,
         }

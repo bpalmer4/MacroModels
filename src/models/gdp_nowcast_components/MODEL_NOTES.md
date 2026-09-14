@@ -1,4 +1,4 @@
-# GDP Nowcast — Components (Expenditure Identity)
+# GDP Nowcast: Components (Expenditure Identity)
 
 A **T-0 nowcast**: run the day before the Quarterly National Accounts (5206.0)
 are published, it reconstructs quarter-on-quarter GDP growth as the sum of
@@ -21,11 +21,11 @@ investment is accounting-exact from GFS (MAE 0.010) while private investment is
 the bridged, AI-capex-driven, import-offset-prone piece (MAE 0.200). Splitting
 keeps that difference legible.
 
-This is a structural accounting build-up — complementary to, not a competitor of,
+This is a structural accounting build-up: complementary to, not a competitor of,
 the statistical nowcasts (`gdp_nowcast_bridge`, `_dfm`, `_bvar`), which regress
 GDP growth on indicator panels. Its edge: at T-0 net exports and government are
-**measured, not forecast**, and inventories — the other volatile contributor — is
-anchored on a measured prior-quarter flow. Its output is interpretable — a
+**measured, not forecast**, and inventories, the other volatile contributor, is
+anchored on a measured prior-quarter flow. Its output is interpretable, a
 stacked-ppt decomposition telling you
 *where* growth comes from, not just a headline number.
 
@@ -38,7 +38,7 @@ contribution_T (ppt) = Δ(component_T) / GDP_{T-1} × 100
 ```
 
 `GDP_{T-1}` is the last *published* real GDP (the denominator is lagged by index,
-so the T-quarter source — out a day early — divides by the last published GDP).
+so the T-quarter source, out a day early, divides by the last published GDP).
 Inventories enter GDP as a flow, so their contribution is a difference *of
 flows*: `(flow_T − flow_{T-1}) / GDP_{T-1} × 100`. Only `flow_T` needs a proxy.
 `flow_{T-1}` is the NA changes-in-inventories published with last quarter's
@@ -62,7 +62,7 @@ is not commensurate with `flow_{T-1}`).
 
 - **Accounting-exact**: real $m CVM levels that map straight onto the GDP
   identity. Government consumption tracks the published NA contribution almost
-  perfectly (MAE 0.015) — confirming GFS Table 15 is CVM and needs no deflator.
+  perfectly (MAE 0.015): confirming GFS Table 15 is CVM and needs no deflator.
 - **Inventories (flow bridge, NA-anchored)**: the 5676 private non-farm stock is
   the only T-0 source, but it is a partial-coverage proxy (farm and public
   excluded), and the contribution differences two flows. Anchoring the T-1 flow
@@ -73,13 +73,13 @@ is not commensurate with `flow_{T-1}`).
   what identifies the T-1 term rather than the proxy's scale as the fault.
 - **Household consumption (growth bridge → level)**: the HSI is a CVM *index*
   covering only the volatile, transaction-based ~⅔ of consumption (it maps to
-  HFCE at slope ~0.59, not 1 — see `diagnostics.plot_source_vs_na`). It is
+  HFCE at slope ~0.59, not 1, see `diagnostics.plot_source_vs_na`). It is
   handled the same way as the exact components: fit HFCE *growth* on HSI growth
   over the **ex-COVID** history before the target quarter (COVID broke the
   relationship), predict
   the target-quarter HFCE growth, roll the last HFCE level forward by it, and take
   `ΔHFCE / GDP_{t-1} × 100`. This uses the *actual* current consumption share via
-  real levels — no embedded average share, no rounding — so consumption is no
+  real levels: no embedded average share, no rounding, so consumption is no
   longer a special case. It remains an inference with moderate, irreducible error
   (~±0.29 ppt 1σ): no T-0 source *is* household consumption.
 - **Private GFCF (contribution bridge)**: capex + construction miss IP products
@@ -108,7 +108,7 @@ is not commensurate with `flow_{T-1}`).
    The quarterly CVM table 5682015 only ships with the monthly 5682.0 release
    that lands on a quarter-end month. Because the target quarter is known up
    front, fetch that snapshot directly via `history=<quarter-end month of T>`
-   rather than the download-then-check-then-fallback dance — if the quarter isn't
+   rather than the download-then-check-then-fallback dance: if the quarter isn't
    in it, it isn't there. Anchored to the target quarter, not to `today`.
 
    **The diagnostics needed a fallback that the model itself does not.** Gotcha 2 means the
@@ -131,12 +131,12 @@ is not commensurate with `flow_{T-1}`).
 One as-of-parameterised contribution path (`model._contribute`) is shared by the
 live run and the backtest, so a component becomes a number in exactly one place.
 
-- `data.py` — component sources, published contributions, household trick,
+- `data.py`: component sources, published contributions, household trick,
   re-referencing guard. Everything is a `Q-DEC` quarterly `pd.Series`.
-- `model.py` — `AsOf` information set, `_contribute` (the shared math), the two
+- `model.py`: `AsOf` information set, `_contribute` (the shared math), the two
   OLS bridges, `NowcastResult`, text summary, the stacked contributions chart,
   and the live CLI (`run_nowcast`).
-- `backtest.py` — replays the nowcast, reports headline + per-component error.
+- `backtest.py`: replays the nowcast, reports headline + per-component error.
 
 ```bash
 ./run-gdp-nowcast-components.sh                                    # live (T-0)
@@ -151,7 +151,7 @@ bar) and the per-component history charts. It also emits the three **standard
 nowcast charts** shared with the sibling models (`Q/Q fan`, `TTY fan`, and the
 combined annual-line + quarterly-bars chart) via
 `src/models/common/nowcast_charts.py` (`plot_nowcast_charts`) and
-`src/models/common/nowcast_core.py` (`compute_tty`) — the same shared helpers the
+`src/models/common/nowcast_core.py` (`compute_tty`), the same shared helpers the
 bridge/DFM/BVAR models use, with a goldenrod CI fan.
 The annual band is the symmetric Q/Q discrepancy band rolled through the same
 Q/Q→annual conversion. Backtest artefacts land in
@@ -172,7 +172,7 @@ Read alongside the per-component table above:
   component's own, because the old formula's error was serially correlated by
   construction. On a like-for-like vintage the headline went from RMSE 0.578 to
   0.434 over 2023+, and the ex-COVID headline bias collapsed from +0.191 to
-  +0.044 — most of that bias had been the inventories term.
+  +0.044: most of that bias had been the inventories term.
 - **Household consumption** (0.220) and **private GFCF** (0.217) are the bridged
   pieces and now carry the most error. The level-path consumption bridge
   (ex-COVID) lowered household MAE from 0.257 and trimmed its over-prediction
@@ -198,20 +198,20 @@ Read alongside the per-component table above:
 
 ## Open improvement avenues
 
-1. **Inventories** — done: the T-1 flow now comes from the NA all-sector
+1. **Inventories**: done, the T-1 flow now comes from the NA all-sector
    changes series and the T flow is bridged onto that basis. What is left is a
    small under-prediction (bias -0.10 over 2023+), which is the farm and public
    coverage gap being carried by the bridge's intercept rather than measured.
    A farm-inventories proxy (ABS crop estimates) is the only obvious lead on it.
-2. **Household consumption** — now a growth-bridge→level path (ex-COVID), which is
+2. **Household consumption**: now a growth-bridge→level path (ex-COVID), which is
    about as far as the HSI can be pushed: it sees only ~⅔ of consumption, so the
    leg is an irreducible moderate-error inference (~±0.29 ppt 1σ). Per-category
-   decomposition was considered and rejected — it can't reach the ~⅓ the HSI never
+   decomposition was considered and rejected: it can't reach the ~⅓ the HSI never
    covers (rent, electricity, comms, education, financial), which the aggregate
    intercept already approximates.
-3. **Private GFCF** — capex + construction under-cover (IP products); add an
+3. **Private GFCF**: capex + construction under-cover (IP products); add an
    IP-products trend or a fitted coverage scale-up.
-4. **Uncertainty band** — replace the discrepancy-only band with the empirical
+4. **Uncertainty band**: replace the discrepancy-only band with the empirical
    backtest RMSE, which captures bridge error too.
-5. **Headline debias** — a small intercept correction would remove the +0.21 ppt
+5. **Headline debias**: a small intercept correction would remove the +0.21 ppt
    bias, at the usual cost to turning-point tracking (see the DFM notes).

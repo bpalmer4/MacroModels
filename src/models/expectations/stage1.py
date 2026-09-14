@@ -27,7 +27,7 @@ from src.data.inflation import get_headline_annual, get_trimmed_mean_annual, get
 from src.data.labour_force import get_hours_growth_qrtly
 from src.data.productivity import compute_mfp_trend_floored
 from src.data.ulc import get_ulc_growth_qrtly
-from src.models.common.diagnostics import check_model_diagnostics
+from src.models.common.diagnostics import check_model_diagnostics, save_diagnostics
 from src.models.expectations.common import (
     ANCHOR_SIGMA,
     ANCHOR_TARGET,
@@ -563,6 +563,10 @@ def save_results(
 
     # Save trace
     trace.to_netcdf(output_dir / f"expectations_{model_type}_trace.nc")
+
+    # Into the chart directory, not beside the trace: this model has no separate
+    # analysis step to write it from, so it goes out here.
+    save_diagnostics(trace, CHART_DIR, f"expectations_{model_type}", model="expectations")
 
     # Save metadata
     metadata = {

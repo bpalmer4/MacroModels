@@ -82,6 +82,40 @@ zero then r\* must average the real cash rate. The level is forced by that requi
 discovered. It is the same answer as a flat r\* at the sample mean real rate, which the
 `is_curve` bench reports as 1.37.
 
+### The last four quarters of r\* are not estimated
+
+`rstar` is a random walk over the whole index, but the likelihood only ever touches it through
+the lags: the stance at row `t` uses `rstar[t−4]` and `rstar[t−8]` (`estimate.py:188-193`). So
+the last quarter any observation constrains is **T−4**. At a sample ending 2026Q2 that is
+2025Q2, and 2025Q3 through 2026Q2 are the prior random walk carried forward, nothing more.
+
+Unlike `rstar_hlw`, there is no second component to pick up the slack. HLW's r\* is `g + z`, so
+its recent end still gets current trend growth through the potential equation. Here r\* is a
+bare random walk conditioned only through the inversion. When the lags run out, nothing is left.
+
+The posterior says so plainly, fanning out over exactly four quarters:
+
+| | median | 90% width |
+|---|---|---|
+| 2025Q2, last informed | 1.53 | 0.96 |
+| 2025Q3 | 1.53 | 1.02 |
+| 2025Q4 | 1.53 | 1.07 |
+| 2026Q1 | 1.52 | 1.13 |
+| 2026Q2 | 1.53 | **1.16** |
+
+Mid-sample width is 0.67. The median is flat at 1.53 because a random walk's best guess is its
+last informed value, and the band widens 0.20pp across the four uninformed quarters.
+
+The middle of the sample is affected too, at half strength: quarters between T−8 and T−4 are
+informed only by the lag-4 term, which carries weight `w` = 0.435. The falling-off is gradual,
+not a cliff at four quarters.
+
+This is structural, not a defect to fix. Any model identifying r\* off a lagged rate channel is
+silent about the most recent quarters by construction; the `is_curve` bench's default lag of 6
+and `rstar_hlw`'s t−6 have the same property. What makes it sharper here is the absence of any
+anchor, so the silence is total rather than partial. **No chart marks the uninformed tail**, so
+the widening band is the only visible sign of it.
+
 ## Headline run
 
 `./run-rstar-invert.sh`, defaults as above.
@@ -147,6 +181,73 @@ overlap heavily, so a monotone pattern is weaker evidence than it looks.
 itself buys little: 0.5 sits inside its interval, and when the slope is not inflated that
 interval widens to [0.099, 0.608], close to the Beta prior. `--fix-lag-weight` costs almost
 nothing.
+
+### The ridge between the slope and r\*'s amplitude (2026-09-14)
+
+Two wider lag structures were tried against the (4, 8) default. Neither beat it, and the
+failure of one of them is the useful result.
+
+**Lags (1, 2), the reaction-function end.** Samples cleanly (R-hat 1.0, 0/8000 divergences,
+min ESS 4162) and lands on the null:
+
+| | (4, 8) | (1, 2) |
+|---|---|---|
+| `is_slope` | −0.383 [−0.440, −0.326] | **−0.008** [−0.029, −0.001] |
+| P(slope > −0.01) | 0.00 | **0.57** |
+| `sigma_e` | 0.239 | 0.431 (gap's own sd 0.420) |
+| R² of the fitted gap | +0.714 | **−0.021** |
+| r\* median path | −1.19 to +3.99 | +2.37 to +2.69, sd 0.08 |
+
+The posterior travelled **2.9 prior sd** to get there, into a region holding 0.18% of the
+prior's mass, so it is the likelihood putting it on the bound and not the prior. At −0.008
+the inversion is meaningless anyway: r\* movement scales as 1/|is_slope|, so one point of
+output gap needs **119pp** of r\*. The flat r\* is therefore not a stable neutral rate, it is
+r\* with no leverage falling back on its walk prior.
+
+**Lags (1, 4, 7), a Dirichlet across three sticks (`lag_weight_conc`, 2.0 each).** This one
+**failed to converge**: R-hat 1.110, ESS 27, 258/8000 divergences. The cause is not the
+Dirichlet and not collinearity. The three regressors correlate 0.73 to 0.87 but the design's
+condition number is only **5.4** and the pairwise differences have sd 0.93 to 1.32pp, and the
+four chains agreed on the weights while disagreeing about everything else:
+
+| chain | w(t−1) | w(t−4) | w(t−7) | `is_slope` | r\* sd | divergences |
+|---|---|---|---|---|---|---|
+| 0 | 0.123 | 0.308 | 0.547 | −0.056 | 0.79 | 0 |
+| 1 | 0.194 | 0.289 | 0.463 | −0.030 | 0.16 | 31 |
+| 2 | 0.113 | 0.304 | 0.570 | −0.235 | 1.30 | 0 |
+| 3 | 0.096 | 0.310 | 0.582 | −0.319 | 1.47 | 227 |
+
+**What failed is a ridge between the slope and r\*'s amplitude**, and it is the same
+`|is_slope| × sigma_rstar` trade-off the next section documents, seen from the sampler's side
+rather than the prior's. The likelihood is nearly flat along it, each chain parks somewhere
+and does not traverse, and the divergences concentrate at the steep-slope end (227 of 258 in
+chain 3, none in the two flattest). A lag set that spans the reaction-function end and the
+transmission end puts both ends of the ridge in one posterior; a lag set at one end does not.
+
+**Pinning `sigma_rstar` cuts off the wandering end and both runs then converge**, at R-hat
+1.0 and 0/8000 divergences, but they converge onto the null:
+
+| lags (1, 4, 7) | sigma_rstar 0.10 | 0.05 | 0.02 |
+|---|---|---|---|
+| `is_slope` | −0.058 (did not converge) | **−0.021** [−0.055, −0.002] | **−0.020** [−0.053, −0.002] |
+| r\* sd | 0.16 to 1.47 by chain | 0.03 | 0.01 |
+| `sigma_e` | 0.404 | 0.433 | 0.433 |
+| w on t−1 / t−4 / t−7 | 0.12 / 0.30 / 0.55 | 0.22 / 0.32 / 0.41 | 0.22 / 0.32 / 0.40 |
+
+The weights tilt toward the long lag, which is the right direction, but the marginals span
+most of the simplex ([0.025, 0.467] on t−1) and flatten toward the 1/3 prior once r\* is
+pinned. **Weakly identified; do not quote them.**
+
+**(4, 8) is not on the ridge, and that was checked rather than assumed.** Its four chains
+agree to a between-chain sd of 0.0011 against a pooled posterior sd of 0.0350, r\*'s amplitude
+agrees to three decimals (1.615 to 1.617), and an independent seed reproduces the slope at
+−0.3836 against −0.3827. Across 16,000 draws from the two seeds **nothing gets closer to zero
+than −0.20**, so the flat-slope basin carries no posterior mass at this lag structure. The
+mode is real, not a stuck chain.
+
+**The reading.** This settles the LAG STRUCTURE and not the answer. Changing the lags moved
+the slope by a few hundredths; changing `sigma_rstar` moves it twentyfold, at (4, 8) as much
+as at (1, 4, 7). The conditioning in "How slow is r\*" above is untouched by any of this.
 
 ## The parameterisation trap, found and documented
 
@@ -300,7 +401,11 @@ would help every r\* model here.
 
 Quote the **conditioning**, never the number. If a single figure is needed, r\* today is
 around 1.5 to 2.7% real across every setting tried, which is the least sensitive thing the
-model produces. The path is not robust: the 2007 peak ranges 4.0 to 7.0 and the 2016 trough
+model produces. "Today" is loose: see below.
+
+**The latest value is not a current reading.** r\* at the final quarter is 2025Q2's estimate
+carried forward four quarters by the random walk, because the likelihood reaches r\* only at
+T−4. Quote it as "r\* as at T−4, extrapolated", or quote T−4 directly and say so. The path is not robust: the 2007 peak ranges 4.0 to 7.0 and the 2016 trough
 −1.2 to −2.4 depending on `sigma_rstar` alone.
 
 The **timing** of the peaks and troughs is stable across parameterisations. Note that r\*

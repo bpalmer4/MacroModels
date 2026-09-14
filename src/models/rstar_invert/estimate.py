@@ -21,18 +21,18 @@ import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
-from src.models.rstar_invert.config import DEFAULT_OUTPUT_DIR, ModelConfig
+from src.models.rstar_invert.config import DEFAULT_OUTPUT_DIR, PAIR_LAGS, ModelConfig
 from src.models.rstar_invert.observations import InversionData, build_observations
 from src.models.ystar.base import SamplerConfig, get_fixed_constants, sample_model
 
 
-def _print_spec(data: InversionData, config: ModelConfig) -> None:
-    """Print the specification, leading with what is asserted."""
+def _stance_description(config: ModelConfig) -> tuple[str, str]:
+    """Return the stance as written out, and how its weights are set."""
     lags = config.rate_lags
     if len(lags) == 1:
         stance = f"(r_{{t-{lags[0]}}} - rstar_{{t-{lags[0]}}})"
         weight_desc = "single lag, no weight to estimate"
-    else:
+    elif len(lags) == PAIR_LAGS:
         first, second = lags
         stance = (
             f"[w.(r_{{t-{first}}} - rstar_{{t-{first}}}) "
@@ -42,6 +42,22 @@ def _print_spec(data: InversionData, config: ModelConfig) -> None:
             f"w ~ Beta({config.lag_weight_a:g}, {config.lag_weight_b:g})"
             if config.lag_weight_free else f"w FIXED at {config.lag_weight:g}"
         )
+    else:
+        terms = " + ".join(
+            f"w{position + 1}.(r_{{t-{lag}}} - rstar_{{t-{lag}}})"
+            for position, lag in enumerate(lags)
+        )
+        stance = f"[{terms}]"
+        weight_desc = (
+            f"w ~ Dirichlet({config.lag_weight_conc:g} on each of {len(lags)}), summing to one"
+            if config.lag_weight_free else f"w FIXED at 1/{len(lags)} each"
+        )
+    return stance, weight_desc
+
+
+def _print_spec(data: InversionData, config: ModelConfig) -> None:
+    """Print the specification, leading with what is asserted."""
+    stance, weight_desc = _stance_description(config)
 
     if config.rstar_form == "constant":
         rstar_desc = "rstar_t = rstar_0, FIXED (the reference case, not the story)"
@@ -71,8 +87,12 @@ def _print_spec(data: InversionData, config: ModelConfig) -> None:
     estimated = ["is_slope", "sigma_e", "rstar_0"]
     if config.rstar_form == "linear":
         estimated.append("rstar_trend")
-    if len(lags) > 1 and config.lag_weight_free:
-        estimated.append("lag_weight")
+    if len(config.rate_lags) > 1 and config.lag_weight_free:
+        # The pair keeps the scalar Beta; three or more share the Dirichlet
+        # vector. The names differ, so the run log has to say which one is here.
+        estimated.append(
+            "lag_weight" if len(config.rate_lags) == PAIR_LAGS else "lag_weights",
+        )
     if config.rstar_form == "walk" and config.free_sigma_rstar:
         estimated.append("sigma_rstar")
     print(f"  Estimated:       {', '.join(estimated)}")
@@ -94,14 +114,34 @@ def _print_spec(data: InversionData, config: ModelConfig) -> None:
 
 
 def _lag_weights(config: ModelConfig) -> list[Any]:
-    """Return the weights on each lag, summing to one."""
-    if len(config.rate_lags) == 1:
+    """Return the weights on each lag, summing to one.
+
+    SUMMING TO ONE is the point, not a convenience. It makes the stance the
+    response to a SUSTAINED level, so a constant shift in r* shifts the stance
+    one for one and r*'s level keeps its meaning. Free coefficients would
+    rescale r* silently.
+
+    Two lags share a Beta, three a Dirichlet. Beta(a, b) is Dirichlet([a, b]),
+    so the two cases are the same prior; the pair keeps the scalar
+    `lag_weight` so its saved traces and charts do not change.
+    """
+    count = len(config.rate_lags)
+    if count == 1:
         return [pt.as_tensor_variable(1.0)]
-    if config.lag_weight_free:
-        w = pm.Beta("lag_weight", alpha=config.lag_weight_a, beta=config.lag_weight_b)
-    else:
-        w = pt.as_tensor_variable(config.lag_weight)
-    return [w, 1.0 - w]
+    if count == PAIR_LAGS:
+        if config.lag_weight_free:
+            w = pm.Beta("lag_weight", alpha=config.lag_weight_a, beta=config.lag_weight_b)
+        else:
+            w = pt.as_tensor_variable(config.lag_weight)
+        return [w, 1.0 - w]
+
+    if not config.lag_weight_free:
+        return [pt.as_tensor_variable(1.0 / count)] * count
+    weights = pm.Dirichlet(
+        "lag_weights",
+        a=np.full(count, config.lag_weight_conc, dtype=float),
+    )
+    return [weights[position] for position in range(count)]
 
 
 def _rstar_path(config: ModelConfig, n: int) -> Any:  # noqa: ANN401 — a pytensor expression

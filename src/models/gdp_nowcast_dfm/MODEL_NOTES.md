@@ -60,26 +60,26 @@ bt = run_backtest(BacktestConfig(start="2022Q1"))
 ### Theoretical Background
 
 Based on:
-- **Bańbura, Giannone, Reichlin (2011)**: "Nowcasting" — laid out the DFM framework for nowcasting with mixed-frequency data
-- **Bańbura, Modugno (2014)**: "Maximum likelihood estimation of factor models on datasets with arbitrary pattern of missing data" — EM algorithm for handling ragged edges
-- **Mariano, Murasawa (2011)**: "A coincident index, common factors, and monthly real GDP" — mapping quarterly variables onto latent monthly states
-- **Bok et al. (2017)**: "Macroeconomic Nowcasting and Forecasting with Big Data" — the NY Fed Staff Nowcast methodology
+- **Bańbura, Giannone, Reichlin (2011)**: "Nowcasting": laid out the DFM framework for nowcasting with mixed-frequency data
+- **Bańbura, Modugno (2014)**: "Maximum likelihood estimation of factor models on datasets with arbitrary pattern of missing data": EM algorithm for handling ragged edges
+- **Mariano, Murasawa (2011)**: "A coincident index, common factors, and monthly real GDP": mapping quarterly variables onto latent monthly states
+- **Bok et al. (2017)**: "Macroeconomic Nowcasting and Forecasting with Big Data", the NY Fed Staff Nowcast methodology
 
 ### Model Specification
 
 The standard DFM has three layers:
 
-**1. Observation equation** — each indicator `y_i,t` loads on common factors `f_t`:
+**1. Observation equation**: each indicator `y_i,t` loads on common factors `f_t`:
 ```
 y_i,t = λ_i' f_t + e_i,t
 ```
 
-**2. Factor dynamics** — factors follow a VAR(p):
+**2. Factor dynamics**: factors follow a VAR(p):
 ```
 f_t = A_1 f_{t-1} + ... + A_p f_{t-p} + u_t
 ```
 
-**3. Idiosyncratic dynamics** — each indicator has its own AR(1) noise process:
+**3. Idiosyncratic dynamics**: each indicator has its own AR(1) noise process:
 ```
 e_i,t = ρ_i e_{i,t-1} + ε_i,t
 ```
@@ -104,7 +104,7 @@ e_i,t = ρ_i e_{i,t-1} + ε_i,t
 | NAB business conditions | RBA Table H3 (GICNBC) | Simple difference (already a deviation index) |
 | Westpac-MI consumer sentiment | RBA Table H3 (GICWMICS) | Log difference × 100 |
 
-**Westpac-MI consumer sentiment was tested and kept.** It improved RMSE, lifted correlation with actual GDP, and reduced nowcast variance over the backtest window. After standardisation the panel treats sentiment as a second soft-data factor — it tends to load onto the prices/surveys factor alongside NAB and adds information during periods where the two surveys diverge (households vs. businesses).
+**Westpac-MI consumer sentiment was tested and kept.** It improved RMSE, lifted correlation with actual GDP, and reduced nowcast variance over the backtest window. After standardisation the panel treats sentiment as a second soft-data factor, it tends to load onto the prices/surveys factor alongside NAB and adds information during periods where the two surveys diverge (households vs. businesses).
 
 ### Quarterly Indicators (7, including target)
 
@@ -124,29 +124,29 @@ Retail turnover, the goods trade balance, and gross operating profits are publis
 
 ### Household spending CVM as a quarterly indicator
 
-The Total Household Spending CVM series from 5682.0 table 5682015 (history begins 2014Q3) is conceptually close to the 5206.0 HFCE component of GDP but publishes ~5 weeks after each quarter ends, ahead of the GDP release. The DFM's ragged-edge EM handles its short history naturally — it carries missing values pre-2014Q3 without dropping other series.
+The Total Household Spending CVM series from 5682.0 table 5682015 (history begins 2014Q3) is conceptually close to the 5206.0 HFCE component of GDP but publishes ~5 weeks after each quarter ends, ahead of the GDP release. The DFM's ragged-edge EM handles its short history naturally: it carries missing values pre-2014Q3 without dropping other series.
 
-The DFM handles the **ragged edge** natively — different indicators have different last available dates, and the Kalman filter forecasts missing values forward using the common factor structure. No SARIMA pre-completion is needed.
+The DFM handles the **ragged edge** natively: different indicators have different last available dates, and the Kalman filter forecasts missing values forward using the common factor structure. No SARIMA pre-completion is needed.
 
 ### Indicators tested and rejected
 
-- **BoP services-only balance (5302.0)**: Tested 2026-05-28 as a quarterly indicator (SA "Services ;" change from table 530204, T-0 only since 5302.0 publishes ~1 day before GDP). T-0 RMSE was flat at 0.442% with a marginal correlation improvement (+0.682 → +0.688) over the 2022Q1–2025Q4 backtest. Effectively neutral — the factor structure didn't latch onto useful shared variance with the rest of the panel, so the marginal information value was indistinguishable from noise. Not retained, since adding it complicates the panel without measurable benefit. The data loader (`src/data/balance_of_payments.py`) is retained for reference.
+- **BoP services-only balance (5302.0)**: Tested 2026-05-28 as a quarterly indicator (SA "Services ;" change from table 530204, T-0 only since 5302.0 publishes ~1 day before GDP). T-0 RMSE was flat at 0.442% with a marginal correlation improvement (+0.682 → +0.688) over the 2022Q1–2025Q4 backtest. Effectively neutral, the factor structure didn't latch onto useful shared variance with the rest of the panel, so the marginal information value was indistinguishable from noise. Not retained, since adding it complicates the panel without measurable benefit. The data loader (`src/data/balance_of_payments.py`) is retained for reference.
 
 ---
 
 ## Ragged Edge Handling
 
-A key advantage of the DFM over the bridge model is how it handles the ragged edge. The model panel is constructed to extend to **at least month 3 of the target quarter** — and in a live run it extends *further*, because faster monthly indicators have already reported for the next quarter (with NaN for any missing observations). The Kalman filter then:
+A key advantage of the DFM over the bridge model is how it handles the ragged edge. The model panel is constructed to extend to **at least month 3 of the target quarter**: and in a live run it extends *further*, because faster monthly indicators have already reported for the next quarter (with NaN for any missing observations). The Kalman filter then:
 
 1. **Filters forward**: Updates the factor estimates as each indicator's observations arrive
 2. **Smooths backward**: Refines historical factor estimates using all available data
 3. **Forecasts missing values**: Uses the factor dynamics + observation loadings to fill in NaN gaps
 
-The GDP growth nowcast for the target quarter is the smoothed estimate **at the third month of the target quarter** — even though the observed GDP value is NaN, the Kalman filter has inferred it from the common factor. This month must be selected **by label**, not as the last row of the prediction: `predicted_mean` is defined at every month, and the values *after* the target quarter's third month are rolling estimates that drift toward the next quarter.
+The GDP growth nowcast for the target quarter is the smoothed estimate **at the third month of the target quarter**: even though the observed GDP value is NaN, the Kalman filter has inferred it from the common factor. This month must be selected **by label**, not as the last row of the prediction: `predicted_mean` is defined at every month, and the values *after* the target quarter's third month are rolling estimates that drift toward the next quarter.
 
 This is more elegant than the bridge model's two-stage approach (SARIMA-complete monthly indicators → aggregate to quarterly → run bridge regressions → combine). The DFM does all of this in one joint estimation step.
 
-> **Correction (2026-05-31): live nowcast was extracting the wrong month.** `_extract_nowcast` previously took `predicted_mean["gdp_growth"].dropna().iloc[-1]` — the *last* monthly prediction. That is correct only when the panel ends exactly at the target quarter's third month, which holds in the **backtest** (availability is truncated via the `at_t_minus_*` factory methods) but **not in live runs**: at T-0 the faster monthly indicators have already reported into the next quarter, so the panel — and the predictions — extend past month 3, and `iloc[-1]` returned a value drifting toward the *following* quarter. The code now selects the target quarter's third month by explicit label and raises if it is absent. Impact: **live point nowcasts were biased** toward whatever the latest monthly data implied (e.g. the 2026Q1 live nowcast moved from +0.87% to the correct +0.69% once fixed). **Backtest results are unaffected** — the truncated availability meant the panel ended at month 3, so `iloc[-1]` had coincided with the correct month there — and all empirical-performance numbers below remain valid.
+> **Correction (2026-05-31): live nowcast was extracting the wrong month.** `_extract_nowcast` previously took `predicted_mean["gdp_growth"].dropna().iloc[-1]`: the *last* monthly prediction. That is correct only when the panel ends exactly at the target quarter's third month, which holds in the **backtest** (availability is truncated via the `at_t_minus_*` factory methods) but **not in live runs**: at T-0 the faster monthly indicators have already reported into the next quarter, so the panel, and the predictions: extend past month 3, and `iloc[-1]` returned a value drifting toward the *following* quarter. The code now selects the target quarter's third month by explicit label and raises if it is absent. Impact: **live point nowcasts were biased** toward whatever the latest monthly data implied (e.g. the 2026Q1 live nowcast moved from +0.87% to the correct +0.69% once fixed). **Backtest results are unaffected**: the truncated availability meant the panel ended at month 3, so `iloc[-1]` had coincided with the correct month there, and all empirical-performance numbers below remain valid.
 
 ---
 
@@ -188,39 +188,39 @@ The backtest reports RMSE, MAE, bias, direction accuracy, correlation with actua
 
 ### Qualitative findings
 
-- **The DFM tracks the *shape* of GDP growth significantly better than the bridge model** — correlation with actual GDP is materially higher. The trade-off is higher headline RMSE driven by a positive bias.
+- **The DFM tracks the *shape* of GDP growth significantly better than the bridge model**: correlation with actual GDP is materially higher. The trade-off is higher headline RMSE driven by a positive bias.
 - **Bias is concentrated in the post-COVID productivity slump (2022–2024)** and has been fading. By 2025 it is essentially gone. As the test sample rolls forward, the headline numbers improve naturally.
-- **Bias-correction approaches hurt more than they help** — see "Why Not Fix the Bias?" below.
-- **CIs are well calibrated** — Kalman-derived intervals come close to nominal coverage, whereas the bridge's bootstrap intervals tend to under-cover.
+- **Bias-correction approaches hurt more than they help**. See "Why Not Fix the Bias?" below.
+- **CIs are well calibrated**: Kalman-derived intervals come close to nominal coverage, whereas the bridge's bootstrap intervals tend to under-cover.
 - **The DFM beats the trailing-4-quarter naive benchmark on correlation** but ties or trails it on RMSE because of the bias.
 
 ### Why Not "Fix" the Bias?
 
-Several bias-reduction approaches were tested — labour-productivity-adjusted labour input, COVID-quarter masking (3-quarter and 7-quarter windows), and combinations. **Each one reduced the bias but crushed the correlation between nowcasts and actual GDP.** The improvements were largely illusory: they came from regressing toward the mean rather than from better predictions. A model whose nowcasts have correlation near zero with actual GDP is just predicting the historical average regardless of conditions, and its low RMSE comes from GDP growth being modestly variable around a stable mean.
+Several bias-reduction approaches were tested: labour-productivity-adjusted labour input, COVID-quarter masking (3-quarter and 7-quarter windows), and combinations. **Each one reduced the bias but crushed the correlation between nowcasts and actual GDP.** The improvements were largely illusory: they came from regressing toward the mean rather than from better predictions. A model whose nowcasts have correlation near zero with actual GDP is just predicting the historical average regardless of conditions, and its low RMSE comes from GDP growth being modestly variable around a stable mean.
 
 The vanilla DFM is kept because:
 1. Its correlation with actual GDP substantially exceeds the bridge model's and the naive forecast's
 2. Its bias is concentrated in a specific known period (post-COVID productivity slump) and is already fading
 3. RMSE differences of ~0.1 pp on a small backtest sample are within sampling noise; correlation differences of the magnitudes seen here are not
 
-**UPDATE — productivity-adjusted labour enabled as a BIAS CORRECTION.** Netting the labour-productivity trend into the *monthly* employment & hours-worked growth cuts the 2022Q1–2025Q4 T-0 bias from +0.33 to ~+0.10 while preserving correlation (0.69 → 0.65) — it removes the level error without the mean-reversion that sank the earlier attempts. **The bias reduction is genuine:** re-tested with a low-look-ahead *trailing 4QMA* signal, bias still falls to +0.12.
+**UPDATE: productivity-adjusted labour enabled as a BIAS CORRECTION.** Netting the labour-productivity trend into the *monthly* employment & hours-worked growth cuts the 2022Q1–2025Q4 T-0 bias from +0.33 to ~+0.10 while preserving correlation (0.69 → 0.65), it removes the level error without the mean-reversion that sank the earlier attempts. **The bias reduction is genuine:** re-tested with a low-look-ahead *trailing 4QMA* signal, bias still falls to +0.12.
 
-**But the RMSE / "beats-naive" result is largely look-ahead, not a real accuracy gain.** The production adjustment applies a *centered* HMA(13) computed over the full sample, and the backtest doesn't truncate productivity per target — so the historical adjustment effectively "knew" the 2022–24 slump in advance (RMSE 0.41 → 0.26, below naive 0.285). Re-running with an honest *trailing* 4QMA signal, RMSE only improves to ~0.34 — **above** naive 0.285 — and the soft 4QMA is still a touch optimistic (it sees the current quarter). So: treat this as a **de-biaser, not a benchmark-beating model.** Bias reduction survives the honest test; the RMSE win does not.
+**But the RMSE / "beats-naive" result is largely look-ahead, not a real accuracy gain.** The production adjustment applies a *centered* HMA(13) computed over the full sample, and the backtest doesn't truncate productivity per target, so the historical adjustment effectively "knew" the 2022–24 slump in advance (RMSE 0.41 → 0.26, below naive 0.285). Re-running with an honest *trailing* 4QMA signal, RMSE only improves to ~0.34: **above** naive 0.285, and the soft 4QMA is still a touch optimistic (it sees the current quarter). So: treat this as a **de-biaser, not a benchmark-beating model.** Bias reduction survives the honest test; the RMSE win does not.
 
-The **live nowcast is real-time-sound** (centered HMA for the historical fit, which is legitimate; a 4Q-trailing-avg carry-forward at the edge — see `_productivity_adjust_labour`); the look-ahead is purely in the backtest *evaluation*. **Outstanding TODO — simple way forward (not yet done):** make the backtest honest about the productivity signal by recomputing the HMA on *only the data visible at each target*, instead of the full-sample centered trend. Recipe (≈half a day):
+The **live nowcast is real-time-sound** (centered HMA for the historical fit, which is legitimate; a 4Q-trailing-avg carry-forward at the edge, see `_productivity_adjust_labour`); the look-ahead is purely in the backtest *evaluation*. **Outstanding TODO: simple way forward (not yet done):** make the backtest honest about the productivity signal by recomputing the HMA on *only the data visible at each target*, instead of the full-sample centered trend. Recipe (≈half a day):
 - Add a `cutoff` param to `_labour_productivity_trend_monthly(cutoff=None)`: truncate ULC/hCOE to `<= cutoff` **before** the HMA, then recompute. `cutoff = None` = use all (live default).
 - Thread the target quarter through `_build_monthly_panel` → `_productivity_adjust_labour` and set `cutoff = target − 1` (productivity ships with GDP, so it's unavailable for the target quarter).
-- Effect: at each target the HMA endpoint becomes the real-time *asymmetric* value (not a centered trend that saw the future), and the 4Q-trailing-avg carry-forward genuinely engages — i.e. the live methodology. Expected: the bias fix should largely survive (the 4QMA proxy already showed +0.12); confirms it without look-ahead.
-- This is **also correct for live** (productivity already ends at T−1 there), so it does **not** change the live nowcast — only the backtest evaluation.
-- Still uses latest-*revised* levels (just truncated in time), so it's honest about *availability/construction* but not full data-revision vintage — acceptable pseudo-real-time. (Full revision vintage = separate, much larger data-engineering effort; see below.) Enabled via `PRODUCTIVITY_ADJUST_LABOUR` in `model.py`; set `False` to revert.
+- Effect: at each target the HMA endpoint becomes the real-time *asymmetric* value (not a centered trend that saw the future), and the 4Q-trailing-avg carry-forward genuinely engages, i.e. the live methodology. Expected: the bias fix should largely survive (the 4QMA proxy already showed +0.12); confirms it without look-ahead.
+- This is **also correct for live** (productivity already ends at T−1 there), so it does **not** change the live nowcast: only the backtest evaluation.
+- Still uses latest-*revised* levels (just truncated in time), so it's honest about *availability/construction* but not full data-revision vintage: acceptable pseudo-real-time. (Full revision vintage = separate, much larger data-engineering effort; see below.) Enabled via `PRODUCTIVITY_ADJUST_LABOUR` in `model.py`; set `False` to revert.
 
-**Endogenous productivity (ULC + hCOE in the panel) was tested and rejected — don't re-try it.** The intuitively cleaner alternative — add ULC and hourly-COE as panel variables and let the Kalman filter forecast productivity jointly with GDP (look-ahead-free), instead of the exogenous trend adjustment — does **nothing**. On 2022Q1–2025Q4 it leaves the bias unchanged from vanilla (T-0 bias +0.328 vs +0.330; RMSE 0.408 vs 0.412; corr +0.01 only). Reason: a linear DFM just treats ULC/hCOE as more series for the *common factor* to explain; it never learns to "net productivity out of labour." The bias comes from GDP over-loading the **activity factor** that employment/hours drive, and adding wage/cost variables doesn't break that linkage. The **exogenous** adjustment works precisely because it imposes the identity *output = labour + productivity* on the labour **input** (dampening the activity factor in the slump) — structure an unsupervised factor model won't discover. A genuinely clean endogenous version would need a *constrained/structural* model that hard-wires the labour−productivity identity into GDP's loading — a large build for uncertain gain. Conclusion: keep the exogenous adjustment.
+**Endogenous productivity (ULC + hCOE in the panel) was tested and rejected: don't re-try it.** The intuitively cleaner alternative: add ULC and hourly-COE as panel variables and let the Kalman filter forecast productivity jointly with GDP (look-ahead-free), instead of the exogenous trend adjustment, does **nothing**. On 2022Q1–2025Q4 it leaves the bias unchanged from vanilla (T-0 bias +0.328 vs +0.330; RMSE 0.408 vs 0.412; corr +0.01 only). Reason: a linear DFM just treats ULC/hCOE as more series for the *common factor* to explain; it never learns to "net productivity out of labour." The bias comes from GDP over-loading the **activity factor** that employment/hours drive, and adding wage/cost variables doesn't break that linkage. The **exogenous** adjustment works precisely because it imposes the identity *output = labour + productivity* on the labour **input** (dampening the activity factor in the slump): structure an unsupervised factor model won't discover. A genuinely clean endogenous version would need a *constrained/structural* model that hard-wires the labour−productivity identity into GDP's loading, a large build for uncertain gain. Conclusion: keep the exogenous adjustment.
 
 ### Caveats
 
 - **Pseudo real-time**: Uses latest-revised data, not vintage data as published at the time
 - **Small sample**: The backtest window is too short to make statistically meaningful claims about model differences. A formal Diebold-Mariano test would likely fail to reject equal RMSE between the DFM and the bridge.
-- **Prediction index labels**: statsmodels' `DynamicFactorMQ.get_prediction()` returns a DataFrame whose PeriodIndex labels are unreliable — they don't correspond to actual dates. Extraction uses positional indexing (last value = nowcast for target quarter).
+- **Prediction index labels**: statsmodels' `DynamicFactorMQ.get_prediction()` returns a DataFrame whose PeriodIndex labels are unreliable, they don't correspond to actual dates. Extraction uses positional indexing (last value = nowcast for target quarter).
 
 ---
 
@@ -236,7 +236,7 @@ The **live nowcast is real-time-sound** (centered HMA for the historical fit, wh
 
 - **Sample truncation to 1990Q1**: Removes pre-inflation-target era dynamics that are no longer relevant. Empirically improves backtest performance vs longer samples.
 
-- **No bias correction in production**: Several bias-reduction approaches were tested (labour productivity adjustment, COVID quarter masking, adding ULC/hCOE panel variables). Each one reduced the bias but also crushed the correlation between nowcasts and actual GDP — i.e. they made the model regress toward the historical mean rather than improving its predictions. A biased model that tracks the shape of GDP growth is more useful than an unbiased model that effectively predicts the mean every quarter. The bias is concentrated in 2022–2024 (post-COVID productivity slump) and has largely faded by 2025; it should disappear naturally as more recent data accumulates. See "Why Not Fix the Bias?" above.
+- **No bias correction in production**: Several bias-reduction approaches were tested (labour productivity adjustment, COVID quarter masking, adding ULC/hCOE panel variables). Each one reduced the bias but also crushed the correlation between nowcasts and actual GDP: i.e. they made the model regress toward the historical mean rather than improving its predictions. A biased model that tracks the shape of GDP growth is more useful than an unbiased model that effectively predicts the mean every quarter. The bias is concentrated in 2022–2024 (post-COVID productivity slump) and has largely faded by 2025; it should disappear naturally as more recent data accumulates. See "Why Not Fix the Bias?" above.
 
 - **Wider, better-calibrated CIs**: The Kalman-derived intervals are noticeably wider than the bridge model's bootstrap intervals, but they are honest. Bridge intervals under-cover (empirical < nominal); DFM intervals come close to nominal coverage.
 
@@ -264,13 +264,13 @@ The bridge model is currently more accurate by RMSE on the small backtest sample
 ## Potential Improvements
 
 1. **Add the missing bridge model series** (monthly CPI, business sales, inventories, gov. consumption) for an apples-to-apples comparison with the bridge model
-2. **Diebold-Mariano test** — formal test of whether the bridge-vs-DFM RMSE difference is statistically significant (probably not given the small backtest sample)
-3. **CRPS evaluation** — would give a fairer comparison that rewards the DFM's better-calibrated CIs
-4. **Mincer-Zarnowitz decomposition** — separates level bias from tracking error
-5. **News decomposition** — DFM allows attributing nowcast revisions to specific data releases (Bańbura et al. 2011 methodology)
-6. **Block factors** — separate "real activity" and "prices/wages" blocks instead of unrestricted 2 factors
-7. **Even shorter sample (2000+ or 2005+)** — at the cost of reduced training data
-8. **Outlier-robust DFM** (Antolin-Diaz, Drechsel & Petrella 2021) — t-distributed shocks or stochastic volatility could downweight COVID quarters automatically without crushing the correlation the way explicit masking does.
+2. **Diebold-Mariano test**: formal test of whether the bridge-vs-DFM RMSE difference is statistically significant (probably not given the small backtest sample)
+3. **CRPS evaluation**: would give a fairer comparison that rewards the DFM's better-calibrated CIs
+4. **Mincer-Zarnowitz decomposition**: separates level bias from tracking error
+5. **News decomposition**: DFM allows attributing nowcast revisions to specific data releases (Bańbura et al. 2011 methodology)
+6. **Block factors**: separate "real activity" and "prices/wages" blocks instead of unrestricted 2 factors
+7. **Even shorter sample (2000+ or 2005+)**: at the cost of reduced training data
+8. **Outlier-robust DFM** (Antolin-Diaz, Drechsel & Petrella 2021): t-distributed shocks or stochastic volatility could downweight COVID quarters automatically without crushing the correlation the way explicit masking does.
 
 ---
 
@@ -280,15 +280,15 @@ After each nowcast, the print summary appends a shared diagnostic from `src/mode
 
 **How it works:**
 - Equipment capex QoQ change (5625.0 CVM SA, all industries) and goods imports QoQ change (5368.0 SA, quarterly sum of monthly) are each expressed as a percentage of contemporaneous GDP.
-- Each is compared against its mean (and σ) from 1997Q4 onward — the BVAR's estimation frame, chosen for a stable, identity-relevant baseline.
+- Each is compared against its mean (and σ) from 1997Q4 onward, the BVAR's estimation frame, chosen for a stable, identity-relevant baseline.
 - Hotness = (capex deviation from mean) − (imports deviation from mean).
 
 **Interpretation:**
-- Positive hotness (> +0.10pp): capex is unusually high relative to its history, *and more so than imports are unusually high*. The DFM absorbs the I/M relationship via factor loadings, but only on the speed at which the estimation sample updates — a fresh regime change (e.g. AI capex surge) takes several quarters to be reflected. In the meantime, the headline nowcast may be over-stating GDP growth by roughly this amount.
-- Negative hotness (< −0.10pp): imports surging by more than capex — possibly an under-stated nowcast.
+- Positive hotness (> +0.10pp): capex is unusually high relative to its history, *and more so than imports are unusually high*. The DFM absorbs the I/M relationship via factor loadings, but only on the speed at which the estimation sample updates, a fresh regime change (e.g. AI capex surge) takes several quarters to be reflected. In the meantime, the headline nowcast may be over-stating GDP growth by roughly this amount.
+- Negative hotness (< −0.10pp): imports surging by more than capex, possibly an under-stated nowcast.
 - |hotness| ≤ 0.10pp: negligible, flagged as such.
 
-The diagnostic was added specifically to flag the AI / data-centre buildout starting in mid-2025, which lifts the I-component sharply while the corresponding goods/services imports do not flow through the factor structure symmetrically in real time. The diagnostic is purely post-hoc — it does not change the model estimates or the nowcast — so it is a transparency tool for the user, not a model correction.
+The diagnostic was added specifically to flag the AI / data-centre buildout starting in mid-2025, which lifts the I-component sharply while the corresponding goods/services imports do not flow through the factor structure symmetrically in real time. The diagnostic is purely post-hoc: it does not change the model estimates or the nowcast, so it is a transparency tool for the user, not a model correction.
 
 ## Running
 

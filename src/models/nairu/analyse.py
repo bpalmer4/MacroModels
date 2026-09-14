@@ -12,6 +12,7 @@ from pathlib import Path
 import mgplot as mg
 
 from src.data import get_cash_rate_monthly
+from src.models.common.diagnostics import save_diagnostics
 from src.models.nairu.analysis import (
     decompose_hcoe_inflation,
     decompose_inflation,
@@ -53,6 +54,7 @@ def run_analyse(
     chart_dir.mkdir(parents=True, exist_ok=True)
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
+    save_diagnostics(results.trace, chart_dir, prefix, model="nairu")
 
     rfooter = config.rfooter
     print(f"Running analysis [{config.label}]...\n")

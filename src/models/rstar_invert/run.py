@@ -145,10 +145,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--rate-lags", type=_parse_lags, default=(4, 8),
         help=(
-            "one or two lags of the real cash rate, comma separated (default '4,8', "
-            "a weighted pair whose effective mean lag is about 6.3 quarters, so it "
-            "is comparable with the lag 6 used by the is_curve bench and rstar_hlw). "
-            "A single lag, e.g. '6', drops the weight"
+            "one, two or three lags of the real cash rate, comma separated (default "
+            "'4,8', a weighted pair whose effective mean lag is about 6.3 quarters, "
+            "so it is comparable with the lag 6 used by the is_curve bench and "
+            "rstar_hlw). A single lag, e.g. '6', drops the weight; three, e.g. "
+            "'1,4,7', share a Dirichlet"
         ),
     )
     parser.add_argument(
@@ -172,7 +173,10 @@ if __name__ == "__main__":
         help=f"sweep sigma_rstar over {DEFAULT_SIGMA_RSTAR} (pp per quarter)",
     )
     parser.add_argument("--estimate-only", action="store_true", help="skip the charts")
-    parser.add_argument("--skip-estimate", action="store_true", help="chart a saved run")
+    parser.add_argument(
+        "--skip-estimate", "--analyse-only", dest="skip_estimate",
+        action="store_true", help="chart a saved run",
+    )
     parser.add_argument(
         "--prefix", type=str, default="rstar_invert",
         help=(

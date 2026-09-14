@@ -15,9 +15,10 @@ import mgplot as mg
 import numpy as np
 import pandas as pd
 
+from src.models.common.diagnostics import save_diagnostics
 from src.models.common.sources import footer_from_constants
 from src.models.is_curve.observations import DEFAULT_WINDOWS
-from src.models.rstar_invert.config import DEFAULT_CHART_DIR
+from src.models.rstar_invert.config import DEFAULT_CHART_DIR, PAIR_LAGS
 from src.models.rstar_invert.ensemble import load_ensemble
 from src.models.rstar_invert.estimate import (
     load_results,
@@ -217,6 +218,57 @@ def plot_prior_posterior(trace: az.InferenceData, constants: dict[str, Any]) -> 
         )
         plt.close(fig)
 
+    _plot_dirichlet_weights(trace, constants)
+
+
+def _plot_dirichlet_weights(trace: az.InferenceData, constants: dict[str, Any]) -> None:
+    """One prior-posterior chart per Dirichlet stick, when a run has three lags.
+
+    THE MARGINAL PRIOR of one component of a Dirichlet with k sticks and a
+    common concentration c is Beta(c, c(k-1)), so each stick is drawn against
+    that rather than against the joint density, which cannot be plotted on one
+    axis. It is the right comparison anyway: the question per chart is whether
+    the data moved THAT lag's share off its prior.
+    """
+    posterior = getattr(trace, "posterior", {})
+    if "lag_weights" not in posterior:
+        return
+    draws = np.asarray(posterior["lag_weights"])
+    draws = draws.reshape(-1, draws.shape[-1])
+    count = draws.shape[1]
+    lags = _recorded_lags(constants)
+    conc = float(constants.get("lag_weight_conc", 2.0))
+    # Beta(c, c(k-1)) as the marginal, expressed in the keys `_prior_curve` reads.
+    marginal = {"lag_weight_a": conc, "lag_weight_b": conc * (count - 1)}
+    grid = np.linspace(0.0, 1.0, 400)
+    # Same marginal on every stick, so it is built once. `_prior_curve` can
+    # return None for a parameter it does not know, which this one is not, but
+    # the check is cheap and keeps the chart honest if that ever changes.
+    prior = _prior_curve("lag_weight", marginal, grid)
+
+    for position in range(count):
+        column = draws[:, position]
+        lag = lags[position] if position < len(lags) else position + 1
+        fig, ax = plt.subplots()
+        ax.hist(column, bins=60, density=True, color="teal", alpha=0.55, label="Posterior")
+        if isinstance(prior, np.ndarray):
+            ax.plot(grid, prior, color="darkorange", lw=2, ls="--",
+                    label="Prior (Beta marginal)")
+        ax.axvline(float(np.median(column)), color="teal", ls=":", lw=1.5,
+                   label=f"Posterior median {np.median(column):.3f}")
+        ax.set_xlabel(f"Share of the stance carried by the rate at t-{lag}")
+        ax.set_ylabel("Density")
+        mg.finalise_plot(
+            ax,
+            title=f"Prior and posterior: lag weight t-{lag}",
+            legend={"loc": "best", "fontsize": "small"},
+            lheader="Posterior on top of the prior means the data said nothing",
+            rfooter=footer_from_constants(constants) or "Built using: RBA F1; ABS 5206.0",
+            lfooter="Australia. Weights sum to one across the lags. ",
+            show=False,
+        )
+        plt.close(fig)
+
 
 def plot_rstar_real_nominal(
     trace: az.InferenceData, frame: pd.DataFrame, constants: dict[str, Any],
@@ -266,16 +318,42 @@ def plot_rstar_real_nominal(
     )
 
 
-def _longest_lag(constants: dict[str, Any]) -> int:
-    """Return the longest rate lag a run used, so the empty leading rows drop.
+def _recorded_lags(constants: dict[str, Any]) -> list[int]:
+    """Return the rate lags a run used, in the order the model applied them.
 
-    `rate_lag_2` is recorded as NaN for a single-lag run, and NaN fails every
-    comparison, so it is filtered rather than compared.
+    The unused slots are recorded as NaN (`rate_lag_2` on a single-lag run,
+    `rate_lag_3` on a pair), and NaN fails every comparison, so they are
+    filtered rather than compared.
     """
-    recorded = [constants.get("rate_lag"), constants.get("rate_lag_2")]
-    lags = [float(value) for value in recorded if isinstance(value, (int, float))]
-    finite = [lag for lag in lags if math.isfinite(lag)]
-    return int(max(finite)) if finite else 0
+    recorded = [constants.get(key) for key in ("rate_lag", "rate_lag_2", "rate_lag_3")]
+    numeric = [float(value) for value in recorded if isinstance(value, (int, float))]
+    return [int(lag) for lag in numeric if math.isfinite(lag)]
+
+
+def _longest_lag(constants: dict[str, Any]) -> int:
+    """Return the longest rate lag a run used, so the empty leading rows drop."""
+    lags = _recorded_lags(constants)
+    return max(lags) if lags else 0
+
+
+def _lag_weights(trace: az.InferenceData, count: int) -> list[float]:
+    """Return the posterior median weight on each lag, summing to one.
+
+    Two lags carry the scalar `lag_weight` (the second takes 1 - w); three
+    carry the Dirichlet vector `lag_weights`. A fixed-weight run has neither,
+    and the lags share equally.
+    """
+    posterior = getattr(trace, "posterior", {})
+    if count < PAIR_LAGS:
+        return [1.0]
+    if count == PAIR_LAGS and "lag_weight" in posterior:
+        weight = float(np.median(scalar_draws(trace, "lag_weight")))
+        return [weight, 1.0 - weight]
+    if "lag_weights" in posterior:
+        draws = np.asarray(posterior["lag_weights"])
+        medians = np.median(draws.reshape(-1, draws.shape[-1]), axis=0)
+        return [float(value) for value in medians]
+    return [1.0 / count] * count
 
 
 def plot_raw_scatter(
@@ -299,16 +377,8 @@ def plot_raw_scatter(
 
     # The same regressor the model uses, but built from the rate alone: the
     # weighted average of the lagged REAL CASH RATE, with no r* subtracted.
-    weight = (
-        float(np.median(scalar_draws(trace, "lag_weight")))
-        if "lag_weight" in getattr(trace, "posterior", {})
-        else 1.0
-    )
-    lags = [int(float(constants["rate_lag"]))]
-    second = constants.get("rate_lag_2")
-    if isinstance(second, (int, float)) and math.isfinite(float(second)):
-        lags.append(int(float(second)))
-    weights = [weight, 1.0 - weight] if len(lags) > 1 else [1.0]
+    lags = _recorded_lags(constants)
+    weights = _lag_weights(trace, len(lags))
 
     rate = frame["real_cash"]
     # Accumulated explicitly rather than with sum(), whose zero start makes the
@@ -522,8 +592,27 @@ def plot_ensemble_with_band(
 
 
 def _print_lag_weight(trace: az.InferenceData, constants: dict[str, Any]) -> None:
-    """Print the lag weight against its prior, when there is one."""
-    if "lag_weight" not in getattr(trace, "posterior", {}):
+    """Print the lag weights against their prior, when there are any."""
+    posterior = getattr(trace, "posterior", {})
+    lags = _recorded_lags(constants)
+
+    if "lag_weights" in posterior:
+        draws = np.asarray(posterior["lag_weights"])
+        draws = draws.reshape(-1, draws.shape[-1])
+        # Every stick shares one concentration, so the Dirichlet's marginal
+        # mean is 1/k. The per-stick charts draw the Beta marginal itself.
+        count = draws.shape[1]
+        print(f"\n  THE LAG WEIGHTS (Dirichlet across lags {lags}, summing to one)")
+        print(f"    prior mean:      {1.0 / count:.3f} on each")
+        for position in range(count):
+            column = draws[:, position]
+            label = f"lag {lags[position]}" if position < len(lags) else f"stick {position + 1}"
+            print(f"    {label:>10}:      {np.median(column):.3f}  "
+                  f"[{np.percentile(column, 5):.3f}, {np.percentile(column, 95):.3f}]")
+        print("    an interval spanning the prior means the data cannot tell the lags apart")
+        return
+
+    if "lag_weight" not in posterior:
         return
     w = scalar_draws(trace, "lag_weight")
     a = float(constants.get("lag_weight_a", 2.0))
@@ -549,6 +638,7 @@ def run_analyse(
     mg.clear_chart_dir()
 
     trace, frame, constants = load_results(prefix=prefix)
+    save_diagnostics(trace, directory, prefix, model="rstar_invert")
     index = frame.index
     if not isinstance(index, pd.PeriodIndex):
         index = pd.PeriodIndex(index, freq="Q")

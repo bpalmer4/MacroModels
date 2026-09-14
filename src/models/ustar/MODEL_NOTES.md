@@ -1,4 +1,4 @@
-# u* — a NAIRU from a given output gap
+# u*, a NAIRU from a given output gap
 
 A Bayesian unobserved-components model (PyMC + NumPyro NUTS) estimating the Australian
 unemployment rate consistent with output at potential and inflation at target. One latent
@@ -35,8 +35,8 @@ likelihood, and its `c` fell from 0.468 to 0.188 as a result. The gap this model
 therefore a different series: sd 0.188 against 0.467, and +0.21 at 2026Q2 against +0.51. The
 default run has been re-estimated on it. **One thing has not been
 re-run and is one vintage old**: the free- and bounded-drift experiments in "Three ways of
-trying to estimate the drift". Their conclusion is not in doubt — the pile-up is a property of
-a free state sitting beside a free residual, not of the gap — but their levels are
+trying to estimate the drift". Their conclusion is not in doubt, the pile-up is a property of
+a free state sitting beside a free residual, not of the gap, but their levels are
 pre-exclusion. The `--no-output-gap` control needs no re-run at all, for the reason given in
 that section.
 
@@ -100,12 +100,12 @@ section used to report.** u\* now converges rather than wandering, which is what
 1990s (see "The driftless random walk is the wrong prior"). And `sigma_ustar` fell from 0.040
 to 0.020, which is what moved the endpoint: u\* no longer chases post-2022 unemployment down,
 so it finishes at 4.83 just below its estimated equilibrium of 4.86 rather than at 4.54 well
-below it. The two are related — the old 0.040 was calibrated for a driftless walk in which the
-innovation had to carry the whole decline — and the arithmetic is in `ModelConfig.sigma_ustar`.
+below it. The two are related, the old 0.040 was calibrated for a driftless walk in which the
+innovation had to carry the whole decline, and the arithmetic is in `ModelConfig.sigma_ustar`.
 
 `beta_okun` = 2.03 is far above a textbook Okun coefficient and should not be read as one. The
-`ystar` gap is a shrunk regressor — `c` is a conditional mean on a signal explaining about an
-eighth of output's variation — so the slope compensates. It is a scaling onto this particular
+`ystar` gap is a shrunk regressor: `c` is a conditional mean on a signal explaining about an
+eighth of output's variation, so the slope compensates. It is a scaling onto this particular
 gap series, and the surest sign of that is what happened when the series changed: `c` fell
 0.468 to 0.188 and `beta_okun` went 1.065 to 2.033 to sit on the same unemployment data.
 
@@ -141,7 +141,7 @@ that constrains `sigma_ustar`. A smaller gap makes u\* *more* attractive as an e
 ΔU, not less, so if anything the current gap sharpens the pile-up.
 
 **1. Free prior.** `TruncatedNormal(0.03, 0.012, lower=0.005)`, which spans the whole
-defensible range. Posterior came back at **0.131 [0.115, 0.147]** — 8.4 prior standard
+defensible range. Posterior came back at **0.131 [0.115, 0.147]**: 8.4 prior standard
 deviations above the mean, in a region where the prior density is effectively zero. u\*
 collapsed to 4.63 with a gap of −0.28, `sd(du*)` at 98% of what the prior allowed, and
 correlation with unemployment of 0.981. The model stops estimating a structural rate and
@@ -149,7 +149,7 @@ returns a filter of its input.
 
 **2. Bounded prior.** Same, truncated above at 0.05. Posterior **0.049 [0.049, 0.050]**, sd
 0.001, with 100% of draws above 0.045 and 62% within 1% of the bound. It reproduces the
-fixed-at-the-bound model exactly, and — contrary to what one might hope — does *not* widen the
+fixed-at-the-bound model exactly, and, contrary to what one might hope, does *not* widen the
 u\* band, because the posterior collapses onto the boundary with nothing left to integrate
 over. The bound becomes the specification.
 
@@ -162,7 +162,7 @@ a free residual `e_o`, which is exactly the Stock-Watson pile-up pair.
 
 **The conclusion is not a defect, it is the operational meaning of the prior.** "u\* is slow
 moving" cannot be expressed as a belief the data are permitted to revise, because the data will
-revise it away every time. It has to be imposed — which is what `ystar` means when it
+revise it away every time. It has to be imposed, which is what `ystar` means when it
 says `sigma_ystar` is pinned.
 
 Reproduce with `--free-sigma-ustar`. The switch is kept for that reason, in the same spirit as
@@ -173,12 +173,12 @@ candidate.
 
 Three readings, and it sits between them.
 
-- `ystar`'s rule — a trend innovation sd around 8% of the observed variation in the
-  series it trends — gives 8% of `sd(du)` = 0.300, so **0.024**.
+- `ystar`'s rule, a trend innovation sd around 8% of the observed variation in the
+  series it trends: gives 8% of `sd(du)` = 0.300, so **0.024**.
 - The `nairu` model's *realised* `sd(dNAIRU)` is 0.032, which is 11% of `sd(du)`. It imposes
   0.15 but only uses a fifth of it, because its other six equations bind.
-- The ceiling comes from the inflation-band chart. Across 2012Q4-2015Q4 — when inflation sat
-  **below** the RBA band, signalling genuine slack — u\* should not be rising. It changes by
+- The ceiling comes from the inflation-band chart. Across 2012Q4-2015Q4: when inflation sat
+  **below** the RBA band, signalling genuine slack: u\* should not be rising. It changes by
   −0.14, −0.13, −0.07, **+0.01** and **+0.11** across the swept settings, so the sign flips
   between 0.040 and 0.050 and everything at 0.050 or looser books part of the
   post-mining-boom rise in unemployment as structural. `beta_pi` also falls monotonically,
@@ -191,7 +191,7 @@ Three readings, and it sits between them.
   for moving the choice down: 0.030 and 0.024 pass the same test and fail the others.
 
 None of these is external to this repo. **The outstanding improvement is to calibrate the drift
-against a published NAIRU series** — RBA, Treasury, OECD — whose realised drift is an
+against a published NAIRU series**: RBA, Treasury, OECD, whose realised drift is an
 observable rather than a modelling choice. That is the one change that would resolve the
 assumption rather than relocate it.
 
@@ -258,7 +258,7 @@ inflation are different things and only the first should move u\*.
 prior tenfold moves it to 0.260 and stops.
 
 Two objections. The **2000 cutoff is asserted**, and it is needed because the level of excess
-expectations cannot tell a credibility transition from a supply shock — it reads +0.87 in
+expectations cannot tell a credibility transition from a supply shock: it reads +0.87 in
 2022-23 too, and ungated the drift pushed u\* to 4.25 and flipped the current gap from −0.36 to
 +0.10. And **the gap becomes a partial proxy for expectations**: corr(u − u\*, excess
 expectations) goes +0.048 to −0.405 over 1993-99, while `beta_pi` falls 0.578 to 0.378, so the
@@ -338,7 +338,7 @@ adopted on the first; anyone relying on the gap for tightness should know about 
 
 The package was built on the premise that a credible output gap from `ystar` is what
 makes a two-equation u\* possible. That is testable. Zeroing the gap while keeping the Okun
-equation's structure — so `u = u* + e_o` still fits a trend through unemployment — isolates
+equation's structure, so `u = u* + e_o` still fits a trend through unemployment: isolates
 the gap's contribution (`--no-output-gap`).
 
 | | with gap (pre-exclusion) | with gap (current) | gap zeroed |
@@ -356,7 +356,7 @@ cannot have moved it. Only the with-gap side changed, which is why the compariso
 re-struck here without re-running the control. The path statistics below the table are the
 pre-exclusion pairing and have not been recomputed.
 
-u\* path correlation **0.9973**, mean absolute difference **0.10pp**, max 0.38pp — and the max
+u\* path correlation **0.9973**, mean absolute difference **0.10pp**, max 0.38pp, and the max
 is in 1993, the least identified end of the sample.
 
 **The gap does real work in the Okun equation**: `sigma_okun` rises 0.685 → 0.908 without it, a
@@ -366,14 +366,14 @@ meant to.
 
 **But it barely moves u\*, and now less than before.** 0.11pp at the endpoint on the current
 gap, against 0.18pp pre-exclusion and 0.48pp from choosing `sigma_ustar` within its defensible
-range. And the Phillips side is untouched — `gamma_pi` −1.055 against −1.032, `epsilon_pi`
-0.160 against 0.159 — so the two channels are not sharing identification.
+range. And the Phillips side is untouched: `gamma_pi` −1.055 against −1.032, `epsilon_pi`
+0.160 against 0.159, so the two channels are not sharing identification.
 
 **Verdict, and the respecification pushes it further.** The premise is partly vindicated and
 partly not. The gap explains the cyclical component of unemployment well, and it moves the
 headline gap from −0.25 to −0.36, which is not decorative. But it is not what makes the
 two-equation u\* possible: the Phillips curve and the imposed drift do that, and they would do
-it nearly as well with the gap set to zero. The gap is a tilt, not a foundation — and the tilt
+it nearly as well with the gap set to zero. The gap is a tilt, not a foundation, and the tilt
 is now two-thirds of what it was, because a smaller `c` means a smaller gap to tilt with.
 
 ---
@@ -388,7 +388,7 @@ meaning the target holds and 1 meaning expectations are what bind. An earlier ve
 unanchored-minus-anchored, which put two estimates of one quantity in one equation and made
 `beta_pi` a blend weight between two measurements rather than an economic parameter. It also
 left `beta_pi` straddling zero. Fixing the baseline moved it to 0.568 [0.311, 0.831], and it
-sits at 0.578 [0.347, 0.813] on the current gap — the Phillips side of the model is almost
+sits at 0.578 [0.347, 0.813] on the current gap, the Phillips side of the model is almost
 untouched by what happened upstream.
 
 **Expectations are the unanchored series.** The Target Anchored series is constructed with a
@@ -415,7 +415,7 @@ variant would cost that for a channel the joint result has already priced.
 **Okun's timing was checked, and nothing survives prewhitening.** The Okun equation is
 contemporaneous, `u_t = u*_t − beta·gap_t + e`, and its residual has a lag-1 autocorrelation of
 0.821, which invites the thought that unemployment and an inflation-defined gap are misaligned
-in time — the more so early, where the environment moves 25 to 30% faster per quarter. Raw
+in time, the more so early, where the environment moves 25 to 30% faster per quarter. Raw
 cross-correlation of the residual against the gap looks like it confirms this, peaking at
 −0.371 three quarters out on the full sample and −0.709 over 1993-98. **It does not survive.**
 Prewhitening the gap with an AR(4) (1.435, −0.407, −0.110, −0.010, which takes its lag-1
@@ -434,8 +434,8 @@ cannot settle it.
 leaving 14 non-zero quarters. Here it is unmasked, so the coefficient is identified on the
 whole history. That requires `gscpi_live`: the checked-in workbook stops at 2024Q1 while the
 published series runs past 2026, and unmasked those quarters matter. Masking turns out to be
-nearly redundant given the squared form — 74% of total `GSCPI²` still falls in the pandemic
-quarters with every quarter included — and the coefficient survives unmasking at 0.042 against
+nearly redundant given the squared form: 74% of total `GSCPI²` still falls in the pandemic
+quarters with every quarter included, and the coefficient survives unmasking at 0.042 against
 `nairu`'s masked 0.047.
 
 **The relationship is contemporaneous, deliberately.** Unemployment responds to demand with a
@@ -476,7 +476,7 @@ Close on the level and on the supply coefficient, with `gamma_pi` steeper here. 
 `sigma_ustar` = 0.024 the slope comes to −0.73 against `nairu`'s −0.709, which is another way
 of seeing that the slope and the drift trade off: the two models agree on the Phillips slope
 once this one is told to hold u\* as still as `nairu` effectively holds its NAIRU. The re-run
-confirms it — the pre-exclusion figure was −0.71.
+confirms it, the pre-exclusion figure was −0.71.
 
 **Do not read this as independent corroboration.** Both models read the same expectations model
 output, the same trimmed mean series, the same GSCPI, and now the same equation form. Agreement
@@ -484,7 +484,7 @@ under those conditions is substantially mechanical. It is reassuring about arith
 confirmation of the economics.
 
 **What this model adds is legibility, not identification.** `nairu` is not strongly identified
-on the real side either — its `beta_is` is 0.084 [0.024, 0.139], `gamma_fi` touches zero at
+on the real side either, its `beta_is` is 0.084 [0.024, 0.139], `gamma_fi` touches zero at
 0.043 [0.000, 0.094], and its Okun residual of 0.248 against `sd(dU)` = 0.300 leaves most of
 ΔU unexplained. Both models rest on an inflation relationship plus an imposed smoothness. Here
 you can see that in two lines; there it is distributed across seven equations, where a realised
@@ -501,8 +501,8 @@ the work is being done by other imposed structure.
    curve. Neither is estimable. This is the limitation; everything else is detail.
 2. **The uncertainty band understates, and the correction is a hand-applied factor of two.**
 3. **u\* does not respond to COVID.** It glides through 2020-22 while unemployment goes 5.2 →
-   7.0 → 3.5. Defensible — booking a pandemic as structural is the error smoothness priors
-   exist to prevent — but it means the model has nothing to say about post-COVID structural
+   7.0 → 3.5. Defensible: booking a pandemic as structural is the error smoothness priors
+   exist to prevent, but it means the model has nothing to say about post-COVID structural
    change, which is the question people most want a NAIRU for.
 4. **The early sample is not identified, and the charts now shade it** (1993Q1-1995Q4, from
    `analyse.UNIDENTIFIED_WINDOW`). Under the decay the headline run opens at u\* = 10.75

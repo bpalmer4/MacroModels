@@ -13,6 +13,7 @@ import mgplot as mg
 import pandas as pd
 
 from src.data.inflation import get_trimmed_mean_annual
+from src.models.common.diagnostics import save_diagnostics
 from src.models.ustar.results import DEFAULT_CHART_BASE, UStarResults, load_results
 from src.models.ystar.analyse import excluded_span_style
 from src.utilities.rate_conversion import annualize
@@ -463,6 +464,7 @@ def run_analysis(
         chart_dir = CHART_DIR if prefix == "ustar" else DEFAULT_CHART_BASE / f"UStar-{prefix}"
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
+    save_diagnostics(results.trace, chart_dir, prefix, model="ustar")
 
     plot_ustar(results)
     plot_ustar(results, shade_inflation=True, tag="inflation")

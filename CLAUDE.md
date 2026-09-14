@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Whenever a statement rests on an **assumption, inference, guess, or memory** rather than something just **fact-checked against the code, data, a file, or a source the user provided**, say so explicitly and mark it. The user relies on this distinction; presenting an assumption as fact causes false trust and is a serious failure.
 
-- **Never invent specifics** — dates, numbers, file paths, line numbers, release schedules, API behaviour, etc. If a value isn't verified, do not fill it in. State that it is unknown.
-- **Label clearly.** Prefix unverified claims with `ASSUMPTION:` (or `GUESS:` / `UNVERIFIED:`), e.g. "ASSUMPTION: GDP releases ~4 June — I have not verified this date." Keep verified facts unmarked.
+- **Never invent specifics**: dates, numbers, file paths, line numbers, release schedules, API behaviour, etc. If a value isn't verified, do not fill it in. State that it is unknown.
+- **Label clearly.** Prefix unverified claims with `ASSUMPTION:` (or `GUESS:` / `UNVERIFIED:`), e.g. "ASSUMPTION: GDP releases ~4 June: I have not verified this date." Keep verified facts unmarked.
 - **Prefer verifying.** If something can be checked (read the file, run the query, grep the code), check it rather than assume. Only fall back to a labelled assumption when verification isn't possible, and say what would confirm it.
 - **When in doubt, surface it.** It is always better to flag an uncertainty than to let the user discover it was a guess.
 
@@ -45,6 +45,14 @@ uv sync                            # Install dependencies
                                    #   production spec with the inflation spec)
 ./run-bank-costs.sh                # Bank funding and lending costs vs the cash rate (charts only)
 uv run python -m src.models.is_curve.run   # IS-curve scatter: a test bench for the r* models
+uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EVERY saved trace,
+                                   #   PRINTED, not written: nothing is re-sampled and no file is
+                                   #   produced. --only <str> or --dir narrows it.
+                                   # The only diagnostics FILE is per run: each model's analysis
+                                   #   writes run-diagnostics-<prefix>.txt into that run's chart
+                                   #   directory, beside the charts it describes. Any other run's
+                                   #   file there is cleared, so one directory = one run's charts
+                                   #   plus its diagnostics.
 ./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free; needs expectations)
 ./run-long-run-ustar.sh            # Read u* off flat-inflation stretches, back to 1959 (no estimation)
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
@@ -134,7 +142,7 @@ src/
 │   │                              #   which is inert across the whole monetary cycle. The
 │   │                              #   loading is estimated: b_world 0.481, which is NOT
 │   │                              #   credible as a pass-through and is partly stripping a US
-│   │                              #   term premium. NO IS CURVE — three efforts here found the
+│   │                              #   term premium. NO IS CURVE, three efforts here found the
 │   │                              #   rate/output-gap link unidentifiable on AU data. Level
 │   │                              #   Taylor rule on top. r* 1.08 with the wedge at +0.05,
 │   │                              #   so Australia currently sits ON the world rate. The
@@ -271,22 +279,22 @@ model_outputs/                     # Model output files
 The `readabs` library provides ABS and RBA data access. Source at `~/readabs/`.
 
 **Key functions:**
-- `read_abs_cat(cat, single_excel_only=table, verbose=False)` — Main loader. Returns `(dict[str, DataFrame], DataFrame)` where dict keys are table names, metadata DataFrame has `metacol` columns. Always specify `single_excel_only` to avoid downloading every table in the catalogue.
-- `read_abs_by_desc(wanted, cat=, table=, stype=, single_excel_only=)` — Search by data item description. Returns `(dict[str, Series], DataFrame)`. Preferred over hardcoded series IDs which break when ABS changes identifiers.
-- `find_abs_id(meta, search_terms, validate_unique=True)` — Find series ID from metadata search. Returns `(table, series_id, units)`. Used by `abs_loader.py:load_series()`.
-- `search_abs_meta(meta, search_terms)` — Search metadata DataFrame, returns matching rows.
+- `read_abs_cat(cat, single_excel_only=table, verbose=False)`: Main loader. Returns `(dict[str, DataFrame], DataFrame)` where dict keys are table names, metadata DataFrame has `metacol` columns. Always specify `single_excel_only` to avoid downloading every table in the catalogue.
+- `read_abs_by_desc(wanted, cat=, table=, stype=, single_excel_only=)`: Search by data item description. Returns `(dict[str, Series], DataFrame)`. Preferred over hardcoded series IDs which break when ABS changes identifiers.
+- `find_abs_id(meta, search_terms, validate_unique=True)`: Find series ID from metadata search. Returns `(table, series_id, units)`. Used by `abs_loader.py:load_series()`.
+- `search_abs_meta(meta, search_terms)`: Search metadata DataFrame, returns matching rows.
 
 **Metadata columns (`metacol` frozen dataclass):**
-- `mc.did` — Data Item Description (search key for finding series)
-- `mc.stype` — Series Type ("Original", "Seasonally Adjusted", "Trend")
-- `mc.id` — Series ID (e.g. "A84423050A")
-- `mc.table` — Table name (e.g. "6202001")
-- `mc.unit` — Unit of measure
-- `mc.cat` — Catalogue number
+- `mc.did`: Data Item Description (search key for finding series)
+- `mc.stype`: Series Type ("Original", "Seasonally Adjusted", "Trend")
+- `mc.id`: Series ID (e.g. "A84423050A")
+- `mc.table`: Table name (e.g. "6202001")
+- `mc.unit`: Unit of measure
+- `mc.cat`: Catalogue number
 
 **Best practices for data loaders:**
 - Always specify `single_excel_only=table` to target a specific table
-- Search by description (`mc.did`) not hardcoded series IDs — ABS changes IDs
+- Search by description (`mc.did`) not hardcoded series IDs: ABS changes IDs
 - Use `abs_loader.py:load_series(ReqsTuple)` or `ra.read_abs_by_desc()` patterns
 - Results are cached via `@cache` decorator
 

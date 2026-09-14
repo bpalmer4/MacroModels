@@ -1,4 +1,4 @@
-# r* — the natural rate from the bond market
+# r*, the natural rate from the bond market
 
 A Bayesian unobserved-components model (PyMC + NumPyro NUTS) estimating the Australian
 natural rate of interest from asset prices. One latent state, an Australia-specific wedge

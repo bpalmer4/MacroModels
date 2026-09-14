@@ -1,4 +1,4 @@
-# y* — potential output from an inflation-defined gap
+# y*: potential output from an inflation-defined gap
 
 A Bayesian unobserved-components model (PyMC + NumPyro NUTS) estimating Australian potential output and the output gap. The gap is **defined** by inflation's deviation from the RBA's target, potential is a random walk, and GDP is fitted around the two with a residual.
 
@@ -288,7 +288,7 @@ Four readings.
 
 **The identity holds exactly**, which is the check that the two slopes are the same covariance seen from two ends rather than two different facts.
 
-**κ = 0.40 [0.32, 0.47] is the conventional range.** So the inflation-defined gap implies a Phillips slope consistent with the literature, obtained without estimating a Phillips curve on a target-era sample — which was the point of building the model this way. Inverting κ to get a `c` of 2.5 to 3 assumes a correlation of one; the correlation is 0.44.
+**κ = 0.40 [0.32, 0.47] is the conventional range.** So the inflation-defined gap implies a Phillips slope consistent with the literature, obtained without estimating a Phillips curve on a target-era sample, which was the point of building the model this way. Inverting κ to get a `c` of 2.5 to 3 assumes a correlation of one; the correlation is 0.44.
 
 ### Where the identification comes from
 
@@ -324,7 +324,7 @@ so `c` is shrunk by the correlation. That is not a bias to be corrected, and it 
 
 **Say what the shrinkage is optimal for, though.** `c·d` is the minimum-mean-squared-error *linear* predictor of `x` given `d`, which is what a projection always is in sample. That is a real property and it is the one the gap is built on. It is not the same as being the right coefficient for recovering a structural demand gap. If part of `d` is non-demand inflation, then `d` is a noisy measure of the demand signal, it sits on the right-hand side, and `c` is attenuated by classical errors in variables. Relative to a projection the shrinkage is optimal; relative to a demand gap it is a downward bias. The model targets the first, which is why "inflation-consistent" is the honest description of what the gap measures, but the two should not be run together.
 
-**The shrinkage is uniform and the signal-to-noise is not — but it costs almost nothing.** A single constant `c` applies the same discount to the 4.3-point deviation of 2022Q4 as to a 0.2-point deviation in 2015, though in a breakout the demand signal dominates `u` and deserves less shrinkage. Tested by split-sample projection (iteration log item 13, and read its warning about the pandemic quarters before repeating it):
+**The shrinkage is uniform and the signal-to-noise is not, but it costs almost nothing.** A single constant `c` applies the same discount to the 4.3-point deviation of 2022Q4 as to a 0.2-point deviation in 2015, though in a breakout the demand signal dominates `u` and deserves less shrinkage. Tested by split-sample projection (iteration log item 13, and read its warning about the pandemic quarters before repeating it):
 
 | | n | mean | 90% |
 |---|---|---|---|
@@ -372,7 +372,7 @@ and the exercise reduces to asking how stable `c` is across vintages. The publis
 
 **What this costs.** Because potential cannot move much and the gap is fixed by inflation, anything else in output has nowhere to go but `e_c`, which is assumed white noise. `sigma_e` = 0.98 is large. That is the price of the smoothness prior and it is paid every quarter. `e_c` is also serially correlated rather than white, with a lag-1 autocorrelation of 0.51, so it runs one-sided for years at a time and 2015-2019 is the clearest instance. Item 15 sets out why that is expected, why it leaves the reported uncertainty on `c` intact, and why the residual is better left unmodelled than fitted.
 
-**Where it is not paid: the 2023 productivity trough.** An earlier version of this section named the migration surge as the episode where `sigma_g` looks like it binds wrongly, and proposed an episode sweep as the sharper test. That was wrong on the face of the specification. Labour is not in the model — the `inflation` spec observes log GDP and trimmed mean inflation only — so `sigma_g` has no labour supply step to refuse, and a sweep over it cannot bear on migration at all. `sigma_g` governs how closely `y*` follows GDP, and GDP grew 2.11% year-ended through 2023 against potential growth of 2.14%, so a looser setting would barely move 2023 and would pull 2024 down toward the 1% GDP was then running. See point 2 of "What it cannot say".
+**Where it is not paid: the 2023 productivity trough.** An earlier version of this section named the migration surge as the episode where `sigma_g` looks like it binds wrongly, and proposed an episode sweep as the sharper test. That was wrong on the face of the specification. Labour is not in the model, the `inflation` spec observes log GDP and trimmed mean inflation only, so `sigma_g` has no labour supply step to refuse, and a sweep over it cannot bear on migration at all. `sigma_g` governs how closely `y*` follows GDP, and GDP grew 2.11% year-ended through 2023 against potential growth of 2.14%, so a looser setting would barely move 2023 and would pull 2024 down toward the 1% GDP was then running. See point 2 of "What it cannot say".
 
 The one thing `sigma_g` genuinely conditions is the trend growth path itself, and the standing check for that is the honesty sweep `sigma_sweep.py` was built for: does the two-point decline in the speed limit survive the grid, or is it the smoothing? That is a general question about the specification, not an episode.
 
@@ -398,7 +398,7 @@ with hours per labour-force participant (`HPP`) absorbing the unemployment margi
 
 Population keeps the Henderson-7 treatment `observations.py` already gives it. It is measured and acyclical, and its swings are genuine labour supply: growth ran 0.20% in 2021Q2 to 2.95% in 2023Q3 on the border closure and the migration rebound. HP would smooth that away as cycle, which is exactly backwards.
 
-Participation and hours per participant are cyclical and get HP(1600). A Henderson MA cannot low-pass them at any width: on log hours a 7-term filter books a −6.2 to +7.3 per cent pandemic swing as *trend*, and even 31 terms still books −0.5 to +4.5. Under HP(1600) trend hours growth runs 0.67% in 2021 and 3.67% in 2023 — the border closure and the migration surge, not the lockdown.
+Participation and hours per participant are cyclical and get HP(1600). A Henderson MA cannot low-pass them at any width: on log hours a 7-term filter books a −6.2 to +7.3 per cent pandemic swing as *trend*, and even 31 terms still books −0.5 to +4.5. Under HP(1600) trend hours growth runs 0.67% in 2021 and 3.67% in 2023, the border closure and the migration surge, not the lockdown.
 
 ### Contributions to potential growth, period averages (year-ended %)
 
@@ -428,14 +428,14 @@ The wedge version exists because the line version invites a wrong inference. Tre
 
 sd of the residual is 0.96, against 0.68 for potential growth and 0.59 for trend hours: the residual is the most volatile line on a chart whose subject is the smoothest one.
 
-Note the 1994-2007 figure. This is a property of residuals, not an artefact of the pandemic, so it cannot be fixed by shading an episode or truncating the sample — both would imply the rest of the line can be read as a measurement. The wedge makes the same numbers say the right thing: the 2023 migration surge appears as trend hours crossing above potential growth, so the residual turns negative, rather than as a productivity line plunging to −1.5.
+Note the 1994-2007 figure. This is a property of residuals, not an artefact of the pandemic, so it cannot be fixed by shading an episode or truncating the sample: both would imply the rest of the line can be read as a measurement. The wedge makes the same numbers say the right thing: the 2023 migration surge appears as trend hours crossing above potential growth, so the residual turns negative, rather than as a productivity line plunging to −1.5.
 
 ### What it cannot say
 
 1. **Trend productivity is a residual, not an estimate.** Any error in the hours trend lands on it in full. Nothing here is independent evidence about productivity.
-2. **The 2023 trough is arithmetic, and it is not an artefact of `sigma_g`.** Trend hours growth reaches 3.7% on the migration surge while potential growth sits near 2.1%, so the residual prints below −1%. An earlier version of this note read that as the smoothness prior refusing a labour supply surge. It cannot be: **labour is not in the model.** The `inflation` spec observes log GDP and trimmed mean inflation only, and hours enter nowhere except this post-modelling identity, so there is nothing for `sigma_g` to refuse. Nor would loosening it help — `sigma_g` controls how closely `y*` follows *GDP*, and year-ended GDP growth averaged 2.11% through 2023 against potential growth of 2.14%, then fell to about 1% through 2024. A looser trend would track that down and make the residual **more** negative, not less.
+2. **The 2023 trough is arithmetic, and it is not an artefact of `sigma_g`.** Trend hours growth reaches 3.7% on the migration surge while potential growth sits near 2.1%, so the residual prints below −1%. An earlier version of this note read that as the smoothness prior refusing a labour supply surge. It cannot be: **labour is not in the model.** The `inflation` spec observes log GDP and trimmed mean inflation only, and hours enter nowhere except this post-modelling identity, so there is nothing for `sigma_g` to refuse. Nor would loosening it help: `sigma_g` controls how closely `y*` follows *GDP*, and year-ended GDP growth averaged 2.11% through 2023 against potential growth of 2.14%, then fell to about 1% through 2024. A looser trend would track that down and make the residual **more** negative, not less.
 
-   What the trough actually says is the arithmetic of the identity: output grew 2.1% while the trend of labour input grew 3.7%, so measured productivity fell. That is a statement about the Australian economy obtained from GDP and hours, and the model's smoothness did not produce it. Point 1 still applies — it is a residual, and any error in the hours trend lands on it in full.
+   What the trough actually says is the arithmetic of the identity: output grew 2.1% while the trend of labour input grew 3.7%, so measured productivity fell. That is a statement about the Australian economy obtained from GDP and hours, and the model's smoothness did not produce it. Point 1 still applies, it is a residual, and any error in the hours trend lands on it in full.
 3. **Quarter-to-quarter movements in the residual are not news about productivity.** Trend hours and the residual are near mirror images; see the correlations above. The block averages carry the low-frequency story, and the wedge chart is the safe way to show the quarterly path.
 4. **HP has an endpoint problem.** Refitting the hours trend with the last four quarters withheld moves 2025Q2 trend hours growth from 2.75 to 2.34 as those quarters arrive.
 5. **Trend hours is not a supply concept.** It is a filter of measured labour input. Nothing here identifies the hours consistent with inflation at target.
@@ -515,7 +515,7 @@ The paths track to within 0.04pp throughout: 4.08/3.13/2.82/1.91 against 4.10/3.
 The headline number is the same either way, so the extra machinery buys nothing for it, and four reasons point the other way.
 
 - **The cross-check only exists while they are separate.** Promoting `production` would leave one model rather than two that agree, spending the corroboration to gain nothing.
-- **Fewer places to be wrong about smoothing.** `inflation` imposes two variances; `production` imposes four ratios, and the answer is known to move with them — the hours ratio spans roughly 1.8 to 2.2 in the deterministic analogue, and `ratio_a` took two attempts and a terms-of-trade investigation to settle.
+- **Fewer places to be wrong about smoothing.** `inflation` imposes two variances; `production` imposes four ratios, and the answer is known to move with them, the hours ratio spans roughly 1.8 to 2.2 in the deterministic analogue, and `ratio_a` took two attempts and a terms-of-trade investigation to settle.
 - **`inflation` has no known specification defect.** `production` double-counts GDP. Inconsequential, and documented under "What it does not fix", but present.
 - **Fewer dependencies.** `inflation` needs GDP and CPI. `production` adds the capital stock, hours worked and the income shares: three more series that can revise or break.
 
@@ -583,9 +583,9 @@ Two things frequently taken for limitations of this model are not, and are dealt
 
 `config.SPECS` carries `production`, documented above as a live alternative, and three earlier specifications below. The three are kept for reference, they are not the model, and their documented numbers predate the corrections in the iteration log.
 
-- **`core`** — an anchored Phillips curve on GDP and inflation, with an AR(2) cycle. Run it with `--pi-basis quarterly`; see iteration log item 2 for why.
-- **`labour`** — potential decomposed into trend hours and trend productivity, using ABS 6202.0 hours, population and participation. Five series, six equations. Its trend hours path reproduces an HP(1600) trend of hours at a correlation of 0.9972, which is why it was set aside.
-- **`target`** — a sign-only restriction: the gap must share the sign of the inflation deviation, with no magnitude claim. Superseded by the `inflation` spec, which uses the magnitude as well.
+- **`core`**: an anchored Phillips curve on GDP and inflation, with an AR(2) cycle. Run it with `--pi-basis quarterly`; see iteration log item 2 for why.
+- **`labour`**: potential decomposed into trend hours and trend productivity, using ABS 6202.0 hours, population and participation. Five series, six equations. Its trend hours path reproduces an HP(1600) trend of hours at a correlation of 0.9972, which is why it was set aside.
+- **`target`**: a sign-only restriction: the gap must share the sign of the inflation deviation, with no magnitude claim. Superseded by the `inflation` spec, which uses the magnitude as well.
 
 ---
 
@@ -593,7 +593,7 @@ Two things frequently taken for limitations of this model are not, and are dealt
 
 ```
 ystar/
-├── config.py            ModelConfig — sample, anchor, imposed variances, spec
+├── config.py            ModelConfig: sample, anchor, imposed variances, spec
 ├── base.py              SamplerConfig, set_model_coefficients (self-contained)
 ├── observations.py      GDP + inflation -> aligned numpy arrays
 ├── estimate.py          build_model / sample / save
@@ -663,7 +663,7 @@ The package began as a conventional multivariate UC model and was progressively 
 
 **5. `ratio_ystar = 0` changes nothing either.** HP(1600) is the integrated random walk with no level innovation, so `ratio_ystar > 0` is an addition to the HP analogy. Removing it moves trend growth by 0.001pp.
 
-**6. Pseudo-real-time revisions are large.** Over 19 vintages from 2008Q4, mean absolute revision to the output gap is 1.62, which is **1.5 times the standard deviation of the gap itself** — the Orphanides & van Norden (2002) result reproduced. The mechanism is the fixed anchor: real-time estimates drifted to **−5.45%** in 2019Q4, against a full-sample value near zero, because inflation undershot 2.5 for five years and the model had no other way to express it.
+**6. Pseudo-real-time revisions are large.** Over 19 vintages from 2008Q4, mean absolute revision to the output gap is 1.62, which is **1.5 times the standard deviation of the gap itself**: the Orphanides & van Norden (2002) result reproduced. The mechanism is the fixed anchor: real-time estimates drifted to **−5.45%** in 2019Q4, against a full-sample value near zero, because inflation undershot 2.5 for five years and the model had no other way to express it.
 
 **7. Correlations between persistent series were being over-read.** Raw `corr(HP gap_t, deviation_{t+k})` appeared to peak at +0.28 at one quarter and invert to −0.29 by eight, and that pattern was used to argue about transmission lags. Prewhitened with an AR(4) fitted to the deviation, **no lag from 0 to 8 clears two standard errors** (largest +0.149 against 2se = 0.175). The pattern was the two series' own persistence. The argument built on it was withdrawn. Prewhitening is conservative for a low-frequency relationship, so this is not proof of absence; the honest reading is that the sample cannot settle it.
 
@@ -679,11 +679,11 @@ The package began as a conventional multivariate UC model and was progressively 
 
 Unlike item 9 it sampled cleanly: `r_hat` 1.0, `ess_bulk` ≈ 9,300. The weight came back **0.71 [0.44, 0.95]**, so the model does put about 30% on inflation four quarters ahead, with P(w < 0.9) = 0.89. But on a matched 130-quarter sample (1993Q1-2025Q2, both specifications fitting the same quarters) `sigma_e` went **0.994 → 0.983**, well inside either credible interval. The residual does not shrink, which was the test. `c` rose 0.46 → 0.56, which is arithmetic rather than news: blending two imperfectly correlated regressors shrinks the amplitude and the scale compensates. The gap path crosses zero about two quarters earlier in 2021 and reaches the same peak height, then is indistinguishable from 2023Q3 on.
 
-The motivation was turning-point timing: in both large episodes the residual peaks four quarters before the inflation-defined gap (2007Q3 against 2008Q3; 2021Q4 against 2022Q4). **Item 7 is the warning against that evidence** — it is exactly the kind of pattern between two persistent series that did not survive prewhitening. The honest reading is that the lead is visible at two turning points and invisible in the other 122 quarters, and 130 quarters of mostly quiet inflation cannot separate the two.
+The motivation was turning-point timing: in both large episodes the residual peaks four quarters before the inflation-defined gap (2007Q3 against 2008Q3; 2021Q4 against 2022Q4). **Item 7 is the warning against that evidence**: it is exactly the kind of pattern between two persistent series that did not survive prewhitening. The honest reading is that the lead is visible at two turning points and invisible in the other 122 quarters, and 130 quarters of mostly quiet inflation cannot separate the two.
 
-Not adopted. The cost is the sample end: the last k quarters have no `pi_{t+k}`, so the gap is undefined for the four quarters of most interest, and no fit gain pays for that. The alternatives were worse — falling back to the contemporaneous term alone in the tail changes the definition of the gap exactly where it matters, and carrying an inflation forecast imports a judgement into an estimate meant to rest on data. Traces retained: `ystar_lead4`, and `ystar_lead0_short` for the matched-sample comparison.
+Not adopted. The cost is the sample end: the last k quarters have no `pi_{t+k}`, so the gap is undefined for the four quarters of most interest, and no fit gain pays for that. The alternatives were worse: falling back to the contemporaneous term alone in the tail changes the definition of the gap exactly where it matters, and carrying an inflation forecast imports a judgement into an estimate meant to rest on data. Traces retained: `ystar_lead4`, and `ystar_lead0_short` for the matched-sample comparison.
 
-**13. Is `c` state-dependent? Not detectably, and the quiet quarters are empty.** `c` is a projection, so quarter weights are `d²/Σd²` and they are extremely concentrated: the top 5 quarters carry 46.7% of the information, the 23 quarters with abs(`d`) > 1.0 carry 78%, and it is two episodes — 2022Q2-2023Q4 about 53%, 2008Q1-2009Q1 about 13%. That raised the question of whether a single `c` over-shrinks the breakouts, since it applies the same discount whatever the signal-to-noise.
+**13. Is `c` state-dependent? Not detectably, and the quiet quarters are empty.** `c` is a projection, so quarter weights are `d²/Σd²` and they are extremely concentrated: the top 5 quarters carry 46.7% of the information, the 23 quarters with abs(`d`) > 1.0 carry 78%, and it is two episodes: 2022Q2-2023Q4 about 53%, 2008Q1-2009Q1 about 13%. That raised the question of whether a single `c` over-shrinks the breakouts, since it applies the same discount whatever the signal-to-noise.
 
 **The pandemic quarters must be excluded, and this is the trap in the test.** An `abs(d) > 1.0` rule puts 2020Q2-2021Q1 in the breakout set: inflation ran 1.2 to 1.4 *below* target while GDP sat 7.4% below potential. Those four quarters alone imply a slope of **2.58**, and they are what lift a naive breakout estimate to 0.635 (1.049 with an intercept fitted). That is the lockdown, which this specification deliberately books to `e_c`, not evidence about the inflation-output relationship. Every other breakout quarter has `d` above +1, so outside the pandemic "breakout" means the 2007-09 and 2022-24 surges.
 
@@ -835,12 +835,12 @@ A deterministic sweep put numbers on both the gain and the cost. Against an `HP(
 
 **The cost, stated plainly.** `c` = 0.188 [0.07, 0.32], against 0.468. Under `two_sided_c`, which is the only form in which the sign is a proposition rather than a prior, 0.187 [0.060, 0.310] with P(`c` > 0) = 0.991. The sign survives; the magnitude does not. Variance share 13.1% over fitted quarters.
 
-**Do not compare `sigma_e` across the exclusion.** 0.506 against 0.977 is not a fit improvement: six of the largest residuals in the sample left the likelihood, so it is a different likelihood over different data. The credible bands are correspondingly *narrower* than the continuous model's, 0.56 against 0.80 on `y*` pre-2020, and that is the removal of contamination rather than a claim to know more — realised residual sd over the fitted quarters is 0.477 against a posterior `sigma_e` of 0.506. What the exclusion does reveal is that the residual variance is not constant: 0.639 in the 1990s, 0.539 in the 2000s, 0.352 in the 2010s, 0.237 from 2021Q4. A single `sigma_e` is therefore loose at the endpoint and tight at the start.
+**Do not compare `sigma_e` across the exclusion.** 0.506 against 0.977 is not a fit improvement: six of the largest residuals in the sample left the likelihood, so it is a different likelihood over different data. The credible bands are correspondingly *narrower* than the continuous model's, 0.56 against 0.80 on `y*` pre-2020, and that is the removal of contamination rather than a claim to know more: realised residual sd over the fitted quarters is 0.477 against a posterior `sigma_e` of 0.506. What the exclusion does reveal is that the residual variance is not constant: 0.639 in the 1990s, 0.539 in the 2000s, 0.352 in the 2010s, 0.237 from 2021Q4. A single `sigma_e` is therefore loose at the endpoint and tight at the start.
 
 **What it does not fix.** The bands widen only 0.59 to 0.70 across the window, because `sigma_ystar` is imposed at 0.078 and over six unobserved quarters the level can wander 0.19 at most. Inside the window the line is the smoothness prior, not an estimate, and the charts shade it for that reason. Traces: `ystar_break`, `ystar_break2`, `ystar_break2_2sided`, `ystar_excl_break`, `ystar_excl_break_alt`, `ystar_excl_2sided`.
 
 **Next, in priority order:**
-1. **Corroborate `c` from outside the sample.** No longer a correction — the implied κ of 0.40 says the internal estimate is not biased down, so this is now a matter of tightening a wide interval [0.28, 0.66] rather than replacing a suspect number. It matters because the gap is `c` times data: `c` is the whole of the gap's uncertainty and the whole content of any real-time revision to it. The cross-sectional route (state unemployment against capital-city CPIs, where the cash rate is common) is the standard way to get an independent read.
+1. **Corroborate `c` from outside the sample.** No longer a correction, the implied κ of 0.40 says the internal estimate is not biased down, so this is now a matter of tightening a wide interval [0.28, 0.66] rather than replacing a suspect number. It matters because the gap is `c` times data: `c` is the whole of the gap's uncertainty and the whole content of any real-time revision to it. The cross-sectional route (state unemployment against capital-city CPIs, where the cash rate is common) is the standard way to get an independent read.
 2. **Delete the dead specifications** once nothing further is wanted from them, along with the equation modules only they use.
 3. **Rewire `realtime.py` to the `inflation` spec, if it is still wanted.** Demoted. "Endpoint behaviour" sets out why this specification has structurally little to fear from the test: the gap is not filtered, so the exercise only measures the stability of `c`. Worth doing for the trend rather than the gap, and only in the coverage form described there, which needs the module to retain quantiles rather than medians.
 

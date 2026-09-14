@@ -38,6 +38,7 @@ import pytensor.tensor as pt
 from pytensor.graph.basic import Apply
 from pytensor.graph.op import Op
 
+from src.models.common.diagnostics import save_diagnostics
 from src.models.dsge.estimation import ModelSpec
 
 # =============================================================================
@@ -245,6 +246,17 @@ def produce_bayes_outputs(idata, spec: ModelSpec, tag: str) -> None:
         idata.to_netcdf(str(out_dir / f"fa_nk_bayes_{tag}.nc"), engine="h5netcdf")
     except Exception as exc:  # noqa: BLE001 -- saving idata is optional
         print(f"  (idata netCDF not saved: {exc})")
+
+    # DEMetropolis-Z is gradient-free: no tree depth and no energy, so those
+    # two checks report n/a rather than failing. R-hat and ESS still apply,
+    # and on this sampler they are the ones that matter.
+    save_diagnostics(
+        idata,
+        chart_dir,
+        f"fa_nk_bayes_{tag}",
+        model="dsge fa_nk_bayes",
+        notes=["sampler: DEMetropolis-Z (gradient-free)"],
+    )
 
     mg.set_chart_dir(str(chart_dir))
     RF = "FA-NK Bayes"

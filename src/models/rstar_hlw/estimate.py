@@ -10,7 +10,12 @@ import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 
-from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
+from src.models.nairu.base import (
+    SamplerConfig,
+    add_scalar_priors,
+    get_fixed_constants,
+    sample_model,
+)
 from src.models.rstar_hlw.equations.indexed_bond import indexed_bond_equation
 from src.models.rstar_hlw.equations.is_curve import is_curve_equation
 from src.models.rstar_hlw.equations.phillips import phillips_curve_equation
@@ -429,6 +434,11 @@ def run_estimate(
     print("\nSampling...")
     trace = sample_model(model, sampler_config)
     print()
+
+    # Prior draws for the free scalars, saved alongside the posterior so
+    # `analyse.py` can chart each parameter against its own prior.
+    sampled = add_scalar_priors(model, trace, random_seed=sampler_config.random_seed)
+    print(f"Sampled priors for {len(sampled)} free scalar parameters\n")
 
     constants = get_fixed_constants(model)
     save_results(

@@ -6,6 +6,7 @@ from typing import Any
 import mgplot as mg
 import pandas as pd
 
+from src.models.common.diagnostics import save_diagnostics
 from src.models.rstar_bonds.results import DEFAULT_CHART_BASE, RStarResults, load_results
 
 CHART_DIR = DEFAULT_CHART_BASE / "RStarBonds"
@@ -551,6 +552,7 @@ def run_analysis(
         chart_dir = CHART_DIR if prefix == "rstar_bonds" else CHART_DIR.parent / f"RStarBonds_{prefix}"
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
+    save_diagnostics(results.trace, chart_dir, prefix, model="rstar_bonds")
 
     plot_rstar(results)
     plot_rstar_real_nominal(results)
