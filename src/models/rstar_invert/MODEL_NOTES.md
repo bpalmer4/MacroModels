@@ -352,6 +352,47 @@ And the gap is only part of the cycle. `ystar_ustar`'s GDP equation is
 **45% of the variance** of GDP's deviation from potential. If rates work through channels
 that do not show in inflation, that effect lands in `e_c` and this IS curve never sees it.
 
+## The slope on a common footing with `rstar_hlw`
+
+`is_slope` here has **no gap persistence behind it**: the line is `gap = is_slope × stance`,
+so the coefficient is already the response to a SUSTAINED stance. `rstar_hlw`'s `a_r` is an
+IMPACT coefficient and is not the same object. The comparable quantity there is
+`a_r/(1 − a_y1 − a_y2)`, which its own units warning says in as many words.
+
+Put on that common footing, the two families still disagree, and by a lot:
+
+| | level slope |
+|---|---|
+| this model, prior on the line's height | −0.092 |
+| this model, prior on r\* (the default) | −0.383 |
+| `is_curve` bench, independent | −0.108 |
+| `rstar_hlw`, long-run, across specifications | −0.42 to −2.11 |
+
+So converting HLW's impact coefficient to a level response does not reconcile the two. It
+moves HLW from looking implausibly weak to looking three to ten times STEEPER than the two
+models that measure a level slope directly. Both readings cannot be right, and nothing here
+establishes which is.
+
+**Do not read the gap between them as a clean contradiction.** These are slopes against
+different gaps. This model takes `ystar_ustar`'s gap as data; `rstar_hlw` estimates its own,
+which has sd 2.04 against the 0.42 inherited here. A slope against a five-times-wider gap is
+not the same coefficient, and no exercise in this package has put them on one gap.
+
+**What does survive the comparison is the pattern.** In both models the IS-side coefficient
+is settled by a modelling choice rather than by the data, and each reaches that outcome by a
+different route:
+
+- Here it is the **parameterisation**. −0.383 under the prior on r\*, −0.092 under the prior
+  on the line's height, at essentially the same fit (`sigma_e` 0.240 against 0.225). See
+  "The parameterisation trap".
+- There it is the **lag**. −0.73 at t−6 against −1.29 at t−1, while persistence stays flat
+  at 0.92 to 0.94 across the whole grid, so the AR(2) is not fitting anything about the
+  rate either.
+
+That is the more durable statement than any single slope: across both specifications the
+data does not choose the IS-side coefficient, and the analyst's parameterisation or lag
+choice does.
+
 ## Diagnosis: why the slope comes out weak
 
 Three candidates, ranked, and only the first is well supported.
