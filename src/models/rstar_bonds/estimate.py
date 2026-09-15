@@ -494,6 +494,10 @@ def run_estimate(
 
     print(f"Sample:       {config.start} -> {config.end or 'latest'}")
     print(f"World anchor: {config.world_source if config.use_world else 'none (--no-world)'}")
+    if config.us_premium_anchor or config.world_source == "market":
+        # Only say it where a US premium is actually subtracted; on the default
+        # cleveland anchor with no pin, nothing reads it.
+        print(f"US premium:   {config.us_premium_source}")
     if config.use_short:
         asserted = (
             f"stance ~ N({config.mu_g_mu:g}, {config.mu_g_sigma:g}), mu_tp free"
@@ -527,6 +531,7 @@ def run_estimate(
         deflator=config.deflator,
         short_rate=config.short_rate,
         us_premium_anchor=config.us_premium_anchor,
+        us_premium_source=config.us_premium_source,
         use_curve=config.use_curve,
         curve_maturity=config.curve_maturity,
         input_source=config.input_source,

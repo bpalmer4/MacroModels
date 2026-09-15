@@ -22,6 +22,8 @@ uv run python -m src.models.rstar_bonds.run "$@"
 #   ./run-rstar-bonds.sh --no-short            # one window: the long yield alone
 #   ./run-rstar-bonds.sh --deflator trimmed    # backward-looking real cash rate
 #   ./run-rstar-bonds.sh --impose-world-loading  # b_world = 1 rather than estimated
+#   ./run-rstar-bonds.sh --premium-source acm  # the other US term premium: rejected,
+#                                              #   see Alternatives in MODEL_NOTES
 #   ./run-rstar-bonds.sh --no-world            # does the global anchor do the work?
 #   ./run-rstar-bonds.sh --world-source US     # the marginal pricer, not the average
 #   ./run-rstar-bonds.sh --taylor-ugap         # rule on the unemployment gap instead

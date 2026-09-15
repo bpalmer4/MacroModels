@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from src.data.acm_loader import get_acm_term_premium
 from src.data.bonds import get_corporate_spread, get_indexed_yield_filled
 from src.data.cash_rate import get_cash_rate_qrtly
 from src.data.dataseries import DataSeries
@@ -43,7 +44,12 @@ from src.data.inflation import get_trimmed_mean_annual
 from src.data.rba_loader import get_bank_bill_rate, get_cgs_yield, get_lending_rate
 from src.data.world_rstar import get_world_rstar
 from src.models.common.sources import SourceSet
-from src.models.rstar_bonds.config import MARKET_WORLD_SOURCES, US_PREMIUM_SERIES, WORLD_NEUTRAL
+from src.models.rstar_bonds.config import (
+    KIM_WRIGHT_SERIES,
+    MARKET_WORLD_SOURCES,
+    US_PREMIUM_SOURCES,
+    WORLD_REAL_SERIES,
+)
 
 if TYPE_CHECKING:
     # Type only. The runtime import stays inside `_joint_results`, so a missing
@@ -53,7 +59,27 @@ if TYPE_CHECKING:
 _NAME_WIDTH = 26
 
 
-def _world_series(source: str, sources: SourceSet) -> pd.Series:
+def _us_premium(premium_source: str, sources: SourceSet) -> pd.Series:
+    """Return the published US 10-year term premium on a quarterly PeriodIndex.
+
+    The same series serves both places a US premium enters, the `market` world
+    anchor and the `--us-premium` pin, so one setting governs both. See
+    `config.US_PREMIUM_SOURCES` for what the two providers disagree about.
+    """
+    if premium_source == "acm":
+        series = sources.take(get_acm_term_premium())
+    elif premium_source == "kim-wright":
+        series = sources.take(get_fred_series(KIM_WRIGHT_SERIES))
+    else:
+        raise ValueError(
+            f"Unknown US premium source {premium_source!r}; expected one of "
+            f"{', '.join(repr(s) for s in US_PREMIUM_SOURCES)}",
+        )
+    quarterly = series.groupby(pd.PeriodIndex(series.index, freq="Q")).mean()
+    return quarterly.dropna().astype(float)
+
+
+def _world_series(source: str, sources: SourceSet, premium_source: str = "kim-wright") -> pd.Series:
     """Return the chosen world r* series on a quarterly PeriodIndex.
 
     Either a Holston-Laubach-Williams estimate or a market price. The market
@@ -63,14 +89,11 @@ def _world_series(source: str, sources: SourceSet) -> pd.Series:
     """
     if source == "market":
         # The term premium comes out explicitly rather than being absorbed into
-        # a shrunken loading. See `config.WORLD_NEUTRAL`.
-        real, premium = (
-            sources.take(get_fred_series(sid)).pipe(
-                lambda s: s.groupby(pd.PeriodIndex(s.index, freq="Q")).mean(),
-            )
-            for sid in WORLD_NEUTRAL
+        # a shrunken loading. See `config.WORLD_REAL_SERIES`.
+        real = sources.take(get_fred_series(WORLD_REAL_SERIES)).pipe(
+            lambda s: s.groupby(pd.PeriodIndex(s.index, freq="Q")).mean(),
         )
-        return (real - premium).dropna().astype(float)
+        return (real - _us_premium(premium_source, sources)).dropna().astype(float)
 
     if source in MARKET_WORLD_SOURCES:
         # Quarterly mean rather than the quarter-end value: it is being matched
@@ -365,6 +388,7 @@ def _core_columns(
     sources: SourceSet,
     *,
     us_premium_anchor: bool,
+    us_premium_source: str,
     use_curve: bool,
     curve_maturity: int,
 ) -> dict[str, pd.Series]:
@@ -372,16 +396,12 @@ def _core_columns(
 
     Core membership is the decision about what may truncate the run, so the
     optional two are added only when the specification actually uses them: the
-    3-year real yield begins 1992Q2 and the Kim-Wright premium 1990Q1, and
-    neither should shorten a sample that does not need it.
+    3-year real yield begins 1992Q2, the Kim-Wright premium 1990Q1 and the ACM
+    one 1961Q2, and none should shorten a sample that does not need it.
     """
     columns = {"y": yield_real, "w": world, "r": real_cash}
     if us_premium_anchor:
-        columns["us_tp"] = (
-            sources.take(get_fred_series(US_PREMIUM_SERIES))
-            .pipe(lambda s: s.groupby(pd.PeriodIndex(s.index, freq="Q")).mean())
-            .dropna().astype(float)
-        )
+        columns["us_tp"] = _us_premium(us_premium_source, sources)
     if use_curve:
         columns["m"] = _real_medium_yield(curve_maturity, deflator_series, sources)
     return columns
@@ -395,6 +415,7 @@ def build_observations(
     deflator: str = "expectations",
     short_rate: str = "cash",
     us_premium_anchor: bool = False,
+    us_premium_source: str = "kim-wright",
     use_curve: bool = False,
     curve_maturity: int = 3,
     input_source: str = "joint",
@@ -420,7 +441,7 @@ def build_observations(
     """
     sources = SourceSet()
     yield_real = sources.take(get_indexed_yield_filled()).astype(float).dropna()
-    world = _world_series(world_source, sources)
+    world = _world_series(world_source, sources, us_premium_source)
 
     # The short rate and its deflator are estimation inputs now, not chart
     # extras, so a failure to load either is fatal rather than a skipped chart.
@@ -435,6 +456,7 @@ def build_observations(
     core = pd.DataFrame(_core_columns(
         yield_real, world, real_cash, deflator_series, sources,
         us_premium_anchor=us_premium_anchor,
+        us_premium_source=us_premium_source,
         use_curve=use_curve,
         curve_maturity=curve_maturity,
     )).dropna()

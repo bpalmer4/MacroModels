@@ -398,11 +398,19 @@ def get_corporate_bond_yield(rating: str = "A", maturity: int = 5) -> DataSeries
 # --- Exchange Rates ---
 
 
-def _load_f11_series(col_pattern: str) -> pd.Series:
+def _load_f11_series(col: str) -> pd.Series:
     """Load a series from RBA F11 exchange rate tables.
 
+    Matched exactly, not by substring: several F11 codes are prefixes of others
+    (`FXRSD` of `FXRSDR`, `FXRIR` of `FXRIRE`), so a substring match returns
+    whichever happens to come first in column order.
+
+    A code absent from both files raises rather than returning an empty series.
+    It used to return empty, which meant a wrong code produced no data and no
+    error, silently, all the way to the caller.
+
     Args:
-        col_pattern: Column pattern to match (e.g., "FXRUSD", "FXRTWI")
+        col: Exact column id, e.g. "FXRUSD", "FXRTWI"
 
     Returns:
         Combined historical and current series with DatetimeIndex
@@ -416,12 +424,18 @@ def _load_f11_series(col_pattern: str) -> pd.Series:
     now_url = "https://www.rba.gov.au/statistics/tables/xls-hist/f11hist.xls"
     current_rates = pd.read_excel(now_url, sheet_name="Data", index_col=0, skiprows=10)
 
-    # Find the relevant column
-    hist_col = [c for c in hist_rates.columns if col_pattern in c]
-    curr_col = [c for c in current_rates.columns if col_pattern in c]
+    # A code can legitimately appear in only one of the two files: the current
+    # table carries 25 currencies against the historical table's 14.
+    in_hist = col in hist_rates.columns
+    in_curr = col in current_rates.columns
+    if not in_hist and not in_curr:
+        available = sorted(
+            {str(c) for c in (*hist_rates.columns, *current_rates.columns) if str(c).startswith("FXR")},
+        )
+        raise ValueError(f"No F11 column {col!r}. Available: {', '.join(available)}")
 
-    hist_series = hist_rates[hist_col[0]] if hist_col else pd.Series(dtype=float)
-    curr_series = current_rates[curr_col[0]] if curr_col else pd.Series(dtype=float)
+    hist_series = hist_rates[col] if in_hist else pd.Series(dtype=float)
+    curr_series = current_rates[col] if in_curr else pd.Series(dtype=float)
 
     combined = curr_series.combine_first(hist_series)
     combined.index = pd.to_datetime(combined.index)
@@ -431,14 +445,19 @@ def _load_f11_series(col_pattern: str) -> pd.Series:
 def get_exchange_rate(currency: str = "USD") -> DataSeries:
     """Get exchange rate from RBA F11 table.
 
+    F11 codes are "FXR" + the currency code, e.g. FXRUSD, FXRJY, FXREUR,
+    FXRNZD. They are AUD per unit of foreign currency.
+
     Args:
-        currency: Currency code (default "USD")
+        currency: Currency code (default "USD"). Raises with the available
+            list if the code is not in F11.
 
     Returns:
         DataSeries with monthly exchange rate
 
     """
-    combined = _load_f11_series(f"FXRU{currency}")
+    series_id = f"FXR{currency}"
+    combined = _load_f11_series(series_id)
 
     return DataSeries(
         data=combined,
@@ -446,7 +465,7 @@ def get_exchange_rate(currency: str = "USD") -> DataSeries:
         units=f"AUD/{currency}",
         description=f"Exchange Rate AUD/{currency}",
         table="F11",
-        series_id=f"FXRU{currency}",
+        series_id=series_id,
     )
 
 

@@ -3,7 +3,13 @@
 import argparse
 
 from src.models.rstar_bonds.analyse import run_analysis
-from src.models.rstar_bonds.config import DEFLATORS, SHORT_RATES, WORLD_SOURCES, ModelConfig
+from src.models.rstar_bonds.config import (
+    DEFLATORS,
+    SHORT_RATES,
+    US_PREMIUM_SOURCES,
+    WORLD_SOURCES,
+    ModelConfig,
+)
 from src.models.rstar_bonds.estimate import run_estimate
 from src.models.ystar.base import SamplerConfig
 
@@ -41,8 +47,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--us-premium", action="store_true",
-        help="Pin the term premium to the published US one (Kim-Wright) and estimate only "
+        help="Pin the term premium to the published US one and estimate only "
              "the Australian spread over it, instead of letting the level rest on mu_tp",
+    )
+    parser.add_argument(
+        "--premium-source", default="kim-wright", choices=list(US_PREMIUM_SOURCES),
+        help="Whose US term premium to subtract, in BOTH --world-source market and "
+             "--us-premium (default kim-wright, the Fed Board three-factor model; "
+             "acm is Adrian-Crump-Moench from the NY Fed)",
     )
     parser.add_argument(
         "--impose-world-loading", action="store_true",
@@ -134,6 +146,7 @@ def main() -> None:
             deflator=args.deflator,
             short_rate=args.short_rate,
             us_premium_anchor=args.us_premium,
+            us_premium_source=args.premium_source,
             use_curve=args.curve,
             curve_maturity=args.curve_maturity,
             curve_horizon_quarters=args.curve_maturity * 4,

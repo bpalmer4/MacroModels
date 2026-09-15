@@ -10,25 +10,28 @@ The same file and convention are used in the ABS project.
 
 The plain CSV endpoint (`fredgraph.csv`) needs no key but times out from here,
 which is why this goes through the JSON API.
+
+Caching is `readabs`', not ours: `get_file` keys each request by its full URL
+into `.readabs_cache/` and refreshes on the server's Last-Modified header.
+FRED sets that header per series, at the series' own revision time, so a
+series is re-downloaded when it is actually revised rather than on a timer.
+The key is part of the hashed URL but not of the cache filename or its
+contents; rotating the key simply orphans the old entries.
 """
 
 import json
-from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
+from urllib.parse import urlencode
 
 import pandas as pd
-import requests
+from readabs.download_cache import get_file
 
 from src.data.dataseries import DataSeries
 
 _ROOT = Path(__file__).parent.parent.parent
 _KEY_FILE = _ROOT / "fred.api"
-_CACHE_DIR = _ROOT / "input_data" / "fred"
 _BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
-_TIMEOUT = 60
-# A day is plenty: these are daily or monthly series and the model is quarterly.
-_MAX_CACHE_AGE_DAYS = 1
 
 
 def _api_key() -> str:
@@ -44,25 +47,9 @@ def _api_key() -> str:
     return key
 
 
-def _cache_path(series_id: str) -> Path:
-    return _CACHE_DIR / f"{series_id}.json"
-
-
-def _cached(series_id: str) -> dict | None:
-    """Return the cached payload if it is fresh enough, else None."""
-    path = _cache_path(series_id)
-    if not path.exists():
-        return None
-    age_days = (datetime.now(UTC).timestamp() - path.stat().st_mtime) / 86_400
-    if age_days > _MAX_CACHE_AGE_DAYS:
-        return None
-    loaded = json.loads(path.read_text(encoding="utf-8"))
-    return loaded if isinstance(loaded, dict) else None
-
-
 @cache
 def get_fred_series(series_id: str) -> DataSeries:
-    """Fetch one FRED series, cached on disk for a day.
+    """Fetch one FRED series, cached on disk until FRED revises it.
 
     Args:
         series_id: FRED series identifier, e.g. "DFII10".
@@ -71,21 +58,14 @@ def get_fred_series(series_id: str) -> DataSeries:
         DataSeries with a DatetimeIndex at the series' native frequency.
 
     """
-    payload = _cached(series_id)
-    if payload is None:
-        response = requests.get(
-            _BASE_URL,
-            params={
-                "series_id": series_id,
-                "api_key": _api_key(),
-                "file_type": "json",
-            },
-            timeout=_TIMEOUT,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        _cache_path(series_id).write_text(json.dumps(payload), encoding="utf-8")
+    query = urlencode({
+        "series_id": series_id,
+        "api_key": _api_key(),
+        "file_type": "json",
+    })
+    payload = json.loads(get_file(f"{_BASE_URL}?{query}", cache_prefix="fred"))
+    if not isinstance(payload, dict):
+        raise TypeError(f"FRED returned a {type(payload).__name__}, not an object, for {series_id}")
 
     observations = payload.get("observations")
     if not isinstance(observations, list) or not observations:

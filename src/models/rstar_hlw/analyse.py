@@ -382,9 +382,9 @@ def plot_world_rstar_overlay(
 ) -> None:
     """r*_AU vs the NY Fed HLW r* estimates for US, Euro Area, Canada.
 
-    Always pulls fresh data from the NY Fed (force_download=True) so the
-    comparison reflects the latest published HLW estimates rather than a
-    stale cached file. The chart starts at the AU sample start.
+    The HLW loader re-checks the NY Fed file on every call, so the comparison
+    reflects the latest published estimates rather than a stale cached file.
+    The chart starts at the AU sample start.
 
     With ``bond_mode=True`` (Resolution G), the Australian line is the
     bond-market mode median (α near 0: r* tracks indexed_10y − k) rather than
@@ -398,7 +398,7 @@ def plot_world_rstar_overlay(
         au = results.r_star_median()
         au_label = "r* (Australia)"
         au_note = ""
-    components = get_world_rstar(force_download=True)
+    components = get_world_rstar()
 
     df = pd.DataFrame({
         au_label:    au,

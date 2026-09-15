@@ -85,14 +85,31 @@ MARKET_WORLD_SOURCES = {"cleveland": "REAINTRATREARAT10Y", "tips": "DFII10"}
 # this measure the world neutral rate has fully recovered to its pre-GFC average
 # and the rest of today's high yield is premium.
 #
-# Kim-Wright (`THREEFYTP10`, Federal Reserve Board) is a nominal term premium
-# being subtracted from a real rate, so this leaves any inflation risk premium
-# behind. That is a smaller error than leaving the whole term premium in.
-WORLD_NEUTRAL = ("REAINTRATREARAT10Y", "THREEFYTP10")
+# The published premium is a nominal term premium being subtracted from a real
+# rate, so this leaves any inflation risk premium behind. That is a smaller
+# error than leaving the whole term premium in, and it holds whichever provider
+# is chosen below.
+WORLD_REAL_SERIES = "REAINTRATREARAT10Y"
 
-# The published US term premium, used to pin the Australian one when
-# `ModelConfig.us_premium_anchor` is on. Kim-Wright, Federal Reserve Board.
-US_PREMIUM_SERIES = "THREEFYTP10"
+# Which published US term premium is subtracted. It enters in two places, the
+# `market` anchor above and the `--us-premium` pin below, and this setting
+# governs BOTH: mixing providers across the two would make the comparison
+# uninterpretable.
+#
+#   "kim-wright" — `THREEFYTP10`, the Federal Reserve Board three-factor model,
+#                  via FRED. The original default, so it is still the default.
+#   "acm"        — Adrian, Crump and Moench (2013), NY Fed, read straight from
+#                  the source because FRED does not carry it.
+#
+# The same object estimated differently, and the point of having both is that
+# they disagree. Over 1993Q1-2026Q3 the difference has an sd of 0.66 points and
+# era means running from +0.82 (2008-2015) to -0.54 (2020-2022), while agreeing
+# to within -0.03 at 2026Q3. So the endpoint should barely move and the era
+# pattern should, which is what makes this a test of the level's conditioning
+# rather than of the headline. ACM is also the more volatile series, sd 1.07
+# against 0.63, which the stationary AR(1) on the Australian spread must absorb.
+US_PREMIUM_SOURCES = ("kim-wright", "acm")
+KIM_WRIGHT_SERIES = "THREEFYTP10"
 
 
 @dataclass
@@ -310,6 +327,12 @@ class ModelConfig:
     # and `tp` is real, so the inflation risk premium stays on the Australian
     # side of the spread. And a US premium is standing in for a global one.
     us_premium_anchor: bool = False
+    # Which provider's premium, for both this pin and the `market` anchor.
+    # See `US_PREMIUM_SOURCES`. Kim-Wright is the default because it is what
+    # every published result in MODEL_NOTES was estimated on; "acm" is the
+    # second opinion, and the gap between them is the size of the provider's
+    # contribution to a level the data cannot pin.
+    us_premium_source: str = "kim-wright"
     # Centred on a modest liquidity premium, wide enough to be moved.
     mu_spread_mu: float = 0.25
     mu_spread_sigma: float = 0.5

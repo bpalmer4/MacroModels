@@ -254,6 +254,46 @@ their sum, the level of the yield, not the split between "Australia's r\* sits a
 world's" and "the average term premium is large". The 90% interval on r\* straddles zero
 throughout.
 
+### The wedge is not an exchange rate story
+
+Under real interest parity an AU-US real rate gap is expected real depreciation plus a
+currency risk premium, and this model has nowhere to put either except the wedge. So the
+wedge and the real exchange rate path are, in principle, observationally equivalent. No
+exchange rate appears anywhere in the model, which makes this worth checking rather than
+assuming.
+
+There is a real relationship, and it is only a cyclical one. Regressing the wedge's
+quarterly changes on log changes in the exchange rate gives a positive coefficient with the
+sign parity implies, and it holds across both the real TWI and AUD/USD and both
+specifications: `gamma` 0.377 to 0.584, t between 3.25 and 3.94. But R² is only 0.07 to 0.11,
+and once cumulated the FX-attributed component spans just 0.28 to 0.34 points against a
+wedge spanning 1.80 to 2.80, so 10 to 18 per cent of its range.
+
+**The era pattern survives removing it.** Default spec, raw against FX-removed:
+
+| | real TWI | AUD/USD |
+|---|---|---|
+| 1993-2007 | +1.20 → +1.16 | +1.20 → +1.21 |
+| 2008-2015 | +0.24 → +0.02 | +0.24 → +0.14 |
+| 2016-2019 | −0.86 → −1.03 | −0.86 → −0.88 |
+| 2020-2022 | −1.00 → −1.17 | −1.00 → −1.01 |
+| 2023-2026 | −0.27 → −0.47 | −0.25 → −0.23 |
+
+Same sign sequence, same ordering, largest single move 0.22 and under AUD/USD never more
+than 0.11. The headline decline does not weaken: first era to fourth is **−2.20 raw against
+−2.33 FX-removed** on the real TWI and −2.22 on AUD/USD, so stripping the exchange rate
+makes the fall marginally larger. The pin behaves the same way.
+
+So the exchange rate moves the wedge around without taking it anywhere, and incorporating it
+was rejected on that basis: a parity equation would import the PPP puzzle's unidentified
+mean reversion, and the terms of trade plausibly drive the real exchange rate and the return
+on capital together, so putting the rate on the right-hand side would attribute common
+variation to FX by construction. Note also that the *level* correlation between the wedge
+and the exchange rate is not usable in either direction: it runs −0.627 on the real TWI and
+−0.111 on AUD/USD for the default, and −0.483 against **+0.084** for the pin, flipping sign
+with the choice of series. The wedge is a random walk by construction, so a level
+correlation against any persistent series is whatever the two trends happen to do.
+
 ### How much of the bond selloff is neutral rate?
 
 The real yield rose 3.24 points from 2021Q4 to 2026Q3, and the model splits it: r\* +2.13,
@@ -346,9 +386,56 @@ implausible +0.84 premium *and* −0.40 neutral. That combination is better argu
 version, but note what it does and does not achieve: `mu_spread` comes back 0.329
 [-0.588, 1.186], an interval nearly as wide as its `N(0.25, 0.5)` prior. The level is still
 asserted; the assertion has just moved to a quantity with a published benchmark behind it,
-which is arguable on liquidity grounds rather than pulled from nowhere. That is an
+which is arguable on liquidity grounds rather than pulled from nowhere. Liquidity is not all
+it carries, though: `mu_spread` is the average Australian premium over the US one, so it
+also absorbs the **currency risk premium** a global investor demands for AUD exposure, and
+the inflation risk premium left behind by subtracting a nominal US premium from a real
+Australian one. The estimated spread does not track the currency (changes correlation
++0.009 against AUD/USD, +0.018 against the TWI), so this is a gap in the justification
+rather than a demonstrated contamination, but the liquidity story alone understates what is
+being asserted. That is an
 improvement in accountability, not in identification, and it is why the two-window model on
 a market anchor remains the default.
+
+**`--premium-source acm`: the other published US term premium. Tried and rejected.**
+Adrian, Crump and Moench (2013) is the obvious second opinion on the premium that both
+`--world-source market` and `--us-premium` subtract, and the flag governs both places at
+once, since mixing providers across the two is uninterpretable. It is read from the NY Fed
+directly because FRED does not carry it.
+
+It fails on the anchor, before Australia enters. Cleveland less ACM puts the world neutral
+rate at **−0.62 over 2008-2015 and +1.12 over 2016-2019**: a 1.7 point rise into the ZIRP
+and QE era, with the sample trough in the mining-boom years. The derived series has an sd of
+**1.08** against Kim-Wright's 0.61, and a neutral rate does not move like that. The
+mechanism is visible in the inputs: ACM reads the post-GFC US premium at 1.27 against
+Kim-Wright's 0.45, then turns it negative through 2016-2022, so the whole decline in the
+10-year real yield lands in the expectations component instead of the premium. That is the
+Bauer-Rudebusch-Wu persistence bias arriving as a sign error on the era pattern rather than
+as noise.
+
+Downstream it drags r\* with it, era means 1.56 / −0.16 / 1.02 / 0.78 / 1.53 against
+2.13 / 0.70 / 0.21 / −0.17 / 1.06, and moves the stance by up to a point. The endpoint
+barely notices (r\* 1.42 against 1.23, wedge +0.05 against −0.11). **The wedge is untouched
+in shape**, 0.53 / 0.46 / −0.11 / −0.19 / −0.05, and that is the diagnostic: the model
+behaved and the input did not.
+
+**The triangulation is what settles it.** The default specification and the Kim-Wright pin
+are identified quite differently, a free `b_world` on the raw Cleveland yield with `mu_tp`
+floating against an imposed loading on a premium-stripped anchor with `tp` pinned to a
+published series, and they agree: their r\* paths correlate at **0.966**, and the pin's
+median sits inside the default's 90% band in **every quarter** of the sample. ACM correlates
+at **0.442** with the published default, worse than its 0.618 against the pin, and falls
+outside that band about a quarter of the time. It is the outlier against two independent
+readings, not one of two defensible ones. Era means, default / pin-KW / pin-ACM:
+2.42 / 2.13 / 1.56, then 0.56 / 0.70 / −0.16, then −0.52 / 0.21 / 1.02, then
+−0.86 / −0.17 / 0.78, then 0.59 / 1.06 / 1.53.
+
+Two honest qualifications. Kim-Wright *also* has the 2008-2015 trough and a rise after it,
+so what fails here is ACM's level and amplitude, not the direction on its own. And nothing
+in this says Kim-Wright is correct, only that ACM fails a check it passes. Kept as a switch
+because it is the cleanest demonstration the package has that the **anchor**, not the
+Australian data, sets this model's era pattern. ACM also produced 1 divergence against
+Kim-Wright's 0.
 
 **`--curve`: a third window on the belly.** Identifies the premium curve's slope
 (`tp_slope` = 0.700 [0.026, 1.323]) and costs r\*: it drives r\* over 2016-19 from −0.29 to
