@@ -27,6 +27,14 @@ real-rate observation: no expected-inflation subtraction, and no inflation risk
 premium to strip. The cost is that indexed AGS are thin, so the yield carries a
 liquidity premium the nominal series does not. That premium is part of what
 `mu_tp` absorbs.
+
+WINDOW ONE IS A SWITCH. Under `nominal_window` the long-end observable is not
+the indexed yield but the AOFM's RISK-NEUTRAL nominal 10-year yield, deflated:
+a yield with the term premium already removed by someone else. The core column
+is called `y` either way, because it is whatever window one observes and every
+downstream reader wants the series the model was actually fitted on. Which one
+it holds is recorded in the run's constants, and under the nominal window the
+indexed yield is still carried as a chart extra so the two can be compared.
 """
 
 from typing import TYPE_CHECKING
@@ -35,10 +43,15 @@ import numpy as np
 import pandas as pd
 
 from src.data.acm_loader import get_acm_term_premium
+from src.data.aofm_loader import (
+    get_aofm_5y5y_forward,
+    get_aofm_risk_neutral_yield,
+    get_aofm_term_premium,
+)
 from src.data.bonds import get_corporate_spread, get_indexed_yield_filled
 from src.data.cash_rate import get_cash_rate_qrtly
 from src.data.dataseries import DataSeries
-from src.data.expectations_model import get_model_expectations_unanchored
+from src.data.expectations_model import get_model_expectations, get_model_expectations_unanchored
 from src.data.fred_loader import get_fred_series
 from src.data.inflation import get_trimmed_mean_annual
 from src.data.rba_loader import get_bank_bill_rate, get_cgs_yield, get_lending_rate
@@ -77,6 +90,72 @@ def _us_premium(premium_source: str, sources: SourceSet) -> pd.Series:
         )
     quarterly = series.groupby(pd.PeriodIndex(series.index, freq="Q")).mean()
     return quarterly.dropna().astype(float)
+
+
+def _au_premium(source: str, maturity: int, sources: SourceSet) -> pd.Series:
+    """Return the AOFM Australian term premium on a quarterly PeriodIndex.
+
+    A quarterly mean of a daily series, matching how the US premium and the
+    market world anchor are handled: it is being aligned against a quarterly
+    state and the daily series is noisy.
+
+    This is a NOMINAL premium and the `tp` it pins is real, so the inflation
+    risk premium stays in the residual spread. That is the whole residual now,
+    though, which is the gain over `--us-premium`: there the spread also carried
+    a liquidity difference against TIPS and a currency risk premium.
+    """
+    series = sources.take(get_aofm_term_premium(maturity, source)).astype(float).dropna()
+    quarterly = series.groupby(pd.PeriodIndex(series.index, freq="Q")).mean()
+    return quarterly.dropna().astype(float)
+
+
+def _risk_neutral_real_yield(
+    maturity: int,
+    source: str,
+    deflator_series: pd.Series,
+    sources: SourceSet,
+) -> pd.Series:
+    """Return the AOFM risk-neutral nominal yield, deflated, quarterly.
+
+    The average expected nominal short rate over the tenor with the term premium
+    already stripped, less expected inflation: the real expected policy path the
+    long-end equation wants, arrived at without a latent premium.
+
+    Two things it is not. It is not premium-free in truth, only premium-free by
+    AOFM's model, so their specification error lands in `r*` and is no longer
+    visible as a fitted residual. And the deflator is a medium-to-long horizon
+    measure being asked to deflate a ten-year yield, which is a smaller horizon
+    mismatch than the same series makes at the overnight end but is not zero.
+    """
+    series = sources.take(get_aofm_risk_neutral_yield(maturity, source)).astype(float).dropna()
+    quarterly = series.groupby(pd.PeriodIndex(series.index, freq="Q")).mean()
+    return (quarterly - deflator_series).dropna().astype(float)
+
+
+def _real_forward(source: str, deflator_series: pd.Series, sources: SourceSet) -> pd.Series:
+    """Return the AOFM 5y5y risk-neutral forward, deflated, quarterly.
+
+    A THIRD WINDOW, and the only one that speaks to the LEVEL of r* directly.
+    The other two cannot: from the indexed yield and the real cash rate the
+    model can pin their SUM but not the split between r* and the premium, which
+    is the -0.87 correlation between `wedge_0` and `mu_tp` that the notes have
+    always flagged. `mu_spread` then carries the level, and its posterior moves
+    5% off its prior.
+
+    The 5y5y forward is a market price for where the cash rate settles over
+    years five to ten with the term premium removed by AOFM, less long-run
+    expected inflation. At 2026Q2 it reads 1.31 real against this model's 0.84.
+
+    BE CLEAR THAT IT IS LESS INDEPENDENT HERE THAN IN `rstar_rba`. That model
+    observes only the cash rate, so a bond price was genuinely new information.
+    This model already reads the indexed 10-year yield, so a nominal
+    risk-neutral forward is a second look at a curve it is watching. The two
+    instruments differ, and the AOFM has stripped the premium from one and not
+    the other, but they are not independent.
+    """
+    nominal = sources.take(get_aofm_5y5y_forward(source)).astype(float).dropna()
+    quarterly = nominal.groupby(pd.PeriodIndex(nominal.index, freq="Q")).mean()
+    return (quarterly - deflator_series).dropna().astype(float)
 
 
 def _world_series(source: str, sources: SourceSet, premium_source: str = "kim-wright") -> pd.Series:
@@ -284,6 +363,9 @@ def _chart_extras(
     joint_prefix: str,
     ystar_prefix: str,
     ustar_prefix: str,
+    au_premium_source: str,
+    au_premium_maturity: int,
+    indexed_yield: pd.Series | None,
     sources: SourceSet,
 ) -> dict[str, pd.Series]:
     """Return the ragged series carried for the derived results and the charts.
@@ -308,9 +390,36 @@ def _chart_extras(
         "mortgage_std": _optional(
             "standard mortgage rate", lambda: _mortgage_rate(sources, "housing_oo_standard"), sources,
         ),
+        # The AOFM's published Australian term premium. Carried on EVERY run,
+        # including ones that do not pin to it, because the comparison against
+        # the model's own fitted `tp` is the external check this package has
+        # never had: `tp` is stationary about a constant by assertion, and this
+        # is the first Australian series that can say whether it should be.
+        # Both AOFM methods decompose the same curve, so the one named here is
+        # the one the run would pin to, keeping the chart and the pin consistent.
+        "aofm_tp": _optional(
+            "AOFM term premium",
+            lambda: _au_premium(au_premium_source, au_premium_maturity, sources),
+            sources,
+        ),
+        # Present only under `nominal_window`, where the indexed yield is not an
+        # estimation input but is still the natural comparator for the series
+        # that replaced it.
+        **({"y_indexed": indexed_yield} if indexed_yield is not None else {}),
         "pi": _optional("trimmed mean inflation", get_trimmed_mean_annual, sources),
+        # The UNANCHORED series, and it stays unanchored: this is the deflator
+        # for actual borrowing and policy rates, where what matters is what
+        # people expect rather than what the target says.
         "pi_exp": _optional(
             "inflation expectations", get_model_expectations_unanchored, sources,
+        ),
+        # The TARGET-ANCHORED series, carried separately and used only to put
+        # r* on a nominal scale. Converting a neutral rate with the unanchored
+        # measure drags the inflation cycle into it: nominal r* would have
+        # fallen to 0.51 in 2020Q4 purely because expectations dipped. See
+        # `src/models/common/inflation_scale.py`.
+        "pi_exp_lr": _optional(
+            "long-run inflation expectations", get_model_expectations, sources,
         ),
         "cash_rate": cash,
         # The Taylor rule's three inputs. From one joint run by default, so
@@ -391,17 +500,36 @@ def _core_columns(
     us_premium_source: str,
     use_curve: bool,
     curve_maturity: int,
+    au_premium_anchor: bool,
+    au_premium_source: str,
+    au_premium_maturity: int,
+    nominal_window: bool,
+    use_forward: bool,
 ) -> dict[str, pd.Series]:
     """Return the series that define the estimation sample.
 
     Core membership is the decision about what may truncate the run, so the
-    optional two are added only when the specification actually uses them: the
-    3-year real yield begins 1992Q2, the Kim-Wright premium 1990Q1 and the ACM
-    one 1961Q2, and none should shorten a sample that does not need it.
+    optional ones are added only when the specification actually uses them: the
+    3-year real yield begins 1992Q2, the Kim-Wright premium 1990Q1, the ACM one
+    1961Q2 and the AOFM decomposition 1992Q3, and none should shorten a sample
+    that does not need it.
+
+    `y` is window one whichever series that is. Under `nominal_window` the
+    indexed yield is not in the estimation at all, so it must not sit in core
+    constraining the sample; it moves to the chart extras instead.
     """
-    columns = {"y": yield_real, "w": world, "r": real_cash}
+    window = (
+        _risk_neutral_real_yield(au_premium_maturity, au_premium_source, deflator_series, sources)
+        if nominal_window
+        else yield_real
+    )
+    columns = {"y": window, "w": world, "r": real_cash}
     if us_premium_anchor:
         columns["us_tp"] = _us_premium(us_premium_source, sources)
+    if au_premium_anchor:
+        columns["au_tp"] = _au_premium(au_premium_source, au_premium_maturity, sources)
+    if use_forward:
+        columns["f"] = _real_forward(au_premium_source, deflator_series, sources)
     if use_curve:
         columns["m"] = _real_medium_yield(curve_maturity, deflator_series, sources)
     return columns
@@ -418,6 +546,11 @@ def build_observations(
     us_premium_source: str = "kim-wright",
     use_curve: bool = False,
     curve_maturity: int = 3,
+    au_premium_anchor: bool = False,
+    au_premium_source: str = "bc",
+    au_premium_maturity: int = 10,
+    nominal_window: bool = False,
+    use_forward: bool = False,
     input_source: str = "joint",
     joint_prefix: str = "ystar_ustar",
     ystar_prefix: str = "ystar",
@@ -459,6 +592,11 @@ def build_observations(
         us_premium_source=us_premium_source,
         use_curve=use_curve,
         curve_maturity=curve_maturity,
+        au_premium_anchor=au_premium_anchor,
+        au_premium_source=au_premium_source,
+        au_premium_maturity=au_premium_maturity,
+        nominal_window=nominal_window,
+        use_forward=use_forward,
     )).dropna()
     index = core.index
     if not isinstance(index, pd.PeriodIndex):
@@ -482,6 +620,9 @@ def build_observations(
         joint_prefix=joint_prefix,
         ystar_prefix=ystar_prefix,
         ustar_prefix=ustar_prefix,
+        au_premium_source=au_premium_source,
+        au_premium_maturity=au_premium_maturity,
+        indexed_yield=yield_real if nominal_window else None,
         sources=sources,
     )
 
@@ -492,10 +633,18 @@ def build_observations(
     if verbose:
         _report_coverage(
             {
-                "y (indexed real yield)": yield_real,
+                (
+                    f"y (real risk-neutral {au_premium_maturity}y, AOFM {au_premium_source})"
+                    if nominal_window
+                    else "y (indexed real yield)"
+                ): core["y"],
                 f"w (world r*, {world_source})": world,
                 f"r (real {short_rate}, {deflator})": real_cash,
                 **({f"m (real {curve_maturity}y CGS)": core["m"]} if use_curve else {}),
+                **(
+                    {f"au_tp (AOFM {au_premium_maturity}y, {au_premium_source})": core["au_tp"]}
+                    if au_premium_anchor else {}
+                ),
                 **extras,
             },
             obs_index,

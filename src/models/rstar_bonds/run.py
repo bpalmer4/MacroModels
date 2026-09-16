@@ -4,6 +4,7 @@ import argparse
 
 from src.models.rstar_bonds.analyse import run_analysis
 from src.models.rstar_bonds.config import (
+    AU_PREMIUM_SOURCES,
     DEFLATORS,
     SHORT_RATES,
     US_PREMIUM_SOURCES,
@@ -20,10 +21,11 @@ def main() -> None:
     parser.add_argument("--start", default="1993Q1", help="Sample start (default 1993Q1)")
     parser.add_argument("--end", default=None, help="Sample end (default: latest)")
     parser.add_argument(
-        "--world-source", default="cleveland", choices=list(WORLD_SOURCES),
-        help="What anchors the state: a market real rate (default: cleveland, the "
-             "Cleveland Fed 10y expected real rate) or an HLW model estimate "
-             "(mean, US, Euro Area, Canada)",
+        "--world-source", default="market", choices=list(WORLD_SOURCES),
+        help="What anchors the state (default: market, the Cleveland Fed 10y expected "
+             "real rate LESS the published US term premium, so both sides of the "
+             "comparison are premium-free). 'cleveland' is the raw yield; mean, US, "
+             "Euro Area and Canada are HLW model estimates",
     )
     parser.add_argument(
         "--no-world", action="store_true",
@@ -57,9 +59,33 @@ def main() -> None:
              "acm is Adrian-Crump-Moench from the NY Fed)",
     )
     parser.add_argument(
-        "--impose-world-loading", action="store_true",
-        help="Impose one-for-one pass-through of world r* instead of estimating it, "
-             "taking the 'r* is imported' premise as given rather than putting it at risk",
+        "--au-premium", action=argparse.BooleanOptionalAction, default=True,
+        help="Pin the term premium to the AOFM's published AUSTRALIAN one and estimate "
+             "only the real-nominal spread (default on). --no-au-premium restores the free "
+             "mu_tp version, whose flat premium the AOFM series contradicts",
+    )
+    parser.add_argument(
+        "--au-premium-source", default="bc", choices=list(AU_PREMIUM_SOURCES),
+        help="Which AOFM decomposition, for both --au-premium and --nominal-window "
+             "(default bc, bias-corrected; ols is plain ACM, the estimator this package "
+             "already rejected for the US)",
+    )
+    parser.add_argument(
+        "--nominal-window", action="store_true",
+        help="Read window one off the AOFM risk-neutral nominal yield, deflated, instead "
+             "of the indexed real yield. Removes the term premium from the model entirely, "
+             "and with it the wedge_0/mu_tp trade-off that is the level problem",
+    )
+    parser.add_argument(
+        "--forward", action=argparse.BooleanOptionalAction, default=ModelConfig().use_forward,
+        help="Add the AOFM 5y5y risk-neutral forward, deflated, as a third window loading "
+             "directly on r*. The only observable here that speaks to the LEVEL",
+    )
+    parser.add_argument(
+        "--impose-world-loading", action=argparse.BooleanOptionalAction, default=True,
+        help="Impose one-for-one pass-through of world r* rather than estimating it "
+             "(default on). Free, it is not identified against the wedge once the premium "
+             "is pinned: it collapses to 0.015. --no-impose-world-loading estimates it",
     )
     parser.add_argument(
         "--curve", action="store_true",
@@ -99,7 +125,7 @@ def main() -> None:
              "3.64, inside the infinite-kurtosis regime, which is the model straining)",
     )
     parser.add_argument(
-        "--nu-walk", type=float, default=None,
+        "--nu-walk", type=float, default=ModelConfig().nu_walk,
         help="fix the StudentT degrees of freedom instead of estimating them "
              "(removes the model's one funnel; see ModelConfig.nu_walk)",
     )
@@ -147,6 +173,10 @@ def main() -> None:
             short_rate=args.short_rate,
             us_premium_anchor=args.us_premium,
             us_premium_source=args.premium_source,
+            au_premium_anchor=args.au_premium,
+            au_premium_source=args.au_premium_source,
+            nominal_window=args.nominal_window,
+            use_forward=args.forward,
             use_curve=args.curve,
             curve_maturity=args.curve_maturity,
             curve_horizon_quarters=args.curve_maturity * 4,

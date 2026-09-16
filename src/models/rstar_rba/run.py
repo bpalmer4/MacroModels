@@ -41,7 +41,12 @@ def main() -> None:
              "it is rejected: its residual is a trending near-unit-root series rather than "
              "the noise the likelihood assumes. Kept because that rejection is a result",
     )
-    parser.add_argument("--sigma-r", type=float, default=0.10, help="Imposed walk sd (with --walk)")
+    # Default read from ModelConfig, never restated: a literal here silently
+    # beats a config change, which has bitten this repo repeatedly.
+    parser.add_argument(
+        "--sigma-r", type=float, default=ModelConfig().sigma_r,
+        help="Imposed walk sd (with --walk)",
+    )
     parser.add_argument(
         "--sigma-r-ensemble", default=",".join(f"{v:g}" for v in DEFAULT_SIGMA_R_VALUES),
         metavar="VALUES",

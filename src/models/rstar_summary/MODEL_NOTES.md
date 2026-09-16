@@ -12,18 +12,61 @@ structural assumptions, not sampling error.
 
 | line | anchored to | what to distrust |
 |---|---|---|
-| Bond market (`rstar_bonds`) | Cleveland Fed 10y expected real rate, plus an AU wedge | the LEVEL is not identified: `wedge_0` against `mu_tp` at −0.87, and `b_world` of 0.481 is not credible as a pass-through |
-| RBA reaction function (`rstar_rba`) | the Bank's response to inflation away from target | the level is conditional on an arbitrary `sigma_r`, running −0.05 to 1.05 across defensible values |
-| IS inversion (`rstar_invert`) | **nothing** | the path is decided by the asserted speed of r\*; its 2007 peak spans 4.0 to 7.0 real across `sigma_rstar` alone |
+| Bond market (`rstar_bonds`) | a premium-stripped world real rate, plus an AU wedge, with the AOFM 5y5y forward pinning the level | the wedge is four times jumpier since the forward went in, so some of the path is bond-market noise booked as r\*; `forward_bias` is uninterpreted |
+| RBA reaction function (`rstar_rba`) | the Bank's response to inflation away from target, with the same 5y5y forward as a second window | the level is conditional on `sigma_r`, though the forward cut that dependence from a 1.10 spread to 0.31 |
+| TVP-VAR steady state (`rstar_tvpvar`) | the VAR's own long-run mean | the steady state is undefined for a quarter of draws: 26.6% of draw-quarters are explosive, median spectral radius 0.967 |
 
 All three are conditional. That is not a reason to prefer one: it is the state of the
 literature on Australian data.
 
+**`rstar_invert` was REMOVED from this summary on 2026-09-16.** It inverted an asserted IS
+curve, and the repo's own evidence is that no such curve is identifiable on Australian data:
+five independent methods here fail to recover even its sign. Charting a line whose every
+value follows from a relationship nobody in this package believes in gave the summary a
+fourth "answer" that was really a restatement of its own assumption. The package remains,
+with its notes, as the record of that attempt. Sections below written when it was on the
+chart still refer to it.
+
+**Both remaining real-rate models now read the same AOFM 5y5y forward**, which is worth
+saying plainly because it weakens the independence the chart trades on. `rstar_bonds` and
+`rstar_rba` agreeing about the level is now partly the same observable speaking twice.
+
 ### The nominal conversion
 
-`rstar_rba` records `neutral` in nominal terms already. The other two are real and have the
-**2.5% target** added, because a neutral rate is defined at target inflation rather than at
-whatever inflation happened to be. Same convention `rstar_rba` settled on internally.
+`rstar_rba` records `neutral` in nominal terms already. The other two are real and have
+**target-anchored long-run inflation expectations** added.
+
+**This changed on 2026-09-16.** It used to add the flat 2.5% target, on the ground that a
+neutral rate is defined at target inflation. The reason for changing is comparability: the
+RBA and CBA both convert using long-run expectations, so a chart built on the target was
+never quite like for like against a published neutral rate.
+
+The change is small and lands where it should. Over 1993Q1 onward the anchored series runs
+2.13 to 3.50 with an sd of 0.28:
+
+| 1993-99 | 2000-07 | 2008-15 | 2016-21 | 2022- |
+|---|---|---|---|---|
+| 2.98 | 2.50 | 2.60 | 2.32 | 2.57 |
+
+So it is worth about +0.5pp through the 1990s re-anchoring, where expectations genuinely sat
+above target and the old convention understated every nominal path on this chart, and close
+to nothing after 2000.
+
+**It is the ANCHORED series, not the unanchored one.** The unanchored median moves with the
+cycle (1.72 at its trough, 3.32 in 2023), and converting a neutral rate with it would drag
+the inflation cycle into r\*: nominal r\* would have fallen to 0.51 in 2020Q4 purely because
+expectations dipped. That is the same objection `rstar_rba`'s notes raise against deflating
+by realised inflation, and the anchored series does not attract it, as its 2022- mean of 2.57
+shows.
+
+**It creates a dependency.** This package now needs a completed `./run-expectations.sh`, and
+it fails loudly rather than falling back, because a silent fallback would publish one
+convention under the label of another. `--nominal-on target` restores the old behaviour, so
+every previously published number stays reproducible.
+
+The convention lives in [`src/models/common/inflation_scale.py`](../common/inflation_scale.py)
+and is used in both directions: `rstar_bonds` and this package convert real to nominal,
+`rstar_rba` converts nominal to real.
 
 Note it reads `rstar_rba`'s `neutral` (the slow base `b_t`), **not** `prescribed`, which adds
 the Bank's inflation response on top and is not a neutral rate.
@@ -77,22 +120,36 @@ It describes where the models sit.
 
 ## Reading the charts
 
-As at 2026Q2: bond market 3.58, RBA reaction function 2.99, IS inversion 4.03, mean **3.47**
-nominal, about 0.97 real. The three span 1.03pp; the widest they have ever been is 2.12pp in
-2005Q4.
+As at 2026Q2: bond market **3.33**, RBA reaction function **3.89**, TVP-VAR steady state
+**3.96**, mean **3.73** nominal. The three span 0.63pp. `rstar_bonds` alone runs a quarter
+further, to 2026Q3, because it reads bond yields while the other two need GDP and the output
+gap; there it reads 3.57. **Do not average across quarters.** Mixing the bonds 2026Q3 value
+with the other two at 2026Q2 gives 3.81 rather than 3.73, and that difference is calendar
+arithmetic, not a finding.
 
-All three tell the same broad story: a fall from around 5.5 to 6% in the mid-1990s to roughly
-1.3 to 1.5% by 2015-2021, and a recovery since. They differ mainly in **timing**: the IS
-inversion peaks in 2006 and troughs in 2015, while the two anchored models trough around
-2021. That lead is plausible rather than suspicious, since the IS inversion's r\* is driven by
-the output gap's cycle, which turned before the policy rate did.
+For scale against a published number: CBA's September 2026 nominal neutral is **3.85**, inside
+this range and nearest `rstar_rba`.
+
+All three tell the same broad story: a fall from around 5.5 to 6% in the mid-1990s to a trough
+in 2015-2021, and a recovery since.
+
+**The bonds line moved on 2026-09-16 and its shape changed, not just its level.** Adding the
+5y5y forward window lifted it from 3.06 to 3.33 at 2026Q2 and, more importantly, abolished its
+negative stretch: 2016-2019 and 2020-2021 go from −0.11 and −0.70 real to +0.42 and +0.14. The
+deflated forward never went negative, and a window loading directly on r\* will not let r\* go
+where the observable does not.
 
 ### The band understates
 
 It is the range across three particular modelling choices, not a sample from anything, so a
 fourth reasonable model could sit outside it. And each line is itself conditional on a number
-nobody measures: `rstar_invert`'s own `sigma_rstar` sweep moves its 2007 peak between 4.0 and
-7.0 real, **wider than the entire cross-model band at that date**.
+nobody measures: `rstar_rba`'s `sigma_r` and `rstar_bonds`' imposed `nu_walk` are both choices
+rather than estimates, and `rstar_tvpvar`'s steady state does not exist at all for 26.6% of
+its draw-quarters.
+
+The band is also narrower than it looks, because two of the three lines now read the same AOFM
+5y5y forward. Some of the agreement between `rstar_bonds` and `rstar_rba` is one observable
+counted twice rather than two methods converging.
 
 So the chart maps the landscape of *published* possibilities. The landscape of defensible
 ones is larger.

@@ -20,14 +20,6 @@ slide along the x axis to meet the line.
 
 import argparse
 
-
-def _parse_lags(text: str) -> tuple[int, ...]:
-    """Parse a comma-separated lag list, e.g. '5' or '4,8'."""
-    lags = tuple(int(part) for part in text.split(",") if part.strip())
-    if not lags:
-        raise argparse.ArgumentTypeError(f"no lags parsed from {text!r}")
-    return lags
-
 from src.models.rstar_invert.analyse import run_analyse
 from src.models.rstar_invert.config import RSTAR_FORMS, ModelConfig
 from src.models.rstar_invert.ensemble import (
@@ -42,12 +34,26 @@ from src.models.rstar_invert.estimate import run_estimate
 from src.models.ystar.base import SamplerConfig
 
 
+def _parse_lags(text: str) -> tuple[int, ...]:
+    """Parse a comma-separated lag list, e.g. '5' or '4,8'."""
+    lags = tuple(int(part) for part in text.split(",") if part.strip())
+    if not lags:
+        raise argparse.ArgumentTypeError(f"no lags parsed from {text!r}")
+    return lags
+
+
+
+# Defaults are read from ModelConfig, never restated. Restating them is how a
+# config change silently fails to reach a run: the value here wins.
+_D = ModelConfig()
+
+
 def main(
-    is_slope_mu: float = -0.30,
-    is_slope_sigma: float = 0.10,
-    sigma_rstar: float = 0.10,
-    rstar_form: str = "walk",
-    rate_lags: tuple[int, ...] = (4, 8),
+    is_slope_mu: float = _D.is_slope_mu,
+    is_slope_sigma: float = _D.is_slope_sigma,
+    sigma_rstar: float = _D.sigma_rstar,
+    rstar_form: str = _D.rstar_form,
+    rate_lags: tuple[int, ...] = _D.rate_lags,
     *,
     fix_lag_weight: bool = False,
     free_sigma_rstar: bool = False,
@@ -113,7 +119,7 @@ if __name__ == "__main__":
         description="r* by conditional inversion of an ASSERTED IS curve",
     )
     parser.add_argument(
-        "--is-slope-mu", type=float, default=-0.30,
+        "--is-slope-mu", type=float, default=_D.is_slope_mu,
         help=(
             "prior mean of the IS slope, per cent of potential per pp of stance. "
             "Must be negative. Default -0.30, deliberately stronger than anything "
@@ -122,14 +128,14 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
-        "--is-slope-sigma", type=float, default=0.10,
+        "--is-slope-sigma", type=float, default=_D.is_slope_sigma,
         help="prior sd of the IS slope (default 0.10; smaller is closer to an assertion)",
     )
     parser.add_argument(
-        "--sigma-rstar", type=float, default=0.10,
+        "--sigma-rstar", type=float, default=_D.sigma_rstar,
         help=(
             "HOW SLOW r* IS: the asserted quarterly sd of its innovation, in "
-            "percentage points (default 0.10). The one open question in the model, "
+            "percentage points (default 0.15). The one open question in the model, "
             "and nothing in the data settles it. Only used with --rstar-form walk"
         ),
     )

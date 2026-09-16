@@ -111,6 +111,17 @@ WORLD_REAL_SERIES = "REAINTRATREARAT10Y"
 US_PREMIUM_SOURCES = ("kim-wright", "acm")
 KIM_WRIGHT_SERIES = "THREEFYTP10"
 
+# Which AOFM decomposition pins the AUSTRALIAN premium. See
+# `src/data/aofm_loader.py` for what the two are and why "bc" is the default:
+# the "ols" sheet is a plain ACM, the estimator this package already tested and
+# rejected for the US on Bauer-Rudebusch-Wu persistence-bias grounds, so the
+# bias-corrected sheet is the consistent choice. Over 1993Q1-2026Q3 the 10-year
+# premium falls 2.99 points on "ols" against 1.99 on "bc", and the model's own
+# fitted premium falls 0.30, which is the finding this switch exists to expose.
+AU_PREMIUM_SOURCES = ("bc", "ols")
+# The AOFM decomposes tenors 1 to 10 years; nothing longer is published.
+AOFM_MAX_MATURITY = 10
+
 
 @dataclass
 class ModelConfig:
@@ -142,8 +153,21 @@ class ModelConfig:
     end: str | None = None
 
     # --- The global anchor ---
-    # "cleveland", the Cleveland Fed's 10-year expected real rate, not the HLW
-    # mean it used to be. Three reasons, in order of weight.
+    # "market" SINCE 2026-09-16: the Cleveland Fed's 10-year expected real rate
+    # LESS the published US term premium, so the anchor is an expected average
+    # real short rate rather than a yield. See `WORLD_REAL_SERIES` above for
+    # what that difference is and why it is the right object.
+    #
+    # The reason it is now the default is consistency with `au_premium_anchor`,
+    # not a new result. Pinning the Australian premium to the AOFM series while
+    # anchoring on a US series that still contains a US term premium strips one
+    # side of the comparison and not the other, which is incoherent: the model
+    # would be asked to explain a premium-free Australian curve with a
+    # premium-bearing world rate. Strip both or neither.
+    #
+    # The notes on "cleveland" below are kept because it remains the comparator
+    # and because they record why the HLW anchor went. Three reasons, in order
+    # of weight.
     #
     # 1. It is a price. HLW is `r* = g + z` identified through the IS and
     #    Phillips curves, and this package exists because that identification
@@ -163,7 +187,7 @@ class ModelConfig:
     # yield, so it contains a US term premium, which makes the residual this
     # model calls the Australian term premium a *relative* quantity rather than
     # an absolute one. `--world-source mean` restores the old anchor.
-    world_source: str = "cleveland"
+    world_source: str = "market"
     # Drop the world equation entirely, leaving one observable for two
     # components. Kept because it is the honest test of what the anchor
     # contributes, in the same spirit as ustar's `use_output_gap`.
@@ -187,14 +211,28 @@ class ModelConfig:
     #
     # It is the first outcome: `b_world` = 0.846 [0.383, 1.303], a posterior sd
     # of 0.245 against the prior's 1.0. The data pull the loading to a quarter
-    # of the prior's width and centre it near one. On by default for that
-    # reason — the premise the whole package rests on should be estimated where
-    # it can be, not imposed and then defended in the notes. `--impose-world-
-    # loading` restores the b_world = 1 version, which is the comparator.
+    # of the prior's width and centre it near one. That was the reason it was
+    # free by default: the premise the whole package rests on should be
+    # estimated where it can be, not imposed and then defended in the notes.
+    #
+    # IMPOSED SINCE 2026-09-16, because that reasoning does not survive the
+    # premium pin. Once `au_premium_anchor` makes the Australian premium data,
+    # the Australian curve pins r* directly, the free wedge absorbs the path,
+    # and the loading has nothing left to explain: it comes back at 0.226 on
+    # the Cleveland anchor and 0.015 on the premium-stripped one. That is not
+    # the finding "almost nothing is imported", which is not credible for an
+    # open economy with a floating currency. It is a collapse: a free loading
+    # against a free random-walk wedge is not identified, and publishing 0.015
+    # would be publishing a number that means nothing.
+    #
+    # Imposing it makes `wedge` mean exactly what this package says it means,
+    # Australia's spread over the world, and turns the premise into one
+    # asserted thing stated plainly rather than a number to defend.
+    # `--free-world-loading` restores the estimated version as the comparator.
     #
     # No separate intercept: `wedge_0` already is one, and adding a second
     # would be exactly collinear with it.
-    free_world_loading: bool = True
+    free_world_loading: bool = False
 
     # --- The second window: the real cash rate ---
     # Drop the short-rate equation, leaving the one-window model: r* against
@@ -337,6 +375,132 @@ class ModelConfig:
     mu_spread_mu: float = 0.25
     mu_spread_sigma: float = 0.5
 
+    # --- Pinning the premium to the AUSTRALIAN published one ---
+    # The same device as `us_premium_anchor`, against a better series. That pin
+    # asserts "the average Australian premium over the US one", which absorbs a
+    # liquidity spread, a currency risk premium AND the inflation risk premium
+    # left by subtracting a nominal US premium from a real Australian yield, and
+    # its `mu_spread` posterior came back nearly as wide as its prior. The AOFM
+    # decomposition is an Australian premium, so pinning to it removes the
+    # country mismatch entirely and leaves the inflation risk premium as the
+    # only thing in the residual — one object, with a clean interpretation, and
+    # one that genuinely should be close to stationary after anchoring.
+    #
+    # ON BY DEFAULT SINCE 2026-09-16. It began as the switch that TESTED the
+    # package's identifying assumption, and the assumption lost. With `tp`
+    # stationary about a constant it moved 0.29 points across the sample while
+    # the AOFM premium moved 1.45 and the wedge moved 1.79, and the wedge
+    # correlated with the published premium at 0.92. The long yield's decline
+    # was substantially premium and the old default was booking it as r*.
+    #
+    # What settled it was that the AOFM series passes the checks this package
+    # already used to reject plain ACM as the US premium. Its expectations
+    # component declines monotonically into ZIRP (-1.20 on the bias-corrected
+    # sheet, -0.83 on OLS) rather than inverting the era pattern the way US ACM
+    # did, it predicts the cash rate actually realised over the following ten
+    # years at +0.77, and its two methods disagree less than Kim-Wright and ACM
+    # do (sd 0.42 against 0.66). So the premium is no longer inferred from a
+    # prior nobody can check; it is data with an audit behind it.
+    #
+    # It also fixes the amplitude. The old default swung 4.39 points of nominal
+    # r* across the sample against CBA's 3.15; this swings 3.66. Excess
+    # variance in r* was the term premium arriving under another name.
+    #
+    # `--no-au-premium` restores the free `mu_tp` version as the comparator.
+    au_premium_anchor: bool = True
+    # Which AOFM decomposition. See `AU_PREMIUM_SOURCES`.
+    au_premium_source: str = "bc"
+    # Maturity of the pinned premium. Matches the 10-year indexed yield in `y`.
+    au_premium_maturity: int = 10
+
+    # --- Reading the long end off the risk-neutral curve instead ---
+    # The structural version of the same idea. Rather than observe the indexed
+    # real yield and split it with a latent premium, observe the AOFM's
+    # RISK-NEUTRAL nominal yield, whose premium has already been removed, and
+    # deflate it. Window one becomes
+    #
+    #     y_rn_t = r*_t + k·g_t + e_t,     e ~ Normal(0, sigma_rn)
+    #
+    # with no `tp`, no `mu_tp`, and therefore none of the `wedge_0`/`mu_tp`
+    # trade-off at -0.87 that IS the level identification problem. That is the
+    # point: it does not weaken the assertion, it removes the parameter the
+    # assertion was attached to.
+    #
+    # What it costs. The premium is now AOFM's model rather than ours, so their
+    # specification error becomes ours and is no longer visible as a residual.
+    # The residual `e` is a genuine observation error, since a risk-neutral
+    # yield is an estimate, and unlike the abandoned `sigma_y` it has work to do
+    # because there is no free premium competing with it for the same variance.
+    # And a nominal yield needs deflating, so the horizon mismatch in `deflator`
+    # arrives at the long end: a 10-year yield wants 10-year expected inflation
+    # and the expectations series is a medium-to-long measure, which is closer
+    # than it is at the overnight end but is not zero.
+    nominal_window: bool = False
+
+    # --- A THIRD WINDOW: the market's 5y5y forward ---
+    # The only observable here that speaks to the LEVEL of r* directly. The
+    # indexed yield and the real cash rate between them pin r* + tp but not the
+    # split, which is the -0.87 correlation between `wedge_0` and `mu_tp`. With
+    # `au_premium_anchor` on, `mu_spread` carries the level, and its posterior
+    # moves 5% off its prior: sd 0.477 against 0.500, median 0.304 against a
+    # 0.25 prior mean. That is a level the data does not speak to.
+    #
+    # The same device fixed `rstar_rba`, where real neutral's dependence on
+    # `sigma_r` fell from a 1.10 spread to 0.31. Whether it works here is a
+    # separate question, because it is LESS INDEPENDENT: that model watches only
+    # the cash rate, this one already watches the indexed 10-year yield.
+    #
+    # ON BY DEFAULT SINCE 2026-09-16. It needs `nu_walk` fixed to sample: see
+    # that field. With it, `mu_spread`'s posterior sd falls 0.477 to 0.318, so
+    # the data move the level 36% off its prior rather than 5%, at 0 divergences
+    # and BFMI 0.74 — as clean as the two-window model. Nominal r* rises from
+    # 3.06 to 3.33 at 2026Q2.
+    #
+    # TWO COSTS, BOTH REAL. The wedge becomes about four times jumpier quarter
+    # to quarter, sd(d wedge) 0.052 to 0.196, while sd(wedge) barely moves
+    # (0.698 to 0.694): the forward injects high-frequency movement rather than
+    # a new trend, and a 5y5y forward moves with market sentiment in a way r*
+    # should not. Some unknown share of that is bond-market noise booked as r*.
+    # And `forward_bias` comes back +0.139 with sd 0.382 against a 0.50 prior, a
+    # wide interval straddling zero, where `rstar_rba` gets -0.109 [-0.289,
+    # +0.068] from the same observable. This model cannot interpret the forward
+    # as cleanly, because it already reads the indexed 10-year yield and the two
+    # compete for the same variation.
+    use_forward: bool = True
+    forward_bias_mu: float = 0.0
+    # ZERO IMPOSES THE BIAS RATHER THAN ESTIMATING IT. Left free, because
+    # imposing it was TRIED AND IS WORSE, and the argument for imposing it was
+    # wrong. That argument was a parameter count: a free bias is a fourth level
+    # parameter (`wedge_0`, `mu_spread`, `mu_g`, `bias`) against three
+    # level-bearing observables (`y`, `r`, `f`), so the forward adds an
+    # observable and a parameter together and does not close the flat direction
+    # the two-window model already had. On that reading the bias was a spare
+    # wheel and dropping it should have helped.
+    #
+    # It did the opposite: 35 divergences against the free bias's 22 and the
+    # shipped spec's 1, with `r_hat` 1.020, ESS 345 and BFMI 0.16. So the bias
+    # is not spare, it is a release valve. The forward disagrees with what the
+    # other two windows say about the level, and the bias was absorbing that
+    # disagreement. Impose it and the disagreement is pushed onto the wedge
+    # walk instead, which is the Student-t whose `nu` is itself sampled.
+    #
+    # That is also the useful finding from the experiment. BFMI 0.16 with
+    # 24.5% of transitions at maximum tree depth is a FUNNEL signature, not the
+    # ridge signature the level count predicted, and this model has exactly one
+    # funnel: see `nu_walk` below.
+    forward_bias_sigma: float = 0.50
+    # HalfNormal scale on the forward's observation error. Deliberately diffuse
+    # against a posterior of 0.102 (sd 0.021): the likelihood pins this one, and
+    # the check that it does is in `_forward_window` — swapping the prior for an
+    # InverseGamma with mean 0.10 moved `sigma_f` only to 0.093 and left every
+    # other quantity inside a thousandth. Tightening it is therefore pointless,
+    # and the zero-avoiding version is actively worse for sampling.
+    sigma_f_sigma: float = 1.0
+    # Prior sd on that observation error. Weak: the residual is the only thing
+    # absorbing both AOFM's estimation error and the deflator mismatch, and
+    # pinning it tight would push both into the wedge.
+    sigma_rn_sigma: float = 1.0
+
     # Which of the two means is asserted. One of them must be: with two
     # observables and three free levels (`wedge_0`, `mu_tp`, `mu_g`) the
     # posterior still has a flat direction, since adding d to r* and taking d
@@ -460,7 +624,25 @@ class ModelConfig:
     # and the marginal 0.30-sized moves (1993Q3, 1995Q2, 2012Q2) the first to
     # go. Whether that is right is a view about the wedge, not a sampler
     # question, which is why it is swept rather than set.
-    nu_walk: float | None = None
+    # FIXED AT 9.0 SINCE 2026-09-16, because `use_forward` needs it. 9.0 is not
+    # a tuning choice: it is what this model's own free posterior chooses when
+    # the forward is OFF (9.20). Fixing it there says estimate the tail
+    # behaviour from the data that can identify it, then stop the third window
+    # distorting it.
+    #
+    # It has to be fixed because the forward and `sigma_walk` disagree. Two
+    # windows want quarterly wedge changes of sd 0.052, well inside
+    # `sigma_walk` = 0.12; three want 0.254, about twice it. Left free, `nu`
+    # collapses from 9.20 to 1.88 — below 2, where the Student-t has no
+    # variance at all — because fat tails make the large wedge jumps the forward
+    # demands cheap. That collapse is the funnel: 22 divergences, BFMI 0.16.
+    #
+    # Fixing `nu` high makes those jumps expensive, so the forward's
+    # high-frequency variation goes into `sigma_f` instead, which is what an
+    # observation error is for. It rises 0.102 -> 0.156 and the divergences go
+    # to zero. The sweep is monotonic: nu 2.4 gives 5 divergences and BFMI 0.32,
+    # nu 6 gives 0 and 0.65, nu 9 gives 0 and 0.74.
+    nu_walk: float | None = 9.0
 
     # Sample the Student-t innovations as a scale mixture of normals rather
     # than directly: `eps = z · sqrt(lam)` with `z ~ N(0,1)` and
@@ -563,6 +745,45 @@ class ModelConfig:
             raise ValueError("use_curve needs use_short: the curve equations carry the policy gap")
         if self.mu_g_sigma <= 0:
             raise ValueError(f"mu_g_sigma must be positive, got {self.mu_g_sigma}")
+        self._validate_aofm_switches()
+
+    def _validate_aofm_switches(self) -> None:
+        """Validate the two switches that read the AOFM decomposition.
+
+        Separate from `__post_init__` only to keep each method's branch count
+        readable; these are checked on every construction exactly as the rest are.
+        """
+        if self.au_premium_source not in AU_PREMIUM_SOURCES:
+            raise ValueError(
+                f"au_premium_source must be one of {AU_PREMIUM_SOURCES}, got {self.au_premium_source!r}",
+            )
+        if not 1 <= self.au_premium_maturity <= AOFM_MAX_MATURITY:
+            raise ValueError(
+                f"au_premium_maturity must be 1 to {AOFM_MAX_MATURITY} years, "
+                f"got {self.au_premium_maturity}",
+            )
+        # Both pins target the same `tp`, so together they would assert the level
+        # twice and the second Potential would silently win.
+        if self.au_premium_anchor and self.us_premium_anchor:
+            raise ValueError(
+                "au_premium_anchor and us_premium_anchor both pin the same premium; choose "
+                "one. au_premium_anchor is ON BY DEFAULT since 2026-09-16, so pinning to "
+                "the US premium now needs --no-au-premium --us-premium.",
+            )
+        # The nominal window has no `tp` to pin, so a pin alongside it is a
+        # specification the user did not get: say so rather than ignore it.
+        if self.nominal_window and (self.au_premium_anchor or self.us_premium_anchor):
+            raise ValueError(
+                "nominal_window removes the term premium from the model, so there is nothing "
+                "for au_premium_anchor or us_premium_anchor to pin",
+            )
+        if self.nominal_window and self.use_curve:
+            raise ValueError(
+                "use_curve reads a second premium off the real curve, which nominal_window "
+                "does not estimate; run them separately",
+            )
+        if self.sigma_rn_sigma <= 0:
+            raise ValueError(f"sigma_rn_sigma must be positive, got {self.sigma_rn_sigma}")
 
     @property
     def constants(self) -> dict[str, float]:
@@ -580,6 +801,10 @@ class ModelConfig:
             "curve_maturity": float(self.curve_maturity),
             "curve_horizon_quarters": float(self.curve_horizon_quarters),
             "assert_stance": float(self.assert_stance),
+            "au_premium_anchor": float(self.au_premium_anchor),
+            "au_premium_maturity": float(self.au_premium_maturity),
+            "nominal_window": float(self.nominal_window),
+            "use_forward": float(self.use_forward),
             "mu_g_mu": self.mu_g_mu,
             "mu_g_sigma": self.mu_g_sigma,
             "anchor": self.anchor,

@@ -11,6 +11,7 @@ import pandas as pd
 import xarray as xr
 
 from src.models.common.diagnostics import save_diagnostics
+from src.models.common.inflation_scale import long_run_expectations
 from src.models.common.sources import footer_from_constants
 from src.models.rstar_rba.ensemble import load_ensemble, print_ensemble
 from src.models.rstar_rba.estimate import load_results, posterior_median
@@ -254,9 +255,12 @@ def print_diagnostics(
     # pass-through. Separating them needs an expectations series this package
     # deliberately does not import. See MODEL_NOTES.md.
     print(f"  lambda, per pp of inflation        {lam / band:6.2f}   (nominal)")
-    anchor = float(constants.get("anchor", 2.5))
+    # Real is nominal less long-run expectations, not less the target: see
+    # `plot_rstar_real_nominal` and `src/models/common/inflation_scale.py`.
+    expectations = long_run_expectations(neutral.index)
     print(f"  neutral b_t, nominal               {neutral.iloc[-1]:6.2f}")
-    print(f"  neutral b_t, real (less anchor)    {neutral.iloc[-1] - anchor:6.2f}")
+    print(f"  long-run inflation expectations    {expectations.iloc[-1]:6.2f}")
+    print(f"  neutral b_t, real (less exp'ns)    {neutral.iloc[-1] - expectations.iloc[-1]:6.2f}")
     print(f"  prescribed rate b_t + lambda.g     {prescribed.iloc[-1]:6.2f}")
     print(f"  stance, cash rate less neutral     {frame['r'].iloc[-1] - neutral.iloc[-1]:+6.2f}")
     print(f"  rule residual sd vs cash rate sd   {residual.std():6.2f} vs {frame['r'].std():.2f}")
@@ -468,22 +472,30 @@ def plot_rstar_real_nominal(trace: az.InferenceData, frame: pd.DataFrame, consta
     today's real reading from 0.98 to 0.49 and makes it comparable for the first
     time with `rstar_bonds` and `rstar_hlw`, which both estimate an intercept.
 
-    Real is that less the target, which is what `rstar_bonds` and `rstar_hlw`
-    also do, so the three are comparable and the two lines here have the same
-    shape. Deflating by realised inflation instead was tried and is wrong for a
-    neutral rate: a neutral rate is defined at target inflation, and subtracting
-    what inflation actually did makes the "real neutral" swing with the cycle
-    (it hit -2.2 in 2022 purely because inflation peaked).
+    Real is that less LONG-RUN INFLATION EXPECTATIONS, which is what the RBA and
+    CBA do and what `rstar_bonds` and `rstar_summary` now do, so the package is
+    internally consistent and comparable with a published neutral rate. It used
+    to subtract the flat 2.5% target; the two agree closely after 2000 and
+    differ by up to a point through the 1990s.
+
+    Deflating by REALISED inflation instead was tried and is wrong for a neutral
+    rate: it made the "real neutral" swing with the cycle, hitting -2.2 in 2022
+    purely because inflation peaked. Anchored expectations do not do that, which
+    is what makes them usable here where realised inflation is not: over 1993Q1
+    onward they run 2.13 to 3.50 with an sd of 0.28, and their 2022- mean is
+    2.57. See `src/models/common/inflation_scale.py`.
 
     The band is conditional on `sigma_r`, which is imposed. It is the
     uncertainty given the smoothness assumption, not the whole of it.
     """
     index = _period_index(frame)
-    anchor = float(constants.get("anchor", 2.5))
     # `neutral`, not `prescribed`. The deflator is applied to the draws rather
     # than reading `neutral_real`, so the two bands come from one draw matrix.
+    # Subtracting column-wise keeps every draw on the same quarter's
+    # expectations, which a scalar anchor did implicitly.
     nominal_draws = posterior_draws(trace, "neutral", index)
-    real_draws = nominal_draws - anchor
+    expectations = long_run_expectations(index)
+    real_draws = nominal_draws.sub(expectations, axis=0)
 
     nominal_median = nominal_draws.median(axis=1)
     real_median = real_draws.median(axis=1)
@@ -505,7 +517,7 @@ def plot_rstar_real_nominal(trace: az.InferenceData, frame: pd.DataFrame, consta
     mg.line_plot(
         pd.DataFrame({
             "Nominal neutral b_t (the slow base)": nominal_median,
-            f"Real neutral (less the {anchor:g}% target)": real_median,
+            "Real neutral (less long-run expectations)": real_median,
         }),
         ax=ax,
         color=["darkblue", "darkorange"],

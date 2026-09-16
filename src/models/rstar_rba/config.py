@@ -152,6 +152,26 @@ class ModelConfig:
     # Prefix of the completed `ystar_ustar` run supplying u - u*.
     ustar_prefix: str = "ystar_ustar"
 
+    # --- The second window: the market's 5y5y forward ---
+    # ON. With the cash rate alone the LEVEL of neutral is the historical
+    # average cash rate less the average inflation response — an identity, not a
+    # choice, and the reason this model reported 2.99 against CBA's 3.85 while
+    # being structurally unable to say the whole level had shifted.
+    #
+    # The AOFM 5y5y risk-neutral forward is the one series that speaks to
+    # neutral's level without being the cash rate's own history. It leads policy
+    # by two to three quarters and does not chase it, and it carries half the
+    # cash rate's volatility. `--no-forward` restores the one-window model.
+    use_forward: bool = True
+    forward_method: str = "bc"
+    # The bias is what the forward carries that neutral does not: the market's
+    # view of the cycle over years five to ten, plus any premium AOFM left in.
+    # It now holds the level, so its prior IS the assertion. Centred on zero and
+    # deliberately tight: widen it and the level goes back to being unidentified.
+    forward_bias_mu: float = 0.0
+    forward_bias_sigma: float = 0.50
+    sigma_f_sigma: float = 1.0
+
     anchor: float = 2.5
 
     # Half-width of the target band, used to scale the gap:
@@ -257,13 +277,46 @@ class ModelConfig:
     # Imposed when `walk` is on, for the reason above. Swept, never estimated.
     #
     # 0.10 IS ARBITRARY. It is a round number inside the defensible band of
-    # roughly 0.05 to 0.15, chosen so the model has a default, and it is not the
-    # value the data prefers because the data does not prefer one. The LEVEL of
-    # neutral is conditional on it and moves -0.05 to 1.05 real across that
-    # band, which is wider than the credible interval at any single value. That
-    # is why the ensemble runs by default: the range is the result, and this
-    # number is a convention for drawing one line through it.
-    sigma_r: float = 0.10
+    # roughly 0.05 to 0.20, chosen so the model has a default, and it is not the
+    # value the data prefers because the data does not prefer one. The ensemble
+    # still runs by default: the range is the result.
+    #
+    # 0.125 SINCE 2026-09-16, up from 0.10, BECAUSE THE SECOND WINDOW FREED IT.
+    # With the cash rate as the only observable, `sigma_r` did two jobs at once:
+    # it set the path's smoothness AND implicitly rationed how much of the cash
+    # rate's movement could be called neutral. The level rode on it, moving
+    # -0.05 to 1.05 real across the sweep — wider than the credible interval at
+    # any single value.
+    #
+    # With the AOFM 5y5y forward pinning the level, those jobs separate. Across
+    # the same sweep real neutral now runs 1.10 to 1.41, a spread of 0.31
+    # against 1.10, and from 0.10 upward it is nearly flat: 3.85, 3.91, 3.91
+    # nominal at 0.10, 0.15, 0.20. `lambda` settles too, 0.552 -> 0.470 -> 0.449
+    # -> 0.446 per pp, converging rather than drifting.
+    #
+    # So the model is less constrained than it was and can afford a looser walk.
+    # The gain is that neutral's quarterly volatility moves toward the 0.155 and
+    # 0.153 that `rstar_bonds` and `rstar_tvpvar` independently produce, where
+    # at 0.10 this model was the slowest-moving neutral in the package.
+    #
+    # WHY 0.125 AND NOT 0.15. 0.15 was tried and fails three sampling checks:
+    # 1 divergence in 8,000 (0.0125% against a 0.0100% rule), MCSE/sd 0.056
+    # against 0.05, and min ESS 1,296. At 0.125 all three pass: zero
+    # divergences, MCSE/sd 0.026, ESS 2,229.
+    #
+    # The culprit is `sigma_f`, the 5y5y measurement error, and the reason is
+    # structural: `sigma_f` and `sigma_r` compete to explain the same thing,
+    # namely how much of the gap between the forward and the fitted neutral is
+    # measurement error and how much is real movement in neutral. Loosen the
+    # walk and the two become harder to separate. Every other parameter samples
+    # cleanly at both settings (`lambda` ESS 14,141, `rho` 12,714).
+    #
+    # The substance is unchanged: neutral 3.89 against 3.91 nominal, stance
+    # +0.46 against +0.44, `forward_bias` -0.109 at both to three decimals. The
+    # only real cost is neutral's quarterly volatility, 0.118 against 0.151, so
+    # the three-way match with `rstar_bonds` and `rstar_tvpvar` is looser. That
+    # was a nice-to-have, not a result the model rests on.
+    sigma_r: float = 0.125
     # --- Discontinuities ---
     # Neutral normally crawls, but the world occasionally turns over and a
     # Gaussian walk cannot follow it. With `jumps` on, the base innovation is

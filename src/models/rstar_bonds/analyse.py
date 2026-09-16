@@ -4,6 +4,7 @@ from pathlib import Path  # noqa: TC003 — used at runtime in function signatur
 from typing import Any
 
 import mgplot as mg
+import numpy as np
 import pandas as pd
 
 from src.models.common.diagnostics import save_diagnostics
@@ -16,8 +17,9 @@ CHART_DIR = DEFAULT_CHART_BASE / "RStarBonds"
 # those instead, including the inputs of the y*/u* run the Taylor rule reads.
 _RFOOTER = "Built using: RBA F1/F2/F3; NY Fed HLW; ABS 6401.0"
 _LFOOTER = "Australia. r* model. "
-# Deliberately terse: the full sentence ran into the source line on the right.
-_LFOOTER_BAND = "Australia. r* model. Band conditional on the imposed sigma_walk. "
+# Deliberately terse: the full sentence ran into the source line on the right,
+# and the source line grew again when AOFM joined it.
+_LFOOTER_BAND = "Australia. r* model. Band given sigma_walk. "
 
 _BAND_KWARGS: dict[str, Any] = {
     "color": "cornflowerblue",
@@ -60,31 +62,70 @@ def print_diagnostics(results: RStarResults) -> None:
             print(f"  note: the {label} jump straddles zero — that break may not be earning its place")
 
     check = results.end_break_check()
-    print("\nHas a new break opened since the last asserted one?")
-    print("-" * 70)
-    window = int(check["window"])
-    print(f"  term premium, last {window} quarters   {check['recent tp mean']:6.2f}")
-    print(f"  {'its long-run mean (mu_tp)':<34} {check['mu_tp']:6.2f}")
-    print(f"  {'deviation, in stationary sds':<34} {check['in stationary sds']:6.2f}")
-    if abs(check["in stationary sds"]) > 1.0:
-        print("  *** The premium has drifted from its mean. A new break may be needed:")
-        print("  *** the wedge can only move at asserted dates, so a genuine shift in")
-        print("  *** Australia's spread over world r* has nowhere to go but here.")
+    if check:
+        print("\nHas a new break opened since the last asserted one?")
+        print("-" * 70)
+        window = int(check["window"])
+        print(f"  term premium, last {window} quarters   {check['recent tp mean']:6.2f}")
+        print(f"  {'its long-run mean (mu_tp)':<34} {check['mu_tp']:6.2f}")
+        print(f"  {'deviation, in stationary sds':<34} {check['in stationary sds']:6.2f}")
+        if abs(check["in stationary sds"]) > 1.0:
+            print("  *** The premium has drifted from its mean. A new break may be needed:")
+            print("  *** the wedge can only move at asserted dates, so a genuine shift in")
+            print("  *** Australia's spread over world r* has nowhere to go but here.")
 
+    _report_premium_audit(results)
+
+    has_tp = results.has_premium()
     recent = pd.DataFrame({
         "yield": results.real_yield(),
         "r*": results.rstar_median(),
-        "tp": results.term_premium_posterior().median(axis=1),
+        "tp": results.term_premium_posterior().median(axis=1) if has_tp else np.nan,
         "world": results.world_rstar(),
         "r*_bus": results.business_rstar(),
     }).tail(8)
+    yield_label = "rn yld" if results.window_is_nominal() else "real yld"
     print("\nRecent estimates (%)")
     print("-" * 70)
-    print(f"  {'':<10}{'real yld':>10}{'r*':>8}{'term prm':>10}{'world r*':>10}{'r* bus':>9}")
+    print(f"  {'':<10}{yield_label:>10}{'r*':>8}{'term prm':>10}{'world r*':>10}{'r* bus':>9}")
     for period, row in recent.iterrows():
         bus = f"{row['r*_bus']:9.2f}" if pd.notna(row["r*_bus"]) else f"{'n/a':>9}"
-        print(f"  {period!s:<10}{row['yield']:10.2f}{row['r*']:8.2f}{row['tp']:10.2f}{row['world']:10.2f}{bus}")
+        tp_cell = f"{row['tp']:10.2f}" if pd.notna(row["tp"]) else f"{'n/a':>10}"
+        print(f"  {period!s:<10}{row['yield']:10.2f}{row['r*']:8.2f}{tp_cell}{row['world']:10.2f}{bus}")
 
+    _report_policy_rule(results)
+
+
+def _report_premium_audit(results: RStarResults) -> None:
+    """Print the model's premium against the AOFM's published Australian one.
+
+    The external check on the identifying assumption. `tp` is stationary about a
+    constant because the model says so, which leaves any secular decline in the
+    long yield to r* and hence the wedge. This is the first Australian series
+    that can say whether that was right.
+    """
+    audit = results.premium_audit()
+    if not audit:
+        return
+    print("\nThe premium against the AOFM's published Australian one")
+    print("-" * 70)
+    print(f"  {'corr, levels':<34} {audit['corr(model tp, aofm tp)']:6.2f}")
+    print(f"  {'corr, changes':<34} {audit['corr changes']:6.2f}")
+    print(f"  {'sd, model premium':<34} {audit['sd, model tp']:6.2f}")
+    print(f"  {'sd, AOFM premium':<34} {audit['sd, aofm tp']:6.2f}")
+    print(f"  {'fall, model premium':<34} {audit['fall in model tp']:6.2f}")
+    print(f"  {'fall, AOFM premium':<34} {audit['fall in aofm tp']:6.2f}")
+    print(f"  {'fall, the wedge':<34} {audit['fall in wedge']:6.2f}")
+    print(f"  {'corr(wedge, AOFM premium)':<34} {audit['corr(wedge, aofm tp)']:6.2f}")
+    if abs(audit["fall in aofm tp"]) > 2 * abs(audit["fall in model tp"]):
+        print("  *** The published premium fell by much more than the model's did, so the")
+        print("  *** difference has been booked as r*. Compare the two falls above: if the")
+        print("  *** wedge's is close to the AOFM premium's, the wedge is partly the term")
+        print("  *** premium under another name. --au-premium and --nominal-window test it.")
+
+
+def _report_policy_rule(results: RStarResults) -> None:
+    """Print what the Taylor rule prescribed against what was delivered."""
     prescribed = results.policy_change()
     if prescribed.notna().any():
         both = pd.DataFrame({
@@ -171,7 +212,7 @@ def plot_rstar_real_nominal(results: RStarResults) -> None:
     mg.fill_between_plot(real, ax=ax, color="darkorange", alpha=0.20, label="Real 90% HDI")
     mg.line_plot(
         pd.DataFrame({
-            "Nominal r* (r* + 2.5% target)": results.nominal_rstar(),
+            "Nominal r* (r* + long-run expectations)": results.nominal_rstar(),
             "Real r*": results.rstar_median(),
         }),
         ax=ax,
@@ -187,7 +228,9 @@ def plot_rstar_real_nominal(results: RStarResults) -> None:
         ylabel="Per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        lheader="Nominal is real plus the 2.5% target, so it carries the same uncertainty",
+        # Both stay short: the rheader carries two full intervals, so a long
+        # lheader runs straight into it. The legend already names the two lines.
+        lheader="Nominal carries the same uncertainty as real",
         rheader=f"{last} 90% HDI: {ends}",
         rfooter=_rfooter(results),
         lfooter=_LFOOTER_BAND,
@@ -232,15 +275,15 @@ def plot_stance(results: RStarResults) -> None:
     # target-anchored reading follows it, since the two differ by the anchor
     # shortfall and a reader comparing the charts needs both numbers named.
     anchored = (cash - nominal_median).dropna()
-    stance = (cash - results.nominal_rstar(on_expectations=True)).dropna()
+    stance = (cash - results.nominal_rstar(scale="actual")).dropna()
     last = stance.index[-1]
     direction = "restrictive" if stance.loc[last] > 0 else "expansionary"
 
     ax = mg.fill_between_plot(nominal, color="darkblue", alpha=0.15, label="Nominal r* 90% HDI")
     mg.line_plot(
         pd.DataFrame({
-            "Nominal r* (r* + 2.5% target)": nominal_median,
-            "Nominal r* (r* + expected inflation)": results.nominal_rstar(on_expectations=True),
+            "Nominal r* (r* + long-run expectations)": nominal_median,
+            "Nominal r* (r* + current expectations)": results.nominal_rstar(scale="actual"),
             "Cash rate": cash,
         }),
         ax=ax,
@@ -409,6 +452,57 @@ def plot_borrower_stance(results: RStarResults) -> None:
     )
 
 
+def plot_premium_audit(results: RStarResults) -> None:
+    """Plot the model's premium and the wedge against the AOFM's published premium.
+
+    Three lines because the finding needs all three. The model's premium is flat
+    because it was asserted to be. The AOFM's fell by about three points. The
+    wedge fell by about the same, which is where the difference went.
+
+    The AOFM series is nominal and the model's is real, so the levels are not
+    directly comparable and the chart says so rather than inviting the reader to
+    subtract one from the other.
+    """
+    aofm = results.aofm_premium().dropna()
+    if aofm.empty or not results.has_premium():
+        return
+
+    combined = pd.DataFrame({
+        "Model term premium (real)": results.term_premium_posterior().median(axis=1),
+        "AOFM term premium (nominal)": aofm,
+        "The Australian wedge": results.wedge_median(),
+    })
+    mg.line_plot_finalise(
+        combined,
+        # Orange keeps the premium's suite colour; the other two are picked for
+        # contrast against it and each other rather than for convention.
+        color=["darkorange", "darkslategrey", "crimson"],
+        style=["-", "-", "--"],
+        width=[2, 2, 1.8],
+        annotate=True,
+        rounding=2,
+        title="The term premium against the published one",
+        ylabel="Percentage points",
+        y0=True,
+        legend={"loc": "best", "fontsize": "small"},
+        # The chart tells two different stories depending on the run, and saying
+        # the wrong one is worse than saying nothing: under the pin the model's
+        # premium tracks the published one by construction, so calling it "flat
+        # by assertion" would be plainly contradicted by the lines drawn.
+        lheader=(
+            "Premium pinned to the AOFM series; only the real-nominal spread is estimated"
+            if results.premium_is_pinned()
+            else "The model's premium is flat by assertion; the wedge moved instead"
+        ),
+        rheader="Model premium real, AOFM nominal: compare shape, not level",
+        rfooter=_rfooter(results),
+        # Short: the full sentence ran into the "Built using:" line on the right,
+        # so the real-against-nominal caveat moved to the header.
+        lfooter=_LFOOTER,
+        show=False,
+    )
+
+
 def plot_premium_correction(results: RStarResults) -> None:
     """Plot the term premium with and without the `k·g` correction.
 
@@ -511,7 +605,7 @@ def plot_taylor_level(results: RStarResults) -> None:
     frame = pd.DataFrame({
         "Taylor rule on this model's r*": level,
         "Cash rate": cash,
-        "Nominal r* (r* + 2.5% target)": results.nominal_rstar(),
+        "Nominal r* (r* + long-run expectations)": results.nominal_rstar(),
     }).dropna(subset=["Taylor rule on this model's r*"])
 
     mg.line_plot_finalise(
@@ -558,11 +652,17 @@ def run_analysis(
     plot_rstar_real_nominal(results)
     plot_wedge(results)
     plot_stance(results)
-    plot_term_premium(results)
+    # Every premium chart is skipped under `nominal_window`, which has no
+    # premium to draw: the AOFM removed it from the observable before the model
+    # saw it.
+    if results.has_premium():
+        plot_term_premium(results)
+        plot_premium_audit(results)
     if results.has_short_window():
         plot_policy_gap(results)
         plot_borrower_stance(results)
-        plot_premium_correction(results)
+        if results.has_premium():
+            plot_premium_correction(results)
     if results.has_curve():
         plot_premium_curve(results)
     plot_business_rstar(results)

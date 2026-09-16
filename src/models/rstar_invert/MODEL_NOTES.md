@@ -19,6 +19,14 @@ survives only because that parameterisation rewards inflating it.
 **What the model actually measures well is not r\*.** It is the output gap's own
 slow-moving component, which it then divides by a small number and relabels as a rate.
 
+**REMOVED FROM `rstar_summary` ON 2026-09-16.** It had been one of four lines on the
+cross-model chart. The reason for taking it off is the first sentence of these notes: the
+summary exists to show three structural assumptions disagreeing, and a line whose every value
+follows from an IS curve that five independent methods in this repo cannot recover the sign of
+was adding an assumption rather than a view. The package stays, and so does everything below,
+because the conditioning is the finding. It is a record of what asserting the curve costs, not
+a candidate estimate to put beside the others.
+
 ## The model
 
 Two axes, both gaps, and a line through the origin: at a zero rate gap the economy sits at

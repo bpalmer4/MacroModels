@@ -136,22 +136,31 @@ src/
 │   │                              #   set by the imposed sigma_ustar (see MODEL_NOTES.md).
 │   ├── rstar_bonds/               # r* from the bond market: one state, an AU wedge over
 │   │                              #   a market world real rate, moving as a StudentT random
-│   │                              #   walk, read off TWO windows on one curve: the indexed
-│   │                              #   real 10y yield and the real cash rate. Anchor is the
-│   │                              #   Cleveland Fed 10y expected real rate (FRED), NOT HLW,
-│   │                              #   which is inert across the whole monetary cycle. The
-│   │                              #   loading is estimated: b_world 0.481, which is NOT
-│   │                              #   credible as a pass-through and is partly stripping a US
-│   │                              #   term premium. NO IS CURVE, three efforts here found the
+│   │                              #   walk, read off THREE windows on one curve: the indexed
+│   │                              #   real 10y yield, the real cash rate, and the AOFM 5y5y
+│   │                              #   risk-neutral forward (deflated). Anchor is the
+│   │                              #   Cleveland Fed 10y expected real rate LESS the published
+│   │                              #   US term premium, NOT HLW, which is inert across the
+│   │                              #   whole monetary cycle. The term premium is PINNED to the
+│   │                              #   AOFM's published Australian series; only the real-nominal
+│   │                              #   spread is estimated. b_world is IMPOSED at 1 (free, it
+│   │                              #   collapses to 0.015 once the premium is data, which is
+│   │                              #   non-identification not a finding). nu_walk IMPOSED at 9;
+│   │                              #   the third window will not sample without it.
+│   │                              #   NO IS CURVE, three efforts here found the
 │   │                              #   rate/output-gap link unidentifiable on AU data. Level
-│   │                              #   Taylor rule on top. r* 1.08 with the wedge at +0.05,
-│   │                              #   so Australia currently sits ON the world rate. The
-│   │                              #   LEVEL is not identified (wedge_0 vs mu_tp at -0.87) and
-│   │                              #   moved 0.83-1.22 across four defensible specs; the PATH
-│   │                              #   and the pre-COVID STANCE are not robust either. Quote
-│   │                              #   the wedge and the era pattern, not the level.
-│   │                              #   A third window (--curve) and the 90-day bank bill
-│   │                              #   (--short-rate bill) were both tried as defaults and
+│   │                              #   Taylor rule on top. r* 1.05 real / 3.57 nominal with
+│   │                              #   the wedge at -0.29, so Australia sits BELOW the world
+│   │                              #   rate. THE LEVEL IS NOW PARTLY IDENTIFIED and is worth
+│   │                              #   quoting: the 5y5y window took the 90% band from 2.59 to
+│   │                              #   1.28 and it no longer contains zero. Costs: the wedge is
+│   │                              #   4x jumpier quarter to quarter (some of that is market
+│   │                              #   noise booked as r*), amplitude worsens 3.66 -> 4.12, and
+│   │                              #   forward_bias is uninterpreted. The forward also ABOLISHES
+│   │                              #   negative r*: 2016-19 and 2020-21 go from -0.11/-0.70 to
+│   │                              #   +0.42/+0.14. --no-forward restores the two-window model.
+│   │                              #   A DIFFERENT third window (--curve) and the 90-day bank
+│   │                              #   bill (--short-rate bill) were both tried as defaults and
 │   │                              #   rejected; the QE term-premium finding does not survive
 │   │                              #   the second window (see MODEL_NOTES.md).
 │   ├── long_run_ustar/            # u* WITHOUT estimation, back to 1959Q3. Finds the stretches
@@ -191,11 +200,19 @@ src/
 │   │                              #   the rule's PRESCRIBED rate, stored as `prescribed`, and is
 │   │                              #   not neutral. `stance` = cash less neutral,
 │   │                              #   `rule_residual` = cash less prescribed. Say which one a
-│   │                              #   number is: 2.99 vs 3.48 nominal at 2026Q2.
-│   │                              #   The LEVEL is conditional on an arbitrary sigma_r: real
-│   │                              #   neutral 0.49, but -0.05 to 1.05 across defensible values,
-│   │                              #   wider than the credible interval. Quote the range.
-│   │                              #   lambda = 0.61 per pp is a NOMINAL response; not comparable
+│   │                              #   number is: 3.89 vs 4.25 nominal at 2026Q2.
+│   │                              #   THE LEVEL IS PINNED BY A MARKET PRICE since 2026-09-16:
+│   │                              #   the AOFM 5y5y forward (deflated) is a SECOND observation
+│   │                              #   window, f_t = b_t + bias + e_t. Before it, the level
+│   │                              #   rested on the sample-average cash rate and ran -0.05 to
+│   │                              #   1.05 real across defensible sigma_r, wider than the
+│   │                              #   credible interval; now the spread across sigma_r is 0.31
+│   │                              #   and the rule residual falls +0.87 -> +0.10. Real neutral
+│   │                              #   1.35. forward_bias -0.109 [-0.289, +0.068], i.e. the
+│   │                              #   market's 5y5y IS the model's neutral, which is a result
+│   │                              #   rather than an assumption. sigma_r = 0.125, chosen on
+│   │                              #   SAMPLING grounds (0.15 failed diagnostics).
+│   │                              #   lambda = 0.46 per pp is a NOMINAL response; not comparable
 │   │                              #   with Taylor's 1.5. UNITS: stored per BAND-WIDTH (0.305),
 │   │                              #   so per pp is twice it. It is stable across sigma_r only
 │   │                              #   CONDITIONAL ON ZERO POLICY SMOOTHING: allow partial
@@ -221,13 +238,24 @@ src/
 │   │                              #   What it measures well is the GAP's own slow component
 │   │                              #   (44% of gap variance vs the rate term's 14%), divided by a
 │   │                              #   small number. Quote the conditioning (see MODEL_NOTES.md).
+│   │                              #   REMOVED FROM rstar_summary 2026-09-16: its line restated
+│   │                              #   the asserted IS curve rather than adding a third view.
 │   ├── rstar_summary/             # NOT A MODEL. Loads every r* the repo produces, re-runs any
 │   │                              #   whose trace is not from TODAY (which regenerates that
-│   │                              #   model's own charts), converts all to NOMINAL and charts
-│   │                              #   them. rstar_hlw is EXCLUDED: its z state has no
-│   │                              #   observation equation, so its r* is trend growth. The
-│   │                              #   central line is a MEAN, not a median (n=3), and is not an
-│   │                              #   estimate (see MODEL_NOTES.md).
+│   │                              #   model's own charts), converts all to NOMINAL on
+│   │                              #   long-run expectations, and charts them. Three lines:
+│   │                              #   rstar_bonds, rstar_rba, rstar_tvpvar.
+│   │                              #   rstar_hlw is EXCLUDED: its z state has no
+│   │                              #   observation equation, so its r* is trend growth.
+│   │                              #   rstar_invert was REMOVED 2026-09-16: it asserts an IS
+│   │                              #   curve no method here can recover the sign of, so its
+│   │                              #   line restated an assumption rather than adding a view.
+│   │                              #   NOTE the two real-rate models now share an observable
+│   │                              #   (the AOFM 5y5y forward), so some of their agreement is
+│   │                              #   one series counted twice. Models end on DIFFERENT
+│   │                              #   quarters (bonds runs a quarter longer); never average
+│   │                              #   across them. The central line is a MEAN, not a median
+│   │                              #   (n=3), and is not an estimate (see MODEL_NOTES.md).
 │   ├── gstar_summary/            # NOT A MODEL. Potential growth on one chart: ystar
 │   │                              #   (inflation + production specs) and the joint model.
 │   │                              #   They agree to 0.09pp (1.90-1.99 at 2026Q2) against

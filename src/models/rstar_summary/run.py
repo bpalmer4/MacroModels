@@ -8,8 +8,9 @@ is announced before it happens and `--no-refresh` turns it off.
 
 import argparse
 
+from src.models.common.inflation_scale import SCALES
 from src.models.rstar_summary.analyse import run_analyse
-from src.models.rstar_summary.sources import gather
+from src.models.rstar_summary.sources import DEFAULT_SCALE, gather
 
 
 def main(
@@ -17,13 +18,14 @@ def main(
     allow_refresh: bool = True,
     start: str | None = "1993Q1",
     verbose: bool = True,
+    scale: str = DEFAULT_SCALE,
 ) -> None:
     """Gather the r* estimates and chart them."""
     print("=" * 70)
     print("R* SUMMARY [every model, one nominal scale]")
     print("=" * 70)
-    frame, notes = gather(allow_refresh=allow_refresh, verbose=verbose)
-    run_analyse(frame, notes, start=start)
+    frame, notes = gather(allow_refresh=allow_refresh, verbose=verbose, scale=scale)
+    run_analyse(frame, notes, start=start, scale=scale)
 
 
 if __name__ == "__main__":
@@ -36,6 +38,12 @@ if __name__ == "__main__":
         "--start", type=str, default="1993Q1",
         help="first quarter to chart (default 1993Q1, the start of inflation targeting)",
     )
+    parser.add_argument(
+        "--nominal-on", default=DEFAULT_SCALE, choices=list(SCALES),
+        help="how real r* converts to nominal: 'expectations' (default) adds long-run "
+             "inflation expectations, matching the RBA and CBA; 'target' adds 2.5%%, "
+             "which is what this package did before 2026-09-16",
+    )
     parser.add_argument("-q", "--quiet", action="store_true")
     args = parser.parse_args()
 
@@ -43,4 +51,5 @@ if __name__ == "__main__":
         allow_refresh=not args.no_refresh,
         start=args.start,
         verbose=not args.quiet,
+        scale=args.nominal_on,
     )

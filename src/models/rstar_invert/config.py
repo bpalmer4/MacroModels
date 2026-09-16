@@ -122,10 +122,42 @@ class ModelConfig:
     # The quarterly sd of r*'s innovation, in PERCENTAGE POINTS, used when
     # `rstar_form` is "walk".
     #
-    # NOTHING MEASURES THIS. `rstar_rba` defends 0.05 to 0.15 for the same kind
-    # of number in a different model, which is the only external reference
-    # available and a weak one. Sweep it and quote a range: the fit improves
-    # monotonically as it rises, so the data cannot choose.
+    # NOTHING MEASURES THIS, and the fit improves monotonically as it rises, so
+    # the data cannot choose. Sweep it and quote a range.
+    #
+    # 0.15 WAS TRIED ON 2026-09-16 AND REVERTED. Recorded because the argument
+    # for it was sound and the result was not, which is worth knowing before
+    # anyone makes it again.
+    #
+    # The case: "is this too smooth" is not answered by the flat-line cliff
+    # between 0.05 and 0.10, which only tests whether r* moves AT ALL. The
+    # reasonableness test is how fast r* moves against how fast the other models
+    # let neutral move, measured as the sd of its quarterly change:
+    #
+    #     rstar_bonds   0.155      off asset prices
+    #     rstar_tvpvar  0.153      off a macro VAR
+    #     rstar_rba     0.078      but its sigma_r does the same job, so this
+    #                              is not independent evidence
+    #
+    #     this model    0.094 at sigma_rstar 0.10
+    #                   0.135 at 0.15   <- closest to the two independent ones
+    #                   0.245 at 0.30
+    #
+    # Two models built on entirely different data independently put neutral's
+    # quarterly volatility near 0.15, and 0.15 here reproduced it (0.135 against
+    # 0.094 at 0.10). Sampling was pristine: R-hat 1.00, ESS 4,987, zero
+    # divergences. The slope barely moved, -0.383 to -0.389, so the change was
+    # cheap where it would have mattered.
+    #
+    # WHY IT WAS REVERTED ANYWAY: the endpoint. r* latest went 1.53 -> 2.05 real,
+    # i.e. 4.06 -> 4.59 NOMINAL, above the 4.35 cash rate and the highest line on
+    # the summary chart by half a point. The sample mean barely moved (1.56 ->
+    # 1.57), so essentially the whole change landed on the last few quarters —
+    # the least reliable point of a random walk whose speed had just been raised.
+    #
+    # The lesson is about the test, not the number: matching another model's
+    # volatility is a real check, and it is not sufficient. A setting can pass
+    # on volatility and fail on the level it implies.
     sigma_rstar: float = 0.10
 
     # Estimate `sigma_rstar` rather than asserting it. OFF by default: with one

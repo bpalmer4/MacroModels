@@ -59,6 +59,40 @@ def _unemployment_gap(config: ModelConfig, sources: SourceSet) -> pd.Series:
     return joint.ugap_median()
 
 
+def _forward(config: ModelConfig, sources: SourceSet) -> pd.Series:
+    """Return the AOFM 5y5y risk-neutral forward, quarterly, in per cent.
+
+    THE SECOND WINDOW. With the cash rate alone this model cannot separate the
+    LEVEL of neutral from the level of the stance: taking the sample average of
+    `r = b + lambda.g + eps` gives `mean(b) = mean(r) - lambda.mean(g)`, so
+    neutral's level was the historical average cash rate, adjusted for whether
+    inflation averaged on target. Nothing else pinned it, and no
+    reparameterisation could, because one observable cannot identify two levels.
+
+    The 5y5y forward is a market price for where the cash rate settles over
+    years five to ten, with AOFM's model stripping the term premium. It is the
+    only series available that speaks to the LEVEL of neutral without being the
+    cash rate's own history.
+
+    IT LEADS POLICY, IT DOES NOT ECHO IT. Measured 2026-09-16 on quarterly
+    changes: corr(d5y5y_t, dcash_{t+k}) peaks at +0.340 at k = +2 and is
+    NEGATIVE at k = -1 and -2. So it moves two to three quarters before the cash
+    rate and does not chase past decisions. Its sd is 0.99 against the cash
+    rate's 1.97, so it carries half the volatility, which is what a forward that
+    has stripped the cycle should look like.
+
+    WHAT IT IS NOT. Not neutral itself: it still contains the market's view of
+    the cyclical position over years five to ten, and whatever premium AOFM did
+    not remove. That is why the observation equation carries a free bias term,
+    which is now what holds the level. The assertion has MOVED, not vanished.
+    The series is also re-estimated full-sample monthly, so it revises.
+    """
+    from src.data.aofm_loader import get_aofm_5y5y_forward  # noqa: PLC0415 — optional input
+
+    series = sources.take(get_aofm_5y5y_forward(config.forward_method)).astype(float).dropna()
+    return series.groupby(pd.PeriodIndex(series.index, freq="Q")).mean()
+
+
 def build_observations(
     config: ModelConfig,
     *,
@@ -80,6 +114,8 @@ def build_observations(
     quarterly = sources.take(get_trimmed_mean_qrtly()).astype(float)
 
     columns = {"r": cash, "q": quarterly}
+    if config.use_forward:
+        columns["f"] = _forward(config, sources)
     if config.employment:
         columns["ugap"] = _unemployment_gap(config, sources)
     if config.jumps:
@@ -280,6 +316,35 @@ def _print_spec(frame: pd.DataFrame, config: ModelConfig, weights_desc: str) -> 
           f"b_0 ~ N({config.base_mu:g}, {config.base_sigma:g})")
 
 
+def _forward_window(config: ModelConfig, frame: pd.DataFrame, neutral: pt.TensorVariable) -> None:
+    """Attach the market's 5y5y forward as a second observation on neutral.
+
+    `f_t = neutral_t + bias + e_t`. The bias is what the forward carries that
+    neutral does not: the market's view of the cycle over years five to ten,
+    plus whatever premium AOFM did not strip.
+
+    THE BIAS NOW HOLDS THE LEVEL. With the cash rate alone that job fell to the
+    cash rate's own sample mean, by the identity
+    `mean(b) = mean(r) - lambda.mean(g)`, which is why this model could not
+    report that the whole level of neutral had shifted. A free bias with a wide
+    prior would hand the level straight back, so the prior IS the assertion and
+    should be quoted as one rather than presented as an identification.
+
+    Must be called inside the model context, since it creates variables.
+    """
+    if not config.use_forward or "f" not in frame:
+        return
+    bias = pm.Normal("forward_bias", mu=config.forward_bias_mu, sigma=config.forward_bias_sigma)
+    sigma_f = pm.HalfNormal("sigma_f", sigma=config.sigma_f_sigma)
+    pm.Deterministic("forward_fitted", neutral + bias)
+    pm.Normal(
+        "obs_forward",
+        mu=neutral + bias,
+        sigma=sigma_f,
+        observed=frame["f"].to_numpy(dtype=float),
+    )
+
+
 def build_model(frame: pd.DataFrame, config: ModelConfig, *, verbose: bool = True) -> pm.Model:
     """Build the two-gaps model.
 
@@ -363,6 +428,8 @@ def build_model(frame: pd.DataFrame, config: ModelConfig, *, verbose: bool = Tru
         # Excluded quarters keep their place in the state, so neutral still evolves
         # through the floor years, but carry no likelihood: the rule did not
         # generate them. Same treatment `ystar` gives the lockdown quarters.
+        _forward_window(config, frame, neutral)
+
         kept = _unconstrained(frame, config)
         if not config.partial_adjustment:
             pm.Normal("obs", mu=prescribed[kept], sigma=sigma_eps, observed=rate[kept])

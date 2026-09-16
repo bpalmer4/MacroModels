@@ -2,19 +2,36 @@
 
 A Bayesian unobserved-components model (PyMC + NumPyro NUTS) estimating the Australian
 natural rate of interest from asset prices. One latent state, an Australia-specific wedge
-over a published world real rate, read off two windows on the same curve.
+over a published world real rate, read off three windows on the same curve.
 
 ```
-wedge_t = wedge_{t-1} + sigma_walk · e_t,  e_t ~ StudentT(nu)   the only state
-r*_t    = b_world · w_t + wedge_t          w is data, not an observation
+wedge_t = wedge_{t-1} + sigma_walk · e_t,  e_t ~ StudentT(nu)   the only state; nu imposed at 9
+r*_t    = w_t + wedge_t                    b_world imposed at 1; w is data
 g_t     = r_t - r*_t                       identity: the policy stance
 tp_t    = y_t - r*_t - k·g_t               identity: the term premium
-g, tp ~ stationary AR(1)                   the identifying priors
+spread_t = tp_t - au_tp_t                  the AOFM premium is DATA
+f_t     = r*_t + bias + e_t                the 5y5y forward: the one window on the LEVEL
+g, spread ~ stationary AR(1)               the identifying priors
 ```
 
 `y` is the AU indexed real 10-year yield, `r` the real overnight cash rate, `w` the
-Cleveland Fed's 10-year expected real rate. Sample 1993Q1-2026Q3, 135 quarters. The
-equation-by-equation section takes every line one at a time.
+Cleveland Fed's 10-year expected real rate LESS the published US term premium, `au_tp`
+the AOFM's published Australian 10-year term premium, and `f` the AOFM's 5y5y risk-neutral
+forward deflated by long-run expectations. Sample 1993Q1-2026Q3, 135 quarters.
+The equation-by-equation section takes every line one at a time.
+
+**What is asserted, in one place.** The premium is no longer stationary about a free `mu_tp`;
+it tracks a published Australian series and only the spread over it is estimated. That spread
+is a real-minus-nominal difference on the same country's curve, so it is an inflation risk
+premium and nothing else. `mu_spread` comes back **0.241 [−0.394, 0.813]** against an
+N(0.25, 0.5) prior: a posterior sd of 0.320 against the prior's 0.500, so the data now move
+it about a third of the way rather than the 5% they moved it before the third window went in.
+The level is better identified than it has ever been here and is now worth quoting; the 90%
+band on r\* is 1.28 points and no longer contains zero.
+
+Two things are imposed rather than estimated and both are load-bearing: `b_world` at 1, and
+`nu_walk` at 9.0. The second exists only because the third window will not sample without it;
+9.0 is what this model's own free posterior chooses when the forward is off.
 
 ## One of three routes, all flawed
 
@@ -49,26 +66,283 @@ what a standard reaction function *would* say, not as a forecast of what would f
 
 | | 2026Q3 |
 |---|---|
-| real r\* | **1.08** [−0.67, 2.72] |
-| world real rate, for comparison | 2.13 |
-| the Australian wedge | **+0.05** |
-| term premium | 1.54 |
-| nominal r\* (r\* + 2.5% target) | **3.58** |
-| cash rate | 4.35, so **0.51 restrictive** on the model's own stance `g` |
-| Taylor prescription (2026Q2, the last quarter its inputs cover) | 5.14 against a 4.35 cash rate |
-| r\* for firms (r\* + credit spread) | 1.86 |
-| pre-GFC r\* (1994-2007) | 2.43, so today is **44%** of it |
+| real r\* | **1.05** [0.40, 1.69] |
+| world real rate, for comparison | 1.34 |
+| the Australian wedge | **−0.29** |
+| term premium | 1.55 |
+| nominal r\* (r\* + long-run expectations) | **3.57** |
+| r\* for firms (r\* + credit spread) | 1.97 |
+| pre-GFC r\* (1994-2007) | 1.70, so today is **62%** of it |
 
-Zero divergences, all `r_hat` 1.00, `ess_bulk` 3,056 to 8,223.
+Zero divergences, all `r_hat` 1.00, minimum `ess_bulk` 2,534, BFMI 0.75.
 
-**Australia currently sits on the world rate.** The wedge is +0.05, which is the cleanest
-result the model produces: nothing Australia-specific is depressing neutral today. The
-divergence opened over 2012-2021, bottoming at −1.07, and has closed.
+**The specification changed TWICE on 2026-09-16 and these numbers are not comparable with
+earlier vintages.** In the morning three defaults moved together: the term premium is now
+pinned to the AOFM's published Australian series, the world anchor is premium-stripped, and
+`b_world` is imposed at 1. In the evening a THIRD OBSERVATION WINDOW was added, the AOFM's
+5y5y risk-neutral forward deflated by long-run expectations, loading directly on r\* as
+`f_t = r*_t + bias + e_t`, with `nu_walk` fixed at 9.0 so that it samples. The next two
+sections are why the premium is pinned; the third window has its own section below.
 
-**Quote the wedge and the era pattern. Do not quote the level.** The 90% interval on r\* is
-three points wide and straddles zero at every date, `wedge_0` and `mu_tp` correlate at
-**−0.87**, and the level moved between 0.83 and 1.22 across four defensible specifications
-built in one sitting. What survives respecification is the *relative* reading.
+To reproduce the morning default: `--no-forward`. To reproduce the old default exactly:
+`--no-forward --no-au-premium --no-impose-world-loading --world-source cleveland`.
+
+**Australia sits BELOW the world rate, and this reverses an earlier headline.** The wedge is
+−0.29. The pre-morning default put it at +0.05 and the notes said "Australia currently sits
+on the world rate... nothing Australia-specific is depressing neutral today". That sentence
+does not survive the respecification and should not be quoted.
+
+Be clear about why it moved, because it is not a discovery. Imposing `b_world` at 1 on a
+premium-stripped anchor *defines* the wedge as Australian r\* less the world rate, with no
+loading free to absorb part of the difference. The old +0.05 was a wedge measured against
+0.481 of a premium-bearing US yield, which is a different quantity wearing the same name. The
+era pattern is the robust part: **+0.38** through 1994-2007, **−0.13** in 2020-21, and
+**−0.87** across 2022 to now. Australia's spread over the world opened negative in the 2010s
+and has not closed.
+
+**THE LEVEL IS NOW WORTH QUOTING, AND THAT IS NEW.** Until the third window these notes said
+the opposite, and the reason was `mu_spread`: it carried the level and came back barely moved
+off its N(0.25, 0.5) prior, a posterior sd of 0.477 against the prior's 0.500, which is data
+moving a parameter 5%. The 90% interval on r\* was 2.6 points wide and straddled zero at every
+date.
+
+The 5y5y forward is the only observable in this model that speaks to the level directly: the
+long yield and the cash rate between them pin r\* + tp but not the split. With it, `mu_spread`
+comes back 0.241 [−0.394, 0.813], a posterior sd of **0.320**, so the data now move it 36% off
+prior. The interval on r\* is **1.28 points wide and no longer contains zero**. That is the
+single biggest improvement in this model's history and it is why the window is on by default.
+
+**Two things it costs, and both are real.** The wedge is about four times jumpier quarter to
+quarter, sd(Δwedge) **0.196** against 0.052 on two windows, while sd(wedge) barely moves,
+0.694 against 0.698. The forward injects high-frequency movement rather than a new trend, and
+a 5y5y forward moves with market sentiment in a way r\* should not. Some unknown share of that
+0.196 is bond-market noise booked as r\*, and nothing here apportions it.
+
+And `forward_bias` comes back **+0.141 [−0.470, 0.764]**, an interval barely narrower than its
+0.5 prior and straddling zero. `rstar_rba` gets −0.109 [−0.289, +0.068] from the same series.
+That model watches only the cash rate; this one already reads the indexed 10-year yield, so
+the forward competes with `tp` and the wedge for the same variation instead of adding a clean
+new fact. Read the level improvement as real and the bias as uninterpreted.
+
+**The amplitude problem came partly back, and this is a regression.** The pre-morning default
+swung **4.39** points of nominal r\* across the sample, the morning's two-window version
+**3.66**, and this swings **4.12**, against CBA's 3.15. `var share, r*` is 0.273 with the
+premium taking 0.229. Pinning the premium bought amplitude discipline; the third window spent
+some of it back. If you want the tighter amplitude and will pay for it with an unidentified
+level, `--no-forward` is that model and it is still supported.
+
+---
+
+## Why the premium is pinned: the assertion that failed
+
+Added 2026-09-16, and it is the most consequential check this package has had. **The
+specification below is the one that lost, and it is no longer the default.** It is recorded
+because the reason for the change is the evidence, and because `--no-au-premium` restores it.
+
+Until 2026-09-16, `tp` was a stationary AR(1) about a constant **because the model said so**.
+That assertion was what split the yield, and the notes always said the level rested on it.
+What was missing was any Australian estimate of the premium to test it against. The AOFM publishes one: a
+daily ACM decomposition of the nominal Treasury Bond curve back to 1992-07, with a term
+premium and a risk-neutral yield at every tenor 1 to 10 years. See
+[`src/data/aofm_loader.py`](../../data/aofm_loader.py). It is carried on **every** run now
+and charted against the model's own premium, so the check runs whether or not it is used.
+
+### What the audit said
+
+On the OLD default (`--no-au-premium`), comparing four-year averages at each end of the
+sample:
+
+| | fall across the sample | sd |
+|---|---|---|
+| the model's fitted `tp` | **0.29** | 0.43 |
+| the AOFM premium (bias-corrected) | **1.45** | 0.76 |
+| **the wedge** | **1.79** | |
+
+`corr(model tp, AOFM tp)` is **0.30** in levels and 0.27 in changes: the model's premium and
+the published one are barely the same object. `corr(wedge, AOFM tp)` is **0.92**.
+
+The mechanism is not mysterious and it is not a bug. The Australian long yield fell a long
+way. The model cannot put that decline in the premium, because the premium was pinned
+stationary, so it goes into r\* and hence into the wedge. **What the wedge fell by is close
+to what the published premium fell by.**
+
+### Three honest qualifications
+
+1. **Real against nominal.** The model's `tp` is on the indexed curve; the AOFM's is on the
+   nominal one, and the difference is an inflation risk premium. Anchoring plausibly removed
+   a lot of that through the 1990s, so part of the early gap is legitimate. It explains the
+   1990s far better than it explains 2012-2021, well after anchoring.
+2. **Level correlations here are weak evidence.** Within the AOFM decomposition,
+   `corr(TP10, RNY10)` is 0.998 over this sample: both components inherit the yield's
+   downtrend, so almost anything trending correlates with either. The changes correlations
+   are the ones to weigh.
+3. **The AOFM's "ols" sheet is a plain ACM**, the estimator this package tested and rejected
+   as a *US* premium on Bauer-Rudebusch-Wu persistence-bias grounds. The same scepticism
+   applies here, which is why `bc` is the default. Note the direction: `bc` falls 1.45 where
+   `ols` falls more, so the more defensible sheet is the *conservative* one and the finding
+   survives it.
+
+### The AOFM decomposition passes the checks that killed US ACM
+
+Qualification 3 is the one that had to be answered before the premium could be taken as data,
+because pinning makes AOFM's specification error invisible: it enters as data, with no
+residual. Three tests, all run 2026-09-16.
+
+**The era pattern is not inverted.** US ACM was rejected because the implied US neutral rate
+*rose* 1.7 points from 2008-2015 into 2016-2019, putting the trough in the mining-boom years.
+The AU expectations component does the opposite, on both sheets:
+
+| implied expectations component | 2008-2015 | 2016-2019 | change |
+|---|---|---|---|
+| bias-corrected | 3.58 | 2.39 | **−1.20** |
+| OLS | 3.74 | 2.91 | **−0.83** |
+
+Monotone decline into ZIRP, which is the right sign.
+
+**It predicts the short rate that followed.** `RNY10` is the average expected nominal short
+rate over ten years, so it can be checked ex post against what the cash rate actually
+averaged over the next forty quarters. Correlation **+0.77** on both methods, RMSE 1.1, with
+a small upward bias (+0.37 to +0.48). The premium is not absorbing variation that belonged to
+expectations, which is exactly what US ACM did.
+
+**The two methods disagree less than the two US providers do.** The OLS−BC gap has an sd of
+**0.42** against 0.66 for Kim-Wright vs ACM, era means running +0.26 to −0.74 against +0.82
+to −0.54, and they converge to −0.05 at the latest quarter. The same *shape* of disagreement,
+OLS putting more into the premium, but smaller, and it never flips the era pattern's sign.
+
+The premium sd ordering does mirror the US one, `ols` 1.19 against `bc` 0.78 as ACM 1.07 ran
+against Kim-Wright 0.63. That is why `bc` is the default, and the choice is now evidenced
+rather than argued by analogy.
+
+---
+
+## What happens when the premium is not asserted
+
+Every spec below was run on 2026-09-16 with the nominal conversion on long-run expectations.
+"old default" is `--no-au-premium --no-impose-world-loading --world-source cleveland`.
+The "two-window" column was the shipped default for part of that day and is now `--no-forward`.
+**"NEW DEFAULT" is the shipped specification, with the 5y5y forward as a third window.**
+
+| | old default | `--au-premium` only | two-window | **NEW DEFAULT** | AU-only, no world | `--nominal-window` |
+|---|---|---|---|---|---|---|
+| r\*, 2026Q3 real | 1.09 | 0.82 | 0.84 | **1.05** | 0.72 | 1.18 |
+| nominal | 3.61 | 3.35 | 3.36 | **3.57** | 3.24 | 3.68 |
+| wedge, 2026Q3 | +0.05 | +0.34 | −0.50 | **−0.29** | +0.72 | −0.13 |
+| r\*, 1994-2007 | 2.43 | 1.86 | 2.06 | **1.70** | 1.72 | 2.05 |
+| r\*, 2016-2019 | −0.49 | −0.09 | −0.11 | **+0.42** | −0.06 | +0.36 |
+| r\*, 2020-2021 | −1.10 | −0.43 | −0.70 | **+0.14** | −0.24 | +0.01 |
+| var share, r\* | 0.792 | 0.347 | 0.486 | **0.273** | - | 0.911 |
+| nominal amplitude | 4.39 | 2.95 | 3.66 | **4.12** | 2.48 | - |
+| real 90% band, now | 3.43 | 2.43 | 2.59 | **1.28** | 2.38 | - |
+| `mu_spread` sd | - | - | 0.477 | **0.320** | - | - |
+| `b_world` | 0.481 | 0.226 | imposed 1 | **imposed 1** | none | 0.606 |
+| sampling | 1 divergence | clean | clean | **clean** | clean | **broken** |
+
+The two rows that matter most are the band and `mu_spread`. The band halves, 2.59 to **1.28**,
+and `mu_spread` finally moves off its prior, 0.477 to **0.320** against a prior sd of 0.500.
+Those are the third window doing the one job it was added for. The amplitude row is the price:
+3.66 back up to 4.12, worse than the two-window model though still short of the old default's
+4.39.
+
+**The forward abolishes negative r\*, and that is the largest substantive change it makes.**
+Every other column here puts r\* below zero in 2016-2019 and 2020-2021; the new default puts
+it at **+0.42** and **+0.14**. The reason is mechanical rather than a discovery: the deflated
+5y5y forward never went negative, so a window loading directly on r\* will not let r\* go
+there either. Whether that is the market disciplining a model that had drifted, or the market
+refusing to price something the model was right about, this model cannot say. Sections below
+written when the trough was negative ("Results by era" and the pre-COVID stance discussion in
+in particular) were written against the two-window reading and should be read with this row in
+front of them.
+
+For scale on the amplitude row: CBA's published nominal neutral swings **3.15** points over
+the same span, and the old default's 4.39 was the outlier among everything here.
+
+**The headline is the flattening, not the endpoint.** Taking the premium as data pulls the
+pre-GFC level down and lifts the trough hard: the peak-to-trough swing in r\* goes from 3.53
+points to 2.29. Under the pin, r\* accounts for **35%** of the yield's variance rather than
+79%. The three paths still correlate at 0.90 to 0.995, so the *shape* is robust. Its
+amplitude is not, and neither is anything that depends on the amplitude.
+
+**The 2016-2019 stance reading is the casualty.** It runs −0.49, −0.09, +0.36 across the
+three. The notes already said that reading was not robust; this says the sign is decided by
+the premium assumption.
+
+**The level did NOT move toward the consensus, which was the expectation going in.** CBA's
+September 2026 nominal neutral is 3.85 and the RBA's August 2026 range is 2.8 to 4.3. The
+prediction before running was that stripping a falling premium would raise today's r\*.
+It did not: 3.59 goes to 3.32 under the pin and 3.68 under the nominal window. The
+flattening is real and the endpoint lift is not.
+
+**`mu_spread` is still nearly its prior**: 0.333 [−0.560, 1.204] against N(0.25, 0.5). Same
+outcome as `--us-premium`. The level remains asserted; what has improved is *what* is
+asserted. Under the US pin the spread carried a liquidity difference against TIPS, a currency
+risk premium and an inflation risk premium together. Under the AU pin it is an inflation risk
+premium and nothing else, because both sides are the same country's curve.
+
+### Why `b_world` is imposed rather than estimated
+
+The standing diagnosis was that 0.481 is partly a premium-stripping coefficient rather than a
+pass-through, so removing the Australian premium should push it toward 1. **It does the
+opposite, and that is why the default now imposes it.**
+
+| | `b_world` |
+|---|---|
+| old default (Cleveland anchor, latent premium) | 0.481 |
+| `--au-premium`, Cleveland anchor | 0.226 |
+| `--au-premium`, premium-stripped anchor | **0.015** |
+
+Read 0.015 as a collapse, not a finding. "Almost no pass-through from world real rates" is
+not credible for an open economy with a floating currency, and the mechanism is plain: a free
+loading competes with a free random-walk wedge to explain the same variation, and once the
+Australian premium is data the curve pins r\* directly and the loading has nothing left to
+do. The notes already recorded the symptom before the pin existed, that a free `b_world` on
+the market anchor "collapses to 0.233".
+
+**Dropping the world anchor entirely confirms it.** `--au-premium --no-world` gives an r\*
+path correlated **0.9999** with the free-loading market-anchor run, with a maximum difference
+of **0.021** across all 135 quarters, and zero divergences. The world series was contributing
+nothing.
+
+That result is the reason imposing is preferred to estimating *and* to dropping. Imposing
+makes `wedge` mean exactly what this package says it means, Australian r\* less the world
+rate, with nothing free to absorb part of the difference. Dropping the anchor would make
+`wedge` and `r_star` the same object and cost the package its organising idea for 0.021 of
+r\*. Estimating publishes a number that means nothing.
+
+**It is now an assertion, and should be read as one.** The "r\* is imported" premise used to
+be put at risk by a free loading; it no longer is. What the data still say about it is in
+`corr(r*, world r*)` = 0.76 and the era pattern of the wedge, not in a coefficient.
+
+### The older, incomplete version of that test
+
+Before the market anchor was tried, only this much was known: under `--nominal-window`
+`b_world` rises to 0.606, the right direction and nowhere near enough. The test was
+incomplete because the world anchor was still the raw Cleveland yield, which contains a US
+term premium. The equivalent test on the *pinned* spec was run instead and is above; the
+`--nominal-window` version of it has not been, and is not worth running while that spec does
+not sample.
+
+### `--nominal-window` does not sample, and the reason is instructive
+
+**Do not use its numbers.** R-hat 1.020, `ess_bulk` **42** on the worst parameter, MCSE/sd
+0.166, 21 divergences, 52.4% of transitions at maximum tree depth, BFMI 0.13.
+
+The cause is visible in two parameters. `sigma_rn` collapses to **0.063** with an ESS of 373,
+and `nu_walk` falls to **2.42** [1.56, 3.38], below the ν = 3.64 the notes already called
+"the model straining", and with its interval reaching into the ν < 2 region where the
+Student-t has no variance at all and `sigma_walk` stops being a standard deviation.
+
+That is precisely the pathology this package documented and removed once before. The
+abandoned `y = r* + tp + e_y` version collapsed `sigma_y` toward zero because r\* and a free
+premium both explained one series and the noise had nothing to do. Here there is no free
+premium, but there is still a free wedge, and a risk-neutral yield is very nearly an exact
+function of `r* + k·g`. **The wedge can fit the series outright, so the residual again has
+nothing to do, and the walk buys the room with fat tails.** Removing `mu_tp` removed the
+level trade-off and replaced it with a `sigma_rn`-against-wedge one.
+
+So the structural idea is sound and this parameterisation of it is not. What it would need is
+the imposed variance moved off the wedge and onto the residual, or `sigma_rn` pinned from
+AOFM's own estimation error rather than estimated. Neither is done.
 
 ---
 
@@ -79,15 +353,21 @@ are 94% HDIs unless stated.
 
 ### What is actually fitted
 
-Three observed series, 1993Q1 to 2026Q3, no gaps. Nothing else enters the likelihood: the
+Five observed series, 1993Q1 to 2026Q3, no gaps. Nothing else enters the likelihood: the
 corporate spread, the mortgage rate, inflation and the output gap arrive afterwards for the
 derived series and are not allowed to shorten the sample.
 
 | | series | source |
 |---|---|---|
 | `y` | indexed real 10y yield | RBA F2 |
-| `w` | 10-year expected real rate | Cleveland Fed, via FRED `REAINTRATREARAT10Y` |
+| `w` | 10-year expected real rate, premium-stripped | Cleveland Fed via FRED `REAINTRATREARAT10Y`, less Kim-Wright |
 | `r` | real cash rate | RBA F1 less inflation expectations |
+| `au_tp` | Australian 10y term premium | AOFM decomposition, bias-corrected sheet |
+| `f` | 5y5y risk-neutral forward, deflated | AOFM, `2 x RNY10 - RNY5`, less long-run expectations |
+
+The last two arrived on 2026-09-16. `au_tp` pins the premium rather than leaving it latent
+(next section); `f` is the third window, and is the only one of the five that speaks to the
+level of r\* on its own.
 
 **Why not Holston-Laubach-Williams for `w`.** HLW was the anchor until this vintage and is
 still available via `--world-source mean`. It was dropped because it is not a price: it is
@@ -141,6 +421,13 @@ r*_t = b_world · w_t + wedge_t
 |---|---|---|
 | `b_world` | Normal(1, 1) | **0.481** [0.297, 0.662] |
 
+**IMPOSED AT 1 SINCE 2026-09-16, so that posterior is no longer produced by the default.** It
+is kept here because the argument below is why it had to be imposed, and because
+`--no-impose-world-loading` still estimates it. Note what happens when it is free under the
+current specification: it collapses to 0.015, which is not the finding "almost nothing is
+imported" but a loading that is no longer identified against a free wedge once the premium is
+pinned. The discussion that follows was written when 0.481 was the shipped number.
+
 **This is the model's most uncomfortable number.** Taken at face value it says only half a
 move in the world real rate reaches Australian r\*, which is hard to defend for an open
 economy with a floating currency: it implies a differential that widens without arbitrage.
@@ -160,12 +447,23 @@ tp_t = y_t - r*_t - k·g_t,      k = (1 - rho_g^H)/((1 - rho_g)·H),   H = 40
 tp ~ stationary AR(1) about mu_tp
 ```
 
+Posteriors below are from the SHIPPED specification, refreshed 2026-09-16 after the third
+window went in. Under it `tp` tracks the AOFM series and only `tp_spread` is estimated, so
+`mu_tp` is carried as a reported quantity rather than as the thing setting the level.
+
 | | prior | posterior |
 |---|---|---|
-| `mu_tp` | Normal(0.75, 1) | 1.138 [−0.337, 2.740] |
-| `rho_tp` | TruncatedNormal(0.8, 0.2) on [0, 0.98] | 0.841 [0.726, 0.958] |
-| `sigma_tp` | HalfNormal(1) | 0.274 [0.235, 0.315] |
-| `k` | computed from `rho_g`, not sampled | 0.146 [0.098, 0.195] |
+| `mu_tp` | Normal(0.75, 1) | 0.745 [−0.871, 2.356] |
+| `mu_spread` | Normal(0.25, 0.5) | **0.241** [−0.394, 0.813] |
+| `rho_tp` | TruncatedNormal(0.8, 0.2) on [0, 0.98] | 0.816 [0.724, 0.909] |
+| `sigma_tp` | HalfNormal(1) | 0.284 [0.253, 0.317] |
+| `sigma_f` | HalfNormal(1) | 0.156 [0.124, 0.192] |
+| `forward_bias` | Normal(0, 0.5) | 0.141 [−0.470, 0.764] |
+| `k` | computed from `rho_g`, not sampled | 0.179 [0.142, 0.222] |
+
+`mu_tp` sits exactly on its prior mean with almost its prior width, which is the honest sign
+that nothing in the likelihood speaks to it any more: the premium is data now. `mu_spread` is
+the parameter that carries the level, and the third window is what moves it.
 
 **Why it is an identity with no residual.** An earlier version gave the yield equation an
 observation error. With r\* and `tp` both free to explain one series the noise had nothing
@@ -226,20 +524,105 @@ Its inputs end a quarter before the market anchor does, so the rule's last quart
 
 ---
 
+## The third window: the market's 5y5y forward
+
+    f_t = r*_t + bias + e_t,    e ~ Normal(0, sigma_f)
+
+`f` is the AOFM's 5y5y risk-neutral forward, `2 x RNY10 - RNY5`, deflated by long-run
+expectations. Risk-neutral means AOFM has already removed the term premium, so unlike window
+one there is no premium to split off, and unlike window two there is no policy gap in the way.
+Five to ten years ahead the cycle should be over. That is the whole case for it: it is the
+only thing this model observes that speaks to the LEVEL of r\* rather than to r\* + something.
+
+It is on by default because it works, and the numbers are in "Read this first". What follows
+is what it took to make it sample, because four attempts failed first and the record is worth
+more than the conclusion.
+
+### Why `nu_walk` must be fixed
+
+The forward and `sigma_walk` disagree, and the size of the disagreement is the point:
+
+| | quarterly wedge change, sd |
+|---|---|
+| two windows | **0.052** |
+| three windows | **0.254** |
+
+`sigma_walk` is imposed at 0.12 in both. Two windows want wedge movement well inside it; three
+want about twice it. Left free, `nu_walk` collapses from 9.20 to **1.88**, below 2, where the
+Student-t has no variance at all, because fat tails make the large jumps the forward demands
+cheap. That collapse is the pathology: 22 divergences, BFMI 0.16, a quarter of transitions at
+maximum tree depth.
+
+Fixing `nu` high makes the jumps expensive, so the forward's high-frequency variation goes
+into `sigma_f` instead, which is what an observation error is for. The sweep is monotonic:
+
+| `nu` | `sigma_f` | sd(Δwedge) | divergences | BFMI |
+|---|---|---|---|---|
+| 2.4 | 0.102 | 0.247 | 5 | 0.32 |
+| 6 | 0.140 | 0.213 | 0 | 0.65 |
+| **9 (shipped)** | **0.156** | **0.196** | **0** | **0.74** |
+
+9.0 is not a tuning choice. It is what this model's own free posterior picks when the forward
+is OFF (9.20), so fixing it there estimates the tail behaviour from the data that can identify
+it and then stops the third window distorting it. Note that `mu_spread`'s sd is 0.318-0.322
+across all three rows: the level improvement does not depend on which `nu` you pick.
+
+### Four reparameterisations that did not work
+
+Recorded because each looked reasonable and the failures locate the problem.
+
+1. **Non-centred wedge** (`noncentred_wedge`). Not retried: already on record at 511
+   divergences against 12. Non-centring pays when the data are weakly informative about the
+   latent and costs when they are not, and a third window makes them more informative, not
+   less.
+2. **Impose `forward_bias` at zero.** The argument was a parameter count: a free bias is a
+   fourth level parameter (`wedge_0`, `mu_spread`, `mu_g`, `bias`) against three level-bearing
+   observables, so the forward adds an observable and a parameter together and closes nothing.
+   Result: **35** divergences against 22, `r_hat` 1.020, BFMI 0.16. The bias is not a spare
+   wheel, it is a release valve: the forward genuinely disagrees with the other two windows
+   about the level, and removing the valve pushes that disagreement onto the wedge walk.
+3. **Raise `max_tree_depth` to 12.** Null. At a cap of 12 the deepest trajectory is still 10
+   and mean depth moves 9.08 to 9.10, so nothing had been truncated: these trajectories U-turn
+   at 10 of their own accord. The "8.4% at max" that prompted it was the diagnostic comparing
+   against the deepest depth OBSERVED rather than the cap configured, which is the same number
+   whether or not anything was cut off. That check now reads the configured cap from the
+   trace; see `SamplerConfig.max_tree_depth`.
+4. **Zero-avoiding prior on `sigma_f`.** Divergent draws sat at `sigma_f` 0.059 against a mean
+   of 0.102, a −2.06 sd shift and much the largest of any parameter, so a prior with no mass at
+   the boundary looked right. InverseGamma(3, 0.2), mean 0.10, gave **15** divergences against
+   5 and BFMI 0.21 against 0.32: zero density at the boundary is bought with a sharp barrier
+   beside it, and that curvature is worse than the smooth approach it replaced.
+
+Attempt 4 settled something worth keeping, though. The posterior did NOT move under it:
+`sigma_f` 0.102 to 0.093, `mu_spread` 0.232 to 0.237, r\* 1.005 to 1.001, so the likelihood
+pins that residual and the low-`sigma_f` region is a real feature of the geometry rather than
+something a diffuse prior invited. The divergences were the model reporting a genuine conflict
+between the forward and the other two windows, not a prior artefact, which is why the fix that
+worked was the one that changed the model's incentives rather than its priors.
+
+---
+
 ## Results by era
 
 | era | r\* | wedge | world | stance `g` | Taylor less actual | borrower stance |
 |---|---|---|---|---|---|---|
-| 1994-2007 | 2.43 | +1.21 | 2.53 | +0.43 | −0.59 | 2.48 |
-| 2008-2011 | 1.14 | +0.70 | 0.94 | +0.64 | +0.14 | 2.74 |
-| 2012-2015 | 0.00 | −0.17 | 0.37 | +0.05 | −0.66 | 2.67 |
-| 2016-2019 | −0.50 | −0.84 | 0.71 | −0.21 | −0.99 | 2.85 |
-| 2020-2021 | −1.11 | −1.07 | −0.08 | −0.63 | −0.73 | 2.84 |
-| 2022- | 0.43 | −0.34 | 1.60 | +0.16 | +1.41 | 2.96 |
+| 1994-2007 | 2.06 | +0.74 | 1.32 | +0.80 | −0.95 | +2.50 |
+| 2008-2011 | 0.76 | +0.54 | 0.22 | +1.02 | −0.24 | +3.12 |
+| 2012-2015 | 0.02 | −0.16 | 0.18 | +0.03 | −0.63 | +2.64 |
+| 2016-2019 | −0.11 | −0.76 | 0.65 | −0.60 | −0.61 | +2.46 |
+| 2020-2021 | −0.70 | −0.97 | 0.26 | −1.03 | −0.32 | +2.44 |
+| 2022- | 0.47 | −0.73 | 1.21 | +0.12 | +1.47 | +2.92 |
 
-The decomposition attributes 79.2% of the yield's variance to r\* and 8.2% to the premium,
-with `corr(r*, world r*)` = 0.91. `sd(dr*)` is 0.15 against the world's 0.27, so r\* is
-smoother than the series it is anchored on. The wedge's range over the sample is 2.81.
+The decomposition attributes **48.6%** of the yield's variance to r\* and **20.6%** to the
+premium, with `corr(r*, world r*)` = 0.76. Under the old default those were 79.2% and 8.2%,
+and the reallocation is the point of the respecification rather than a side effect.
+`sd(dr*)` is 0.15 against the world's 0.18. The wedge's range over the sample is 1.99,
+against 2.81 before.
+
+**The 2016-2019 stance reading is the one to treat as unsettled.** It runs −0.60 here,
+against −0.21 on the old default, and across the specifications built on 2026-09-16 the
+implied r\* for that era moved between −0.49 and +0.36, which is a change of sign. The notes
+already said the pre-COVID stance was not robust; it is now known *what* it is not robust to.
 
 ---
 
@@ -397,6 +780,25 @@ being asserted. That is an
 improvement in accountability, not in identification, and it is why the two-window model on
 a market anchor remains the default.
 
+**`--no-au-premium`: infer the premium again, as the old default did.** `tp` stationary about
+a free `mu_tp`. Kept as the comparator, and because the contrast against the pinned spec is
+the evidence for the change. `--au-premium-source ols` switches the pinned series to the
+plain ACM sheet.
+
+**`--no-impose-world-loading`: estimate `b_world` rather than imposing it.** Retained as the
+demonstration that it is not identified once the premium is data: it returns 0.015.
+
+**`--no-world`: drop the world anchor entirely.** On the pinned spec this moves r\* by at
+most 0.021 across 135 quarters and samples cleanly, which is the sharpest statement of how
+little the anchor now does. Not the default because it collapses `wedge` into `r_star` and
+the package's organising idea goes with it.
+
+**`--nominal-window`: read the long end off the risk-neutral curve instead.** Removes the
+term premium from the model entirely, and with it `mu_tp` and the −0.87 trade-off that is the
+level problem. **It does not sample** (ESS 42, BFMI 0.13, `nu_walk` 2.42): the wedge can fit
+a risk-neutral yield exactly, so `sigma_rn` collapses. Kept because the failure is
+diagnostic, not because the numbers are usable.
+
 **`--premium-source acm`: the other published US term premium. Tried and rejected.**
 Adrian, Crump and Moench (2013) is the obvious second opinion on the premium that both
 `--world-source market` and `--us-premium` subtract, and the flag governs both places at
@@ -460,15 +862,38 @@ produces divergences: the Australian bond market alone does not locate r\*.
 
 1. **`sigma_walk` is imposed at 0.12.** Chosen because `nu` is an internal check on whether
    the imposed variance is defensible and at 0.08 it was failing. Still a choice.
-2. **The level is weakly identified.** `wedge_0` and `mu_tp` at −0.87; the 90% interval on
-   r\* straddles zero throughout.
-3. **`b_world` = 0.481 is not credible as a pass-through** and is partly absorbing a US term
-   premium. See Alternatives.
+2. **The level is now partly identified, and this limitation has been downgraded.** It used
+   to read "quoting the level is still wrong", on the grounds that `mu_spread` came back
+   0.303 [−0.600, 1.200] against an N(0.25, 0.5) prior and the 90% interval on r\* straddled
+   zero throughout. The third window changed that: `mu_spread` is 0.241 [−0.394, 0.813], a
+   posterior sd of 0.320 against the prior's 0.500, and the band is 1.28 points and clear of
+   zero. Pinning the premium bought accountability without identification; the 5y5y forward
+   bought some of the identification. What is left of the limitation is that the level still
+   leans on ONE observable, and that observable is not independent of window one, which is
+   visible in `forward_bias` coming back +0.141 [−0.470, 0.764] with an interval barely
+   narrower than its prior. Quote the level, quote the band with it, and do not pretend the
+   forward has been interpreted.
+3. **`b_world` is imposed at 1 and is no longer at risk.** Free, it collapses to 0.015 once
+   the premium is data, so the "r\* is imported" premise is now an assumption rather than
+   something this model tests. See Alternatives.
 4. **The anchor is US, not world.** "World r\*" in the code and charts means a US series.
    A GDP-weighted market measure across the US, Euro Area and Canada is the honest version
-   and does not exist here.
+   and does not exist here. This matters more now that the loading is imposed at 1: the wedge
+   is defined as Australia's spread over *that* series.
 5. **Indexed AGS are thin**, so the yield carries a liquidity premium a nominal bond does
-   not, and `mu_tp` absorbs it inseparably from the term premium proper.
+   not, and the pinned spread absorbs it inseparably from the inflation risk premium.
+5a. **The pinned premium is nominal and `tp` is real.** AOFM publishes no indexed
+   decomposition at any vintage, so the inflation risk premium is what the estimated spread
+   contains. That is one interpretable object rather than the three `--us-premium` bundled
+   together, but it is not zero and it is not separately identified.
+5b. **The premium is now someone else's model, entering as data with no residual.** AOFM's
+   specification error lands in r\* invisibly. It passes the three checks that rejected US
+   ACM (see above), which is why this is acceptable, but it is a dependency on an outside
+   estimate that the old default did not have.
+5c. **The AOFM series is re-estimated in full every month.** Every historical value moves
+   when the file updates, so the published path will drift for reasons unconnected to any
+   Australian data arriving. See Refinement 1: this is incompatible with a real-time
+   exercise, which would otherwise put future data into the premium.
 6. **The stance rests on `g` being stationary about one mean**, which is an assumption about
    policy, not a finding.
 7. **The QE-era premium is specification-dependent**, as above.
@@ -478,19 +903,35 @@ produces divergences: the Australian bond market alone does not locate r\*.
 
 ## Refinements
 
-### 1. Endpoint fragility, the one that matters most
+### 1. Endpoint fragility, the one that matters most, and it now has a conflict
 
 Nothing here tests it and the headline *is* the endpoint. `ystar` has `realtime.py`, which
 re-estimates on progressively truncated samples. r\* is a random walk, so its last value is
 the least constrained point in the sample. Until this exists, treat every current-quarter
 number as provisional.
 
-### 2. Promote the pinned specification
+**The premium pin makes this harder, not easier.** AOFM re-estimates its decomposition over
+the full sample every month, so the premium series available today embeds information from
+after any truncation date. A naive `realtime.py` would hand the model a premium that knew the
+future and report a stability it had not earned, which by this repo's standard is a test that
+passes for the wrong reason. Doing it properly needs either archived AOFM vintages, which are
+not published, or the truncated runs falling back to `--no-au-premium`, which tests a
+different specification from the one shipped. Neither is satisfactory and the conflict is
+unresolved.
 
-`rstar_pin` is better argued than the default on every axis discussed above. Promoting it
-means renaming what the charts call "world r\*", reworking the term-premium language, since
-under a stripped anchor the premium is relative rather than absolute, and re-running
-everything.
+**The third window makes it worse again, for the same reason twice over.** `f` is built from
+the same AOFM decomposition, so it carries the same full-sample re-estimation. And because it
+loads directly on r\* it pins the endpoint harder than either of the other two windows, so a
+truncated run would inherit more look-ahead at exactly the point the exercise is meant to
+test. Any real-time work here has to start by deciding what a 2015-vintage 5y5y forward would
+have been, and AOFM does not publish that.
+
+### 2. Promote the pinned specification: DONE 2026-09-16
+
+Shipped as the default, together with the premium-stripped anchor and an imposed `b_world`.
+What remains of the original item: the charts still say "world r\*" for a US series
+(Limitation 4), and the term-premium language throughout could be tightened now that the
+estimated quantity is a spread rather than a level.
 
 ### 3. A GDP-weighted market anchor
 
@@ -523,8 +964,9 @@ more than any in-sample diagnostic.
 
 ```
 src/models/rstar_bonds/
-├── config.py         # ModelConfig: sample, anchor, windows, sigma_walk, the rule
-├── observations.py   # the yield, the short rate, the anchor, plus ragged extras
+├── config.py         # ModelConfig: sample, anchor, windows, sigma_walk, nu_walk, the rule
+├── observations.py   # the yield, the short rate, the anchor, the AOFM premium and
+│                     #   5y5y forward, plus ragged extras
 ├── estimate.py       # builds and samples the PyMC model
 ├── results.py        # RStarResults: posteriors, derived series, diagnostics
 ├── analyse.py        # charts and printed diagnostics
@@ -538,10 +980,12 @@ missing. The anchor needs a FRED API key in `fred.api` (gitignored); see the REA
 ```bash
 ./run-rstar-bonds.sh -v
 ./run-rstar-bonds.sh --analyse-only                 # recharts from the saved trace
-./run-rstar-bonds.sh --world-source market --impose-world-loading --us-premium   # the pinned spec
+./run-rstar-bonds.sh --no-forward                   # the two-window model: tighter amplitude, unidentified level
+./run-rstar-bonds.sh --nu-walk 2.4                  # the low-nu variant: 5 divergences, BFMI 0.32
+./run-rstar-bonds.sh --nu-walk 6                    # the middle of the sweep: 0 divergences, BFMI 0.65
 ./run-rstar-bonds.sh --world-source mean            # the old HLW anchor
 ./run-rstar-bonds.sh --sigma-walk 0.08              # watch nu fall into the strain regime
-./run-rstar-bonds.sh --curve                        # the third window: watch r* absorb the stance
+./run-rstar-bonds.sh --curve                        # a DIFFERENT third window: watch r* absorb the stance
 ./run-rstar-bonds.sh --short-rate bill              # the rejected bank bill
 ./run-rstar-bonds.sh --no-short                     # one window: 168 divergences, for the record
 ./run-rstar-bonds.sh --steps                        # the asserted-break comparator

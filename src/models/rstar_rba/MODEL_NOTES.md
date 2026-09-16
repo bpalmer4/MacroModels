@@ -18,8 +18,51 @@ pi_t   = 4 · sum_{j=0}^{4} w_j · q_{t-j},   w_j ∝ rho^j,  sum w_j = 1
 g_t    = (pi_t - 2.5) / 0.5                  the inflation gap, in band-widths
 b_t    = b_{t-1} + sigma_r · e_t             NEUTRAL: the slow piece, sigma_r imposed
 d_t    = b_t + lambda · g_t                  the rule's PRESCRIBED rate, not neutral
-r_t    = d_t + eps_t,  eps_t ~ Normal(0, sigma_eps)   observation error
+r_t    = d_t + eps_t                         window one: the cash rate
+f_t    = b_t + bias + u_t                    window two: the market's 5y5y forward
 ```
+
+## THE BIGGEST THING TO KNOW: the level is pinned by a market price
+
+**Added 2026-09-16, and it changes what this model is.** Read this before any number.
+
+With the cash rate as the ONLY observable, the level of neutral was not a choice anyone
+made. Take the sample average of `r = b + lambda·g + eps`: the residual averages to zero by
+construction, so
+
+    mean(b) = mean(r) − lambda · mean(g)
+
+**Neutral's level WAS the historical average cash rate, adjusted for whether inflation
+averaged on target.** Measured: mean neutral 3.952 against mean cash 4.038, a gap of −0.085,
+and `lambda × mean gap` is +0.085, exact to three decimals. Nothing else pinned it, and no
+reparameterisation could, because one observable cannot identify two levels.
+
+That had a consequence the notes did not previously state: **this model was structurally
+incapable of reporting that the whole level of neutral had shifted.** It could say neutral
+was 1.6 points off its own floor; it could not say neutral is 3.9 in level terms. When CBA
+put nominal neutral at 3.85 in September 2026 and this model said 2.99, that was not an
+empirical disagreement. It was two different objects.
+
+**The second window is the AOFM 5y5y risk-neutral forward rate**, `2·RNY10 − RNY5` from the
+term-premium decomposition in [`src/data/aofm_loader.py`](../../data/aofm_loader.py). It is a
+market price for where the cash rate settles over years five to ten, with AOFM's model
+stripping the term premium. It is the only series available that speaks to the LEVEL of
+neutral without being the cash rate's own history.
+
+**It leads policy and does not echo it**, which is the check that matters given the RBA also
+watches it. On quarterly changes, `corr(Δ5y5y_t, Δcash_{t+k})` peaks at **+0.340 at k = +2**
+and is NEGATIVE at k = −1 and k = −2. So it moves two to three quarters ahead of the cash
+rate and does not chase past decisions. Its sd is 0.99 against the cash rate's 1.97.
+
+**THE ASSERTION HAS MOVED, NOT VANISHED.** `bias` is what the forward carries that neutral
+does not: the market's view of the cycle over years five to ten, plus whatever premium AOFM
+left in. It is free but tightly priored at N(0, 0.5), and **that prior is now what holds the
+level**. Widen it and the level is unidentified again. The posterior comes back
+**−0.109 [−0.289, +0.068]**, straddling zero, so the model is reading the forward as neutral
+very nearly one-for-one.
+
+**And the series revises.** AOFM re-estimates the whole decomposition monthly, so every
+historical value moves when the file updates. This is not a real-time series.
 
 **The response is to the deviation from 2.5, not to being outside the band.** Inflation of
 2.7 is inside the 2-3 band and still produces a response, because `g_t` is linear in
@@ -179,18 +222,54 @@ From the saved default run (`model_outputs/rstar_rba_trace.nc`), jumps off. The 
 tables further down were sampled with jumps on and are not re-run; the difference is in the
 third decimal, and point 4 gives it.
 
+**Two windows since 2026-09-16, and `sigma_r` loosened to 0.125. Every number below is from
+that specification and is NOT comparable with earlier vintages**, which had one window and
+`sigma_r` at 0.10. The previous headline was nominal 2.99 / real 0.49.
+
 | | 2026Q2 |
 |---|---|
-| `lambda`, per band-width | **0.305** [0.213, 0.399] |
-| `lambda`, per percentage point of inflation | **0.61**, 0.52-0.72 across defensible `sigma_r` |
-| `rho` | 0.869 [0.727, 0.994] |
-| `sigma_eps` | 0.786 |
-| **neutral `b_t`, nominal** | **2.99** [2.50, 3.46] |
-| **neutral `b_t`, real** (less 2.5) | **0.49**, and **−0.05 to 1.05 across defensible `sigma_r`**: quote the range |
-| the rule's prescribed rate, `b_t + lambda·g_t` | 3.48 |
-| cash rate | 4.35, so the stance is **+1.36** |
-| `corr(base, cash rate)` | 0.88 |
-| divergences | 0 of 8000, r_hat 1.0 throughout |
+| `lambda`, per band-width | **0.228** |
+| `lambda`, per percentage point of inflation | **0.46**, 0.45-0.55 across defensible `sigma_r` |
+| **neutral `b_t`, nominal** | **3.89** |
+| **neutral `b_t`, real** (less long-run expectations) | **1.35**, and **1.10 to 1.41 across defensible `sigma_r`** |
+| `forward_bias` | **−0.109** [−0.287, +0.069], straddles zero |
+| `sigma_f` | 0.146 |
+| the rule's prescribed rate, `b_t + lambda·g_t` | 4.25 |
+| cash rate | 4.35, so the stance is **+0.46** and the rule residual **+0.10** |
+| sd of the quarterly change in neutral | **0.118** |
+| sampling | 0 divergences, r_hat 1.0, min ESS 2,229, MCSE/sd 0.026 |
+
+**`sigma_r` = 0.125 rather than 0.15, on sampling.** 0.15 was tried and fails three checks:
+1 divergence in 8,000 (0.0125% against a 0.0100% rule), MCSE/sd **0.056** against 0.05, and
+min ESS 1,296. The culprit is `sigma_f` alone, everything else samples cleanly at both
+settings with `lambda` at ESS 14,141, and the reason is structural: `sigma_f` and `sigma_r`
+compete to explain the same gap between the forward and the fitted neutral, so loosening the
+walk makes them harder to separate.
+
+The substance is unchanged between the two: neutral 3.89 against 3.91, stance +0.46 against
++0.44, `forward_bias` −0.109 at both to three decimals. The only real cost is neutral's
+quarterly volatility, **0.118 against 0.151**, which loosens the three-way match with
+`rstar_bonds` (0.155) and `rstar_tvpvar` (0.153). That match was a nice-to-have, not a result
+the model rests on, and it was being bought with a sampler that could not cleanly resolve the
+new parameter.
+
+**Three things in that table are new and worth pausing on.**
+
+**The level range collapsed.** Real neutral ran **−0.05 to 1.05** across the `sigma_r` sweep
+with one window, a spread of 1.10, wider than the credible interval at any single value. It
+now runs **1.10 to 1.41**, a spread of 0.31, and is nearly flat from `sigma_r` 0.10 upward
+(3.85, 3.91, 3.91 nominal at 0.10, 0.15, 0.20). That is what pinning the level externally
+buys, and it is why `sigma_r` could be loosened.
+
+**Neutral's speed now matches the rest of the package.** sd of its quarterly change is
+**0.151**, against **0.155** for `rstar_bonds` and **0.153** for `rstar_tvpvar`. At the old
+`sigma_r` = 0.10 with one window it was 0.063, by some way the slowest-moving neutral in the
+package. At `sigma_r` = 0.15 it reaches 0.151 and matches the other two almost exactly, but
+that setting fails three sampling checks, so 0.125 is shipped and the match is looser.
+
+**The rule residual all but vanished**, +0.87 to **+0.08**. Under one window the model said
+the RBA was sitting nearly a point above its own reaction function. With a higher neutral it
+says the Bank is on its rule and the stance is +0.44: policy just tight.
 
 **`lambda` UNITS matter and have caused errors.** The gap is scaled by the band half-width,
 so `lambda` is per band-width and the response per percentage point of inflation is
@@ -305,21 +384,41 @@ Taylor principle in either direction. Anyone wanting the real reading has to sup
 pass-through assumption and state it.
 
 **The `sigma_r` ensemble.** Re-estimated at each value, everything else the default. Runs by
-default.
+default. **WITH the 5y5y second window**, which changes what this table says about the model.
 
 | `sigma_r` | `lambda` per band-width | per pp | neutral nominal | **neutral real** | 2016-19 residual | `corr(base, cash)` |
 |---|---|---|---|---|---|---|
-| 0.05 | 0.358 | 0.72 | 2.45 | **−0.05** | −0.46 | 0.80 |
-| **0.10** (default) | 0.305 | 0.61 | 2.99 | **0.49** | −0.01 | 0.88 |
-| 0.15 | 0.262 | 0.52 | 3.55 | **1.05** | +0.07 | 0.93 |
-| 0.20 | 0.243 | 0.49 | 3.75 | **1.25** | +0.04 | **0.96** |
+| 0.05 | 0.276 | 0.55 | 3.60 | **1.10** | −0.90 | 0.84 |
+| 0.10 | 0.235 | 0.47 | 3.85 | **1.35** | −0.96 | 0.85 |
+| **0.125** (default) | 0.228 | 0.46 | 3.89 | **1.35** | −0.98 | 0.84 |
+| 0.15 | 0.225 | 0.45 | 3.91 | **1.41** | −1.00 | 0.83 |
+| 0.20 | 0.223 | 0.45 | 3.91 | **1.41** | −1.01 | 0.82 |
 
-**0.20 is the boundary, not a fourth defensible value.** At `corr(base, cash rate)` = 0.96 the
-base is very nearly the cash rate smoothed, falling to 0.3 in 2021 against a cash rate of
-0.10. Two symptoms confirm it: neutral gains only 0.20 on that step against 0.56 on the one
-before, and the 2016-19 residual stops moving monotonically because little residual is left
-anywhere. **Quote the range over 0.05 to 0.15**; 0.20 is carried to show where the method
-fails.
+**The level has stopped riding on `sigma_r`, which is the whole point of the second window.**
+Real neutral spans **0.31** here against **1.10** on the one-window version, whose table was:
+
+| `sigma_r` | neutral real, ONE window |
+|---|---|
+| 0.05 | −0.05 |
+| 0.10 | 0.49 |
+| 0.15 | 1.05 |
+| 0.20 | 1.25 |
+
+It is also nearly FLAT from 0.10 up, at 3.85, 3.91, 3.91, where before it climbed
+monotonically with no interior answer. That is the difference between a level pinned by an external price
+and a level that was the cash rate's own average being rationed by a smoothness knob.
+
+**`corr(base, cash rate)` no longer runs away either.** It sat at 0.80, 0.88, 0.93, **0.96**
+under one window, so 0.20 had to be carried as the boundary where neutral became the cash rate
+smoothed. It now reads 0.84, 0.85, 0.83, 0.82: flat, and slightly FALLING as `sigma_r` rises.
+The old boundary is gone, which is why the default could move from 0.10 to 0.15.
+
+**What did NOT improve: the 2016-19 residual.** It is around −0.96 to −1.01 at every setting,
+where the one-window model had it near zero at the default. With a higher neutral the model now
+says the RBA ran persistently BELOW its own rule through that period, by about a point. Whether
+that is a finding or a symptom is open; it is at least consistent with the two-indicator
+evidence (demand gap −0.35, inflation gap −0.52) that policy was too tight, since a rate below
+the rule can still sit above neutral.
 
 Read the rest in three parts.
 

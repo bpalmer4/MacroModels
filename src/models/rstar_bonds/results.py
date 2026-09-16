@@ -10,10 +10,17 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from src.models.common.inflation_scale import long_run_expectations
 from src.models.common.sources import footer_from_constants
 
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
 DEFAULT_CHART_BASE = Path(__file__).parent.parent.parent.parent / "charts"
+
+# `premium_audit` compares era averages at each end of the sample rather than
+# single quarters, so a shift has to persist to register. Four years at each
+# end, and at least two years of overlap before the comparison means anything.
+_AUDIT_ERA_QUARTERS = 16
+_AUDIT_MIN_QUARTERS = 8
 
 
 @dataclass
@@ -87,23 +94,105 @@ class RStarResults:
         """Return the highest-density interval of real r*."""
         return self.hdi("r_star", prob)
 
-    def nominal_rstar_hdi(self, prob: float = 0.90, *, on_expectations: bool = False) -> pd.DataFrame:
+    def _inflation_term(self, scale: str) -> pd.Series | float:
+        """Return the inflation term that puts r* on a nominal scale.
+
+        Three, because they answer three questions:
+
+        "expectations" (default) — TARGET-ANCHORED long-run expectations. The
+            nominal neutral rate on the convention the RBA and CBA use, so the
+            number is comparable with a published one. See
+            `src/models/common/inflation_scale.py`.
+        "target" — the flat 2.5% anchor. This package's convention before
+            2026-09-16, kept so published numbers stay reproducible. It differs
+            from the above by up to a point in the 1990s and barely at all
+            after 2000.
+        "actual" — the UNANCHORED expectations series, which moves with the
+            cycle. Not a scale conversion: it gives the neutral rate for the
+            inflation currently expected, and its gap to the anchored line is a
+            de-anchoring measure in its own right.
+        """
+        if scale == "target":
+            return float(self.constants.get("anchor", 2.5))
+        if scale == "actual":
+            # The model's own deflator, so it comes from the run's observations.
+            return self._extra("pi_exp")
+        if scale == "expectations":
+            # Loaded fresh rather than read from the saved observations. A run
+            # estimated before `pi_exp_lr` was carried would otherwise return an
+            # all-NaN column and draw a blank nominal line with a "nan to nan"
+            # header, which is worse than either erroring or being right. The
+            # series is data either way, so re-reading it changes nothing except
+            # that old traces keep working.
+            return long_run_expectations(self.obs_index)
+        raise ValueError(f"scale must be 'expectations', 'target' or 'actual', got {scale!r}")
+
+    def nominal_rstar_hdi(self, prob: float = 0.90, *, scale: str = "expectations") -> pd.DataFrame:
         """Return the HDI of nominal r*.
 
-        The inflation term is data — the 2.5% anchor or the observed
-        expectations series — so this is the real interval shifted, not a
-        wider one. Nominal r* carries exactly the uncertainty real r* does.
+        The inflation term is data, whichever of the three it is, so this is the
+        real interval shifted rather than a wider one. Nominal r* carries
+        exactly the uncertainty real r* does. See `_inflation_term`.
         """
-        inflation = self._extra("pi_exp") if on_expectations else float(self.constants.get("anchor", 2.5))
-        return self.rstar_hdi(prob).add(inflation, axis=0)
+        return self.rstar_hdi(prob).add(self._inflation_term(scale), axis=0)
 
     def term_premium_posterior(self) -> pd.DataFrame:
         """Return the term premium, everything in the yield that is not r*."""
         return self._vector("tp")
 
+    def has_premium(self) -> bool:
+        """Return whether this run estimates a term premium at all.
+
+        False under `nominal_window`, where the premium was removed from the
+        observable by the AOFM before the model saw it, so there is no `tp`,
+        no `mu_tp` and nothing for the premium charts and checks to draw.
+        """
+        return "tp" in self.posterior
+
+    def premium_is_pinned(self) -> bool:
+        """Return whether `tp` was pinned to the AOFM's published premium.
+
+        Changes what the audit chart MEANS: unpinned, the comparison is a test
+        the model can fail; pinned, the two lines agree by construction and the
+        estimated quantity is the spread between them.
+        """
+        return bool(self.constants.get("au_premium_anchor", 0.0))
+
+    def aofm_premium(self) -> pd.Series:
+        """Return the AOFM's published Australian term premium, if it loaded.
+
+        Carried on every run, pinned to or not. The comparison against
+        `term_premium_posterior` is the external check this package lacked: the
+        model's premium is stationary about a constant by assertion, and this is
+        the first Australian series that can say whether it should be. Note it
+        is NOMINAL and the model's is real, so the honest comparison is of shape
+        and change rather than level.
+        """
+        return self._extra("aofm_tp")
+
     def real_yield(self) -> pd.Series:
-        """Return the observed indexed real 10-year yield."""
+        """Return the observed long-end yield this run was estimated on.
+
+        The indexed real 10-year yield by default. Under `nominal_window` it is
+        the AOFM's deflated risk-neutral yield instead, which is the series the
+        model actually fitted and therefore the one the variance decomposition
+        and the fit charts want. `window_is_nominal` says which.
+        """
         return pd.Series(self.obs["y"], index=self.obs_index)
+
+    def window_is_nominal(self) -> bool:
+        """Return whether window one was the risk-neutral nominal yield."""
+        return bool(self.constants.get("nominal_window", 0.0))
+
+    def indexed_yield(self) -> pd.Series:
+        """Return the indexed real yield, whether or not it was estimated on.
+
+        Under the default it is `real_yield()`. Under `nominal_window` it is
+        carried as a chart extra so the two long-end measures can be compared.
+        """
+        if not self.window_is_nominal():
+            return self.real_yield()
+        return self._extra("y_indexed")
 
     def has_curve(self) -> bool:
         """Return whether this run used a medium maturity as a third window."""
@@ -334,22 +423,27 @@ class RStarResults:
         pi = self.rule_inflation(look_through=look_through, positive_only=positive_only)
         return self.rstar_median() + pi + a_pi * (pi - anchor) + a_gap * gap
 
-    def nominal_rstar(self, *, on_expectations: bool = False) -> pd.Series:
+    def nominal_rstar(self, *, scale: str = "expectations") -> pd.Series:
         """Return the neutral *nominal* cash rate: r* plus expected inflation.
 
-        With `on_expectations` false — the default — the inflation term is the
-        2.5% target, giving the steady-state neutral rate: where the cash rate
-        would sit with inflation at target and the gap closed. That is the
-        number directly comparable to the actual cash rate, and the comparison
-        is the stance: above it policy is restrictive, below it expansionary.
+        The default, "expectations", uses TARGET-ANCHORED long-run expectations.
+        That is the steady-state neutral rate on the convention the RBA and CBA
+        both use, so it is the number to compare with a published one, and the
+        comparison with the actual cash rate is the stance: above it policy is
+        restrictive, below it expansionary.
 
-        With `on_expectations` true, actual expectations are used instead, which
-        gives the neutral rate *for the inflation currently expected* rather
-        than for the target. The two differ whenever expectations are away from
-        2.5, and the gap between them is a de-anchoring measure in its own right.
+        "target" uses the flat 2.5% anchor instead, which is what this method
+        did by default before 2026-09-16. The two agree closely after 2000 and
+        differ by up to a point through the 1990s re-anchoring.
+
+        "actual" uses the unanchored expectations series, giving the neutral
+        rate *for the inflation currently expected* rather than for the long
+        run. Its gap to the anchored line is a de-anchoring measure in its own
+        right, which is why `plot_stance` draws both.
+
+        See `_inflation_term` for the full argument.
         """
-        inflation = self._extra("pi_exp") if on_expectations else float(self.constants.get("anchor", 2.5))
-        return self.rstar_median() + inflation
+        return self.rstar_median() + self._inflation_term(scale)
 
     def cash_rate(self) -> pd.Series:
         """Return the observed cash rate."""
@@ -399,7 +493,13 @@ class RStarResults:
         It is deliberately a legible number rather than a formal structural
         break test: a break announces itself, and the judgement of whether one
         has happened is the reader's.
+
+        Returns an empty dict under `nominal_window`: with no premium there is
+        nowhere for a late break to accumulate, so the test does not apply
+        rather than passing.
         """
+        if not self.has_premium():
+            return {}
         tp = self.term_premium_posterior().median(axis=1)
         mu = float(self._scalar("mu_tp").mean())
         rho = float(self._scalar("rho_tp").mean())
@@ -437,18 +537,73 @@ class RStarResults:
         and the name on the state is wrong.
         """
         rstar = self.rstar_median()
-        premium = self.term_premium_posterior().median(axis=1)
         total = self.real_yield().var()
+        shares = {"var share, r*": float(rstar.var() / total)}
+        # Under `nominal_window` the premium was taken out of the observable
+        # before the model saw it, so there is no share to report: the residual
+        # `sigma_rn` is the only other thing in the yield, and it is noise
+        # rather than a component.
+        if self.has_premium():
+            premium = self.term_premium_posterior().median(axis=1)
+            shares["var share, term premium"] = float(premium.var() / total)
+        shares["corr(r*, world r*)"] = float(rstar.corr(self.world_rstar()))
+        return shares
+
+    def premium_audit(self) -> dict[str, float]:
+        """Compare the model's fitted premium against the AOFM's published one.
+
+        The check this package never had. `tp` is stationary about a constant by
+        assertion, which forces any secular decline in the long yield into r*
+        and therefore into the wedge. If the published Australian premium fell
+        by roughly what the wedge fell, the assertion is doing the work and the
+        wedge is partly the premium wearing another label.
+
+        Levels are reported but the CHANGES correlation is the one to weigh: the
+        model's premium is real and the AOFM's is nominal, so their levels
+        differ by an inflation risk premium, and within the AOFM decomposition
+        the premium and the risk-neutral yield both inherit the yield's
+        downtrend, which inflates any level correlation.
+
+        Returns an empty dict when there is no premium to audit or the AOFM
+        series did not load.
+        """
+        if not self.has_premium():
+            return {}
+        aofm = self.aofm_premium().dropna()
+        if aofm.empty:
+            return {}
+        model = self.term_premium_posterior().median(axis=1)
+        wedge = self.wedge_median()
+        joined = pd.concat({"model": model, "aofm": aofm, "wedge": wedge}, axis=1).dropna()
+        if len(joined) < _AUDIT_MIN_QUARTERS:
+            return {}
+        changes = joined.diff().dropna()
+        span = _AUDIT_ERA_QUARTERS
+        move = joined.head(span).mean() - joined.tail(span).mean()
         return {
-            "var share, r*": float(rstar.var() / total),
-            "var share, term premium": float(premium.var() / total),
-            "corr(r*, world r*)": float(rstar.corr(self.world_rstar())),
+            "corr(model tp, aofm tp)": float(joined["model"].corr(joined["aofm"])),
+            "corr changes": float(changes["model"].corr(changes["aofm"])),
+            "corr(wedge, aofm tp)": float(joined["wedge"].corr(joined["aofm"])),
+            "corr(wedge, aofm tp) changes": float(changes["wedge"].corr(changes["aofm"])),
+            "sd, model tp": float(joined["model"].std()),
+            "sd, aofm tp": float(joined["aofm"].std()),
+            "fall in model tp": float(move["model"]),
+            "fall in aofm tp": float(move["aofm"]),
+            "fall in wedge": float(move["wedge"]),
+            "n": float(len(joined)),
         }
 
     def summary(self, var_names: list[str] | None = None) -> pd.DataFrame:
         """ArviZ summary for the scalar parameters."""
         if var_names is None:
-            var_names = ["wedge_0", "mu_tp", "rho_tp", "sigma_tp"]
+            # Built from what the run actually has: `nominal_window` drops the
+            # three premium parameters and adds an observation error, and
+            # `mu_spread` exists only under one of the two pins.
+            var_names = ["wedge_0"]
+            var_names += [
+                name for name in ("mu_tp", "rho_tp", "sigma_tp", "mu_spread", "sigma_rn", "b_world")
+                if name in self.posterior
+            ]
             if "nu_walk" in self.posterior:
                 var_names.append("nu_walk")
             if "jumps" in self.posterior:

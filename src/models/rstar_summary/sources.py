@@ -25,16 +25,26 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from src.models.common import inflation_scale
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 ROOT = Path(__file__).parent.parent.parent.parent
 OUTPUT_DIR = ROOT / "model_outputs"
 
-# A neutral rate is defined at TARGET inflation, not at whatever inflation
-# happened to be, so real converts to nominal by adding the target. Same
-# convention as `rstar_rba`, which records both scales for this reason.
-TARGET = 2.5
+# Real converts to nominal by adding LONG-RUN INFLATION EXPECTATIONS, which is
+# what the RBA and CBA both do, so these lines are comparable with a published
+# neutral rate. It used to add the flat 2.5% target. The two agree closely after
+# 2000 and differ by up to a point through the 1990s re-anchoring, where
+# expectations genuinely sat above target and the old convention understated
+# every nominal path on the chart.
+#
+# `src/models/common/inflation_scale.py` holds the convention and the argument
+# for the anchored series over the unanchored one. `--nominal-on target`
+# restores the old behaviour, so previously published numbers stay reproducible.
+TARGET = inflation_scale.TARGET
+DEFAULT_SCALE = "expectations"
 
 
 @dataclass(frozen=True)
@@ -106,6 +116,64 @@ def _load_invert(prefix: str) -> pd.Series:
     return posterior_median(trace, "rstar", index)
 
 
+def _load_tvpvar(prefix: str) -> pd.Series:
+    """TVP-VAR r*, real: a model-implied 5y5y.
+
+    The average of the conditioned projection over quarters 20 to 40.
+
+    CHANGED 2026-09-16 from the steady state, and the reason is comparability.
+    `rstar_bonds` and `rstar_rba` are both pinned to the AOFM's 5y5y forward,
+    and CBA's published figure sits within 0.01 of that same forward. A 5y5y is
+    a FINITE-HORIZON object, the average expected short rate over years five to
+    ten, so the comparable quantity here is a window average over those years
+    rather than an infinite-horizon limit. The chart was putting a different
+    estimand beside the other two and calling it a third opinion.
+
+    The steady state also failed on its own terms. Unconditioned it is the real
+    rate at the VAR's own long-run inflation of 3.15%, not at target, so it is
+    not r*; 29.6% of draws had no steady state at all; and its median was set by
+    near-unit-root draws, since `(I - F)^-1` has a vanishing denominator as the
+    spectral radius approaches one. Conditioning fixes the concept but leaves
+    the level swinging from -0.58 to +1.44 across defensible inflation anchors.
+    Over a finite window none of that has time to act: no draw is undefined and
+    the 90% band falls from 9.77 to 3.59.
+
+    `--rstar-definition steady` and `projection` both remain. Note that neither
+    this nor `projection` is the published Lubik-Matthes estimator: theirs is
+    the five-year POINT, and the inflation conditioning is not in their method
+    at all.
+    """
+    from src.models.rstar_tvpvar.results import load_results  # noqa: PLC0415
+
+    return load_results(prefix=prefix).rstar_median()
+
+
+# WHY `rstar_invert` IS NOT HERE. Removed 2026-09-16. It asserts an IS curve,
+# and five independent methods in this repo now say there is not one to assert:
+# `rstar_hlw` measures the link at -0.04, `nairu` at +0.084, `is_curve` cannot
+# recover the SIGN, `rstar_tvpvar` returns +0.04 with the wrong sign in 87% of
+# draws even after commodity prices and the exchange rate are added, and
+# `rstar_invert`'s own measurements are -0.015 to -0.034 before its prior
+# overrides them.
+#
+# THE DECIDING TEST was the sweep. Every other model here has something that
+# SURVIVES varying its imposed number: `rstar_bonds` keeps its wedge reading
+# across three anchors, `rstar_rba` keeps `lambda` across `sigma_r`. Across
+# `sigma_rstar` this model's slope runs -0.032 to -0.389, r* goes from a flat
+# line to a 9.7-point swing, and the 2016-19 stance flips from -3.19 to +1.16.
+# Nothing holds. The fit improves monotonically to 0.50, so the data cannot
+# choose either.
+#
+# AND THE SLOPE PRIOR IS DECORATIVE. Moving `is_slope_mu` from -0.30 to -0.10
+# leaves the posterior at -0.371 against -0.389, because the parameterisation
+# rewards a large slope: it buys a more movable line. So a reader who set a
+# defensible prior would still be shown -0.37.
+#
+# The package is kept and still runs. It is the best-sampled model here (R-hat
+# 1.00, ESS 4,987, zero divergences) and it measures the output gap's own slow
+# component well. It is not a neutral rate.
+
+
 # WHY `rstar_hlw` IS NOT HERE, and please do not add it back without reading this.
 #
 # No resolution of that model produces an IDENTIFIED r* path, so any line it
@@ -134,7 +202,8 @@ SOURCES: tuple[RstarSource, ...] = (
         script="run-rstar-bonds.sh",
         loader=_load_bonds,
         nominal=False,
-        note="anchored to the Cleveland Fed 10y expected real rate; LEVEL not identified",
+        note=("anchored to a premium-stripped US real rate with b_world imposed at 1; "
+              "AU term premium taken from the AOFM; LEVEL not identified"),
     ),
     RstarSource(
         label="RBA reaction function (neutral b_t)",
@@ -142,15 +211,18 @@ SOURCES: tuple[RstarSource, ...] = (
         script="run-rstar-rba.sh",
         loader=_load_rba,
         nominal=True,
-        note="neutral, NOT prescribed; level conditional on an arbitrary sigma_r",
+        note=("neutral b_t, NOT prescribed; the level is pinned by the AOFM 5y5y "
+              "forward as a second window, with a free but tightly priored bias"),
     ),
     RstarSource(
-        label="IS inversion (slope asserted)",
-        prefix="rstar_invert",
-        script="run-rstar-invert.sh",
-        loader=_load_invert,
+        label="TVP-VAR (5y5y-equivalent)",
+        prefix="rstar_tvpvar",
+        script="run-rstar-tvpvar.sh",
+        loader=_load_tvpvar,
         nominal=False,
-        note="anchored to nothing; path decided by the asserted speed of r*",
+        note=("no IS curve and no term premium; r* is the VAR's RESTING POINT, whose "
+              "level is the sample-average real cash rate and whose posterior is a "
+              "ratio with fat tails (50% band, not 90%); ESS 245 and 7 divergences"),
     ),
 )
 
@@ -175,12 +247,17 @@ def gather(
     *,
     allow_refresh: bool = True,
     verbose: bool = True,
+    scale: str = DEFAULT_SCALE,
 ) -> tuple[pd.DataFrame, dict[str, str]]:
     """Return every model's r* on a NOMINAL scale, refreshing stale runs first.
 
     Args:
         allow_refresh: re-run any model whose saved trace is not from today
         verbose: print what was current, what was refreshed and what was read
+        scale: how real converts to nominal. "expectations" (default) adds
+            long-run inflation expectations, matching the RBA and CBA;
+            "target" adds 2.5%, which is what this package did before
+            2026-09-16 and is kept so those numbers stay reproducible.
 
     Returns:
         (frame, notes). `frame` holds one nominal column per model on a shared
@@ -204,7 +281,7 @@ def gather(
     elif stale and verbose:
         print(f"\n  --no-refresh: reading {len(stale)} stale run(s) as they stand")
 
-    columns, notes = _load_all(verbose=verbose)
+    columns, notes = _load_all(verbose=verbose, scale=scale)
     if not columns:
         raise RuntimeError("no r* models could be loaded")
     return pd.DataFrame(columns).sort_index(), notes
@@ -220,16 +297,19 @@ def _as_quarterly(series: pd.Series) -> pd.Series:
     return series.astype(float)
 
 
-def _load_all(*, verbose: bool) -> tuple[dict[str, pd.Series], dict[str, str]]:
+def _load_all(*, verbose: bool, scale: str = DEFAULT_SCALE) -> tuple[dict[str, pd.Series], dict[str, str]]:
     """Load each source, converting every column to a NOMINAL rate.
 
     A model that cannot be loaded is skipped and named rather than fatal: one
-    missing run should not stop the comparison of the others.
+    missing run should not stop the comparison of the others. The scale
+    conversion is NOT treated that way: if the expectations run is missing, the
+    whole comparison is on the wrong footing, so it raises.
     """
     columns: dict[str, pd.Series] = {}
     notes: dict[str, str] = {}
+    label = inflation_scale.scale_label(scale)
     if verbose:
-        print("\nLoading:")
+        print(f"\nLoading (real converts to nominal by adding {label}):")
     for source in SOURCES:
         try:
             series = _as_quarterly(source.loader(source.prefix))
@@ -237,9 +317,11 @@ def _load_all(*, verbose: bool) -> tuple[dict[str, pd.Series], dict[str, str]]:
             print(f"  SKIPPED {source.label}: {type(exc).__name__}")
             continue
         # Every column leaves here NOMINAL, so the chart never has to ask.
-        columns[source.label] = series + (0.0 if source.nominal else TARGET)
+        columns[source.label] = (
+            series if source.nominal else inflation_scale.to_nominal(series, scale=scale)
+        )
         notes[source.label] = source.note
         if verbose:
-            scale = "nominal" if source.nominal else f"real + {TARGET:g}"
-            print(f"  {source.label:<40} {source.prefix} ({scale})")
+            how = "nominal already" if source.nominal else f"real + {label}"
+            print(f"  {source.label:<40} {source.prefix} ({how})")
     return columns, notes

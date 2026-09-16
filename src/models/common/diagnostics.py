@@ -146,6 +146,30 @@ def _tree_depth_check(trace: az.InferenceData) -> Check:
         return na
 
     tree_depth = sample_stats.tree_depth.to_numpy()
+
+    # The configured cap, where the run recorded it (see `sample_model`). This
+    # is the only way to tell truncation from a trajectory that U-turned on its
+    # own: NumPyro reports no `reached_max_treedepth`, so the fallback below can
+    # only count draws at the deepest depth observed, and that number is
+    # identical whether the sampler was cut off or simply finished there.
+    # Measured case: rstar_bonds reported "8.44% at max (10)" and failed, and
+    # raising the cap to 12 left the deepest trajectory at 10 and mean depth
+    # unchanged, so nothing had been truncated at all.
+    configured = sample_stats.attrs.get("max_tree_depth")
+    if configured is not None:
+        at_max_rate = float((tree_depth >= int(configured)).mean())
+        passed = at_max_rate < MAX_TREE_DEPTH_RATE
+        return Check(
+            name="Tree depth",
+            detail=(
+                f"Tree depth at configured max ({int(configured)}): {at_max_rate:.2%} "
+                f"(max observed: {int(tree_depth.max())})"
+            ),
+            threshold=f"< {MAX_TREE_DEPTH_RATE:.0%} at max",
+            passed=passed,
+            issue="" if passed else f"tree depth {at_max_rate:.1%} at max",
+        )
+
     max_depth = int(tree_depth.max())
     if max_depth < TREE_DEPTH_IGNORE_BELOW:
         return Check(

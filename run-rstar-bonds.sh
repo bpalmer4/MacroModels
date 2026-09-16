@@ -24,6 +24,17 @@ uv run python -m src.models.rstar_bonds.run "$@"
 #   ./run-rstar-bonds.sh --impose-world-loading  # b_world = 1 rather than estimated
 #   ./run-rstar-bonds.sh --premium-source acm  # the other US term premium: rejected,
 #                                              #   see Alternatives in MODEL_NOTES
+#   ./run-rstar-bonds.sh --no-au-premium       # free mu_tp again: the premium is inferred
+#                                              #   rather than taken from the AOFM series
+#   ./run-rstar-bonds.sh --no-impose-world-loading  # estimate b_world; it collapses to
+#                                              #   0.015 once the premium is pinned
+#   ./run-rstar-bonds.sh --no-au-premium --no-impose-world-loading --world-source cleveland
+#                                              #   the pre-2026-09-16 default, exactly
+#   ./run-rstar-bonds.sh --nominal-window      # read the long end off the AOFM risk-neutral
+#                                              #   yield instead: no term premium in the
+#                                              #   model at all, so no mu_tp to trade off
+#                                              #   against wedge_0
+#   ./run-rstar-bonds.sh --au-premium-source ols  # plain ACM rather than bias-corrected
 #   ./run-rstar-bonds.sh --no-world            # does the global anchor do the work?
 #   ./run-rstar-bonds.sh --world-source US     # the marginal pricer, not the average
 #   ./run-rstar-bonds.sh --taylor-ugap         # rule on the unemployment gap instead

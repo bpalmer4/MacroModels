@@ -25,9 +25,9 @@ and what should not be quoted from it. The links below go there; this page is on
 Four routes to r\*, kept separate because they disagree, plus the tooling that compares them.
 Each set of notes says what its number is conditional on, and none should be quoted without that.
 
-- **From the bond market** (`rstar_bonds`): an Australian wedge over a market world real rate, read off the indexed 10-year yield and the real cash rate. See [notes](src/models/rstar_bonds/MODEL_NOTES.md)
+- **From the bond market** (`rstar_bonds`): an Australian wedge over a market world real rate, read off the indexed 10-year yield, the real cash rate and the AOFM 5y5y forward. See [notes](src/models/rstar_bonds/MODEL_NOTES.md)
 - **From the RBA's reaction to inflation** (`rstar_rba`): splits the cash rate into a slowly moving neutral and a response to inflation away from target. Two published series, nothing else. See [notes](src/models/rstar_rba/MODEL_NOTES.md)
-- **By conditional inversion** (`rstar_invert`): asserts an IS curve and reports the r\* path that assertion forces on the observed gap and cash rate. Not an estimate. See [notes](src/models/rstar_invert/MODEL_NOTES.md)
+- **By conditional inversion** (`rstar_invert`): asserts an IS curve and reports the r\* path that assertion forces on the observed gap and cash rate. Not an estimate, and no longer on the summary chart. See [notes](src/models/rstar_invert/MODEL_NOTES.md)
 - **HLW** (`rstar_hlw`): a Bayesian Holston-Laubach-Williams build. *Not a source of r\**, and the notes explain why; its trend/cycle decomposition is a separate and working claim. See [notes](src/models/rstar_hlw/MODEL_NOTES.md)
 - **r\* summary** (`rstar_summary`): all of the above that qualify, on one nominal scale. See [notes](src/models/rstar_summary/MODEL_NOTES.md)
 - **The IS curve, plotted rather than estimated** (`is_curve`): a test bench for the r\* models. The rate-to-output-gap link in Australian data remains unresolved. See [notes](src/models/is_curve/MODEL_NOTES.md)
@@ -220,7 +220,8 @@ restores the older wiring). r\* itself needs none of them.
 ./run-rstar-bonds.sh --sigma-walk 0.03
 
 # Specifications tried as the default and rejected, kept as comparators
-./run-rstar-bonds.sh --curve           # a third window: r* starts absorbing the policy stance
+./run-rstar-bonds.sh --no-forward      # drop the 5y5y window: tighter amplitude, unidentified level
+./run-rstar-bonds.sh --curve           # a different third window: r* starts absorbing the policy stance
 ./run-rstar-bonds.sh --short-rate bill # the 90-day bill: mixes bank credit into the stance
 
 # Diagnostics, kept so the checks are reproducible

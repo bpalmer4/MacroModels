@@ -229,15 +229,147 @@ def _premium_prior(
     real, so the inflation risk premium stays on the Australian side. And a US
     premium stands in for a global one.
 
+    With `au_premium_anchor`, `tp` tracks the AOFM's published AUSTRALIAN
+    premium instead, which removes the second of those and leaves the first as
+    the entire residual. That is the better-argued version of the same device:
+    the asserted quantity becomes "the average gap between a real and a nominal
+    Australian term premium", which is an inflation risk premium and nothing
+    else, rather than a liquidity spread, a currency risk premium and an
+    inflation risk premium bundled together.
+
+    It is also a test rather than a convenience. The plain form makes `tp` move
+    0.30 points across the sample while the AOFM premium moves 1.99 and the
+    wedge moves -2.29, so if the long yield's decline was premium, the plain
+    form has been booking it as r*.
+
     Must be called inside the model context, since it creates a Potential.
     """
-    if not config.us_premium_anchor:
-        _stationary_ar1_prior("tp_prior", tp, mc["mu_tp"], mc["rho_tp"], mc["sigma_tp"])
-        return ["Premium:    tp ~ AR(1) about mu   (stationary: the identifying prior)"]
+    if config.au_premium_anchor:
+        spread = pm.Deterministic("tp_spread", tp - pt.as_tensor_variable(obs["au_tp"]))
+        _stationary_ar1_prior("tp_prior", spread, mc["mu_spread"], mc["rho_tp"], mc["sigma_tp"])
+        return ["Premium:    tp_t = au_tp_t + spread_t,  spread ~ AR(1) about mu_spread"]
 
-    spread = pm.Deterministic("tp_spread", tp - pt.as_tensor_variable(obs["us_tp"]))
-    _stationary_ar1_prior("tp_prior", spread, mc["mu_spread"], mc["rho_tp"], mc["sigma_tp"])
-    return ["Premium:    tp_t = us_tp_t + spread_t,  spread ~ AR(1) about mu_spread"]
+    if config.us_premium_anchor:
+        spread = pm.Deterministic("tp_spread", tp - pt.as_tensor_variable(obs["us_tp"]))
+        _stationary_ar1_prior("tp_prior", spread, mc["mu_spread"], mc["rho_tp"], mc["sigma_tp"])
+        return ["Premium:    tp_t = us_tp_t + spread_t,  spread ~ AR(1) about mu_spread"]
+
+    _stationary_ar1_prior("tp_prior", tp, mc["mu_tp"], mc["rho_tp"], mc["sigma_tp"])
+    return ["Premium:    tp ~ AR(1) about mu   (stationary: the identifying prior)"]
+
+
+def _window_one(
+    config: ModelConfig,
+    obs: dict[str, np.ndarray],
+    r_star: pt.TensorVariable,
+    carried: pt.TensorVariable,
+    mc: dict[str, Any],
+) -> list[str]:
+    """Attach the long-end observable, in whichever of its two forms is in use.
+
+    DEFAULT: the indexed real yield, split by an identity into r* and a latent
+    premium, with the premium's stationarity carrying the identification. The
+    identity has no residual deliberately — an earlier version gave it one and
+    `sigma_y` collapsed toward zero with `mu_tp` riding a ridge against the
+    level of r*, because two free things were explaining one series.
+
+    `nominal_window`: the AOFM's risk-neutral yield, deflated. The premium has
+    already been removed from the observable, so there is nothing for a latent
+    premium to do and the whole `tp` block goes. What remains is an ordinary
+    observation equation: a risk-neutral real yield IS the expected real policy
+    path, which is r* plus the carried share of today's gap.
+
+    That form needs the residual the default cannot have. Here nothing competes
+    with it for the same variance, and it has real work: `sigma_rn` absorbs
+    AOFM's estimation error and the deflator's horizon mismatch, and it is the
+    only thing that can.
+
+    What the second form buys: `mu_tp` is gone, so the -0.87 correlation with
+    `wedge_0` that IS this model's level problem has nothing to attach to. The
+    level then rests on the stationarity of `g` alone.
+
+    Must be called inside the model context, since it creates variables.
+    """
+    if config.nominal_window:
+        sigma_rn = pm.HalfNormal("sigma_rn", sigma=config.sigma_rn_sigma)
+        pm.Normal(
+            "y_rn_obs",
+            mu=r_star + carried,
+            sigma=sigma_rn,
+            observed=pt.as_tensor_variable(obs["y"]),
+        )
+        carried_term = " + k·g_t" if config.use_short else ""
+        return [
+            f"Yield:      y_rn_t = r*_t{carried_term} + e_t   (premium removed by AOFM)",
+            "Premium:    none in the model   (no mu_tp, so no level trade-off)",
+        ]
+
+    tp = pm.Deterministic("tp", pt.as_tensor_variable(obs["y"]) - r_star - carried)
+    carried_term = " - k·g_t" if config.use_short else ""
+    descriptions = [f"Yield:      tp_t = y_t - r*_t{carried_term}   (identity, no residual)"]
+
+    # The stationarity of that premium is what identifies the split, so it
+    # enters as a prior on tp rather than as a likelihood: a stationary initial
+    # draw, then an AR(1) transition. rho is bounded below 1 — a unit root would
+    # make the premium a second random walk and the decomposition meaningless.
+    descriptions.extend(_premium_prior(config, obs, tp, mc))
+    return descriptions
+
+
+def _forward_window(config: ModelConfig, obs: dict[str, np.ndarray], r_star: pt.TensorVariable) -> list[str]:
+    """Attach the market's deflated 5y5y forward as a window on r* itself.
+
+    `f_t = r*_t + bias + e_t`. Unlike the other two windows this one loads on r*
+    with no premium and no policy gap in the way, so it speaks to the LEVEL.
+
+    The bias is what the forward carries that r* does not: the market's view of
+    the cycle over years five to ten, and whatever premium AOFM did not strip.
+    It is free but tightly priored, and it now shares the level-carrying job with
+    `mu_spread` rather than replacing it. Widen the prior and the level goes back
+    to being unidentified.
+
+    Must be called inside the model context, since it creates variables.
+    """
+    if not config.use_forward or "f" not in obs:
+        return []
+    # IMPOSED when the prior sd is zero, which is not the default: see
+    # `ModelConfig.forward_bias_sigma` for the test. Imposing it costs 35
+    # divergences against the free bias's 22, because the bias is absorbing a
+    # genuine disagreement between the forward and the other two windows about
+    # the level, and removing it pushes that disagreement onto the wedge walk.
+    if config.forward_bias_sigma > 0:
+        bias = pm.Normal("forward_bias", mu=config.forward_bias_mu, sigma=config.forward_bias_sigma)
+    else:
+        bias = pt.as_tensor_variable(float(config.forward_bias_mu))
+    # HalfNormal, and a ZERO-AVOIDING PRIOR WAS TRIED HERE AND IS WORSE.
+    #
+    # The case for trying one was that the residual divergences have a single
+    # signature: divergent draws sit at `sigma_f` 0.059 against a posterior mean
+    # of 0.102, a shift of -2.06 sd and much the largest of any parameter, with
+    # `wedge_0` +0.98, `forward_bias` -0.87 and `mu_spread` -0.79 moving with
+    # it. As `sigma_f` approaches zero the forward stops being an observation
+    # and becomes the constraint r* = f - bias, which the three level parameters
+    # can only satisfy by being squeezed together. HalfNormal has its mode at
+    # exactly that point, and `sigma_f` cannot really be zero: it carries AOFM's
+    # own estimation error and the mismatch between a 5y5y horizon and the
+    # deflator's.
+    #
+    # InverseGamma(3, 0.2), mean 0.10, gave 15 divergences against 5, BFMI 0.21
+    # against 0.32, `ess_bulk` 501 against 712 and `r_hat` 1.0097 against
+    # 1.0025. Zero density at the boundary is bought with a sharp log-density
+    # barrier beside it, and that curvature is harder to traverse than the
+    # smooth approach it replaced: a wall in place of a funnel.
+    #
+    # The experiment settled something else worth keeping. The posterior did NOT
+    # move: `sigma_f` 0.102 -> 0.093, `mu_spread` 0.232 -> 0.237, `wedge_0`
+    # 2.440 -> 2.443, r* 1.005 -> 1.001 under two very different priors. So the
+    # likelihood pins this residual, the low-`sigma_f` region is a real feature
+    # of the geometry rather than something the prior invited, and the residual
+    # divergences are the forward window genuinely disagreeing with the other
+    # two about the level. That is a finding about the model, not the sampler.
+    sigma_f = pm.HalfNormal("sigma_f", sigma=config.sigma_f_sigma)
+    pm.Normal("obs_forward", mu=r_star + bias, sigma=sigma_f, observed=obs["f"])
+    return ["Forward:    f_t = r*_t + bias + e_t   (AOFM 5y5y, deflated)"]
 
 
 def _policy_gap(
@@ -338,17 +470,26 @@ def build_model(
         # asserted instead, which is when `mu_tp` becomes an output to check
         # against an external term premium estimate.
         mu_tp_prior = {"mu": 0.75, "sigma": 3.0 if config.assert_stance else 1.0}
-        settings = {
+        # Under the nominal window there is no term premium in the model at all,
+        # so none of these are created. Leaving them in would put three
+        # parameters in the trace that nothing in the likelihood touches, which
+        # would sample their priors and make the diagnostics harder to read.
+        settings: dict[str, dict[str, float]] = {} if config.nominal_window else {
             "mu_tp": mu_tp_prior,
             "rho_tp": {"mu": 0.8, "sigma": 0.2, "lower": 0.0, "upper": 0.98},
             "sigma_tp": {"sigma": 1.0},
         }
-        if config.us_premium_anchor:
+        if (config.us_premium_anchor or config.au_premium_anchor) and not config.nominal_window:
             # The asserted level moves from "the average Australian term
-            # premium", which nothing outside the model speaks to, to "the
-            # average Australian premium over the US one", which a liquidity
-            # argument can be made about and a reader can dispute on its own
+            # premium", which nothing outside the model speaks to, to a spread
+            # over a published series, which a reader can dispute on its own
             # terms. `mu_tp` stays in the model as a reported quantity.
+            #
+            # Under the AU pin the spread is real-minus-nominal on the same
+            # curve, so it is an inflation risk premium and the prior centre is
+            # still a small positive number: the same N(0.25, 0.5) serves, and
+            # it is left shared deliberately, so the two pins differ in which
+            # series they track rather than in how hard they are pushed.
             settings["mu_spread"] = {"mu": config.mu_spread_mu, "sigma": config.mu_spread_sigma}
         mc = set_model_coefficients(model, settings)
 
@@ -402,16 +543,8 @@ def build_model(
         # the check stands. If it does not, the check was the model reading a
         # floored cash rate through a missing coefficient. Either way the
         # question is now answerable, which it was not before.
-        tp = pm.Deterministic("tp", pt.as_tensor_variable(obs["y"]) - r_star - carried)
-        carried_term = " - k·g_t" if config.use_short else ""
-        descriptions.append(f"Yield:      tp_t = y_t - r*_t{carried_term}   (identity, no residual)")
-
-        # The stationarity of that premium is what identifies the split, so it
-        # enters as a prior on tp rather than as a likelihood: a stationary
-        # initial draw, then an AR(1) transition. rho is bounded below 1 —
-        # a unit root would make the premium a second random walk and the
-        # decomposition meaningless.
-        descriptions.extend(_premium_prior(config, obs, tp, mc))
+        descriptions.extend(_window_one(config, obs, r_star, carried, mc))
+        descriptions.extend(_forward_window(config, obs, r_star))
 
         # --- The third window: a medium maturity on the same state ---
         # The same r*, a different share of the same policy gap, and its own
@@ -477,6 +610,41 @@ def save_results(
     return output_dir
 
 
+def _print_window_spec(config: ModelConfig) -> None:
+    """Print which long-end observable is in use, and which level is asserted.
+
+    One of the two means must be asserted in every form of this model, so the
+    run log names it rather than leaving the reader to infer it from the flags.
+    """
+    if config.nominal_window:
+        print(
+            f"Window one:   AOFM risk-neutral {config.au_premium_maturity}y "
+            f"({config.au_premium_source}), deflated — no term premium in the model",
+        )
+    elif config.au_premium_anchor:
+        print(
+            f"AU premium:   pinned to AOFM {config.au_premium_maturity}y "
+            f"({config.au_premium_source}); only the real-nominal spread is estimated",
+        )
+
+    if not config.use_short:
+        print("Short rate:   none (--no-short): one-window model, mu_tp carries the level")
+        return
+
+    if config.nominal_window:
+        asserted = "stance carries the level alone (no mu_tp)"
+    elif config.au_premium_anchor or config.us_premium_anchor:
+        asserted = f"mu_spread ~ N({config.mu_spread_mu:g}, {config.mu_spread_sigma:g}), stance free"
+    elif config.assert_stance:
+        asserted = f"stance ~ N({config.mu_g_mu:g}, {config.mu_g_sigma:g}), mu_tp free"
+    else:
+        asserted = "mu_tp ~ N(0.75, 1), stance free"
+
+    short_label = "real 90d bank bill" if config.short_rate == "bill" else "real cash"
+    print(f"Short rate:   {short_label}, deflator={config.deflator}, H={config.horizon_quarters}")
+    print(f"Level:        {asserted}")
+
+
 def run_estimate(
     config: ModelConfig | None = None,
     sampler_config: SamplerConfig | None = None,
@@ -498,17 +666,7 @@ def run_estimate(
         # Only say it where a US premium is actually subtracted; on the default
         # cleveland anchor with no pin, nothing reads it.
         print(f"US premium:   {config.us_premium_source}")
-    if config.use_short:
-        asserted = (
-            f"stance ~ N({config.mu_g_mu:g}, {config.mu_g_sigma:g}), mu_tp free"
-            if config.assert_stance
-            else "mu_tp ~ N(0.75, 1), stance free"
-        )
-        short_label = "real 90d bank bill" if config.short_rate == "bill" else "real cash"
-        print(f"Short rate:   {short_label}, deflator={config.deflator}, H={config.horizon_quarters}")
-        print(f"Level:        {asserted}")
-    else:
-        print("Short rate:   none (--no-short): one-window model, mu_tp carries the level")
+    _print_window_spec(config)
     if config.free_wedge:
         print(f"Wedge:        free random walk, StudentT innovations, sigma_walk={config.sigma_walk:g}")
     else:
@@ -534,6 +692,11 @@ def run_estimate(
         us_premium_source=config.us_premium_source,
         use_curve=config.use_curve,
         curve_maturity=config.curve_maturity,
+        au_premium_anchor=config.au_premium_anchor,
+        au_premium_source=config.au_premium_source,
+        au_premium_maturity=config.au_premium_maturity,
+        nominal_window=config.nominal_window,
+        use_forward=config.use_forward,
         input_source=config.input_source,
         joint_prefix=config.joint_prefix,
         ystar_prefix=config.ystar_prefix,
