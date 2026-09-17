@@ -56,6 +56,43 @@ class RStarResults:
         stacked = self.posterior[var_name].stack(sample=("chain", "draw"))  # noqa: PD013
         return pd.DataFrame(np.asarray(stacked.values), index=self.obs_index)
 
+    def through(self, last: pd.Period) -> "RStarResults":  # noqa: UP037 — dataclass self-reference
+        """Return a copy of this run truncated at `last`, for CHARTING only.
+
+        The model estimates a state for the quarter in progress, because the
+        bond block is available daily while inflation and the gaps are not. That
+        estimate is defensible and the state-space handles the missing
+        observables; what is not defensible is putting it on a chart as the
+        headline beside 30 years of finished quarters. `rstar_bonds` was quoting
+        2026Q3 in its right header while the summary chart quoted 2026Q2.
+
+        Nothing here changes an estimate. Use it after the diagnostics, which
+        should see the whole run.
+        """
+        keep = int((self.obs_index <= last).sum())
+        if keep == len(self.obs_index):
+            return self
+
+        n_periods = len(self.obs_index)
+        # Only the time axes, never chain or draw. Matching on length alone
+        # would slice a `draw` dimension that happened to share the period count.
+        time_dims = {
+            dim: slice(0, keep)
+            for dim, size in self.posterior.sizes.items()
+            if size == n_periods and dim not in ("chain", "draw")
+        }
+        trace = az.InferenceData(posterior=self.posterior.isel(time_dims))
+        return RStarResults(
+            trace=trace,
+            obs={
+                key: (value[:keep] if getattr(value, "shape", (0,))[:1] == (n_periods,) else value)
+                for key, value in self.obs.items()
+            },
+            obs_index=self.obs_index[:keep],
+            constants=self.constants,
+            chart_obs=None if self.chart_obs is None else self.chart_obs.iloc[:keep],
+        )
+
     def _scalar(self, var_name: str) -> np.ndarray:
         """Return the flattened posterior draws for a scalar parameter."""
         return np.asarray(self.posterior[var_name].values).ravel()

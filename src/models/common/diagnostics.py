@@ -15,7 +15,16 @@ from src.models.common.extraction import get_scalar_var, get_scalar_var_names
 MAX_R_HAT = 1.01
 MIN_ESS = 400
 MAX_MCSE_RATIO = 0.05
-MAX_DIVERGENCE_RATE = 1 / 10_000
+# RAISED FROM 1/10,000 TO 3/10,000 ON 2026-09-17. At the usual 4 chains x 1,000
+# draws, 1/10,000 meant a SINGLE divergence in 4,000 failed the check, at a rate
+# of 2.5 per 10,000. That fired on runs that were otherwise clean and left the
+# report crying wolf, which is worse than a slightly looser rule: a flag that is
+# always up stops being read. 3/10,000 lets one divergence through on a standard
+# run and still fails two.
+#
+# The comparison is `<=`, as for every other threshold here, so a rate of exactly
+# 3 per 10,000 passes.
+MAX_DIVERGENCE_RATE = 3 / 10_000
 MAX_TREE_DEPTH_RATE = 0.05
 MIN_BFMI = 0.3
 

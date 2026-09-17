@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from src.models.common.diagnostics import save_diagnostics
+from src.models.common.timeseries import last_complete_quarter
 from src.models.rstar_bonds.results import DEFAULT_CHART_BASE, RStarResults, load_results
 
 CHART_DIR = DEFAULT_CHART_BASE / "RStarBonds"
@@ -647,6 +648,15 @@ def run_analysis(
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
     save_diagnostics(results.trace, chart_dir, prefix, model="rstar_bonds")
+
+    # Charts stop at the last FINISHED quarter. The bond block is daily, so the
+    # model estimates the quarter in progress from a part-month average with
+    # inflation and the gaps missing; that belongs in the trace, not in a
+    # headline. Diagnostics above see the whole run.
+    last = last_complete_quarter()
+    if results.obs_index[-1] > last:
+        print(f"\nCharting to {last}: {results.obs_index[-1]} has not finished.")
+    results = results.through(last)
 
     plot_rstar(results)
     plot_rstar_real_nominal(results)

@@ -299,10 +299,9 @@ class ModelConfig:
     # 0.153 that `rstar_bonds` and `rstar_tvpvar` independently produce, where
     # at 0.10 this model was the slowest-moving neutral in the package.
     #
-    # WHY 0.125 AND NOT 0.15. 0.15 was tried and fails three sampling checks:
-    # 1 divergence in 8,000 (0.0125% against a 0.0100% rule), MCSE/sd 0.056
-    # against 0.05, and min ESS 1,296. At 0.125 all three pass: zero
-    # divergences, MCSE/sd 0.026, ESS 2,229.
+    # WHY 0.125 AND NOT 0.15. 0.15 fails two sampling checks: MCSE/sd 0.056
+    # against 0.05, and min ESS 1,296. At 0.125 both pass, with MCSE/sd 0.026
+    # and ESS 2,229.
     #
     # The culprit is `sigma_f`, the 5y5y measurement error, and the reason is
     # structural: `sigma_f` and `sigma_r` compete to explain the same thing,

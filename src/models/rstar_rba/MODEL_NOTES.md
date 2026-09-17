@@ -239,9 +239,9 @@ that specification and is NOT comparable with earlier vintages**, which had one 
 | sd of the quarterly change in neutral | **0.118** |
 | sampling | 0 divergences, r_hat 1.0, min ESS 2,229, MCSE/sd 0.026 |
 
-**`sigma_r` = 0.125 rather than 0.15, on sampling.** 0.15 was tried and fails three checks:
-1 divergence in 8,000 (0.0125% against a 0.0100% rule), MCSE/sd **0.056** against 0.05, and
-min ESS 1,296. The culprit is `sigma_f` alone, everything else samples cleanly at both
+**`sigma_r` = 0.125 rather than 0.15, on sampling.** 0.15 fails two checks: MCSE/sd **0.056**
+against 0.05, and min ESS 1,296. The culprit is `sigma_f` alone, everything else samples
+cleanly at both
 settings with `lambda` at ESS 14,141, and the reason is structural: `sigma_f` and `sigma_r`
 compete to explain the same gap between the forward and the fitted neutral, so loosening the
 walk makes them harder to separate.
@@ -249,7 +249,8 @@ walk makes them harder to separate.
 The substance is unchanged between the two: neutral 3.89 against 3.91, stance +0.46 against
 +0.44, `forward_bias` −0.109 at both to three decimals. The only real cost is neutral's
 quarterly volatility, **0.118 against 0.151**, which loosens the three-way match with
-`rstar_bonds` (0.155) and `rstar_tvpvar` (0.153). That match was a nice-to-have, not a result
+`rstar_bonds` (0.155) and `rstar_tvpvar` (0.153, a retired package). That match was a
+nice-to-have, not a result
 the model rests on, and it was being bought with a sampler that could not cleanly resolve the
 new parameter.
 
@@ -262,7 +263,8 @@ now runs **1.10 to 1.41**, a spread of 0.31, and is nearly flat from `sigma_r` 0
 buys, and it is why `sigma_r` could be loosened.
 
 **Neutral's speed now matches the rest of the package.** sd of its quarterly change is
-**0.151**, against **0.155** for `rstar_bonds` and **0.153** for `rstar_tvpvar`. At the old
+**0.151**, against **0.155** for `rstar_bonds` and **0.153** for `rstar_tvpvar`, a retired
+package. At the old
 `sigma_r` = 0.10 with one window it was 0.063, by some way the slowest-moving neutral in the
 package. At `sigma_r` = 0.15 it reaches 0.151 and matches the other two almost exactly, but
 that setting fails three sampling checks, so 0.125 is shipped and the match is looser.

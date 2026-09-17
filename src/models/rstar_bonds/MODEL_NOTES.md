@@ -64,15 +64,21 @@ what a standard reaction function *would* say, not as a forecast of what would f
 
 ## Read this first
 
-| | 2026Q3 |
+| | 2026Q2 |
 |---|---|
-| real r\* | **1.05** [0.40, 1.69] |
-| world real rate, for comparison | 1.34 |
-| the Australian wedge | **−0.29** |
-| term premium | 1.55 |
-| nominal r\* (r\* + long-run expectations) | **3.57** |
-| r\* for firms (r\* + credit spread) | 1.97 |
-| pre-GFC r\* (1994-2007) | 1.70, so today is **62%** of it |
+| real r\* | **0.80** [0.15, 1.42] |
+| world real rate, for comparison | 0.99 |
+| the Australian wedge | **−0.20** |
+| term premium | 1.56 |
+| nominal r\* (r\* + long-run expectations) | **3.33** |
+| r\* for firms (r\* + credit spread) | 1.56 |
+| pre-GFC r\* (1994-2007) | 1.70, so today is **47%** of it |
+
+**QUOTE THE LAST COMPLETE QUARTER.** The bond block is daily, so the model also estimates the
+quarter in progress, off a part-month average with inflation and both gaps missing and the
+mortgage rate carried forward. That quarter reads 0.25pp higher (1.05 real, 3.57 nominal, wedge
+−0.29) on a 90% band no wider than a finished quarter's, which is the problem with it. Charts
+now stop at the last finished quarter; the trace still carries the extra one if you want it.
 
 Zero divergences, all `r_hat` 1.00, minimum `ess_bulk` 2,534, BFMI 0.75.
 
@@ -231,6 +237,11 @@ The "two-window" column was the shipped default for part of that day and is now 
 | r\*, 1994-2007 | 2.43 | 1.86 | 2.06 | **1.70** | 1.72 | 2.05 |
 | r\*, 2016-2019 | −0.49 | −0.09 | −0.11 | **+0.42** | −0.06 | +0.36 |
 | r\*, 2020-2021 | −1.10 | −0.43 | −0.70 | **+0.14** | −0.24 | +0.01 |
+
+Every 2026Q3 row above is the quarter-in-progress reading, kept as-is because the five
+comparison columns would each need re-running to restate them and the comparison is between
+columns rather than against a level. For the shipped column the complete-quarter figures are
+0.80 real, 3.33 nominal, wedge −0.20.
 | var share, r\* | 0.792 | 0.347 | 0.486 | **0.273** | - | 0.911 |
 | nominal amplitude | 4.39 | 2.95 | 3.66 | **4.12** | 2.48 | - |
 | real 90% band, now | 3.43 | 2.43 | 2.59 | **1.28** | 2.38 | - |

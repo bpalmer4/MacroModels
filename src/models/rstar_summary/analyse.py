@@ -17,13 +17,47 @@ import pandas as pd
 
 from src.data.cash_rate import get_cash_rate_qrtly
 from src.models.common.inflation_scale import scale_label
-from src.models.rstar_summary.sources import DEFAULT_SCALE
+from src.models.rstar_summary.sources import DEFAULT_SCALE, SOURCES
 
 CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "rstar-summary"
 
 # Chosen for contrast against each other AND against the grey cash rate, which
 # matters more than matching each model's own suite colours.
 _COLOURS = ("darkblue", "crimson", "darkgreen", "darkorange", "purple", "teal")
+# Since `rstar_tvpvar` was removed the chart carries two models, and those two
+# share an observable. At this count the spread chart says so in its header.
+TWO_MODELS = 2
+
+
+# This is not a model and collects almost nothing of its own: the r* paths come
+# from the models, and the only series loaded here are the cash rate, inflation
+# and one model's supply term. Crediting ABS, NY Fed, Bloomberg and the rest
+# would claim data these charts never touched, and each model's own footer
+# already names its providers. So the footer names the MODELS plus what the
+# summary reads itself.
+def _footer(*, inflation: bool = False, supply: bool = False) -> str:
+    """Return the "built from" line for one chart.
+
+    PER CHART, not one constant for all four. The charts do not share inputs:
+    only the stance-against-inflation chart loads inflation, and only that chart
+    nets out a supply contribution, which it takes from a THIRD model that never
+    appears in `SOURCES` because `_demand_gap` imports it inside the function.
+    A single shared footer silently omitted `ystar_ustar` while its output was a
+    plotted line on that chart.
+
+    Args:
+        inflation: the chart reads trimmed-mean inflation (ABS 6401.0)
+        supply: the chart nets out `ystar_ustar`'s Phillips supply term, which
+            brings that model's imposed `sigma_okun` and gap definition with it
+
+    """
+    models = [*(source.prefix for source in SOURCES), "expectations"]
+    if supply:
+        models.append("ystar_ustar")
+    data = ["RBA F1"]
+    if inflation:
+        data.append("ABS 6401.0")
+    return f"Models: {', '.join(models)}; {'; '.join(data)}"
 
 
 def _cash_rate(index: pd.PeriodIndex) -> pd.Series:
@@ -73,7 +107,7 @@ def plot_summary(
         y0=True,
         legend={"loc": "best", "fontsize": "x-small"},
         lheader=f"All converted to nominal: real estimates plus {scale_label(scale)}",
-        rfooter="Built using: ABS; RBA; NY Fed",
+        rfooter=_footer(),
         lfooter=(
             f"Australia. Spread between lines is {len(data.columns)} structural "
             "assumptions, not error. "
@@ -100,10 +134,17 @@ def plot_spread(frame: pd.DataFrame, start: str | None = "1993Q1") -> None:
 
     band = pd.DataFrame({"lower": usable.min(axis=1), "upper": usable.max(axis=1)})
     ax = mg.fill_between_plot(band, color="crimson", alpha=0.18, label="Range across models")
-    # MEAN, not median. With three series the median is whichever model happens
-    # to sit in the middle that quarter, so it switches identity wherever the
-    # lines cross (around 2001, 2010 and 2019) and picks up kinks that say
-    # nothing about r*. The mean uses all three and moves smoothly.
+    # MEAN, not median. With an odd number of series the median is whichever
+    # model happens to sit in the middle that quarter, so it switches identity
+    # wherever the lines cross and picks up kinks that say nothing about r*. The
+    # mean uses every model and moves smoothly.
+    #
+    # SINCE `rstar_tvpvar` WAS REMOVED (2026-09-17) THERE ARE TWO, so this line
+    # is the midpoint of the band drawn above it and carries no information the
+    # band does not already show. It is kept because the chart's whole subject
+    # is the spread, and a centre makes the spread readable. Do not read it as a
+    # consensus: with n = 2 it is an arithmetic midpoint between two models that
+    # share the AOFM 5y5y forward.
     #
     # Neither is an estimate. An average across structural assumptions is a
     # value no model produces, which is the objection `rstar_hlw`'s notes make
@@ -129,10 +170,18 @@ def plot_spread(frame: pd.DataFrame, start: str | None = "1993Q1") -> None:
         ylabel="Per cent, nominal",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        lheader=f"Across {len(usable.columns)} models, on their common quarters",
+        # With two models left, the shared observable is the thing a reader most
+        # needs to know: `rstar_bonds` and `rstar_rba` both read the AOFM 5y5y
+        # forward, so part of any agreement is one series counted twice. Said
+        # here rather than in a footer because the footers are already full.
+        lheader=(
+            "Both lines read the same AOFM 5y5y forward"
+            if len(usable.columns) == TWO_MODELS
+            else f"Across {len(usable.columns)} models, on their common quarters"
+        ),
         rheader=f"Widest {widest.max():.2f}pp in {widest.idxmax()}; "
                 f"latest {widest.iloc[-1]:.2f}pp",
-        rfooter="Built using: ABS; RBA; NY Fed",
+        rfooter=_footer(),
         lfooter="Australia. The mean is a description of where the models sit, not an estimate. ",
         show=False,
     )
@@ -178,10 +227,10 @@ def _stances(frame: pd.DataFrame) -> pd.DataFrame:
 
     `nominal cash rate - nominal r*`, which is the same number as real cash less
     real r*. Every model gets the same subtraction rather than its own stance
-    variable: three of the four estimate one natively (`rstar_bonds.g`,
-    `rstar_rba.stance`, `rstar_invert.stance`) and the TVP-VAR has none, and
-    the native ones are better estimates of each model's own concept but worse
-    for comparing across them.
+    variable: both remaining models estimate one natively (`rstar_bonds.g` and
+    `rstar_rba.stance`), and the native ones are better estimates of each
+    model's own concept but worse for comparing across them. The removed
+    `rstar_invert` also had one; `rstar_tvpvar` never did.
     """
     index = frame.index
     if not isinstance(index, pd.PeriodIndex):
@@ -214,7 +263,7 @@ def plot_stance(frame: pd.DataFrame, start: str | None = "1993Q1") -> None:
         y0=True,
         legend={"loc": "best", "fontsize": "x-small"},
         lheader="Cash rate less nominal r*, same arithmetic for every model. Positive = restrictive",
-        rfooter="Built using: ABS; RBA; NY Fed",
+        rfooter=_footer(),
         lfooter="Australia. Spread between lines is structural assumptions, not error. ",
         show=False,
     )
@@ -233,10 +282,13 @@ def plot_stance_against_inflation(frame: pd.DataFrame, start: str | None = "1993
     two at the same date measures the RBA responding, which is what
     `is_curve`'s notes warn about.
 
-    Lagged, the relationship is absent: corr(stance_t, gap_{t+h}) peaks at -0.08
-    across `rstar_bonds`, `rstar_rba` and `rstar_tvpvar` at every horizon out to
-    20 quarters. `rstar_invert` alone reaches -0.56 at h=8, and that is
-    circular, since its stance is built from an asserted negative IS slope.
+    Lagged, the relationship is absent. `corr(stance_t, gap_{t+h})` starts at
+    +0.65 (bonds) and +0.55 (rba), decays monotonically, and only crosses zero
+    near h=20, reaching -0.047 and -0.029. Transmission would need a NEGATIVE
+    correlation at a lag of a year or two; there is none at any horizon.
+
+    The removed `rstar_invert` alone reached -0.56 at h=8, and that was
+    circular, since its stance was built from an asserted negative IS slope.
 
     Kept because the comovement is the clearest picture the package has of why a
     stance cannot be validated against inflation outcomes on Australian data.
@@ -257,21 +309,27 @@ def plot_stance_against_inflation(frame: pd.DataFrame, start: str | None = "1993
         stances,
         color=list(_COLOURS[:len(stances.columns)]),
         width=1.8,
-        annotate=False,
+        annotate=True,
+        rounding=2,
     )
     mg.line_plot(
         gap.rename("Inflation gap, supply netted out"),
-        ax=ax, color=["black"], width=[2.6], style=[":"], annotate=False,
+        ax=ax, color=["black"], width=[2.6], style=[":"], annotate=True, rounding=2,
     )
     mg.finalise_plot(
         ax,
-        title="Stance moves with inflation, not against it",
+        title="Policy tightness stance vs the inflation gap",
         ylabel="Percentage points",
         y0=True,
         legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
-        lheader="Comovement here is the RBA reacting, not policy transmitting",
-        rheader="Lagged, the relationship is absent: peak corr -0.08 to h=20",
-        rfooter="Built using: ABS; RBA; NY Fed",
-        lfooter="Australia. Direction only: the two are not on a common scale. ",
+        # The legend names the MODELS, because `_stances` carries their labels
+        # through, so without this nothing on the chart says the coloured lines
+        # are a rate gap rather than a rate.
+        lheader="The cash rate less each model's nominal r*",
+        rfooter=_footer(inflation=True, supply=True),
+        # Kept SHORT: this chart's rfooter is the longest in the package, since
+        # it credits four models plus two series, and a wordier left footer
+        # runs straight into it.
+        lfooter="Australia. Different quantities: compare shape, not levels. ",
         show=False,
     )

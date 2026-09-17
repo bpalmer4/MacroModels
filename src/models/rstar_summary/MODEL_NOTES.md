@@ -14,14 +14,28 @@ structural assumptions, not sampling error.
 |---|---|---|
 | Bond market (`rstar_bonds`) | a premium-stripped world real rate, plus an AU wedge, with the AOFM 5y5y forward pinning the level | the wedge is four times jumpier since the forward went in, so some of the path is bond-market noise booked as r\*; `forward_bias` is uninterpreted |
 | RBA reaction function (`rstar_rba`) | the Bank's response to inflation away from target, with the same 5y5y forward as a second window | the level is conditional on `sigma_r`, though the forward cut that dependence from a 1.10 spread to 0.31 |
-| TVP-VAR steady state (`rstar_tvpvar`) | the VAR's own long-run mean | the steady state is undefined for a quarter of draws: 26.6% of draw-quarters are explosive, median spectral radius 0.967 |
+| ~~TVP-VAR (`rstar_tvpvar`)~~ | REMOVED 2026-09-17 | see below |
 
-All three are conditional. That is not a reason to prefer one: it is the state of the
+Both are conditional. That is not a reason to prefer one: it is the state of the
 literature on Australian data.
+
+**`rstar_tvpvar` was REMOVED on 2026-09-17**, the day it was stripped back to the canonical
+Lubik-Matthes specification. Not discredited: not ready to carry a level. Its fitted VAR has a
+median spectral radius of 0.983, and that one number spoils every estimand open to it. At the
+20-quarter horizon 0.983^20 = 0.71 of today's state survives, so the projection is mostly a
+nowcast and correlates 0.953 with the real cash rate; push the horizon out and 32.3% of
+draw-quarters are explosive; take the infinite-horizon limit and `(I - F)^-1` divides by
+almost nothing. Across its own `sigma_q` the sample-mean level holds (1.34 to 1.66) and the
+2016-19 sign holds (-0.65 to -1.07), but r\* **latest** runs 1.08 to 3.17, and the latest value
+is the only thing this chart plots. Sampling was ruled out as the cause: at `target_accept`
+0.99 divergences fall 5 to 1 and min ESS rises 368 to 522, while r\* moves 0.03pp and the
+spectral radius does not move at all. See `sources.py` for what would bring it back.
 
 **`rstar_invert` was REMOVED from this summary on 2026-09-16.** It inverted an asserted IS
 curve, and the repo's own evidence is that no such curve is identifiable on Australian data:
-five independent methods here fail to recover even its sign. Charting a line whose every
+five methods here fail to recover even its sign. They rest on three distinct output gaps
+rather than five, since `is_curve` loads the same `ystar_ustar` gap that `rstar_invert`
+inverts, so "five independent" overstated it (corrected 2026-09-17). Charting a line whose every
 value follows from a relationship nobody in this package believes in gave the summary a
 fourth "answer" that was really a restatement of its own assumption. The package remains,
 with its notes, as the record of that attempt. Sections below written when it was on the
@@ -120,12 +134,22 @@ It describes where the models sit.
 
 ## Reading the charts
 
-As at 2026Q2: bond market **3.33**, RBA reaction function **3.89**, TVP-VAR steady state
-**3.96**, mean **3.73** nominal. The three span 0.63pp. `rstar_bonds` alone runs a quarter
-further, to 2026Q3, because it reads bond yields while the other two need GDP and the output
-gap; there it reads 3.57. **Do not average across quarters.** Mixing the bonds 2026Q3 value
-with the other two at 2026Q2 gives 3.81 rather than 3.73, and that difference is calendar
-arithmetic, not a finding.
+As at 2026Q2: bond market **3.33**, RBA reaction function **3.89**, midpoint **3.61** nominal.
+The two span 0.56pp.
+
+**Quarters in progress are dropped**, in `sources._drop_incomplete`, using the shared
+`last_complete_quarter()` rule. `rstar_bonds` reads bond yields daily and so produces an
+estimate for the unfinished quarter, where the reaction function waits on GDP and the output
+gap. Charting it put a fortnight's average beside 30 years of whole quarters and left the two
+endpoint labels on different dates, inviting a subtraction that corresponded to nothing. Both
+lines now end on the same finished quarter.
+
+That does NOT align the models in general. Once the quarter closes, `rstar_bonds` will have it
+and the reaction function will not, so the labels will sit on different dates again. **Do not
+average across quarters** when they do.
+
+For the record, the removed TVP-VAR line read 3.92 nominal at 2026Q2 on the canonical spec,
+which would have widened the span to 0.59pp. It is not in the numbers above.
 
 For scale against a published number: CBA's September 2026 nominal neutral is **3.85**, inside
 this range and nearest `rstar_rba`.
@@ -144,12 +168,15 @@ where the observable does not.
 It is the range across three particular modelling choices, not a sample from anything, so a
 fourth reasonable model could sit outside it. And each line is itself conditional on a number
 nobody measures: `rstar_rba`'s `sigma_r` and `rstar_bonds`' imposed `nu_walk` are both choices
-rather than estimates, and `rstar_tvpvar`'s steady state does not exist at all for 26.6% of
-its draw-quarters.
+rather than estimates. `rstar_tvpvar` failed that test outright, which is why it is no longer
+here.
 
-The band is also narrower than it looks, because two of the three lines now read the same AOFM
-5y5y forward. Some of the agreement between `rstar_bonds` and `rstar_rba` is one observable
-counted twice rather than two methods converging.
+The band is also narrower than it looks, because **both remaining lines read the same AOFM
+5y5y forward**. Some of the agreement between `rstar_bonds` and `rstar_rba` is one observable
+counted twice rather than two methods converging. That was a caveat when there were three
+lines; with `rstar_tvpvar` removed on 2026-09-17 it applies to the whole chart, which is why
+the spread panel now says so in its header. The mean line is, at n = 2, the arithmetic
+midpoint of the band and carries nothing the band does not already show.
 
 So the chart maps the landscape of *published* possibilities. The landscape of defensible
 ones is larger.

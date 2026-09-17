@@ -38,6 +38,8 @@ uv sync                            # Install dependencies
                                    #   also runs the sigma_r ensemble and the injection test, ~38s)
 ./run-rstar-invert.sh              # r* by conditional inversion of an ASSERTED IS curve
                                    #   (--ensemble sweeps how slow r* is; --lag-sweep the rate lag)
+./run-rstar-tvpvar.sh              # RETIRED. TVP-VAR (Lubik-Matthes); still runs, but r* comes
+                                   #   back as the real cash rate (see MODEL_NOTES)
 ./run-rstar-summary.sh             # every r* model on one nominal scale; re-runs any whose
                                    #   saved trace is not from today, which regenerates THEIR charts
 ./run-gstar-summary.sh             # every g* (potential growth) estimate on one chart; refresh
@@ -149,9 +151,15 @@ src/
 │   │                              #   the third window will not sample without it.
 │   │                              #   NO IS CURVE, three efforts here found the
 │   │                              #   rate/output-gap link unidentifiable on AU data. Level
-│   │                              #   Taylor rule on top. r* 1.05 real / 3.57 nominal with
-│   │                              #   the wedge at -0.29, so Australia sits BELOW the world
-│   │                              #   rate. THE LEVEL IS NOW PARTLY IDENTIFIED and is worth
+│   │                              #   Taylor rule on top. r* 0.80 real / 3.33 nominal with
+│   │                              #   the wedge at -0.20, so Australia sits BELOW the world
+│   │                              #   rate. QUOTE THE LAST COMPLETE QUARTER: the bond block is
+│   │                              #   daily, so the model also estimates the quarter in
+│   │                              #   progress off a part-month average with inflation and the
+│   │                              #   gaps missing, and that ran 0.25pp higher (1.05 / 3.57,
+│   │                              #   wedge -0.29) on no extra uncertainty. Charts stop at the
+│   │                              #   last finished quarter; the trace does not.
+│   │                              #   THE LEVEL IS NOW PARTLY IDENTIFIED and is worth
 │   │                              #   quoting: the 5y5y window took the 90% band from 2.59 to
 │   │                              #   1.28 and it no longer contains zero. Costs: the wedge is
 │   │                              #   4x jumpier quarter to quarter (some of that is market
@@ -213,8 +221,9 @@ src/
 │   │                              #   rather than an assumption. sigma_r = 0.125, chosen on
 │   │                              #   SAMPLING grounds (0.15 failed diagnostics).
 │   │                              #   lambda = 0.46 per pp is a NOMINAL response; not comparable
-│   │                              #   with Taylor's 1.5. UNITS: stored per BAND-WIDTH (0.305),
-│   │                              #   so per pp is twice it. It is stable across sigma_r only
+│   │                              #   with Taylor's 1.5. UNITS: stored per BAND-WIDTH (0.228),
+│   │                              #   and the band half-width is 0.5, so per pp is twice the
+│   │                              #   stored value. It is stable across sigma_r only
 │   │                              #   CONDITIONAL ON ZERO POLICY SMOOTHING: allow partial
 │   │                              #   adjustment and it runs to 2.57, because one coefficient
 │   │                              #   carries both the immediate and the ultimate response.
@@ -240,22 +249,44 @@ src/
 │   │                              #   small number. Quote the conditioning (see MODEL_NOTES.md).
 │   │                              #   REMOVED FROM rstar_summary 2026-09-16: its line restated
 │   │                              #   the asserted IS curve rather than adding a third view.
+│   ├── rstar_tvpvar/              # RETIRED. TVP-VAR after Lubik-Matthes: three variables,
+│   │                              #   drifting coefficients, r* = the 20-quarter projection.
+│   │                              #   It reads neutral off the economy's own dynamics, which
+│   │                              #   needs the economy to SETTLE. Australia's does not: no
+│   │                              #   stationary stretch exists in 1993-2026, so the fitted VAR
+│   │                              #   sits at a spectral radius of 0.983 and r* comes back as
+│   │                              #   the real cash rate (corr 0.95). Not fixable by estimand,
+│   │                              #   sample, shrinkage or sampling; all four were tried.
+│   │                              #   THE FINDING GENERALISES and is why the notes are kept:
+│   │                              #   it sinks any model that MEASURES equilibrium from
+│   │                              #   behaviour, not those that ASSERT a structure defining it
+│   │                              #   (rstar_rba's rule, rstar_bonds' market price).
+│   │                              #   Do not quote a level (see MODEL_NOTES.md).
 │   ├── rstar_summary/             # NOT A MODEL. Loads every r* the repo produces, re-runs any
 │   │                              #   whose trace is not from TODAY (which regenerates that
 │   │                              #   model's own charts), converts all to NOMINAL on
-│   │                              #   long-run expectations, and charts them. Three lines:
-│   │                              #   rstar_bonds, rstar_rba, rstar_tvpvar.
+│   │                              #   long-run expectations, and charts them. TWO lines since
+│   │                              #   2026-09-17: rstar_bonds and rstar_rba.
 │   │                              #   rstar_hlw is EXCLUDED: its z state has no
 │   │                              #   observation equation, so its r* is trend growth.
 │   │                              #   rstar_invert was REMOVED 2026-09-16: it asserts an IS
 │   │                              #   curve no method here can recover the sign of, so its
 │   │                              #   line restated an assumption rather than adding a view.
-│   │                              #   NOTE the two real-rate models now share an observable
+│   │                              #   rstar_tvpvar was REMOVED 2026-09-17, not discredited but
+│   │                              #   not ready to carry a level: at a median spectral radius
+│   │                              #   of 0.983 the 20q projection is 71% nowcast, a third of
+│   │                              #   draw-quarters are explosive, and the steady state
+│   │                              #   divides by almost nothing. Its sample-MEAN level and
+│   │                              #   2016-19 sign survive its sigma_q sweep; its LATEST value
+│   │                              #   (the only thing the chart plots) runs 1.08 to 3.17.
+│   │                              #   NOTE both remaining models share an observable
 │   │                              #   (the AOFM 5y5y forward), so some of their agreement is
-│   │                              #   one series counted twice. Models end on DIFFERENT
+│   │                              #   one series counted twice, and that now applies to the
+│   │                              #   WHOLE chart. Models end on DIFFERENT
 │   │                              #   quarters (bonds runs a quarter longer); never average
-│   │                              #   across them. The central line is a MEAN, not a median
-│   │                              #   (n=3), and is not an estimate (see MODEL_NOTES.md).
+│   │                              #   across them. The central line is a MEAN, not a median,
+│   │                              #   and at n=2 it is just the band's midpoint; it is not an
+│   │                              #   estimate (see MODEL_NOTES.md).
 │   ├── gstar_summary/            # NOT A MODEL. Potential growth on one chart: ystar
 │   │                              #   (inflation + production specs) and the joint model.
 │   │                              #   They agree to 0.09pp (1.90-1.99 at 2026Q2) against

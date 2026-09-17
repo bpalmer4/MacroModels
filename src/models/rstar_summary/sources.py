@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from src.models.common import inflation_scale
+from src.models.common.timeseries import last_complete_quarter
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -105,56 +106,57 @@ def _load_rba(prefix: str) -> pd.Series:
     return posterior_median(trace, "neutral", index)
 
 
-def _load_invert(prefix: str) -> pd.Series:
-    """IS-inversion r*, real. Anchored to NOTHING, which is its whole problem."""
-    from src.models.rstar_invert.estimate import load_results, posterior_median  # noqa: PLC0415
-
-    trace, frame, _ = load_results(prefix=prefix)
-    index = frame.index
-    if not isinstance(index, pd.PeriodIndex):
-        index = pd.PeriodIndex(index, freq="Q")
-    return posterior_median(trace, "rstar", index)
-
-
-def _load_tvpvar(prefix: str) -> pd.Series:
-    """TVP-VAR r*, real: a model-implied 5y5y.
-
-    The average of the conditioned projection over quarters 20 to 40.
-
-    CHANGED 2026-09-16 from the steady state, and the reason is comparability.
-    `rstar_bonds` and `rstar_rba` are both pinned to the AOFM's 5y5y forward,
-    and CBA's published figure sits within 0.01 of that same forward. A 5y5y is
-    a FINITE-HORIZON object, the average expected short rate over years five to
-    ten, so the comparable quantity here is a window average over those years
-    rather than an infinite-horizon limit. The chart was putting a different
-    estimand beside the other two and calling it a third opinion.
-
-    The steady state also failed on its own terms. Unconditioned it is the real
-    rate at the VAR's own long-run inflation of 3.15%, not at target, so it is
-    not r*; 29.6% of draws had no steady state at all; and its median was set by
-    near-unit-root draws, since `(I - F)^-1` has a vanishing denominator as the
-    spectral radius approaches one. Conditioning fixes the concept but leaves
-    the level swinging from -0.58 to +1.44 across defensible inflation anchors.
-    Over a finite window none of that has time to act: no draw is undefined and
-    the 90% band falls from 9.77 to 3.59.
-
-    `--rstar-definition steady` and `projection` both remain. Note that neither
-    this nor `projection` is the published Lubik-Matthes estimator: theirs is
-    the five-year POINT, and the inflation conditioning is not in their method
-    at all.
-    """
-    from src.models.rstar_tvpvar.results import load_results  # noqa: PLC0415
-
-    return load_results(prefix=prefix).rstar_median()
+# WHY `rstar_tvpvar` IS NOT HERE. Removed 2026-09-17, the day it was stripped
+# back to the canonical Lubik-Matthes spec, and removed BECAUSE that strip-back
+# made its condition legible rather than in spite of it.
+#
+# THE MODEL IS NOT DISCREDITED, it is not ready to carry a level. Its fitted VAR
+# has a median spectral radius of 0.983, and that one number spoils every
+# estimand available to it: at h=20, 0.983^20 = 0.71 of today's state survives,
+# so the projection is mostly a nowcast and correlates 0.953 with the real cash
+# rate; push the horizon out and 32.3% of draw-quarters are explosive; take the
+# infinite-horizon limit and `(I - F)^-1` has a vanishing denominator. That is
+# one trilemma, not three defects, and it is why the estimand moved three times
+# on 2026-09-16 without any of the moves fixing it.
+#
+# THE DECIDING TEST, the same one applied to `rstar_invert`: what survives the
+# model's own imposed parameter. Across `sigma_q` the sample-mean level holds
+# (1.34 to 1.66) and the 2016-19 sign holds (-0.65 to -1.07), which is more than
+# invert managed. But r* LATEST runs 1.08 to 3.17 and non-monotonically, so the
+# current level, which is the only thing this chart plots, is exactly the part
+# that does not survive.
+#
+# SAMPLING IS NOT THE PROBLEM, and that was checked rather than assumed. At
+# target_accept 0.99 the divergences fall 5 -> 1 and min ESS rises 368 -> 522,
+# while r* moves 0.03pp and the explosive share and spectral radius do not move
+# at all. The geometry is the finding.
+#
+# WHAT WOULD BRING IT BACK: evidence that 0.983 is an artefact rather than a
+# fact about Australian data. Untested as at removal: `--lags 1`,
+# `--exclude-covid`, and Minnesota-style shrinkage toward stationarity, which is
+# standard in BVARs and is absent here (`theta_0` has a near-flat sigma = 1.0
+# prior). Also unresolved: `rstar_posterior` keeps explosive draws while
+# `steady_state_posterior` drops them, and restricting to fully stable draws
+# moves r* from 1.41 to 1.09.
+#
+# THE COST OF REMOVING IT IS REAL AND IS NOT HIDDEN. See the note on the chart:
+# the two lines left share an observable.
 
 
 # WHY `rstar_invert` IS NOT HERE. Removed 2026-09-16. It asserts an IS curve,
-# and five independent methods in this repo now say there is not one to assert:
+# and five methods in this repo now say there is not one to assert:
 # `rstar_hlw` measures the link at -0.04, `nairu` at +0.084, `is_curve` cannot
 # recover the SIGN, `rstar_tvpvar` returns +0.04 with the wrong sign in 87% of
 # draws even after commodity prices and the exchange rate are added, and
 # `rstar_invert`'s own measurements are -0.015 to -0.034 before its prior
 # overrides them.
+#
+# THEY ARE NOT FIVE INDEPENDENT READINGS, corrected 2026-09-17. `is_curve` loads
+# the `ystar_ustar` gap (`is_curve/observations.py:143`), which is the same gap
+# `rstar_invert` inverts, so those two share a left-hand side. `rstar_hlw` and
+# `nairu` each estimate their own gap and `rstar_tvpvar` has none, so the five
+# methods rest on three distinct gaps. That is still a range of constructions
+# wide enough to carry the conclusion, but "five independent" overstated it.
 #
 # THE DECIDING TEST was the sweep. Every other model here has something that
 # SURVIVES varying its imposed number: `rstar_bonds` keeps its wedge reading
@@ -203,7 +205,9 @@ SOURCES: tuple[RstarSource, ...] = (
         loader=_load_bonds,
         nominal=False,
         note=("anchored to a premium-stripped US real rate with b_world imposed at 1; "
-              "AU term premium taken from the AOFM; LEVEL not identified"),
+              "AU term premium taken from the AOFM; the level is PARTLY identified "
+              "since the 5y5y window went in, 90% band 1.28pp and no longer spanning "
+              "zero, but it is 2.5x wider than rstar_rba's 0.51"),
     ),
     RstarSource(
         label="RBA reaction function (neutral b_t)",
@@ -213,16 +217,6 @@ SOURCES: tuple[RstarSource, ...] = (
         nominal=True,
         note=("neutral b_t, NOT prescribed; the level is pinned by the AOFM 5y5y "
               "forward as a second window, with a free but tightly priored bias"),
-    ),
-    RstarSource(
-        label="TVP-VAR (5y5y-equivalent)",
-        prefix="rstar_tvpvar",
-        script="run-rstar-tvpvar.sh",
-        loader=_load_tvpvar,
-        nominal=False,
-        note=("no IS curve and no term premium; r* is the VAR's RESTING POINT, whose "
-              "level is the sample-average real cash rate and whose posterior is a "
-              "ratio with fat tails (50% band, not 90%); ESS 245 and 7 divergences"),
     ),
 )
 
@@ -284,7 +278,31 @@ def gather(
     columns, notes = _load_all(verbose=verbose, scale=scale)
     if not columns:
         raise RuntimeError("no r* models could be loaded")
-    return pd.DataFrame(columns).sort_index(), notes
+    return _drop_incomplete(pd.DataFrame(columns).sort_index(), verbose=verbose), notes
+
+
+def _drop_incomplete(frame: pd.DataFrame, *, verbose: bool = True) -> pd.DataFrame:
+    """Drop any quarter that has not finished yet.
+
+    `rstar_bonds` reads bond yields, which are available every day, so it
+    produces an estimate for the quarter in progress from a part-finished
+    average. So does the cash rate drawn behind every chart. Plotting that as a
+    point invites the reader to compare a 13-day quarter with 33 years of whole
+    ones, and it put the two models' endpoint labels on different dates.
+
+    This does NOT align the models with each other. `rstar_bonds` legitimately
+    runs a quarter ahead of `rstar_rba`, which needs GDP and the output gap, so
+    once the quarter closes their labels will differ again. That gap is real and
+    is a matter for the chart's annotation, not for truncation.
+    """
+    index = frame.index
+    if not isinstance(index, pd.PeriodIndex):
+        return frame
+    last_complete = last_complete_quarter()
+    dropped = [str(p) for p in index if p > last_complete]
+    if dropped and verbose:
+        print(f"  dropping {', '.join(dropped)}: quarter(s) not finished")
+    return frame.loc[index <= last_complete]
 
 
 def _as_quarterly(series: pd.Series) -> pd.Series:

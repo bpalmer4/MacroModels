@@ -22,10 +22,35 @@ slow-moving component, which it then divides by a small number and relabels as a
 **REMOVED FROM `rstar_summary` ON 2026-09-16.** It had been one of four lines on the
 cross-model chart. The reason for taking it off is the first sentence of these notes: the
 summary exists to show three structural assumptions disagreeing, and a line whose every value
-follows from an IS curve that five independent methods in this repo cannot recover the sign of
-was adding an assumption rather than a view. The package stays, and so does everything below,
-because the conditioning is the finding. It is a record of what asserting the curve costs, not
-a candidate estimate to put beside the others.
+follows from an IS curve that five methods in this repo cannot recover the sign of was adding
+an assumption rather than a view. The package stays, and so does everything below, because the
+conditioning is the finding. It is a record of what asserting the curve costs, not a candidate
+estimate to put beside the others.
+
+**THE LANDING, stated precisely (2026-09-17).** It is tempting to summarise the above as "the
+model imposes too much structure". That is the wrong diagnosis and it fails its own test.
+
+*Too much structure* predicts that relaxing the structure improves matters. Relaxing it makes
+things worse: `--rstar-form constant` gives r\* a single free number and `sigma_e` comes back at
+0.432 against the gap's own sd of 0.420, so the IS curve then accounts for **none** of the
+output gap, and the unfitted scatter's OLS slope is −0.015. The structure is imposed because
+without it there is nothing.
+
+*Too much structure* also names only half of what is going on. The IS curve is over-asserted
+(sign truncated, magnitude prior deliberately too strong, no intercept) **and** r\* is
+under-constrained (134 free values against 120 observations, anchored to nothing). Those are
+opposite kinds of structure and the failure needs both: a strongly asserted line on its own
+would be falsifiable, and a free latent on its own would be harmless. What breaks the model is
+that every point can slide onto whichever line the slope prior wants.
+
+So the landing is:
+
+> Not removed for asserting too much. Removed because the relationship it inverts is not
+> visible in Australian data at any structure, and the free r\* let that invisibility be
+> reported as a path.
+
+The practical difference: "too much structure" invites another respecification, and none will
+help. What would change the answer is different data, which is the last section of these notes.
 
 ## The model
 
@@ -259,6 +284,15 @@ as at (1, 4, 7). The conditioning in "How slow is r\*" above is untouched by any
 
 ## The parameterisation trap, found and documented
 
+> **NOT REPRODUCIBLE FROM THIS REPO (found 2026-09-17).** The height parameterisation is not
+> implemented. There is no switch for it in `config.py`, `estimate.py` or `run.py`; the only
+> trace of it in the code is one sentence of prose at `config.py:30`. Every number in this
+> section's right-hand column, and the whole of "What the model measures well" below, came
+> from a specification that cannot now be run. Treat them as a recorded observation whose
+> provenance is lost, not as results. They are load-bearing for this package's central claim,
+> so re-implementing the switch is the one piece of work that would put these notes back on
+> firm ground. It was not done before the model was set aside.
+
 The model can be written with the prior on r\* (rate units, as above) or on the line's
 height (gap units). These are the same algebra and **different models**, because a prior
 carried across coordinates without its Jacobian is a different prior.
@@ -282,6 +316,11 @@ it rewards inflating the slope. Prior on the height kills that incentive, and pu
 on a quantity nobody has an intuition about. The default is the first, with this warning.
 
 ## What the model measures well, and it is not r\*
+
+> **Everything in this section is from the height parameterisation, which is not implemented.**
+> See the warning under "The parameterisation trap". The variance decomposition below appears
+> nowhere in `analyse.py` and cannot be regenerated. It is the basis for this package's central
+> claim, so the claim is currently asserted rather than reproducible.
 
 Under the height parameterisation the intercept is **precisely identified**: posterior band
 ±0.1 against a prior band of ±1.65. Its path runs 0.25 through the 1990s, peaks at 0.64 in
@@ -409,7 +448,11 @@ Three candidates, ranked, and only the first is well supported.
    covariation whatever the structural slope. The monotone strengthening from lag 1 to 5 is
    the main evidence, and it is why the lags are long.
 2. **Measurement.** The gap is 45% of the cycle and half of that is inflation, so the target
-   is narrow and oddly constructed.
+   is narrow and oddly constructed. **This is not fully ruled out by the cross-model evidence**
+   (noted 2026-09-17): `is_curve` loads the same `ystar_ustar` gap
+   (`is_curve/observations.py:143`), so it cannot corroborate a finding about this gap's
+   construction. `rstar_hlw` and `nairu` estimate their own and `rstar_tvpvar` uses none, which
+   leaves three distinct gaps behind the five methods rather than five.
 3. **Many and varied lags.** Plausible but **untested here**. These weights sum to one, so
    `rbar` measures the response to a *sustained* stance, the same object a single lag
    measures. Testing accumulation needs weights that do not sum to one, and nothing here
@@ -434,7 +477,12 @@ would help every r\* model here.
 
 ## Not done
 
-- `--rstar-form linear`, the one specification that could be falsified.
+- **Re-implement the height parameterisation.** Added 2026-09-17 and now the first item:
+  without it, "The parameterisation trap" and "What the model measures well" are unreproducible,
+  and those carry the central claim.
+- `--rstar-form linear`, the one specification that could be falsified. It IS implemented
+  (`estimate.py:65, 88, 157`); only the run is missing. Expect it to confirm rather than
+  overturn, since `--rstar-form constant` already lands on the null.
 - An injection test: add a known +1pp stance over windows of several lengths, re-estimate,
   and measure how much comes back versus how much is absorbed into r\*. `rstar_rba` has one
   and its notes call it the model's honesty curve.

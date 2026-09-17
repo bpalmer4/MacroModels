@@ -11,6 +11,23 @@ from matplotlib.axes import Axes
 from src.models.common.extraction import get_vector_var
 
 
+def last_complete_quarter(today: pd.Timestamp | None = None) -> pd.Period:
+    """Return the most recent quarter that has actually finished.
+
+    Series built from daily or monthly data (bond yields, the cash rate) carry a
+    value for the quarter in progress, which is a part-finished average. Charted
+    beside 30 years of whole quarters it reads as a data point rather than a
+    fortnight's worth, and it is how `rstar_bonds` came to quote 2026Q3 as its
+    headline while the summary chart quoted 2026Q2.
+
+    Defined once here so every package applies the same rule. This is about
+    PRESENTATION: a state-space model handling a short or partly-missing final
+    quarter is doing its job, and nothing here truncates an estimation sample.
+    """
+    now = today if today is not None else pd.Timestamp.today()
+    return pd.Period(now, freq="Q") - 1
+
+
 def plot_posterior_timeseries(
     trace: az.InferenceData | None = None,
     var: str | None = None,
