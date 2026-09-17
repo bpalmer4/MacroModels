@@ -313,7 +313,7 @@ def plot_stance_against_inflation(frame: pd.DataFrame, start: str | None = "1993
         rounding=2,
     )
     mg.line_plot(
-        gap.rename("Inflation gap, supply netted out"),
+        gap.rename("Trimmed mean inflation gap (TTY), supply netted out"),
         ax=ax, color=["black"], width=[2.6], style=[":"], annotate=True, rounding=2,
     )
     mg.finalise_plot(
@@ -321,6 +321,16 @@ def plot_stance_against_inflation(frame: pd.DataFrame, start: str | None = "1993
         title="Policy tightness stance vs the inflation gap",
         ylabel="Percentage points",
         y0=True,
+        # Applies to the DOTTED line only: the stance lines share the axis but
+        # are a different quantity, so the band says nothing about them.
+        axhspan={
+            "ymin": -0.5,
+            "ymax": 0.5,
+            "color": "green",
+            "alpha": 0.10,
+            "zorder": 0,
+            "label": "Inflation gap within +/-0.5pp of policy target",
+        },
         legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
         # The legend names the MODELS, because `_stances` carries their labels
         # through, so without this nothing on the chart says the coloured lines
