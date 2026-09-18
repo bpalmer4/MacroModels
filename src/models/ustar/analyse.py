@@ -391,6 +391,51 @@ def plot_inflation_decomposition(results: UStarResults) -> None:
     )
 
 
+def plot_implied_ustar(results: UStarResults) -> None:
+    """Show how much of the reported u* path is prior rather than likelihood.
+
+    The grey line is the u* each quarter's inflation would imply on its own,
+    from `results.implied_ustar()`. The state law's whole job is to turn that
+    into something a NAIRU could plausibly be, so the question the chart
+    answers is whether it does that by filtering the series or by ignoring it.
+
+    Sharper here than in the joint model, because this model imposes
+    `sigma_ustar` rather than estimating it, and `print_diagnostics` already
+    reports that u* moves at the imposed value. The band is the posterior's,
+    unwidened: widening it would blur exactly the comparison being made.
+    """
+    if not results.has_phillips:
+        return
+
+    ustar = results.ustar_posterior()
+    implied = results.implied_ustar()
+    fitted = ustar.median(axis=1)
+    ratio = implied.diff().std() / fitted.diff().std()
+
+    ax = mg.fill_between_plot(_band(ustar, widen=1.0), **_BAND_KWARGS)
+    mg.line_plot(
+        pd.DataFrame({"Implied by inflation alone": implied, "u*": fitted}),
+        ax=ax,
+        color=["grey", "darkorange"],
+        width=[1.0, 2.5],
+        alpha=[0.7, 1.0],
+        annotate=True,
+        rounding=2,
+    )
+    mg.finalise_plot(ax, **_with_excluded({
+        "title": "What inflation alone says u* is, quarter by quarter",
+        "ylabel": "Per cent",
+        "legend": {"loc": "best", "fontsize": "small"},
+        "lheader": (
+            f"Implied series moves {ratio:.0f}x as much quarter to quarter; "
+            f"correlation with u* {implied.corr(fitted):.2f}"
+        ),
+        "lfooter": _LFOOTER + "Phillips inverted at posterior medians. ",
+        "rfooter": _rfooter(results),
+        "show": False,
+    }))
+
+
 def plot_ustar_components(results: UStarResults) -> None:
     """Show how much of u*'s path is the specification and how much is the data.
 
@@ -472,6 +517,7 @@ def run_analysis(
     plot_ustar_components(results)
     if results.has_phillips:
         plot_inflation_decomposition(results)
+        plot_implied_ustar(results)
 
     print(f"\nCharts written to: {chart_dir if chart_dir is not None else CHART_DIR}")
     return results

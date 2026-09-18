@@ -215,6 +215,47 @@ class UStarResults:
             "residual": observed - fitted,
         })
 
+    def implied_ustar(self) -> pd.Series:
+        """Return the u* each quarter's inflation would need, taken on its own.
+
+        Invert the Phillips curve with the residual set to zero and solve for
+        u*. Writing the equation's non-demand terms as `R`,
+
+            R      = pi - q(anchor) - beta_pi x [q(pi_exp) - q(anchor)]
+                     - rho_pi x d4pm - xi_gscpi x GSCPI^2 x sign(GSCPI)
+            u*_t   = u_t x (1 - R_t / gamma_pi)
+
+        Not an estimator. It is the diagnostic that makes the state law
+        visible: it is what the data would say about u* with no smoothness
+        prior at all, so plotting the fitted u* against it shows how much of
+        the reported path is the prior rather than the likelihood. That
+        question is sharper here than in the joint model, because this model
+        imposes `sigma_ustar` and its own run output already reports that u*
+        "wanders as freely as the prior allows".
+
+        Expect it to be wild: it divides a noisy residual by a coefficient near
+        one and multiplies by the unemployment rate.
+
+        Coefficients are posterior medians, matching `inflation_decomposition`.
+        """
+        if not self.has_phillips:
+            raise ValueError("no Phillips curve in this run: nothing to invert")
+
+        index = self.obs_index
+        median = self.posterior.median(dim=("chain", "draw"))
+        anchor = quarterly(float(self.constants["anchor"]))
+        gscpi = pd.Series(self.obs["gscpi"], index=index)
+
+        residual_free = (
+            pd.Series(self.obs["pi"], index=index)
+            - anchor
+            - float(median["beta_pi"]) * (quarterly(pd.Series(self.obs["pi_exp"], index=index)) - anchor)
+            - float(median["rho_pi"]) * pd.Series(self.obs["d4pm"], index=index)
+            - float(median["xi_gscpi"]) * gscpi**2 * np.sign(gscpi)
+        )
+        u = pd.Series(self.obs["u"], index=index)
+        return u * (1.0 - residual_free / float(median["gamma_pi"]))
+
     def summary(self, var_names: list[str] | None = None) -> pd.DataFrame:
         """ArviZ summary for the scalar parameters."""
         if var_names is None:
