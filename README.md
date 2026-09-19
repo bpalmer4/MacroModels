@@ -13,9 +13,9 @@ and what should not be quoted from it. The links below go there; this page is on
 
 - **Inflation Expectations** (`expectations`): latent inflation expectations from surveys and market data. Run it first; much of the rest reads its output. See [notes](src/models/expectations/MODEL_NOTES.md)
 - **y\* potential output** (`ystar`): potential as a slow-moving random walk, with the output gap defined by inflation's deviation from target. *Preferred for potential growth*. See [notes](src/models/ystar/MODEL_NOTES.md)
-- **u\* from a given gap** (`ustar`): Okun plus an expectations-augmented Phillips curve, taking the gap as data. See [notes](src/models/ustar/MODEL_NOTES.md)
+- **u\*** (`ustar`): a NAIRU from one expectations-augmented Phillips curve, with u\* a spline. See [notes](src/models/ustar/MODEL_NOTES.md)
+- **u\* summary** (`ustar_summary`): the three specifications of `ustar` on one chart. See [notes](src/models/ustar_summary/MODEL_NOTES.md)
 - **Joint y\*/u\*** (`ystar_ustar`): both of the above in one likelihood, with the gap partly free. *Preferred for the output gap and u\**. See [notes](src/models/ystar_ustar/MODEL_NOTES.md)
-- **Long-run u\*** (`long_run_ustar`): unemployment read off the stretches where inflation stopped changing, back to 1959. No estimation. See [notes](src/models/long_run_ustar/MODEL_NOTES.md)
 - **NAIRU + Output Gap** (`nairu`): the original joint NAIRU and potential-output model. *Superseded for potential, the gap and the NAIRU*; kept for its wage equation, regime split and variant comparison. See [notes](src/models/nairu/MODEL_NOTES.md)
 - **Cobb-Douglas MFP** (`cobb_douglas`): deterministic growth accounting into capital, labour and MFP. See [notes](src/models/cobb_douglas/MODEL_NOTES.md)
 - **g\* summary** (`gstar_summary`): every potential-growth estimate on one chart. See [notes](src/models/gstar_summary/MODEL_NOTES.md)
@@ -155,28 +155,26 @@ uv run python -m src.models.ystar.sigma_sweep --param anchor
 uv run python -m src.models.ystar.realtime
 ```
 
-### u\*: NAIRU from a given output gap (Bayesian)
+### u\*: a NAIRU from one Phillips curve (Bayesian)
 
-Reads saved output from the expectations and `ystar` models, so run those first.
+Reads saved output from the expectations model. With `--okun` it also reads `ystar`'s gap.
 
 ```bash
-# Default: u* converges, sigma_ustar 0.020, sample from 1993Q1
+# Default: u* is a spline with a knot at 2013Q1, no Okun equation, from 1993Q1
 ./run-ustar.sh --verbose
 
 # Recharts from the saved trace
 ./run-ustar.sh --analyse-only
 
-# The setting the answer hinges on: sweep it, don't trust it
-./run-ustar.sh --sigma-ustar 0.030
-
 # Specification alternatives, kept so the comparison is reproducible
-./run-ustar.sh --no-ustar-converge   # the driftless random walk it replaced
-./run-ustar.sh --ustar-drift         # drift on excess inflation expectations instead
+./run-ustar.sh --okun                # restore the Okun equation
+./run-ustar.sh --state converge      # the decay law the spline replaced
+./run-ustar.sh --knots 1996Q1 2013Q1 # a second knot
 
-# Diagnostics
-./run-ustar.sh --free-sigma-ustar    # why the drift cannot be estimated
-./run-ustar.sh --no-output-gap       # does the given gap actually matter?
-./run-ustar.sh --no-phillips         # Okun only
+# Diagnostics (the last two need --okun, which supplies the gap)
+./run-ustar.sh --free-sigma-ustar         # why the drift cannot be estimated
+./run-ustar.sh --okun --no-output-gap     # does the given gap actually matter?
+./run-ustar.sh --okun --no-phillips       # Okun only
 ```
 
 ### Joint y\* / u\* (Bayesian)
@@ -285,6 +283,7 @@ Needs a completed joint y\*/u\* run, which supplies the output gap as data.
 ```bash
 ./run-rstar-summary.sh    # every r* on one nominal scale; re-runs any stale trace
 ./run-gstar-summary.sh    # every potential-growth estimate on one chart
+./run-ustar-summary.sh    # three specifications of the u* model on one chart
 ```
 
 ### The IS curve, plotted rather than estimated
@@ -361,7 +360,6 @@ src/
     │                           #   (reads expectations and ystar output)
     ├── ystar_ustar/            # y* and u* estimated jointly, gap partly free
     │                           #   (preferred for the output gap and u*)
-    ├── long_run_ustar/         # u* read off flat-inflation stretches, back to 1959Q3
     │                           #   (a rule, not an estimate: no likelihood, no priors)
     ├── rstar_bonds/            # r* from the bond market: AU wedge over world r*, two windows
     ├── rstar_hlw/              # HLW Bayesian r* model (AU data)
@@ -369,6 +367,7 @@ src/
     ├── rstar_invert/           # r* by conditional inversion of an asserted IS curve
     ├── rstar_summary/          # every r* on one nominal scale (not a model)
     ├── gstar_summary/          # every potential-growth estimate on one chart (not a model)
+    ├── ustar_summary/          # three specifications of the u* model on one chart (not a model)
     ├── is_curve/               # the IS curve plotted, not estimated: a test bench for the r* models
     ├── bank_costs/             # bank funding and lending costs vs the cash rate (exploratory, charts only)
     ├── gdp_nowcast_bridge/     # GDP nowcast: bridge equations

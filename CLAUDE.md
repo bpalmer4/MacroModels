@@ -32,7 +32,7 @@ uv sync                            # Install dependencies
 ./run-gdp-nowcast-components.sh    # Run GDP nowcast (expenditure-identity components, T-0 only)
 ./run-rstar-hlw.sh                 # Run HLW: trend/cycle decomposition. NOT a source of r*
 ./run-ystar.sh                     # Run y* potential output model (inflation-defined output gap)
-./run-ustar.sh                     # Run u* model (Okun + Phillips; needs expectations + ystar)
+./run-ustar.sh                     # Run u* model (ONE Phillips curve, u* a spline; Okun is OFF)
 ./run-rstar-bonds.sh               # Run r* from the bond market (needs ystar_ustar for the Taylor rule)
 ./run-rstar-rba.sh                 # Run neutral revealed by the RBA's reaction to inflation (two series;
                                    #   also runs the sigma_r ensemble and the injection test, ~38s)
@@ -42,6 +42,7 @@ uv sync                            # Install dependencies
                                    #   back as the real cash rate (see MODEL_NOTES)
 ./run-rstar-summary.sh             # every r* model on one nominal scale; re-runs any whose
                                    #   saved trace is not from today, which regenerates THEIR charts
+./run-ustar-summary.sh             # three specifications of the u* model on one chart
 ./run-gstar-summary.sh             # every g* (potential growth) estimate on one chart; refresh
                                    #   is OFF by default (--refresh would overwrite ystar's
                                    #   production spec with the inflation spec)
@@ -56,7 +57,6 @@ uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EV
                                    #   file there is cleared, so one directory = one run's charts
                                    #   plus its diagnostics.
 ./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free; needs expectations)
-./run-long-run-ustar.sh            # Read u* off flat-inflation stretches, back to 1959 (no estimation)
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
 uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
 uv run python -m src.models.dsge.nk_twostar_model    # Run NK two-star linear probe
@@ -127,15 +127,23 @@ src/
 │   │                              #   Still the preferred source for POTENTIAL GROWTH: the joint
 │   │                              #   model agrees (1.99 vs 1.94) and this is the simpler
 │   │                              #   statement of the same answer. Superseded for the GAP.
-│   ├── ustar/                     # u* from a GIVEN output gap: one state (u*), two observation
-│   │                              #   equations (Okun, expectations-augmented Phillips). Reads
-│   │                              #   expectations + ystar output; estimates neither.
-│   │                              #   SUPERSEDED by ystar_ustar for u*: taking the gap as data,
-│   │                              #   it cannot notice that the gap is too narrow and pays for
-│   │                              #   the mismatch with beta_okun = 2.14. Kept as the component
-│   │                              #   model and for its own diagnostics (the wage check, the
-│   │                              #   sigma_ustar sweep). HEADLINE IS CONDITIONAL: u*'s level is
-│   │                              #   set by the imposed sigma_ustar (see MODEL_NOTES.md).
+│   ├── ustar/                     # u* from ONE expectations-augmented Phillips curve, with u*
+│   │                              #   a natural cubic spline, one knot at 2013Q1. Sample 1993Q1.
+│   │                              #   THE OKUN EQUATION IS OFF. ystar's defined gap IS
+│   │                              #   0.1882 x (pi - 2.5) exactly (R2 = 1.0000), so
+│   │                              #   u = u* - beta x ygap is a Phillips curve in levels and the
+│   │                              #   two equations read ONE signal. Dropping it widens the mean
+│   │                              #   90% band 0.35 -> 0.58 (0.36 -> 1.15 over 1993-98), removes
+│   │                              #   a -0.13/-0.23 bias against what inflation alone implies,
+│   │                              #   and takes 1993-98 from 8.69 to 7.14. --okun restores it.
+│   │                              #   THE SPLINE replaces a decay law that could only draw a
+│   │                              #   monotone approach and so declined forever; --state
+│   │                              #   converge restores it, and only there do sigma_ustar,
+│   │                              #   phi_ustar and ustar_eq exist.
+│   │                              #   DO NOT QUOTE ANYTHING BEFORE 2000: the disinflation is in
+│   │                              #   1991-92, outside the sample, so the model opens on a calm
+│   │                              #   nominal picture beside 10.9% unemployment. Charts shade
+│   │                              #   1993Q1-1999Q4 (see MODEL_NOTES.md).
 │   ├── rstar_bonds/               # r* from the bond market: one state, an AU wedge over
 │   │                              #   a market world real rate, moving as a StudentT random
 │   │                              #   walk, read off THREE windows on one curve: the indexed
@@ -171,15 +179,6 @@ src/
 │   │                              #   bill (--short-rate bill) were both tried as defaults and
 │   │                              #   rejected; the QE term-premium finding does not survive
 │   │                              #   the second window (see MODEL_NOTES.md).
-│   ├── long_run_ustar/            # u* WITHOUT estimation, back to 1959Q3. Finds the stretches
-│   │                              #   where inflation actually stopped changing and reads
-│   │                              #   unemployment off them. Reaches where the state-space
-│   │                              #   models cannot: 1.82 in the late 1960s, 5.45-5.68 since
-│   │                              #   2002, both robust across the rule. Its main finding is
-│   │                              #   about the others: under a loose rule it reads 9-10.9 for
-│   │                              #   the early 1990s, the same as ystar_ustar, so that number
-│   │                              #   is the NAIRU concept failing in a re-anchoring rather
-│   │                              #   than a defect in the joint model (see MODEL_NOTES.md).
 │   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition. NOT COVID-ROBUST: its
 │   │                              #   three HP filters run through the pandemic, leaving a
 │   │                              #   COVID-shaped wobble of a few tenths in g* from 2020 on.
@@ -287,6 +286,31 @@ src/
 │   │                              #   across them. The central line is a MEAN, not a median,
 │   │                              #   and at n=2 it is just the band's midpoint; it is not an
 │   │                              #   estimate (see MODEL_NOTES.md).
+│   ├── ustar_summary/            # NOT A MODEL. Three SPECIFICATIONS of ustar on one chart, not
+│   │                              #   three models: knot count (1 or 2) crossed with whether
+│   │                              #   Okun is in. They share a sample, a Phillips curve and an
+│   │                              #   expectations series, so agreement is close to arithmetic
+│   │                              #   and only disagreement informs.
+│   │                              #   ALL THREE ARE SPLINES, so any of them can turn u* UP at
+│   │                              #   the endpoint if the data warrant it. The decay settings
+│   │                              #   are absent for that reason: the sign of phi x (eq - u*)
+│   │                              #   is fixed by which side of eq the state opened on, so
+│   │                              #   from 10.75 they can only ever report a fall, and their
+│   │                              #   -0.32/-0.34 post-2015 is the shape rather than the data.
+│   │                              #   ONE CARRIES OKUN, which ustar's default excludes. It is
+│   │                              #   the only one in which u* comes DOWN through the 1990s, a
+│   │                              #   regime change from high to low inflation working slowly
+│   │                              #   through the labour market: unemployment fell 4.53pp over
+│   │                              #   1993-99 and it falls 3.43, against 0.50 and 0.81. Not
+│   │                              #   about the 1995 episode, two shallow quarters that should
+│   │                              #   drag nothing. It also carries the steepest post-2015
+│   │                              #   decline of anything tried, -0.59; its 1990s credentials
+│   │                              #   lend that no weight.
+│   │                              #   SPREAD 2.87pp at 1993Q1 to 0.03pp now, latest u*
+│   │                              #   4.67-4.70. Not an error band: the gap is the two
+│   │                              #   readings of the 1990s. Knot count alone is worth 0.05pp.
+│   │                              #   The mean is a description. Each spec writes to its own
+│   │                              #   ustar_sum_* prefix (see MODEL_NOTES.md).
 │   ├── gstar_summary/            # NOT A MODEL. Potential growth on one chart: ystar
 │   │                              #   (inflation + production specs) and the joint model.
 │   │                              #   They agree to 0.09pp (1.90-1.99 at 2026Q2) against

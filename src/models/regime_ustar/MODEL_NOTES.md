@@ -1,337 +1,179 @@
-# Regime u\*: a spline over imposed regimes, back to 1959
+# Regime u\*: a spline over imposed regimes
 
-## Read this first: the gap is the inflation gap rescaled
+## Verdict: this model does not work
 
-The model has **one observation equation**. Inverting it,
+It fails in two independent ways, and the fixes for each destroy the other.
+
+**It does not work within regimes.** The residual is serially correlated at
++0.60 to +0.88 inside every one of the six, so the equation is treating a
+persistent component as independent noise. Residual scale ranges from 0.20
+(2015-19) to 4.06 (1974-83) against a single fitted `sigma` of 0.595, so the
+1970s are absorbed by the Student-t tail rather than explained. Fitted values
+have a standard deviation of 3.47 against a surprise standard deviation of
+2.99, which only reconciles because fitted and residual correlate at about
+-0.51: the equation manufactures swings larger than the thing it explains and
+cancels half of them.
+
+**It does not work across regimes.** u\* is forced continuous at every
+boundary by the spline, while the parameters are allowed to jump. With the
+pre-Accord decade given its own slope, `beta` steps 2.41 to 6.57 at 1974Q1 and
+back at 1983Q3: the same unemployment gap implies 2.7 times the inflation
+effect on one side of a date as the other, instantaneously. The model asserts
+that a regime change is "a change in direction rather than in position" for
+u\* and the opposite for the structure that reads it.
+
+Do not quote a level from this model.
+
+---
+
+## What it is
+
+u\* as a natural cubic spline with knots at imposed regime dates, read off
+**one** observation equation:
 
 ```
-    u_t - ustar_t  =  - u_t * (pi_t - pi_e_t) / beta
+pi_t - pi^e_t  =  alpha_k  -  beta_k x (u_t - u*_t)/u_t
+                  +  rho x d4pm_t  +  xi x GSCPI_t^2 x sign(GSCPI_t)  +  e_t
 ```
 
-So the unemployment gap is the inflation gap multiplied by `u/beta`. **No
-labour-market observable enters anywhere except `u` itself, which appears on
-both sides.** Nothing about the regime dates, the spline, the knot
-multiplicities or the functional form changes that.
-
-Read the path as a statement about what inflation surprises imply, smoothed and
-given a shape. Do not read it as independent evidence about the labour market,
-and do not quote a gap from it as a measure of slack.
-
-Two attempts were made to break this. A wage equation on unit labour costs was
-built and turned off (below). Okun was specified and not built.
-
----
-
-## What it is for
-
-`ystar`, `ustar` and `ystar_ustar` all start at 1993Q1 because their gap is
-defined against an inflation target that did not exist earlier. This model
-reaches **1959Q3** by making the expectation regime-dependent: asserted before
-1983Q1, measured after.
-
-That reach is the point, and it bears on a specific defect elsewhere. `ustar`
-opens at 1993Q1 with a diffuse prior, so u\* there is placed by the unemployment
-rate sitting beside it, and it reports **10.75** against unemployment of 10.93.
-No repair from inside that sample can work: inflation in 1993 was at target, so
-the Phillips curve sees no disequilibrium to attribute. Running from 1959 means
-u\* ARRIVES at 1993 carrying a level inherited from the 1980s, and this model
-reads **6.92** there.
-
-`long_run_ustar` reaches the same decades by a different route, reading
-unemployment off stretches where inflation was flat. It estimates nothing and
-is silent between episodes. This one estimates and is never silent, which is
-both what it adds and what to distrust about it.
-
----
-
-## The specification
+Inverting it,
 
 ```
-OBSERVATION EQUATION  (one equation, this is the whole likelihood)
-
-    pi_t - pi_e_t  =  -beta * (u_t - ustar_t) / u_t  +  supply_t  +  e_t
-
-    e_t ~ StudentT(nu, 0, sigma_m)          nu = 2 + Exponential(1/5)
-    supply_t = rho * d4pm_t + xi * GSCPI_t^2 * sign(GSCPI_t)
-
-
-EXPECTATIONS  (regime-dependent; switch at T0 = 1983Q1)
-
-    pi_e_t  =  pi_{t-1}                     for t <  T0    asserted, adaptive
-            =  E_t from expectations model  for t >= T0    measured
-
-    m = 0 before T0, 1 after; the residual scale sigma_m is separate either side
-
-
-STATE EQUATION  (deterministic given the coefficients)
-
-    ustar_t  =  sum_j  c_j * B_j(t)
-
-    B = natural cubic B-spline basis, a partition of unity
-    knots at 1974Q1 (multiplicity 3), 1983Q3, 1993Q1, 2015Q1, 2020Q1
-
-
-PRIORS                                                  posterior
-    c_j    ~ TruncNormal(5, 3) on [0.5, 12]             see below
-    beta   ~ HalfNormal(1.5)                            2.628 [1.814, 3.407]
-    sigma_0, sigma_1 ~ HalfNormal(1.0)                  0.728, 0.968
-    rho    ~ Normal(0, 0.1)                             0.022 [-0.006, 0.050]
-    xi     ~ Normal(0, 0.1)                             0.144 [ 0.067, 0.225]
-
-
-DATA
-    pi   year-ended headline CPI          src/data/long_cpi.py
-    u    quarterly unemployment rate      ABS 1364.0.15.003
-    E    expectations model output        from 1983Q1
-    d4pm import price growth, lagged      from 1984Q3, zero-filled before
-    GSCPI supply-chain pressure, lagged 2 from 1998Q1, zero-filled before
-
-    Sample 1959Q3-2026Q2, 268 quarters.
+u_t - u*_t  =  - u_t x (pi_t - pi^e_t) / beta
 ```
 
-### Three choices that carry weight
+**The unemployment gap is the inflation gap rescaled by `u/beta`.** No
+labour-market observable enters except `u`, which is on both sides. Nothing
+about the regime dates, the spline or the knots changes that. Two second
+equations exist to break it, on unit labour costs and on output (`--wage`,
+`--okun`), and neither does. Both are off by default.
 
-**The proportional gap, `(u - ustar)/u`**, following `ustar/estimate.py:212` and
-`ystar_ustar/estimate.py:411`. Inverting gives `ustar = u * (1 + surprise/beta)`,
-so the factor turning an inflation surprise into an unemployment statement is
-`u/beta` and therefore SCALES WITH THE UNEMPLOYMENT RATE: small when the labour
-market is tight, large when slack. Under a level gap the 1960s came back at
-2.49 against mean unemployment of 1.92, because `+0.28` of average surprise was
-multiplied by `1/beta` regardless of unemployment being at 1.9. There is also
-direct evidence for convexity: `ystar_ustar`'s notes split its own sample and
-find a slope of -1.82 on the tight side against -0.45 on the slack side.
+**The Okun equation is well determined and useless here.** As error
+correction, `du_t = a + b x dy_t + lambda x (u_{t-1} - u*_{t-1}) + e`, it
+returns `b` = -0.14 [-0.172, -0.108] and `lambda` = -0.022 [-0.035, -0.009],
+both entirely the right side of zero under two-sided priors. But a `lambda`
+that small means a 1-point error in u\* shifts predicted `du` by 0.022 against
+a residual scale of 0.308, so u\* would have to be wrong by fourteen points
+before this equation objected. Turning it on moves u\* by 0.088 on average and
+leaves the credible band at 1.28 against 1.29. A second observable that cannot
+disagree is not a second opinion.
 
-**The triple knot at 1974Q1.** A cubic knot of multiplicity 3 gives C0 there,
-matching the level and freeing the slope to turn a corner. The ratchet was a
-break, not a transition. Under C2 the model could not turn a corner and read
-1967-69 at 1.90; with the corner it reads **1.82**, against `long_run_ustar`'s
-1.82 from a method with no Phillips curve. It did NOT fix the 1970-73 rise,
-which turned out to be in the data (below).
-
-**The 1983Q1 expectations switch is a measurement change as well as a regime
-change**, because the expectations model's series begins exactly there. A level
-shift in u\* at 1983 could be either and nothing in the sample separates them.
-This is the model's weakest join.
+Breaks: 1974Q1, 1983Q3, 1993Q1, 2015Q1, 2020Q1. Institutional, so they can be
+argued on history rather than fit. See `config.DEFAULT_BREAKS` for why 2008Q4
+was tried and moved to 2015Q1.
 
 ---
 
-## Results (2026Q2 vintage)
+## What the sweeps establish
 
-| regime | qtrs | mean u | mean surprise | u\* start | u\* end | u\* min | u\* max |
-|---|---|---|---|---|---|---|---|
-| 1959Q3-1973Q4 | 58 | 1.98 | +0.20 | 1.99 | 3.12 | 1.74 | 3.12 |
-| 1974Q1-1983Q2 | 38 | 5.69 | +0.11 | 3.24 | 7.29 | 3.24 | 7.29 |
-| 1983Q3-1992Q4 | 38 | 8.23 | -0.35 | 7.34 | 6.95 | 6.95 | **7.60** |
-| 1993Q1-2014Q4 | 88 | 6.45 | -0.03 | 6.92 | 4.74 | 4.74 | 6.92 |
-| 2015Q1-2019Q4 | 20 | 5.54 | -0.75 | 4.69 | 4.22 | 4.15 | 4.69 |
-| 2020Q1-2026Q2 | 26 | 4.48 | **+1.20** | 4.27 | **6.20** | 4.27 | 6.20 |
+**The sample start does not matter after 1983.** 1983Q1, 1970Q1 and 1959Q3
+starts agree to 0.08-0.10pp over their common span. Ten years of run-up is
+enough to stop 1993 being set by the unemployment rate beside it: this model
+reads about 7.0 at 1993Q1 where `ustar` reads 10.75 and `ystar_ustar` 10.77,
+both opening there with a diffuse prior.
 
-Peak **7.60 at 1986Q2**. Latest **6.20 [5.25, 7.50] at 2026Q2**.
+**The expectation before 1983 decides the 1970s and nothing else.** PIE_RBAQ
+is MARTIN's expectations variable, exogenous to that model and built after
+Cusbert (2017) as a random walk in trend inflation. Fitted as adaptive
+learning it has a half-life of 23 quarters, so it lags a fast climb: 6.52
+below year-ended headline across 1974-79, then 0.97 above it across 1983-92.
+Used as `pi^e` it puts u\* near 10 in the late 1970s against unemployment
+near 5. The salience rule gives about 5. Both constructions are asserted and
+nothing in the data chooses. Post-1983 u\* moves by less than 0.1pp either way.
 
-Two segments do something a constant could not: 1983-92 peaks partway through
-and comes down, and 2015-19 falls and flattens. That is what the cubics buy
-over one level per regime.
+**The inflation measure matters and the trimmed mean is cleaner.** Splicing
+headline to the trimmed mean at 1983Q1 cuts residual scale from 1.043 to
+0.694. Around the GST, headline lifts 4.29 points over its 1999 base and the
+trimmed mean 0.90, so four fifths of a pure tax event is removed. The two
+correlate 0.905 over 174 overlapping quarters with a mean difference of -0.04,
+so the splice needs no offset.
 
-### Against methods that share none of this machinery
+**Three things that change nothing.** Knot multiplicity at 1974Q1 (3, 2 or 1)
+moves the 1970s peak between 10.12 and 10.26. Doubling `beta_prior_sd` from
+1.5 to 3 moves `beta` by 7 per cent, so the prior was never binding. Dropping
+the 1960s from the sample moves the 1970s by 0.15pp.
 
-| episode | this model | source | reading | diff |
-|---|---|---|---|---|
-| 1967Q2-1969Q3 | **1.81** | `long_run_ustar` plateau | 1.82 | **-0.01** |
-| 1988Q4-1989Q4 | 7.41 | `long_run_ustar` / `nairu` | 6.20 / 6.22 | **+1.21** |
-| 2002Q4-2005Q2 | 5.99 | `long_run_ustar` plateau | 5.57 | +0.42 |
-| 2013Q1-2014Q1 | 4.97 | `long_run_ustar` plateau | 5.68 | -0.71 |
-| 2015Q4-2019Q4 | 4.27 | `long_run_ustar` plateau | 5.45 | **-1.18** |
+**One beta across the sample is refuted.** Holding u\* at its fitted path,
+four regimes want 3.36 to 4.38 against a pooled 3.60 with residual means
+inside 0.18. 1974Q1-1983Q2 is left with a residual averaging **+2.57** across
+ten years, which is a specification failure. But allow that regime a constant
+and its slope falls to 3.86, near the pooled value, with a +2.34 intercept: it
+wants a **level**, not a steeper curve. Fitting it through the origin forces
+the steepness.
 
-The 1960s agreement is the strongest corroboration here: two methods with
-nothing in common landing on 1.81 and 1.82 in a decade no other model in the
-package can reach.
-
-`corr(u*, 5-year moving average of u)` is **0.906**, which is the number to
-watch. It was 0.781 with the wage equation on, and that was the only
-specification that moved it much.
-
----
-
-## Known defects, all four the same defect
-
-Every persistent inflation surprise is booked to the labour market, because
-there is one equation and nothing else can absorb one.
-
-**1970-73, u\* rising 2.0 to 3.1 while unemployment was 2.1.** Inflation went
-2.9% to 13.1% across those years, and under an adaptive expectation almost all
-of it arrives as positive surprise: mean **+0.64** over 1970-73 against **-0.03**
-over 1965-69, with +1.99 in 1971Q3 and +2.94 in 1973Q4. The equation can only
-read that as an overheated labour market. Much of it was the first oil shock and
-the wool and wheat boom, which import prices would control for and cannot,
-because they start 1984Q3.
-
-**2020-26, u\* rising to 6.20 against unemployment of 4.35.** The same thing at
-the other end. Mean surprise in that regime is **+1.20**, with 2022Q4 at +5.17.
-The GSCPI term absorbs some of it and nowhere near enough: `--no-supply` puts
-the end point at **6.48** against 6.20 with it, so the supply block is worth
-0.28 points at the place it should matter most.
-
-**2015-19 reading 4.27 against 5.45**, the same defect with the sign reversed:
-six years of surprises from -0.42 to -1.15 read as slack. Moving the knot to
-2015Q1 to isolate the period changed it by 0.01, which establishes that this is
-not a knot-placement problem.
-
-**1988-89 reading 7.41 against 6.20**, where two independent methods agree with
-each other at 6.20 and 6.22.
-
-**Ill-conditioning.** The coefficients run 1.99, 0.87, 3.24, 4.94, **8.56**,
-5.90, 6.19, 3.42, 6.20 on a partition-of-unity basis, where they should roughly
-track a curve that peaks at 7.60 and declines. One sits above the curve's
-maximum and the neighbours below it, so adjacent basis functions are partly
-cancelling. Adjacent basis functions are partly cancelling. More
-knots or a higher degree would make this worse.
-
-**The 1993-2014 segment is 88 quarters under one cubic**, spanning the
-disinflation, the mining boom and the GFC. It is the longest segment by far and
-the least likely to be adequately described by four parameters.
+**The Accord decade needs less than it appears to.** Against a pooled 3.60 it
+wants a slope of 0.06 and looks like a decade with no Phillips curve. But that
+pooled slope was inflated by the 1970s. Once the pre-Accord decade is
+separated and the pooled slope falls to 2.43, the Accord fits it with a
+constant of +0.31, 90% [-0.073, +0.681], which may be zero. Giving it its own
+slope instead returns 0.55 with the interval touching zero, improves `sigma`
+by 0.007, and puts a near-zero denominator into the inversion, which sends the
+`implied_ustar` diagnostic to -20 and +33 in that window.
 
 ---
 
-## Tried and rejected
+## The two fixes, and why neither is available
 
-Each of these ran, sampled cleanly and was turned off or replaced. Kept because
-the negative results are most of what the exercise established.
+**Per-regime intercepts and slopes together are not identified.** Within a
+regime the equation is `(alpha_k - beta_k) + beta_k x u* x (1/u)`, so only the
+variation in `1/u` separates u\*'s level from the constant. That variation is
+thin: the coefficient of variation of `1/u` is 0.060 in 2015-19. Fitted
+saturated, `alpha` and u\*'s level correlate at -0.72 to -0.94 within regimes,
+the mean credible band more than doubles to 3.27 points, spline coefficients
+hit both the 0.5 floor and the 12.0 ceiling, and u\* correlates **-0.273**
+with a smoothed unemployment rate. It samples cleanly and returns the best
+`sigma` of any variant, 0.577, which is the warning: fit cannot arbitrate here.
 
-**A step function, one free level per regime.** The first attempt. `beta` came
-back at **0.039**, so `1/beta` was 26 and every level was its prior: the 1960s
-read 4.96 against mean unemployment of 1.98, the 1980s 4.25 against 8.23, and
-posterior bands were 6.4 to 7.5 points wide against a prior band of 8.40. The
-level solves as `mean u + mean surprise / beta`, which for the 1960s is
-`1.98 + 0.20/0.039 = 7.1` before the prior truncation drags it back. Discarded
-for the spline, which cannot be a step and has no innovation variance.
+**An AR(1) error removes the identification entirely.** `phi_e` comes back at
+**0.965** [0.945, 0.984], a near unit root, so the error is itself a slow
+stochastic trend, which is what u\* is. The two compete for the same
+persistent movement and the error wins, being unconstrained where u\* must
+pass through a spline. Both slopes collapse toward zero (1.52 and 0.53, the
+second touching zero), the mean credible band widens fourfold to 5.09 points
+on a series that has ranged 1.6 to 11.1, and u\* averages 4.12 through the
+Accord decade against unemployment of 8.23.
 
-**An attractor state law**, `ustar_t = ustar_{t-1} + phi(eq_k - ustar_{t-1}) + e`.
-Better than the step function and still limited in two ways: it needs
-`sigma_ustar` imposed, which nothing measures, and an exponential approach to a
-level can only do one shape. Tested with the 1983-97 boundary, it came back flat
-at 7.3 across a period containing both a peak and a descent. Retained as
-`--state attractor` for comparison.
-
-**Terms of trade as the supply control.** `gamma_tot` = **0.010
-[-0.022, +0.043]**, straddling zero, with every path value unchanged to two
-decimals. Tested twice, on the level-gap and the proportional-gap
-specifications, in case the first result was an artefact of the older spec. It
-was not.
-
-**Import price growth**, kept but doing nothing: `rho_pi` = 0.022
-[-0.006, 0.050]. Only the GSCPI term earns its place, `xi` = 0.144
-[0.067, 0.225]. The supply pressure that registers is supply chains, not the
-import price index.
-
-**Adaptive innovations**, `sigma_t = sigma_u * (m_t / mean(m))^kappa` with
-`m_t = |MA4(u)_t - MA4(u)_{t-8}|`, letting u\* move more where unemployment had
-moved. `kappa` = **1.418 [0.242, 2.604]**, excluding zero, and the mechanism
-worked: `sigma_t` ran 0.41 in 1983Q4 and 0.39 in 1992Q2 against 0.007 through
-1966-68, a 55-fold range. It changed the answer by almost nothing, because with
-`sigma_u` at 0.05 the path was driven by the attractors rather than the
-innovations. Moot under the spline, which has no innovations at all. Retained as
-`--adaptive-sigma` on the attractor state.
-
-**A wage equation on unit labour costs**, `ulc_yoy - pi_e = alpha + gamma*(u -
-ustar)/u + lambda*dU/U + v`, after `nairu/equations/phillips_wage.py`. This was
-the attempt on the circularity, and it is the only change that brought a second
-series. It is **not weak**: `gamma_wage` = **-4.667 [-5.789, -3.626]**, about 2.8
-times the price slope in the same units, `alpha_wage` = -0.005 (trend real ULC
-growth of zero over 66 years, which nothing forced), and
-`corr(u*, smoothed u)` fell **0.881 to 0.781**, the largest such fall anything
-achieved.
-
-It is off because the PATH is worse everywhere it can be checked. Those
-comparisons were made at the 2008Q4 knot configuration and have not been rerun
-since it moved to 2015Q1. The hump
-flattens from a peak near 7.7 to near 6.5; the early-1970s rise worsens from
-3.14 to 4.37 by 1973Q4; the end point rises 6.14 to 6.65; and 1993-2001 acquires
-a fall-then-rise no account of the period supports. The 1988-89 benchmark does
-improve sharply, 7.27 to 6.32 (measured at the 2008Q4 knot, before it moved),
-and that was initially read as the equation working. The likelier reading is that the whole hump fell about a point and that
-benchmark sat under it. One benchmark improving while the shape deteriorates is
-not evidence. Retained as `--wage`.
-
-**A 2008Q4 knot.** Moved to 2015Q1 because 2008Q4 marks the GFC, a demand shock,
-not a change in the inflation regime. Over 2009-2013 inflation averaged 2.42 and
-the surprise -0.20, with 2011 at 3.31: an ordinary stretch inside the band. The
-break is at 2015, where inflation goes 2.47 to 1.51 to 1.25 and the surprise
-goes -0.11 to -1.05 to -1.15 and does not recover before the pandemic. The move
-improved 2013-14 by 0.26 and 2002-05 by 0.15, left 2015-19 unchanged, and raised
-`corr(u*, smoothed u)` from 0.881 to 0.906. A judgement rather than a clear win.
-
-**A Henderson trend through the raw inversion** (`inversion.py`, still present
-as a separate exercise). It rings. Henderson weights pass a cubic exactly at the
-cost of negative outer weights, so on an input as noisy as an inflation surprise
-divided by a slope the side lobes manufacture oscillations at about the filter's
-own length. A least-squares fit of a low-order polynomial has no side lobes and
-cannot invent a cycle, which is the cleanest argument for the spline. The
-inversion module is kept because the raw per-quarter series is the right
-diagnostic for how much of the answer the smoothing supplied.
+The second result is the important one. **The persistent component of the
+inflation surprise is what identifies u\*.** The static form's apparent
+precision, a band of about 1.3 points, comes from treating a serially
+correlated error as 226 independent observations. An AR(1) at 0.965 and a
+slow-moving u\* cannot be told apart from one series.
 
 ---
 
-## Not done
+## Other things wrong
 
-**Okun.** Specified and not built. `log GDP = ystar + ygap` with `ystar` a
-second spline on the same knots, and `u - ustar = -beta_okun * ygap`. GDP covers
-1959Q3-2026Q2, so it is possible. It is the strongest remaining candidate
-because it is the only untried change that brings a new series, and it would
-address both large errors directly: if output was strong in 2022-23, Okun says
-the gap was genuinely negative and u\* need not rise.
-
-Three costs, stated so the next attempt does not rediscover them. Two latent
-splines roughly doubles the parameters on a basis already ill-conditioned.
-`ystar` and `ustar` become partly interchangeable, since both are smooth latents
-linked by Okun, and `ystar_ustar` handles that by imposing `sigma_okun` at 0.20,
-which its own notes call the one imposed variance in the package with no
-external anchor. And the lockdown quarters would bend `ystar` badly right before
-the segment whose end point is already the weakest part; `ystar` excludes
-2020Q2-2021Q3 for this reason.
-
-**A degree-4 spline.** Not worth it. Cubic to quartic with five knots takes the
-coefficient count from 9 to 10, so it buys one parameter, while increasing
-oscillation and worsening boundary extrapolation at the one place the model is
-weakest. Flexibility is controlled by knots, not degree.
-
-**More knots.** The raw inversion is the limit the spline approaches as knots
-are added, and it reads 4.14 over 2015-19 against the spline's 4.27 and the
-target's 5.45. So loosening moves that period further from the benchmark. The
-current errors are level errors, not stiffness errors.
+- `eq_prior`'s upper bound of 12.0 binds in every spliced-expectations
+  variant: the late-1970s coefficient sits at 11.75 to 11.85 with its interval
+  reaching the bound. The level is capped, not estimated.
+- `config.beta_prior_sd` is justified against `ustar`'s `gamma_pi` of about
+  1.15, but that coefficient is on a quarterly inflation basis and this model
+  is year-ended, so the comparable figure is roughly 4.6.
+- `regime_sigma` splits the residual scale at the expectations handoff, which
+  is inert under the default since every quarter's expectation is measured.
+  The heteroskedasticity that matters is by regime and is not modelled.
+- `implied_ustar` omits the supply controls the fitted equation includes,
+  worth +0.54 on average over 2021-23 and 1.80 at 2022Q2.
+- No trimmed mean exists before 1983Q1, so the 1970s carry every policy-driven
+  price movement, including the Medibank changes of 1975-76 and 1978. Not
+  measured here.
 
 ---
 
 ## Files and usage
 
-```
-src/models/regime_ustar/
-├── config.py          # regimes, knots, priors, and what each switch costs
-├── observations.py    # the series, and the regime-dependent expectation
-├── spline.py          # the natural cubic basis, knot multiplicity
-├── estimate.py        # both state laws, the price equation, the wage equation
-├── analyse.py         # tables and charts
-├── inversion.py       # the raw per-quarter inversion, and Henderson on it
-├── inversion_run.py   # CLI for the inversion exercise
-└── run.py             # CLI
-```
-
 ```bash
-./run-regime-ustar.sh                        # the default spec above
-./run-regime-ustar.sh --wage                 # add the ULC equation
-./run-regime-ustar.sh --no-supply            # drop import prices and GSCPI
-./run-regime-ustar.sh --state attractor      # the pre-spline state law
-./run-regime-ustar.sh --breaks 1974Q1 1983Q3 1998Q1 2015Q1 2020Q1
-./run-regime-ustar-inversion.sh --window 21  # the inversion exercise
+./run-regime-ustar.sh                       # defaults: 1970Q1, spliced expectations,
+                                            #   spliced CPI, one beta, no intercept
+./run-regime-ustar.sh --beta-groups 0 1 0 0 0 0 --intercept-regimes 2
+                                            # pre-Accord its own slope, Accord a constant
+./run-regime-ustar.sh --expectations model  # salience rule before 1983 instead of PIE_RBAQ
+./run-regime-ustar.sh --inflation headline  # one measure end to end
+./run-regime-ustar.sh --okun                # output error correction as a second equation
+./run-regime-ustar.sh --ar1                 # AR(1) error; see above
+./run-regime-ustar.sh --analyse-only        # re-chart a saved trace
 ```
 
-Charts land in `charts/RegimeUStar/`:
-
-- **u-as-a-spline-with-knots-at-the-regime-dates**: u\* against the unemployment
-  rate, with the knots marked.
-- **unemployment-gap-implied-by-the-regimes**: `u - u*`, which is the inflation
-  gap rescaled and should be read as such.
-- **what-inflation-alone-says-u-is-quarter-by-quarter**: the acceptance test.
-  The grey line owes nothing to the knots or the spline; if the orange path is
-  not a plausible reading of it, the structure is inventing the answer.
-- **each-regimes-attractor-and-where-u-actually-got-to**: only meaningful on
-  `--state attractor`.
+`config.py` holds every imposed quantity and records it in `constants`, which
+is saved beside the trace. Charts and this run's diagnostics go to
+`charts/RegimeUStar/`.

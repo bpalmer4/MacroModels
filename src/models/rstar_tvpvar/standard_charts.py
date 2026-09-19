@@ -16,15 +16,19 @@ a model that does not is hard to put beside them:
    chart exists so nobody adds them.
 """
 
-import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
 import pandas as pd
 from scipy import stats
 
+from src.models.common import prior_posterior
 from src.models.common.inflation_scale import to_nominal
 from src.models.rstar_tvpvar.ensemble import load_ensemble
 from src.models.rstar_tvpvar.results import TvpVarResults
+
+# A scalar parameter's posterior array is (chain, draw); a vector's carries
+# a third axis, which is pooled across before charting.
+_SCALAR_NDIM = 2
 
 _PARAM_LABEL = {
     "sigma_q": "sigma_q: per-quarter sd of the drift in every VAR coefficient",
@@ -50,49 +54,42 @@ def _halfnormal_curve(sigma: float, grid: np.ndarray) -> np.ndarray:
     return stats.halfnorm.pdf(grid, scale=sigma)
 
 
-def plot_prior_posterior(results: TvpVarResults, footer: str, lfooter: str) -> None:
+def plot_prior_posterior(results: TvpVarResults, footer: str, lfooter: str) -> int:
     """One chart per estimated scalar: posterior against its own prior.
 
     A posterior sitting on its prior means the data said nothing about that
     parameter. For `sigma_q` that is the whole ballgame, since it governs how
     much the coefficients move and therefore the entire r* path.
+
+    Drawing is `common.prior_posterior`, shared with every Bayesian model
+    here. The named list stays because `sigma_h` and `a_free` are vectors of
+    three, pooled into one distribution each rather than charted element by
+    element, which the shared scalar sweep would skip.
     """
     constants = results.constants
-    priors: dict[str, tuple[str, float]] = {
-        "sigma_q": ("halfnormal", float(constants.get("sigma_q_prior", 0.02))),
-        "sigma_h": ("halfnormal", float(constants.get("sigma_h_prior", 0.2))),
-        "a_free": ("normal", 1.0),
+    priors: dict[str, tuple[str, float, float]] = {
+        "sigma_q": ("half", 0.0, float(constants.get("sigma_q_prior", 0.02))),
+        "sigma_h": ("half", 0.0, float(constants.get("sigma_h_prior", 0.2))),
+        "a_free": ("normal", 0.0, 1.0),
     }
 
-    for name, (family, scale) in priors.items():
+    drawn = 0
+    for name, prior in priors.items():
         if name not in results.posterior:
             continue
-        draws = _scalar_draws(results, name)
-        upper = max(float(np.quantile(draws, 0.999)), scale * 2.5)
-        lower = min(float(np.quantile(draws, 0.001)), -scale * 2.5 if family == "normal" else 0.0)
-        grid = np.linspace(lower, upper, 400)
-
-        fig, ax = plt.subplots()
-        ax.hist(draws, bins=60, density=True, color="teal", alpha=0.55, label="Posterior")
-        prior = (
-            _halfnormal_curve(scale, grid) if family == "halfnormal"
-            else stats.norm.pdf(grid, 0.0, scale)
+        values = np.asarray(results.posterior[name])
+        draws = values if values.ndim == _SCALAR_NDIM else values.reshape(values.shape[0], -1)
+        prior_posterior.plot_parameter(
+            name, draws, prior,
+            footers={
+                "lheader": "Posterior on top of the prior means the data said nothing",
+                "rfooter": footer,
+                "lfooter": lfooter,
+            },
+            label=_PARAM_LABEL.get(name),
         )
-        ax.plot(grid, prior, color="darkorange", lw=2, ls="--", label="Prior")
-        median = float(np.median(draws))
-        ax.axvline(median, color="teal", ls=":", lw=1.5, label=f"Posterior median {median:+.4f}")
-        ax.set_xlabel(_PARAM_LABEL.get(name, name))
-        ax.set_ylabel("Density")
-        mg.finalise_plot(
-            ax,
-            title=f"Prior and posterior: {name}",
-            legend={"loc": "best", "fontsize": "small"},
-            lheader="Posterior on top of the prior means the data said nothing",
-            rfooter=footer,
-            lfooter=lfooter,
-            show=False,
-        )
-        plt.close(fig)
+        drawn += 1
+    return drawn
 
 
 def plot_policy_stance(results: TvpVarResults, footer: str, lfooter: str) -> None:

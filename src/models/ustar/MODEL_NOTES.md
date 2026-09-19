@@ -1,597 +1,390 @@
-# u*, a NAIRU from a given output gap
+# u\*: a NAIRU from one Phillips curve
 
-A Bayesian unobserved-components model (PyMC + NumPyro NUTS) estimating the Australian
-unemployment rate consistent with output at potential and inflation at target. One latent
-state, two observation equations, nine estimated parameters.
+## The choices, up front
 
 ```
-u*_t = u*_{t-1} + phi·(u*_eq - u*_t-1) + e_u   u*: converges, sigma imposed
-u_t  = u*_t - beta·ygap_t + e_o                 Okun:     unemployment fitted
-pi_t = q(2.5) + beta_pi·[q(pi^e_t) - q(2.5)]    Phillips: inflation fitted
-       + gamma·(u_t - u*_t)/u_t
-       + rho·d4pm_t + xi·GSCPI_t²·sign(GSCPI_t) + e_p
+sample      1993Q1 onwards
+u* path     natural cubic spline, one interior knot at 2013Q1
+equations   price Phillips curve only. The gap-form Okun equation is OFF
+anchor      2.5% target, flat, with expectations entering as a deviation from it
 ```
 
-`q(·)` converts an annual rate to a quarterly one. The output gap `ygap` is **not estimated
-here**: it is read from a completed `ystar` run. Inflation expectations come from the
-`expectations` model. Run order is `expectations` → `ystar` → `ustar`, all from saved
-output, nothing re-estimated.
+Four things are asserted rather than estimated: the start date, the absence of
+Okun, the spline, and the knot date. Everything else is estimated. Each is
+argued below, but the spline deserves its reason here, because it is the
+choice that decides what the model is allowed to say about now.
 
-Estimated: `phi_ustar`, `ustar_eq`, `beta_okun`, `sigma_okun`, `gamma_pi`, `beta_pi`,
-`rho_pi`, `xi_gscpi`, `epsilon_pi`. Imposed: `sigma_ustar` = 0.020. Asserted: the 2.5% target,
-flat.
+**The spline is preferred because it lets the endpoint rise if the data
+support it.** The alternative, a decay toward one equilibrium, cannot: the
+sign of `phi x (eq - u*)` is fixed by which side of the equilibrium the state
+opened on, and from 10.75 in 1993Q1 with an equilibrium near 4.9 it approaches
+from above, never crosses, and can only ever report a fall. Every decay run
+returns -0.32 to -0.34 over 2015-2026 whatever the data say. A spline has no
+such constraint and does turn up when pushed, +0.36 in one setting tried.
 
-**u\* converges rather than wandering, and that is new.** It used to be a driftless random
-walk, which turned out to be about 8 standard deviations from its own fitted path and 17 over
-1993-1999. See "The driftless random walk is the wrong prior"; `--no-ustar-converge` restores
-the old specification.
+So the default's post-2015 slope of -0.06, which is flat, is flat because the
+data put it there. Under the decay law that reading was unavailable, and the
+continuing decline it reported was a property of the curve.
 
----
+Latest reading **4.70**, unemployment 4.35, gap **-0.35**, mean 90% posterior
+band 0.58. Do not quote anything before 2000.
 
-## Read this first: what the model determines, and what you determine
+### What u\* is here
 
-**A vintage warning before anything else.** `ystar` now drops 2020Q2-2021Q3 from its
-likelihood, and its `c` fell from 0.468 to 0.188 as a result. The gap this model reads is
-therefore a different series: sd 0.188 against 0.467, and +0.21 at 2026Q2 against +0.51. The
-default run has been re-estimated on it. **One thing has not been
-re-run and is one vintage old**: the free- and bounded-drift experiments in "Three ways of
-trying to estimate the drift". Their conclusion is not in doubt, the pile-up is a property of
-a free state sitting beside a free residual, not of the gap, but their levels are
-pre-exclusion. The `--no-output-gap` control needs no re-run at all, for the reason given in
-that section.
+One observation equation, and nothing else. Invert it:
 
-**The level of u\* is set by numbers you choose, not by the data.** That was always true of
-`sigma_ustar`, which is imposed and cannot be estimated (see "Three ways of trying to estimate
-the drift"). It is more true now: u\* converges to an estimated equilibrium, and the chart
-`what-moves-u-the-specification-or-the-data` shows that of u\*'s 6.1pp fall across the sample,
-about 97% is the convergence mechanism and 3% is the data. The 1990s are essentially the
-specification drawing a curve.
+```
+u_t - u*_t  =  - u_t x (pi_t - pi^e_t) / gamma
+```
 
-**`sigma_ustar` remains the second choice, and it is not swept here.** It decides how far u\*
-may wander from its equilibrium path, and at 0.020 the answer is: not far, deviations of +0.16
-and −0.09 at the extremes. A sweep used to sit here, showing u\* running 5.04 to 4.58 across
-0.024 to 0.065 with `gamma_pi` doubling against it. It has been removed rather than annotated,
-because every row was estimated on the driftless random walk and none of it survives the
-change of specification: the mechanism now carries the 1990s, so the sweep would be measuring a
-different and much narrower thing. Re-running it is outstanding work.
+**u\* is whatever makes the unemployment gap account for the inflation gap.**
+That is the definition operating here, not a by-product of it. No
+labour-market observable enters except `u`, which sits on both sides, so the
+path is inflation's deviation from expected inflation, rescaled by `u/gamma`,
+smoothed and given a shape.
 
-The trade-off it demonstrated is structural and has not gone away. `sigma_ustar` decides how
-much of unemployment's movement is trend and how much is cycle, and `gamma_pi` takes whatever
-is left: tightening from 0.040 to 0.020 flattened `gamma_pi` from −1.48 to −1.15 for exactly
-that reason. What the removed table cannot now tell you is the *size* of that trade under
-convergence.
-
-So: **this model does not have a robust headline.** Quote "u\* near 4.8, and the labour market
-tight by roughly half a point". Do not quote decimals.
-
-**What the model does, stated plainly:** it splits the unemployment rate into a slow trend and
-a cycle, where how much is trend you fix in advance, and the Phillips curve sets the amplitude
-of the cycle by asking how large a gap is needed to explain inflation's distance from target.
+Two things follow and are worth holding onto while reading the rest. Every
+argument below about the start date, Okun, the spline and the knots is an
+argument about the smoothing and the scaling, never about adding information.
+And where inflation sits at expectations, the equation has nothing to say and
+u\* is whatever the smoothing puts there, which is what makes the 1990s the
+problem they are.
 
 ---
 
-## Results (2026Q2 vintage, `sigma_ustar` = 0.020)
+## The start date is forced, and it is the model's central problem
 
-Converged: all `r_hat` = 1.00, `ess_bulk` 3,545 to 9,600, no divergences. Estimated on the
-current `ystar` gap, the one with 2020Q2-2021Q3 out of the likelihood.
+The sample cannot begin before 1993Q1, because the output gap this package
+supplies is defined against a 2.5% target that did not exist earlier. That is
+a hard constraint, not a preference.
 
-Converged: `r_hat` = 1.00 throughout, `ess_bulk` 8,022 to 13,049, no divergences.
+**The disinflation is outside the sample.** Year-ended trimmed mean inflation
+fell 1.82 points through 1991 and 2.30 through 1992, and was flat by 1993.
+So the model opens on a quiet nominal picture sitting beside an unemployment
+rate of 10.9, and concludes, correctly given what it can see, that this is
+normal. By 1993 the level signal is -0.37 and the change signal -0.45; at any
+plausible slope both imply u\* between 9.9 and 10.6.
 
-| Parameter | mean | 90% HDI | |
-|---|---|---|---|
-| `phi_ustar` | 0.040 | [0.03, 0.04] | ~4% of the distance to equilibrium closed per quarter |
-| `ustar_eq` | 4.86 | [4.71, 5.01] | the equilibrium being converged on |
-| `beta_okun` | 2.144 | [1.74, 2.55] | P(> 0) = 100% |
-| `sigma_okun` | 0.486 | [0.43, 0.55] | |
-| `gamma_pi` | −1.150 | [−1.39, −0.91] | P(< 0) = 100% |
-| `beta_pi` | 0.391 | [0.12, 0.65] | de-anchoring pass-through |
-| `rho_pi` | 0.006 | [0.001, 0.011] | import prices |
-| `xi_gscpi` | 0.040 | [0.028, 0.052] | supply chains |
-| `epsilon_pi` | 0.164 | [0.145, 0.183] | |
+**It is not the initial prior.** `ustar_init` is centred on the first
+quarter's unemployment rate, which looks like the culprit and is not. Sweeping
+that centre from 6.0 to 10.85, three prior standard deviations, moves the
+posterior from 10.75 to 10.73 and changes `phi`, `ustar_eq`, the 1993-98 mean
+and the latest reading by nothing at two decimals. The likelihood pulls it
+back every time.
 
-| Headline, 2026Q2 | |
-|---|---|
-| u\* | **4.83** |
-| u\*'s own equilibrium | 4.86 |
-| u − u\* | **−0.48** |
-
-**Two specification changes separate this from the 2.033 / 0.685 / −1.055 / u\* 4.71 that this
-section used to report.** u\* now converges rather than wandering, which is what moved the
-1990s (see "The driftless random walk is the wrong prior"). And `sigma_ustar` fell from 0.040
-to 0.020, which is what moved the endpoint: u\* no longer chases post-2022 unemployment down,
-so it finishes at 4.83 just below its estimated equilibrium of 4.86 rather than at 4.54 well
-below it. The two are related, the old 0.040 was calibrated for a driftless walk in which the
-innovation had to carry the whole decline, and the arithmetic is in `ModelConfig.sigma_ustar`.
-
-`beta_okun` = 2.03 is far above a textbook Okun coefficient and should not be read as one. The
-`ystar` gap is a shrunk regressor: `c` is a conditional mean on a signal explaining about an
-eighth of output's variation, so the slope compensates. It is a scaling onto this particular
-gap series, and the surest sign of that is what happened when the series changed: `c` fell
-0.468 to 0.188 and `beta_okun` went 1.065 to 2.033 to sit on the same unemployment data.
-
-**But it is not a clean rescale, and the residual is the informative part.** The gap shrank by
-a factor of 2.48 while the slope rose by only 1.91, so the fitted cyclical amplitude
-`beta_okun × sd(ygap)` fell from 0.497 to 0.382. The new gap explains less of the swing in
-unemployment, not the same amount in smaller units. `sigma_okun` nonetheless barely moved,
-0.684 to 0.685, because u\* took up the slack. That is the trade this model always makes: the
-same imposed `sigma_ustar` buys a more mobile u\* when the gap explains less.
-
-Both of those numbers are from the driftless specification and are kept because the *argument*
-is what matters here, not the levels. On the current specification the same quantities are
-`beta_okun` = 2.144 and `sigma_okun` = 0.486.
-
-Two things to keep in view when reading `beta_okun` = 2.03. Its prior is `Normal(0.5, 0.5)`,
-so the posterior now sits three prior standard deviations out, where before it was one; the
-data are pulling hard and the prior is not restraining the number. And whatever the gap's
-units, `beta_okun` remains an artefact of them, so it is not comparable with `nairu`'s Okun
-coefficient or with anyone else's.
+**So 1993-1999 is shaded on every chart.** Across 1993-98 the Okun
+specifications put u\* at 8.69 against an unemployment rate of 8.90, a
+reported gap of -0.22 through the deepest slack in the sample. The deviation
+between the fitted u\* and what inflation alone implies averages -0.62 to
+-0.76 across that window for every specification that keeps Okun, and -0.15
+without it. Two independent diagnostics, the level and the bias, point at the
+same seven years.
 
 ---
 
-## Three ways of trying to estimate the drift, and why all three fail
+## The gap-form Okun problem: there is no independent output gap to anchor on
 
-The likelihood has a **monotone preference for more state variance**: a u\* that tracks
-unemployment fits better quarter by quarter than one that doesn't. That single fact defeats
-every route.
+The equation is `u = u* - beta x ygap + e`, which rearranges to
+`u - u* = -beta x ygap`: the unemployment gap against the output gap. That is
+the **gap form** of Okun's law, not Okun's original, which relates the change
+in unemployment to output growth. Two things follow from the distinction.
+`beta` is not comparable with a textbook Okun coefficient of 0.3 to 0.5, which
+`config.py` already warns about. And it is the gap-on-gap structure
+specifically that lets the equation collapse into a Phillips curve.
 
-Routes 1 and 2 below are pre-exclusion runs and the numbers in them are one vintage old. The
-result is not at risk from that: the preference is a property of a free state sitting beside a
-free residual, and the gap enters the Okun equation as a regressor rather than as anything
-that constrains `sigma_ustar`. A smaller gap makes u\* *more* attractive as an explanation of
-ΔU, not less, so if anything the current gap sharpens the pile-up.
+On paper it is what sets u\*'s level. In practice it cannot, because the gap
+it is given is not an output measurement.
 
-**1. Free prior.** `TruncatedNormal(0.03, 0.012, lower=0.005)`, which spans the whole
-defensible range. Posterior came back at **0.131 [0.115, 0.147]**: 8.4 prior standard
-deviations above the mean, in a region where the prior density is effectively zero. u\*
-collapsed to 4.63 with a gap of −0.28, `sd(du*)` at 98% of what the prior allowed, and
-correlation with unemployment of 0.981. The model stops estimating a structural rate and
-returns a filter of its input.
+**The supplied gap is inflation.** Regressing `ystar`'s defined gap on
+year-ended trimmed mean inflation less 2.5, through the origin, gives a
+coefficient of 0.1882 with **R² = 1.0000 and a maximum residual of 0.0000**.
+The gap *is* `0.1882 x (pi - 2.5)`, identically. Substituting:
 
-**2. Bounded prior.** Same, truncated above at 0.05. Posterior **0.049 [0.049, 0.050]**, sd
-0.001, with 100% of draws above 0.045 and 62% within 1% of the bound. It reproduces the
-fixed-at-the-bound model exactly, and, contrary to what one might hope, does *not* widen the
-u\* band, because the posterior collapses onto the boundary with nothing left to integrate
-over. The bound becomes the specification.
+```
+u_t  =  u*_t  -  beta_okun x 0.1882 x (pi_t - 2.5)  +  e_o
+```
 
-**3. Fixed and swept.** The table above.
+which is a Phillips curve in levels. GDP enters only through `c`, and `c` was
+itself fitted to inflation. So the model had two observation equations and one
+signal, and the Okun equation carried no output information at all.
 
-`ystar` can free `sigma_ystar` because in its `inflation` spec potential is a residual,
-so once `c` and `g` are known the innovation is directly observable and its standard deviation
-is an ordinary estimation problem. That does not hold here: u\* is a free state sitting next to
-a free residual `e_o`, which is exactly the Stock-Watson pile-up pair.
+**Three measured consequences**, each from running it both ways:
 
-**The conclusion is not a defect, it is the operational meaning of the prior.** "u\* is slow
-moving" cannot be expressed as a belief the data are permitted to revise, because the data will
-revise it away every time. It has to be imposed, which is what `ystar` means when it
-says `sigma_ystar` is pinned.
-
-Reproduce with `--free-sigma-ustar`. The switch is kept for that reason, in the same spirit as
-`ystar`'s `free_sigma_ystar`: to make the check repeatable, not because it is a
-candidate.
-
-### Why 0.040
-
-Three readings, and it sits between them.
-
-- `ystar`'s rule, a trend innovation sd around 8% of the observed variation in the
-  series it trends: gives 8% of `sd(du)` = 0.300, so **0.024**.
-- The `nairu` model's *realised* `sd(dNAIRU)` is 0.032, which is 11% of `sd(du)`. It imposes
-  0.15 but only uses a fifth of it, because its other six equations bind.
-- The ceiling comes from the inflation-band chart. Across 2012Q4-2015Q4: when inflation sat
-  **below** the RBA band, signalling genuine slack: u\* should not be rising. It changes by
-  −0.14, −0.13, −0.07, **+0.01** and **+0.11** across the swept settings, so the sign flips
-  between 0.040 and 0.050 and everything at 0.050 or looser books part of the
-  post-mining-boom rise in unemployment as structural. `beta_pi` also falls monotonically,
-  0.80 to 0.35, as a freer u\* crowds out the de-anchoring term.
-
-  **The re-run tightened this.** On the pre-exclusion sweep the flip fell between 0.050 and
-  0.065, with 0.050 reading as flat at −0.01; it is now on the wrong side of zero. 0.040 is
-  therefore closer to the ceiling than it was, and is the loosest setting that still passes
-  the test rather than one of two. That is an argument for 0.040 over 0.050, not an argument
-  for moving the choice down: 0.030 and 0.024 pass the same test and fail the others.
-
-None of these is external to this repo. **The outstanding improvement is to calibrate the drift
-against a published NAIRU series**: RBA, Treasury, OECD, whose realised drift is an
-observable rather than a modelling choice. That is the one change that would resolve the
-assumption rather than relocate it.
-
----
-
-## The driftless random walk is the wrong prior, and two ways to fix it
-
-**Fix 2 is now the default.** Fix 1 is a switch. The evidence for the diagnosis is stronger
-than the evidence for either cure, and the external check at the end of this section does not
-favour either, so read this as a defensible choice rather than a settled one.
-
-### The diagnosis
-
-u\* is specified as a **driftless** random walk. The fitted path is not. It runs 8.43 to 4.71,
-a fall of 3.72pp over 134 quarters, where a driftless walk at `sigma_ustar` = 0.040 puts the sd
-of the total change at 0.46pp. The fitted path is about **8 standard deviations** out. The
-per-quarter increments use 92% of the allowed movement and three quarters of that is directed
-rather than random. The prior is not stretched, it is overwhelmed.
-
-Split by era it is worse at the front:
-
-| | u\* change | vs a driftless walk |
+| | with Okun | without |
 |---|---|---|
-| 1993-1999 | −3.66pp over 28 quarters | **17.3 sd** |
-| 2000-2026 | −1.98pp over 106 quarters | **4.8 sd** |
+| mean 90% band | 0.35 | 0.58 |
+| 90% band over 1993-98 | 0.36 | 1.15 |
+| bias against the implied series | -0.13 to -0.23 | -0.00 |
+| u\* over 1993-98 | 8.69 | 7.14 |
 
-**The visible cost is Limitation 4.** To start where unemployment actually was in 1993Q1, at
-10.93, and still reach 4.71 needs 6.2pp, which the prior cannot afford. So the posterior
-compromises by starting u\* at 8.43 and booking the remaining +2.5pp in the Okun residual.
+The band nearly doubles because one signal was being counted twice. The bias
+disappears because Okun was holding u\* above what inflation implied. And the
+1990s fall a point and a half, which is the difference between claiming
+equilibrium at 10.9% unemployment and not.
 
-**And that reading sits awkwardly with the inflation data.** With no drift, u\* sits below
-unemployment in all 16 quarters of 1994-1997, so the model says slack throughout, while the annual
-trimmed mean rose above 3% in late 1995.
+**Why Okun won when it was in.** The defined gap enters as exact data, so
+`u* = u + beta x ygap` is effectively an identity, while the Phillips residual
+is worth about 1.5 points of u\*. One equation was nearly dogmatic about the
+level and the other vague, so the vague one lost.
 
-State that carefully, because an earlier version of this paragraph overstated it and the
-overstatement propagated into `config.py` and into `ystar_ustar`'s notes. The breakout was brief:
-across 1994-1997 the annual trimmed mean **averaged 2.41%**, exceeded 3% in **2 of 16 quarters**
-(3.1 in 1995Q4 and 3.2 in 1996Q1, with 3.0 in 1996Q2), and sat **below expectations in every
-quarter**, as expectations fell from about 3.5 to 2.9. So "slack throughout, with inflation
-running below expectations and falling" is not by itself incoherent, and the window is not the
-knockdown it was written as. What the driftless walk gets wrong is the correlation below, and the
-descent it cannot make, rather than a contradiction with an inflation breakout.
+**Swapping the gap does not help.** `--gap-source actual`, `log_gdp - y*`,
+carries genuine uncertainty and a different path, and changes u\* over 1993-98
+by 0.01. Australia's measured output gap in 1993 is -0.25 per cent on that
+basis and -0.07 on the defined one. Reaching u\* of 7 needs a 1993 gap of
+**-1.80**. No gap series here says the early 1990s were a period of deficient
+demand, because potential is estimated from inflation and inflation was at
+target.
 
-The summary statistic over 1993-1999:
+**Okun solves one problem and brings another.** It is the only way to make
+u\* come down through the 1990s, which was a regime change from high
+inflation to low taking years to work through the labour market: unemployment
+fell 4.53 points over 1993-1999 and with Okun u\* falls 3.43 to 3.95 with it,
+against 0.50 to 0.81 without. Excluding it leaves the model asserting that
+almost the whole descent was cyclical and the equilibrium barely moved, which
+is a strong claim in its own right.
 
-| corr(u − u\*, inflation four quarters ahead) | |
-|---|---|
-| driftless | **−0.105** |
-| with either fix | about **−0.81** |
+What it brings in exchange is everything in the table above: a band halved by
+counting one signal twice, a systematic bias against what inflation alone
+implies, and a level in 1993-98 that calls the deepest slack in the sample
+equilibrium. The default takes that trade, and the cost of taking it is the
+flat 1990s. `ustar_summary` charts one Okun setting alongside the default so
+the choice stays visible.
 
-A Phillips curve wants that negative. Without a fix the early sample carries essentially no
-Phillips information at all.
-
-### Fix 1: `--ustar-drift`, a drift on excess expectations
-
-    u*_t = u*_{t-1} - lambda·max(0, pi^e_{t-1} - 2.5)·1{t < 2000Q1} + e_u
-
-The story is that the target was not yet believed, so wage-setting had not adapted to it.
-Expectations ran +0.64 above target across 1994-1996 against +0.07 across 2000-2019, even
-though realised trimmed mean inflation was already 2.1% in 1993Q1: credibility and realised
-inflation are different things and only the first should move u\*.
-
-`lambda` = 0.250 [0.22, 0.28], and it is data-determined rather than prior-driven: widening its
-prior tenfold moves it to 0.260 and stops.
-
-Two objections. The **2000 cutoff is asserted**, and it is needed because the level of excess
-expectations cannot tell a credibility transition from a supply shock: it reads +0.87 in
-2022-23 too, and ungated the drift pushed u\* to 4.25 and flipped the current gap from −0.36 to
-+0.10. And **the gap becomes a partial proxy for expectations**: corr(u − u\*, excess
-expectations) goes +0.048 to −0.405 over 1993-99, while `beta_pi` falls 0.578 to 0.378, so the
-gap takes over part of the Phillips curve's own expectations term.
-
-### Fix 2: `--ustar-converge`, convergence to a new equilibrium
-
-    u*_t = u*_{t-1} + phi·(u*_eq - u*_{t-1}) + e_u
-
-The story is that u\* was moving to a new equilibrium as the economy left high inflation, and
-decelerated as it arrived. `phi` = 0.039 [0.03, 0.04], so about 4% of the remaining distance
-closes each quarter, a half-life near four and a half years. `u*_eq` = 4.79 [4.56, 5.02],
-estimated rather than asserted.
-
-**This is the default.** It needs no cutoff date, because the process stops by arriving. u\*
-depends on nothing but its own past, so the gap cannot inherit an expectations signal. And it
-fits best.
-
-| | driftless | drift | converge |
-|---|---|---|---|
-| `sigma_okun` | 0.685 | 0.466 | **0.426** |
-| `beta_okun` | 2.033 | 2.088 | 1.996 |
-| `gamma_pi` | −1.055 | −1.284 | −1.349 |
-| u\* 1993Q1 | 8.43 | 10.34 | **10.76** |
-| u\* 2026Q2 | 4.71 | 4.66 | 4.68 |
-| divergences | 0 | 0 | 0 |
-| min `ess_bulk` | 3,545 | 5,094 | **5,127** |
-
-The Okun residual variance falls 61% against the driftless version, and the endpoint is
-untouched, so the fix is confined to the era it is about.
-
-### What to be wary of in both
-
-**The early credible band is narrow, and that is the mechanism, not the data.** Through
-1993-96 the band is tighter than in the middle of the sample, which is backwards for a state
-estimated from a short run of observations. It is `phi` and `u*_eq` (or `lambda`) pinning the
-level. Do not read that band as confidence in a NAIRU near 10.8 in 1993.
-
-**`u*_eq` = 4.79 sits just above the current u\* of 4.68**, so the model says the secular
-decline has essentially finished. That is a claim about today, arrived at from a specification
-fitted to explain the 1990s, and nothing here tests it.
-
-**The pandemic is not excluded and not marked.** `ustar` fits 2020-21 like any other quarters,
-so u\* glides through a period when JobKeeper held measured unemployment far below any
-reasonable reading of slack. The joint `ystar_ustar` model drops those quarters from all three
-of its equations; this one does not.
-
-### The one external check
-
-Wages are not in this model's likelihood, so they are a genuine out-of-sample test of whether
-the gap identifies labour-market tightness at all. A tight market should mean faster wages, so
-every correlation should be negative.
-
-| | same quarter | wages 4q ahead |
-|---|---|---|
-| WPI, 1997Q4-2026Q2, driftless | **−0.523** | −0.426 |
-| WPI, converge | −0.485 | −0.380 |
-| WPI, raw unemployment (no u\*) | −0.243 | |
-| Hourly COE, 1993Q1-2026Q2, driftless | −0.205 | −0.338 |
-| Hourly COE, converge | −0.059 | −0.310 |
-
-**The gap passes**: against WPI it roughly doubles what raw unemployment achieves, so
-subtracting u\* adds real information. **But the fix does not improve it, and slightly worsens
-it on all four measurements**, most visibly on hourly compensation over the full sample where
-the same-quarter correlation falls from −0.205 to −0.059.
-
-That is the counterweight to everything above, and it is not resolved. The driftless prior is
-demonstrably wrong about the 1990s: 17 sd, slack throughout an inflation breakout, a +2.5pp gap
-after a recession. Convergence fixes all of that and fits and samples better. It has not been
-shown to make the gap a better measure of labour-market tightness, and on the longer wage
-series it is worse. Both statements are true and they are in tension. The specification was
-adopted on the first; anyone relying on the gap for tightness should know about the second.
+`--okun` restores the equation.
 
 ---
 
-## Does the output gap actually matter?
+## The spline, and why not the decay law
 
-The package was built on the premise that a credible output gap from `ystar` is what
-makes a two-equation u\* possible. That is testable. Zeroing the gap while keeping the Okun
-equation's structure, so `u = u* + e_o` still fits a trend through unemployment: isolates
-the gap's contribution (`--no-output-gap`).
+The alternative, `--state converge`, lets u* decay toward one equilibrium:
+`u*_t = u*_{t-1} + phi (eq - u*_{t-1}) + e`. It has two defects.
 
-| | with gap (pre-exclusion) | with gap (current) | gap zeroed |
-|---|---|---|---|
-| u\* 2026Q2 | 4.78 | **4.71** | 4.60 |
-| gap 2026Q2 | −0.43 | **−0.36** | −0.25 |
-| `sigma_okun` | 0.684 | **0.685** | 0.908 |
-| `beta_okun` | 1.065 | **2.033** | 0.499 |
-| `gamma_pi` | −1.020 | **−1.055** | −1.032 |
-| `epsilon_pi` | 0.160 | **0.160** | 0.159 |
+**It can draw only one shape.** A monotone approach to a single equilibrium,
+so it cannot decline and then stop, and it reports a decline that never ends:
+-0.32 over 2015-2026 while the Phillips signal over the same years oscillates
+between 4.3 and 5.3 with no trend. Roughly 80% of its total fall happens
+before 2005 and what continues is `phi x (eq - u*)` still running.
 
-**The gap-zeroed column needs no vintage caveat.** `use_output_gap = False` substitutes an
-array of zeros for the gap, so that run reads nothing from `ystar` and the respecification
-cannot have moved it. Only the with-gap side changed, which is why the comparison can be
-re-struck here without re-running the control. The path statistics below the table are the
-pre-exclusion pairing and have not been recomputed.
+**And it cannot turn up at all.** The sign of `phi x (eq - u*)` is fixed by
+which side of the equilibrium the state is on. Opening at 10.75 with `eq` at
+4.86, u* approaches from above and never crosses, so the decay law can only
+ever report a fall, whatever the data say. Every decay run here returns -0.32
+to -0.34 over 2015-2026.
 
-u\* path correlation **0.9973**, mean absolute difference **0.10pp**, max 0.38pp, and the max
-is in 1993, the least identified end of the sample.
+A spline has no such constraint and will turn up when the likelihood pushes
+it: the one-knot spline with Okun returns **+0.36** over the same years. That
+is the property that matters most for the endpoint, because "has u* stopped
+falling, or started rising?" is a question only a specification capable of
+answering yes can be asked. The current default answers -0.06, which is flat,
+and it is flat because the data put it there rather than because the
+functional form insisted.
 
-**The gap does real work in the Okun equation**: `sigma_okun` rises 0.685 → 0.908 without it, a
-43% reduction in residual variance, and the current gap buys the same reduction the old one
-did. `beta_okun` collapsing to 0.499, its prior mean, confirms the test removed what it was
-meant to.
+**Both ends are the same defect.** Differencing the decay against the
+one-knot spline: +1.52 at 1993Q1, -0.02 across 2005-2012, -0.10 at the
+endpoint. Above at the start, indistinguishable through the middle, below at
+the end. One exponential cannot be steep in the 1990s and flat in the 2010s,
+so it splits the difference and the residual appears at both ends. The high
+opening and the endless decline are not two problems: the curve has to start
+high to have room to fall, and having chosen a rate it cannot stop. The
+spline is free at each end independently, which is why it gives better start
+and end points rather than just a better endpoint.
 
-**But it barely moves u\*, and now less than before.** 0.11pp at the endpoint on the current
-gap, against 0.18pp pre-exclusion and 0.48pp from choosing `sigma_ustar` within its defensible
-range. And the Phillips side is untouched: `gamma_pi` −1.055 against −1.032, `epsilon_pi`
-0.160 against 0.159, so the two channels are not sharing identification.
+**Its stochastic part is decorative.** The fitted path's entire 4.20-point
+fall is 4.28 points of deterministic decay from three numbers. The 134
+innovations contribute a maximum deviation of 0.07 and an sd of 0.02. So
+despite appearances it is a three-parameter exponential, and `sigma_ustar`,
+imposed at 0.020 and measured by nothing, moves the path by 0.07. Sweeping it
+from 0.020 to 0.150 moves the 1993-98 mean by 0.03.
 
-**Verdict, and the respecification pushes it further.** The premise is partly vindicated and
-partly not. The gap explains the cyclical component of unemployment well, and it moves the
-headline gap from −0.25 to −0.36, which is not decorative. But it is not what makes the
-two-equation u\* possible: the Phillips curve and the imposed drift do that, and they would do
-it nearly as well with the gap set to zero. The gap is a tilt, not a foundation, and the tilt
-is now two-thirds of what it was, because a smaller `c` means a smaller gap to tilt with.
+The spline is also three coefficients, so this is not a trade of stiffness for
+flexibility. It is a trade of shape families: exponential-to-an-asymptote
+against cubic, and only the second can change slope. It also removes
+`sigma_ustar` entirely, since u\* is deterministic given its coefficients.
 
----
-
-## Specification decisions
-
-**The Phillips curve is anchored on the target, not on expectations.** `q(2.5)` is the
-baseline and expectations enter only as `beta_pi × [q(pi^e) − q(2.5)]`. The pairing matters:
-with a target baseline the second term is the pass-through of de-anchoring, `beta_pi` = 0
-meaning the target holds and 1 meaning expectations are what bind. An earlier version used the
-*Target Anchored* expectations series as the baseline together with an excess term built as
-unanchored-minus-anchored, which put two estimates of one quantity in one equation and made
-`beta_pi` a blend weight between two measurements rather than an economic parameter. It also
-left `beta_pi` straddling zero. Fixing the baseline moved it to 0.568 [0.311, 0.831], and it
-sits at 0.578 [0.347, 0.813] on the current gap, the Phillips side of the model is almost
-untouched by what happened upstream.
-
-**Expectations are the unanchored series.** The Target Anchored series is constructed with a
-2.5% anchor post-1998, so its distance from 2.5 is near zero by construction and the excess
-term would test nothing.
-
-**No phase-in, and it has now been tested rather than assumed.** `nairu` phases expectations to
-the target over 1993-1998 because its sample starts in 1984. This sample starts 1993Q1, and the
-reasoning used to be that 1993 is inside the inflation-targeting era so there is nothing to
-phase from. That reasoning is wrong on the data: the unanchored expectations series reads 3.50
-in 1995Q1, 3.04 in 1997Q1, 2.70 in 1998Q1 and only reaches 2.48 by 1998Q3, so for the first five
-years of this sample the target was not yet where expectations sat. The joint model added an
-`anchor_phase` option to test exactly that, and it makes the fit **worse**: the early Phillips
-residual bias roughly doubles and `beta_pi` re-weights from 0.361 to 0.697 to absorb the change.
-See `ystar_ustar/MODEL_NOTES.md`, "The early sample". So the choice stands, but on evidence
-rather than on the era argument.
-
-That test moved the gap and the Phillips baseline together, since the joint model reads one
-anchor into both. Phasing only this model's Phillips curve would isolate the nominal channel,
-because the gap arrives here as data built on a constant 2.5 upstream. Deliberately not done:
-holding this model fixed is what makes it a comparator for the joint one, and a second phased
-variant would cost that for a channel the joint result has already priced.
-
-**Okun's timing was checked, and nothing survives prewhitening.** The Okun equation is
-contemporaneous, `u_t = u*_t − beta·gap_t + e`, and its residual has a lag-1 autocorrelation of
-0.821, which invites the thought that unemployment and an inflation-defined gap are misaligned
-in time, the more so early, where the environment moves 25 to 30% faster per quarter. Raw
-cross-correlation of the residual against the gap looks like it confirms this, peaking at
-−0.371 three quarters out on the full sample and −0.709 over 1993-98. **It does not survive.**
-Prewhitening the gap with an AR(4) (1.435, −0.407, −0.110, −0.010, which takes its lag-1
-autocorrelation to 0.004) and filtering both series leaves nothing above two standard errors on
-the full sample: the largest is +0.103 at k = 0 against 2se = 0.175. Over 1993-98 one lag is
-marginal, −0.457 against 0.447, on 20 observations with nine lags tested.
-
-This is `ystar` item 7 repeating itself on the Okun side: the pattern was the two series' own
-persistence. `ystar` items 9 and 12 record the two attempts to act on the same intuition on the
-gap-to-inflation side, a freely estimated lag profile that would not converge and a fixed
-four-quarter lead that converged and bought nothing. The honest reading is item 7's: prewhitening
-is conservative for a low-frequency relationship, so this is not proof of absence, and the sample
-cannot settle it.
-
-**No supply-shock masking, and the live GSCPI.** `nairu` keeps GSCPI only over 2020Q1-2023Q2,
-leaving 14 non-zero quarters. Here it is unmasked, so the coefficient is identified on the
-whole history. That requires `gscpi_live`: the checked-in workbook stops at 2024Q1 while the
-published series runs past 2026, and unmasked those quarters matter. Masking turns out to be
-nearly redundant given the squared form: 74% of total `GSCPI²` still falls in the pandemic
-quarters with every quarter included, and the coefficient survives unmasking at 0.042 against
-`nairu`'s masked 0.047.
-
-**The relationship is contemporaneous, deliberately.** Unemployment responds to demand with a
-lag and so does inflation, so aligning them at *t* assumes those lags are equal. Modelling long
-and variable lags is complicated, and `ystar` already found this sample cannot resolve
-the timing: a free lag profile did not converge, and a fixed four-quarter lead converged but
-left `sigma_e` unchanged while costing the last four quarters of the gap. Lagging the gap here
-would also break the only channel tying u\*'s level to contemporaneous inflation.
-
-**The drawn band is the posterior band doubled, and that factor now rests on nothing.** It was
-chosen because two quantities happened to match on the driftless model: the conditional 90%
-band was 0.47pp wide at the endpoint, and the spread of u\* across the swept `sigma_ustar`
-range was 0.46pp, so doubling reproduced band-plus-sweep almost exactly. Both halves of that
-coincidence have gone. The sweep has been removed as stale, and the band itself is narrower now
-that u\* converges. **The factor of two is therefore inherited rather than justified**, and
-re-deriving it depends on re-running the sweep. It remains an approximation to a sweep rather
-than a posterior, and the left footer of every chart says so.
+`sigma_ustar`, `phi_ustar`, `ustar_eq` and `ustar_init` exist only under
+`--state converge`.
 
 ---
 
-## Comparison with the `nairu` model
+## The knot dates
 
-| | `ustar` | `nairu` (`simple_excess_rstar_blend`) |
-|---|---|---|
-| `gamma_pi` | −1.055 [−1.26, −0.86] | −0.709 [−0.91, −0.51] |
-| `xi_gscpi` | 0.042 [0.031, 0.052] | 0.047 |
-| `rho_pi` | 0.007 [0.003, 0.012] | 0.014 |
-| u\* / NAIRU 2026Q2 | 4.71 | 4.88 |
-| gap | −0.36 | −0.53 |
-| realised `sd(d·)` | 0.023 (of 0.040 allowed) | 0.032 (of 0.150 allowed) |
-| equations | 2 | 7 |
+**2013Q1**, one interior knot. It marks the start of the low-inflation era and
+it is where the decline stops: the post-2015 slope turns from -0.32 under the
+decay law to -0.06.
 
-The `nairu` column is unaffected by the `ystar` respecification: it builds its own potential
-from Cobb-Douglas and reads nothing from `ystar`. So the two models have moved apart slightly,
-0.10pp on the level against 0.17pp now, and the whole of that movement is on this side.
+**2008Q1 was tried and is 4 quarters worse** on the band test, 85.9% against
+92.2%, though the two give near-identical endpoints and coefficients (8.42,
+3.62, 5.06 against 8.13, 3.50, 5.06). With one interior knot and the natural
+boundary conditions there are only three coefficients, so the curve is nearly
+determined and the knot only nudges where its single bend sits. The knot
+*count* matters far more than the date.
 
-Close on the level and on the supply coefficient, with `gamma_pi` steeper here. At
-`sigma_ustar` = 0.024 the slope comes to −0.73 against `nairu`'s −0.709, which is another way
-of seeing that the slope and the drift trade off: the two models agree on the Phillips slope
-once this one is told to hold u\* as still as `nairu` effectively holds its NAIRU. The re-run
-confirms it, the pre-exclusion figure was −0.71.
+**A second knot at 1996Q1 is the interesting case, and it depends on Okun.**
 
-**Do not read this as independent corroboration.** Both models read the same expectations model
-output, the same trimmed mean series, the same GSCPI, and now the same equation form. Agreement
-under those conditions is substantially mechanical. It is reassuring about arithmetic, not
-confirmation of the economics.
+With Okun in, it is a clear loss: 79.7% on the band test, 1993-98 back up to
+8.74, post-2015 slope -0.59. The extra freedom near the start lets the curve
+begin at 10.15 and glide, and it reproduces the decay law almost exactly,
+correlation **0.9957** and mean absolute difference 0.112. The band even
+narrows to 0.24, which is the familiar warning sign.
 
-**What this model adds is legibility, not identification.** `nairu` is not strongly identified
-on the real side either, its `beta_is` is 0.084 [0.024, 0.139], `gamma_fi` touches zero at
-0.043 [0.000, 0.094], and its Okun residual of 0.248 against `sd(dU)` = 0.300 leaves most of
-ΔU unexplained. Both models rest on an inflation relationship plus an imposed smoothness. Here
-you can see that in two lines; there it is distributed across seven equations, where a realised
-drift one-fifth of what is allowed makes it look as though the data are binding when much of
-the work is being done by other imposed structure.
+**Without Okun the second knot is a robustness check, and the model passes
+it.** The extra knot gives the curve a fourth coefficient and licence to bend
+anywhere around 1996, and the data decline to use it: 0.05pp difference over
+the whole sample, 0.03pp at the endpoint, band test 84% either way, post-2015
+-0.06 against -0.13. Given the freedom to bend in the mid-1990s, nothing in
+the inflation record asks for one.
 
----
+That is the stronger reading of the agreement. It is not that the two
+specifications happen to coincide; it is that the extra flexibility was
+available and went unused, which is what robustness to a modelling choice
+looks like. The one cost is a wider posterior, 0.826 against 0.578, and
+somewhat lower sampling efficiency, min ESS 2034 against 4508, both of which
+are the price of a coefficient that earns nothing.
 
-## Limitations
+It also sharpens what Okun is doing. With the equation in, the same second
+knot **is** used, and heavily: the curve opens at 10.15 instead of 7.57. So
+the bend at 1996 is not something the data ask for. It is something the Okun
+equation asks for.
 
-1. **The headline is conditional on chosen structure, and more so than it used to be.** u\*
-   converges to an estimated equilibrium, and about 97% of its total fall is that mechanism
-   rather than the data. `sigma_ustar` = 0.020 then decides how far it may wander from that
-   curve. Neither is estimable. This is the limitation; everything else is detail.
-2. **The uncertainty band understates, and the correction is a hand-applied factor of two.**
-3. **u\* does not respond to COVID.** It glides through 2020-22 while unemployment goes 5.2 →
-   7.0 → 3.5. Defensible: booking a pandemic as structural is the error smoothness priors
-   exist to prevent, but it means the model has nothing to say about post-COVID structural
-   change, which is the question people most want a NAIRU for.
-4. **The early sample is not identified, and the charts now shade it** (1993Q1-1995Q4, from
-   `analyse.UNIDENTIFIED_WINDOW`). Under the decay the headline run opens at u\* = 10.75
-   against unemployment of 10.93, a gap of 0.17 at the trough of the deepest recession since
-   the 1930s, which is not a credible structural statement. Three things say the level is being
-   placed by the specification rather than by inflation:
+**What the second knot buys, with Okun, is 1995.** Inflation ran at 3.65 and
+4.06, the clearest above-band episode of the decade, and the one-knot curve
+calls slack and misses both quarters while the two-knot with Okun calls tight
+with gaps of -0.76 and -0.74. It pays for that with five misses across
+1999-2002, where it still has u\* above the unemployment rate while inflation
+ran over the band.
 
-   - **The decay is what puts the early level where it is.** Every saved variant other than the
-     headline runs the driftless prior this model replaced, and they open at 7.07 to 9.69 while
-     agreeing with the headline within a few tenths by 2026Q2. That is not a sensitivity band
-     across credible specifications, and should not be quoted as one: it is the current run
-     against a prior the notes reject. What it does show is that the decay, adopted because a
-     driftless walk could not descend fast enough through the late 1990s, raises the 1993 level
-     as a by-product. (An earlier version of this limitation quoted 8.4 against a +2.5pp gap,
-     which was the driftless 0.040 vintage, not this one.)
-   - **The 90% band runs 2.79x its mid-sample width in 1993**, 1.96x in 1994, 1.53x in 1995, and
-     settles near 1.3x from 1996, against the 1.1-1.2x it holds through to 2002. So the concern
-     is concentrated in 1993-94, the estimate is largely settled by 1996, and the shading stops
-     at 1995Q4 accordingly. What runs on past that is not the band but the Phillips residual
-     bias, which is systematically negative until 1999; the expectations date is 1998 as well.
-     Neither is shaded, because a flat block that far would claim 1997 is as doubtful as 1993.
-   - **Okun outweighs the Phillips curve 3.2:1** per point of u\* at 1993Q1, even with
-     `sigma_okun` free at 0.485: 1.00pp against 0.485 is 2.06 sd, while the Phillips gap moves
-     0.105 against `epsilon_pi` = 0.163, or 0.64 sd. The level is Okun's to set, and Okun says
-     u\* is wherever u is once the given gap is subtracted.
-
-   The joint model reaches the same 1993Q1 value, 10.77, at an 8:1 leverage ratio because it
-   imposes `sigma_okun` = 0.20. That its freely estimated value here is 2.4 times larger and the
-   early level does not move is the useful part: loosening Okun is not obviously the fix.
-   `ystar_ustar/MODEL_NOTES.md`, "The early sample", carries the full argument and a phased
-   inflation anchor that was tried and made the fit worse.
-5. **The inflation-band chart is illustration, not validation.** The Phillips curve fits
-   inflation with `gamma × u_gap` and gamma is negative, so the estimation is not neutral about
-   whether a negative gap coincides with above-band inflation. The disagreements are
-   informative; the agreements largely are not.
-6. **The headline moves with `ystar`'s decisions, not only with its data.** Excluding six
-   pandemic quarters upstream took `c` from 0.468 to 0.188 and this model's unemployment gap
-   from −0.43 to −0.36, with no new observation involved. That is a second conditioning choice
-   sitting behind the first: the level of u\* is set by `sigma_ustar`, and the size of the gap
-   partly by a judgement made in another package. Both are defensible and neither is data.
-   When quoting the gap, quote the vintage.
-7. **No wage equation, no IS curve, no r\*, no regime switching, no forecast scenarios.** Use
-   `nairu` for those.
+One knot is the default on parsimony: the same answers as two without Okun,
+and a band of 0.58 against 0.83.
 
 ---
 
-## Files
+## Strengths and weaknesses of each specification
 
-```
-src/models/ustar/
-├── config.py         # ModelConfig: sample, gap source, the imposed drift, the target
-├── observations.py   # assembles u, the given gap, inflation, expectations, the shocks
-├── estimate.py       # builds and samples the PyMC model, saves the trace
-├── results.py        # UStarResults: posterior accessors and the failure diagnostics
-├── analyse.py        # charts and printed diagnostics
-└── run.py            # CLI
-```
+Run `./run-ustar-summary.sh` to reproduce this table and the charts.
 
-Charts land in `charts/UStar/`: u\* against unemployment, the same with the RBA band shaded,
-the unemployment gap, and the price inflation decomposition.
+| | band test | 1993-98 | post-2015 | latest | band | bias |
+|---|---|---|---|---|---|---|
+| Decay, with Okun | 82.8% | 8.68 | -0.32 | 4.83 | 0.25 | -0.141 |
+| Decay | 81.2% | 7.77 | -0.34 | 4.60 | 0.55 | -0.004 |
+| Spline 1 knot, with Okun | **92.2%** | 7.93 | +0.36 | 5.06 | 0.35 | -0.229 |
+| **Spline 1 knot** (default) | 84.4% | 7.14 | -0.06 | 4.70 | 0.58 | -0.000 |
+| Spline 2 knots, with Okun | 79.7% | 8.74 | -0.59 | 4.67 | 0.24 | -0.128 |
+| Spline 2 knots | 84.4% | 7.30 | -0.13 | 4.67 | 0.83 | -0.003 |
+
+**Decay with Okun**: the narrowest band and the best correlation with the
+implied series, and both are artefacts. Claims equilibrium at 10.9%
+unemployment in 1993 and declines forever.
+
+**Decay without Okun**: unbiased, sensible 1990s, but still cannot stop
+declining. The best of the three on closeness to the implied series, 0.911
+against 1.133 and 1.086.
+
+**Spline 1 knot with Okun**: the best band test of any specification, and it
+is the only one that turns u\* *up* after 2015. Biased by -0.229, the worst of
+the six.
+
+**Spline 1 knot**: middle on everything except closeness, where it is worst,
+for the reason that it moves least. Unbiased, flat after 2015, narrower band
+than the two-knot version.
+
+**Spline 2 knots, with Okun**: reproduces the decay law. No reason to prefer
+it over the decay law itself.
+
+**Spline 2 knots**: equal to one knot on every headline, better on 1995,
+worse on 1999-2002, and the widest band of the six.
+
+### How to read the table, and how not to
+
+`sd(implied - u*)` and the correlation with the implied series are **not**
+selection criteria, though they are reported. Both are maximised by *being*
+the implied series, which swings between -20 and +33 under some settings, and
+a stiffer curve deviates more by construction. The band width is an output,
+not a virtue: narrower is better only at equal information, and these differ
+in information.
+
+The band test is the only column that separates them, and it is not
+independent evidence, since every specification is fitted to the inflation
+series the test scores against. It also weights a 0.24 breach of the band as
+heavily as a 4-point one. Three of the default's five misses are 0.24
+breaches; only 2013Q4 is a genuine disagreement.
+
+A real ranking would need something outside the fitted sample, which means a
+recursive real-time exercise of the kind `ystar/realtime.py` runs. That has
+not been done here.
+
+---
+
+## The band, and why the charts draw it twice as wide
+
+**Every band figure in these notes is the raw posterior**, including the 0.58
+above. **Every chart draws it doubled**, so the same run shows 1.16 on screen
+and 1.25 at the endpoint. That is deliberate, and the footer says so, but the
+two numbers have to be reconciled by anyone comparing them.
+
+The widening stands in for uncertainty about the **imposed structure**, which
+the posterior cannot express. u\* is a spline with a knot placed by hand, so
+the interval answers "where is u\* given this shape" and says nothing about
+whether the shape is right. Under `--state converge` the imposed thing is
+`sigma_ustar` instead, and the same argument applies to the drift rate.
+
+**The factor of 2 is inherited, not derived for the spline.** It was
+calibrated against the decay law's `sigma_ustar` sweep: the conditional band
+was 0.48pp at the endpoint, u\* moved 0.39pp across `sigma_ustar` from 0.024
+to 0.05, and the union of the conditional bands over that range was about
+0.89pp, which doubling reproduced.
+
+No equivalent calibration exists here, and the two obvious candidates
+disagree. Varying the knot count moves u\* by 0.05pp over the sample, which
+would argue for well under 2. At 1993Q1 the spread across specifications is
+2.87pp, which would argue for far more. So the convention errs wide in the
+settled part of the sample and nowhere near wide enough in the early part,
+where the shaded window carries the warning instead.
+
+It has not been re-derived, and probably should not be. The recipe would
+transfer mechanically, sweeping the knots and taking the union, but it would
+capture only uncertainty about where the knots go, not about the choice of a
+cubic spline at all. The shape family is the larger imposition and cannot be
+swept, so a re-derived number would look more rigorous than it is.
+
+---
+
+## What every specification shares, and therefore cannot test
+
+The identity above holds in all of them, so none is a second opinion on any
+other. What differs is only how the same signal is smoothed.
+
+The deviation between the fitted u\* and what inflation alone implies is
+autocorrelated at +0.23 to +0.34 in every specification, so a persistent
+component is unmodelled throughout.
+
+On the size of the uncertainty, the order matters and is easy to get
+backwards. Across the three specifications that exclude Okun the spread is
+**0.21pp** over the sample and 0.10pp today, against a mean 90% band within
+any one of them of **0.65**: the estimation uncertainty is the larger term and
+the choice of path barely matters. Pooling in the Okun settings raises the
+spread to 0.55pp, but that gap is the distance between two readings of the
+1990s rather than error, so it should be quoted as a range with each end
+named. See `ustar_summary/MODEL_NOTES.md`.
+
+The exception is the early sample, where the spread reaches 3.47pp at 1993Q1.
+There the specification is the whole of the answer.
+
+---
+
+## Files and usage
 
 ```bash
-./run-ustar.sh --verbose
-./run-ustar.sh --analyse-only            # recharts from the saved trace
-./run-ustar.sh --sigma-ustar 0.030       # the setting the answer hinges on
-./run-ustar.sh --free-sigma-ustar        # the pile-up demonstration
-./run-ustar.sh --no-output-gap           # does the gap matter?
-./run-ustar.sh --gap-source actual       # log_gdp - y* instead of c·(pi - 2.5)
-./run-ustar.sh --no-phillips             # Okun only
+./run-ustar.sh                                   # the default above
+./run-ustar.sh --okun                            # restore the Okun equation
+./run-ustar.sh --state converge                  # the decay law
+./run-ustar.sh --knots 1996Q1 2013Q1             # a second knot
+./run-ustar.sh --gap-source actual               # log_gdp - y* instead of the defined gap
+./run-ustar.sh --analyse-only                    # re-chart a saved run
+./run-ustar.sh --prefix name                     # write somewhere other than `ustar`
+./run-ustar-summary.sh                           # all six specifications on one chart
 ```
 
-### The sweep, when it is re-run
-
-The `sigma_ustar` sweep was removed from "Read this first" because every row was estimated on
-the driftless random walk. Re-running it under convergence is outstanding, and two things in
-this file depend on it: how conditional u\* = 4.83 really is, and the factor of two on the
-drawn band. Variant prefixes route their charts to `charts/UStar-<prefix>` automatically, so
-no `--no-analyse` is needed to protect the default directory:
-
-```bash
-for s in 0.010 0.015 0.030 0.040; do
-  ./run-ustar.sh --sigma-ustar $s --prefix "ustar_su$s"
-done
-```
-
-0.020 is the default run itself.
-
-**Still outstanding**, and the last thing in this file on the pre-exclusion gap:
-
-```bash
-./run-ustar.sh --free-sigma-ustar        # the pile-up, expected to sharpen
-```
+`config.py` holds every imposed quantity and records it in `constants`, saved
+beside the trace. Charts and this run's diagnostics go to `charts/UStar/`.
+Prior-posterior charts come from `common/prior_posterior.py`, shared with
+every Bayesian model in the package.

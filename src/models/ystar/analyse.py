@@ -8,6 +8,7 @@ import pandas as pd
 from mgplot.finalisers import DataT, LPFKwargs
 
 from src.data.henderson import hma
+from src.models.common.charts import excluded_span_style
 from src.models.common.diagnostics import save_diagnostics
 from src.models.ystar.decompose import (
     GrowthDecomposition,
@@ -76,36 +77,6 @@ _BAND_KWARGS: dict[str, Any] = {
 # those signatures would be a worse trade than one piece of run-scoped state.
 _EXCLUDED_WINDOW: tuple[str, str] | None = None
 
-# Deliberately plain: the shading marks quarters that carry no likelihood, so it
-# should read as an absence rather than as a highlighted episode. Behind the
-# lines and the credible-interval band.
-#
-# `label` puts it in the legend, which is where a reader looks to find out what
-# a shaded band means. "excluded from fit" rather than "pandemic" alone: the
-# claim being made is about the estimation, not about the epidemiology, and a
-# reader who sees only "pandemic" will take the shading for an episode marker.
-# Yellow rather than orange: several of these charts draw their headline series
-# in darkorange, and an orange wash behind an orange line costs contrast where
-# it is needed most. Gold at low alpha reads as a warm highlight against both
-# the orange lines and the cornflower credible-interval band.
-_EXCLUDED_SPAN: dict[str, Any] = {
-    "color": "gold",
-    "alpha": 0.20,
-    "zorder": -1,
-    "label": "Pandemic: excluded from fit",
-}
-
-
-def excluded_span_style() -> dict[str, Any]:
-    """Return the shared styling for the excluded-window span.
-
-    Public because `ustar` and the joint y*/u* model draw the same window on
-    their own charts, and the whole point is that it looks identical wherever
-    it appears. Copying the dict into each package is how it would drift.
-    """
-    return dict(_EXCLUDED_SPAN)
-
-
 def _excluded_kwargs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
     """Add the excluded-window shading and its footer note to finalise kwargs.
 
@@ -124,12 +95,12 @@ def _excluded_kwargs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
     kwargs["axvspan"] = {
         "xmin": pd.Period(lo, freq="Q"),
         "xmax": pd.Period(hi, freq="Q"),
-        **_EXCLUDED_SPAN,
+        **excluded_span_style(),
     }
     # The dates go in the legend label, not the left footer. Some of these
     # footers are already long (the gap chart names its off-scale quarters), and
     # appending to them overran the source line on the right.
-    kwargs["axvspan"]["label"] = f"{_EXCLUDED_SPAN['label']}, {lo}-{hi}"
+    kwargs["axvspan"]["label"] = f"{excluded_span_style()['label']}, {lo}-{hi}"
     return kwargs
 
 

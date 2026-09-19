@@ -396,9 +396,11 @@ hcoe_t = πᵉ_t + mfp_t + hcoe_adjustment + ε_t
 
 ## Validation
 
-### Comparison with RBA PIE_RBAQ
+### Comparison with PIE_RBAQ
 
-The model is validated against the RBA's inflation expectations series (PIE_RBAQ) from the MacroDave database, which runs from 1983Q1 to 2019Q1.
+PIE_RBAQ is MARTIN's inflation expectations variable, from the MacroDave database (`github.com/MacroDave/MARTIN`), held as a static CSV in `input_data/`. RDP 2019-07 states it is exogenous to MARTIN and built after Cusbert (2017), the same reference this model follows, so both are long-run anchors rather than one-year-ahead forecasts.
+
+Data from 1970Q1 to 2019Q1. The table below uses the 1983Q1 overlap onward.
 
 | Period | Correlation | Mean Diff | RMSE |
 |--------|-------------|-----------|------|

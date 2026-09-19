@@ -15,6 +15,7 @@ import mgplot as mg
 import numpy as np
 import pandas as pd
 
+from src.models.common import prior_posterior
 from src.models.common.diagnostics import save_diagnostics
 from src.models.common.sources import footer_from_constants
 from src.models.is_curve.observations import DEFAULT_WINDOWS
@@ -176,49 +177,34 @@ def _grid_for(name: str, draws: np.ndarray, constants: dict[str, Any]) -> np.nda
     return np.linspace(lo, hi + pad, 400)
 
 
-def plot_prior_posterior(trace: az.InferenceData, constants: dict[str, Any]) -> None:
+def plot_prior_posterior(trace: az.InferenceData, constants: dict[str, Any]) -> int:
     """One chart per estimated parameter: posterior against its own prior.
 
     The point is how much of each answer is data. A posterior sitting on its
-    prior means the data said nothing. `rstar_rba` applies the same test and
-    its notes turn on the result.
+    prior means the data said nothing, and this model's notes turn on that.
 
-    One chart each, not a panel, so each can be read at full size.
+    Drawing is `common.prior_posterior`, shared with every Bayesian model
+    here. What stays is this model's own priors and labels, and the reference
+    line at `is_curve`'s slope, since whether `is_slope` sits on its bound is
+    the finding.
     """
-    posterior = getattr(trace, "posterior", {})
-    for name in ("is_slope", "sigma_e", "rstar_0", "lag_weight", "rstar_trend", "sigma_rstar"):
-        if name not in posterior:
-            continue
-        draws = scalar_draws(trace, name)
-        grid = _grid_for(name, draws, constants)
-
-        fig, ax = plt.subplots()
-        ax.hist(draws, bins=60, density=True, color="teal", alpha=0.55, label="Posterior")
-        prior = _prior_curve(name, constants, grid)
-        if prior is not None:
-            ax.plot(grid, prior, color="darkorange", lw=2, ls="--", label="Prior")
-        ax.axvline(float(np.median(draws)), color="teal", ls=":", lw=1.5,
-                   label=f"Posterior median {np.median(draws):+.3f}")
-        if name == "is_slope":
-            # The bound is the assertion, and whether the posterior is on it
-            # is the finding, so it has to be visible.
-            ax.axvline(0.0, color="black", lw=1.0)
-            ax.axvline(-0.108, color="grey", ls="-.", lw=1.2,
-                       label="is_curve lag 2, QE dropped (-0.108)")
-        ax.set_xlabel(_PARAM_LABEL.get(name, name))
-        ax.set_ylabel("Density")
-        mg.finalise_plot(
-            ax,
-            title=f"Prior and posterior: {name}",
-            legend={"loc": "best", "fontsize": "small"},
-            lheader="Posterior on top of the prior means the data said nothing",
-            rfooter=footer_from_constants(constants) or "Built using: RBA F1; ABS 5206.0",
-            lfooter="Australia. r* by conditional inversion. ",
-            show=False,
-        )
-        plt.close(fig)
-
+    drawn = prior_posterior.plot_all(
+        getattr(trace, "posterior", trace),
+        lambda name: (
+            (lambda xs: _prior_curve(name, constants, xs))
+            if name in _PARAM_LABEL and _prior_curve(name, constants, np.zeros(1)) is not None
+            else None
+        ),
+        footers={
+            "lheader": "Posterior on top of the prior means the data said nothing",
+            "rfooter": footer_from_constants(constants) or "Built using: RBA F1; ABS 5206.0",
+            "lfooter": "Australia. r* by conditional inversion. ",
+        },
+        labels=_PARAM_LABEL,
+        references={"is_slope": -0.108},
+    )
     _plot_dirichlet_weights(trace, constants)
+    return drawn
 
 
 def _plot_dirichlet_weights(trace: az.InferenceData, constants: dict[str, Any]) -> None:

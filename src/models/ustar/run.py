@@ -37,7 +37,17 @@ def main() -> None:
         "--one-sided-beta", action="store_true",
         help="Truncate beta at zero, asserting Okun's law rather than testing it",
     )
+    parser.add_argument("--state", choices=("converge", "spline"), default=ModelConfig.state_law,
+                        help=f"State law for u* (default: {ModelConfig.state_law})")
+    parser.add_argument("--knots", nargs="*", default=list(ModelConfig.spline_knots), metavar="DATE",
+                        help="Interior knot dates for --state spline, e.g. 2013Q1")
+    parser.add_argument("--quadratic-gap", action="store_true",
+                        help="Add delta x g x |g| to the Phillips curve, so wide gaps pull harder")
+    parser.add_argument("--okun", action="store_true",
+                        help="Include the Okun equation, which is off by default; see config")
     parser.add_argument("--sigma-ustar", type=float, default=0.020, help="Imposed u* innovation sd")
+    parser.add_argument("--ustar-init", type=float, default=None,
+                        help="Prior mean for u* in the first quarter (default: that quarter's unemployment rate)")
     parser.add_argument(
         "--ustar-drift", action="store_true",
         help="Let u* drift down while inflation expectations sit above target, "
@@ -81,8 +91,13 @@ def main() -> None:
             gap_measurement_error=not args.no_gap_error,
             use_output_gap=not args.no_output_gap,
             include_phillips=not args.no_phillips,
+            include_okun=args.okun,
+            quadratic_gap=args.quadratic_gap,
+            state_law=args.state,
+            spline_knots=tuple(args.knots),
             two_sided_beta=not args.one_sided_beta,
             sigma_ustar=args.sigma_ustar,
+            ustar_init_mu=args.ustar_init,
             free_sigma_ustar=args.free_sigma_ustar,
             ustar_drift=args.ustar_drift,
             # --ustar-drift is the other story about the same fact, so asking

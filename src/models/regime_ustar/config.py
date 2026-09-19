@@ -21,9 +21,11 @@ attractor per regime instead of one for the sample.
 **What the reach is for.** `ustar` opens at 1993Q1 with a diffuse prior, so
 u* there is placed by the unemployment rate sitting beside it, and no repair
 from inside that sample can work: inflation in 1993 was at target, so the
-Phillips curve sees no disequilibrium to attribute. Running from 1959 means
-u* ARRIVES at 1993 carrying a level inherited from the 1980s, and the
-early-1990s data no longer get to set it.
+Phillips curve sees no disequilibrium to attribute. Opening in 1970 means u*
+ARRIVES at 1993 carrying a level inherited from the 1980s, and the early-1990s
+data no longer get to set it. Twenty-three years of run-up is more than
+enough for that: ten years gets 1993Q1 to 7.03 where thirty gets 7.14, against
+`ustar`'s 10.75.
 """
 
 from dataclasses import dataclass, field
@@ -36,7 +38,8 @@ DEFAULT_CHART_BASE = Path("charts")
 # the new regime. Institutional rather than estimated, so they can be disputed
 # on history rather than on fit:
 #
-#   1959Q3-1973Q4  fixed exchange rate, centralised arbitration, u around 2
+#   1970Q1-1973Q4  fixed exchange rate, centralised arbitration, u around 2.
+#                  Reaches back to 1959Q3 when the sample does
 #   1974Q1-1983Q2  wage indexation and the oil shocks. `long_run_ustar`'s
 #                  scarring section dates the profit-share trough, the
 #                  capital-for-labour substitution and the hiring stop to here
@@ -60,8 +63,13 @@ class ModelConfig:
     """The regimes, the equation, and the sample they are applied to."""
 
     # --- Sample ---
-    # 1959Q3 is where the quarterly unemployment rate starts (1364.0.15.003).
-    start: str | None = None
+    # 1970Q1 is where PIE_RBAQ begins, and with `expectations_source`
+    # "spliced" that is the first quarter a measured expectation exists for.
+    # Opening there means no quarter of the sample rests on the asserted
+    # salience rule. The quarterly unemployment rate itself reaches 1959Q3
+    # (1364.0.15.003), so `start=None` runs the longer sample, at the price of
+    # eleven years whose expectation is asserted.
+    start: str | None = "1970Q1"
     end: str | None = None
 
     # --- Regimes ---
@@ -96,6 +104,27 @@ class ModelConfig:
     # 1993-97 against a 2.5 target, settling only in 1998.
     measured_from: str = "1983Q1"
 
+    # Which measured series, and how far back it reaches.
+    #   "model"   the expectations model alone, from 1983Q1.
+    #   "spliced" PIE_RBAQ before 1983Q1, the model after, which moves the
+    #             handoff to 1970Q1 and leaves the salience rule covering only
+    #             1959Q3-1969Q4. See `src/data/expectations_spliced.py` for the
+    #             overlap evidence and for why the level offset is a switch:
+    #             the gap between the two series runs +0.87 in the 1980s down
+    #             to +0.01 by the 2010s, so no single offset is right, and 0
+    #             here splices them raw and accepts a step at the join.
+    #
+    # "spliced" by default, so the expectation is measured throughout rather
+    # than asserted for the first thirteen years. THE 1970s ARE CONDITIONAL ON
+    # THIS CHOICE and the two constructions disagree by about 4 points of u*
+    # there: PIE_RBAQ is a trend anchor, it sits 6.52 below year-ended headline
+    # across 1974-79, and the Phillips curve reads that gap as a tight labour
+    # market, putting u* near 9 against an unemployment rate near 5. The
+    # salience rule gives about 5. Nothing in the data chooses between them,
+    # because neither expectation is observed.
+    expectations_source: str = "spliced"
+    splice_offset_quarters: int = 8
+
     # Separate residual scales either side of the 1983 handoff. Inflation less
     # an asserted expectation and inflation less a measured one are different
     # objects with different noise, and one shared sigma would let the longer
@@ -111,12 +140,25 @@ class ModelConfig:
     # lag is not identified on Australian data, so this is a switch to sweep.
     lag: int = 0
 
-    # Headline CPI throughout, not spliced to the trimmed mean at 1983Q1.
-    # The trimmed mean is the cleaner nominal signal, but it begins one quarter
-    # before the Accord break, so a spliced series would change measure and
-    # regime at the same date and the two could not be told apart. The trimmed
-    # mean is instead available as a post-1983 comparison run.
-    inflation: str = "headline"
+    # Which inflation series the Phillips curve explains.
+    #   "spliced"  headline until the trimmed mean starts at 1983Q1, trimmed
+    #              after. The trimmed mean is the cleaner nominal signal and
+    #              this uses it everywhere it exists, without giving up the
+    #              1970s. Spliced raw: the two measure the same object, they
+    #              correlate 0.905 over 174 overlapping quarters with a mean
+    #              difference of -0.04, and an offset fitted on that overlap
+    #              would be fitting noise.
+    #   "headline" headline CPI throughout, on one measure end to end.
+    #   "trimmed"  trimmed mean only, which starts the sample at 1983Q1.
+    #
+    # **What the splice costs.** Headline is 11.24 at 1983Q1 and the trimmed
+    # mean 10.60, so the join puts a -0.64 step into the series against
+    # headline's own +0.22 move that quarter. That lands two quarters before
+    # the 1983Q3 Accord break, and `expectations_source` "spliced" changes
+    # construction at 1983Q1 as well, so both sides of `pi - pi_e` change
+    # measure in the same quarter as each other and close to a regime date.
+    # A level shift in u* around 1983 could be any of the three.
+    inflation: str = "spliced"
 
     # A SECOND observation equation, on wages:
     #
@@ -195,6 +237,43 @@ class ModelConfig:
     # that most needs controlling. Terms of trade reach 1959Q4.
     tot_control: bool = False
 
+    # A SECOND observation on u*, from output and unemployment:
+    #
+    #     du_t = a + b x dy_t + lambda x (u_{t-1} - u*_{t-1}) + e
+    #
+    # Written as error correction rather than as `u = u* - b x ygap`, the form
+    # used where an output gap is already available. That form would need a
+    # gap estimated elsewhere, which both couples this model to another and
+    # limits the equation to 1993 onward, where those gaps begin. Real GDP
+    # growth reaches 1959Q4, so this covers the whole sample.
+    #
+    # THIS IS THE ONLY THING HERE THAT ATTACKS THE CIRCULARITY. With the
+    # Phillips curve alone, u - u* is the inflation gap scaled by u/beta, so
+    # no observable enters except u itself, on both sides. Output is a second
+    # observable and its equation can disagree.
+    #
+    # `lambda` is the rate at which unemployment falls back toward u*, so it
+    # should be negative; left two-sided, because a prior truncated at zero
+    # would assert the error correction rather than let the posterior report
+    # whether the data show one.
+    okun_equation: bool = False
+    a_okun_prior_sd: float = 0.5
+    b_okun_prior: tuple[float, float] = (-0.2, 0.2)
+    lambda_okun_prior: tuple[float, float] = (-0.1, 0.1)
+    sigma_okun_prior_sd: float = 0.5
+
+    # An AR(1) error in the Phillips curve, e_t = phi x e_{t-1} + eta_t.
+    #
+    # The static form leaves a residual autocorrelated at +0.63 overall and
+    # +0.60 to +0.88 within every regime, so a persistent component was being
+    # treated as independent noise. That matters beyond tidiness: independent
+    # errors make each quarter a separate piece of evidence about u*, so a
+    # run of same-signed surprises looks like many confirmations rather than
+    # one, and u* is pulled further and reported more precisely than the data
+    # warrant.
+    ar1_error: bool = False
+    phi_e_prior: tuple[float, float] = (0.0, 0.5)
+
     # Student-t rather than Normal residuals. The 1970s and the 2020s put large
     # changes in year-ended headline inflation next to unremarkable
     # unemployment, and under a Normal likelihood those quarters set `beta`.
@@ -268,6 +347,40 @@ class ModelConfig:
     # be a few hundredths and a power of it would freeze u* entirely.
     move_floor: float = 0.25
 
+    # Regime indices, 0-based, that share a SECOND Phillips slope. Empty means
+    # one slope for the whole sample.
+    #
+    # **What one slope assumes.** The regimes change only the shape of u*;
+    # `beta`, `sigma`, `rho` and `xi` are single numbers from 1970 to 2026, so
+    # wage indexation, the Accord and inflation targeting are required to share
+    # a slack-to-inflation coefficient. Holding u* at its fitted path, four of
+    # the six regimes agree: 1970-73, 1993-2014, 2015-19 and 2020-26 each want
+    # 3.36 to 4.38 against a pooled 3.60, with residual means inside 0.18. Two
+    # do not. 1974Q1-1983Q2 wants 5.64 and is left with a residual averaging
+    # +2.57 across ten years, which is a specification failure rather than
+    # noise; 1983Q3-1992Q4 wants 0.20, near enough to no Phillips curve, which
+    # is what an incomes policy setting wages would look like.
+    #
+    # **So the two candidate groups pull opposite ways** and a second slope
+    # spanning both averages a steep decade with a flat one.
+    # One entry per regime, naming which slope that regime uses. Empty is one
+    # slope for the whole sample; (0, 1, 2, 0, 0, 0) gives the pre-Accord and
+    # Accord decades their own and pools the rest.
+    beta_groups: tuple[int, ...] = ()
+
+    # Regimes given a free constant in the Phillips curve, for a period whose
+    # inflation sits persistently off what slack alone implies.
+    #
+    # The alternative to a regime's own slope, and for some regimes the right
+    # one. Fitting 1974Q1-1983Q2 through the origin forces a mean surprise of
+    # +5.73 to be explained by a mean gap of -0.878, which needs a slope of
+    # 5.64; allow a constant and the slope falls to 3.86, near the pooled
+    # value, with a +2.34 intercept. A LEVEL THE MODEL CANNOT ACCOUNT FOR IS
+    # NOT A STEEPER PHILLIPS CURVE, and giving it a slope also puts a near-zero
+    # or near-vertical coefficient into the inversion's denominator.
+    intercept_regimes: tuple[int, ...] = ()
+    intercept_prior_sd: float = 2.0
+
     # --- Priors ---
     # On the PROPORTIONAL gap, so the scale is `ustar`'s, whose `gamma_pi` is
     # about 1.15. A half-normal at 0.5 would put that 2.3 prior sd out and
@@ -289,12 +402,58 @@ class ModelConfig:
             raise ValueError(f"lag must be non-negative, got {self.lag}")
         if self.state not in ("spline", "attractor"):
             raise ValueError(f"state must be 'spline' or 'attractor', got {self.state!r}")
-        if self.inflation not in ("headline", "trimmed"):
-            raise ValueError(f"inflation must be 'headline' or 'trimmed', got {self.inflation!r}")
+        if self.expectations_source not in ("model", "spliced"):
+            raise ValueError(
+                f"expectations_source must be 'model' or 'spliced', got {self.expectations_source!r}",
+            )
+        if self.splice_offset_quarters < 0:
+            raise ValueError(f"splice_offset_quarters must be non-negative, got {self.splice_offset_quarters}")
+        if self.inflation not in ("headline", "trimmed", "spliced"):
+            raise ValueError(f"inflation must be 'headline', 'trimmed' or 'spliced', got {self.inflation!r}")
+        self._validate_knots()
+        self._validate_beta_groups()
+        self._validate_intercept_regimes()
         if len(set(self.breaks)) != len(self.breaks):
             raise ValueError(f"breaks must be distinct, got {self.breaks}")
         if list(self.breaks) != sorted(self.breaks):
             raise ValueError(f"breaks must be in order, got {self.breaks}")
+
+    def _validate_beta_groups(self) -> None:
+        """One group per regime, numbered from zero with no gaps."""
+        if not self.beta_groups:
+            return
+        n_regimes = len(self.breaks) + 1
+        if len(self.beta_groups) != n_regimes:
+            raise ValueError(
+                f"beta groups must give one entry per regime: got {len(self.beta_groups)} for {n_regimes} regimes",
+            )
+        seen = sorted(set(self.beta_groups))
+        if seen != list(range(len(seen))):
+            raise ValueError(f"beta groups must be numbered from 0 with no gaps, got {self.beta_groups}")
+
+    def _validate_intercept_regimes(self) -> None:
+        """Check that each intercept names a real regime, and that they do not claim every one."""
+        n_regimes = len(self.breaks) + 1
+        for k in self.intercept_regimes:
+            if not 0 <= k < n_regimes:
+                raise ValueError(f"intercept regime {k} is outside the {n_regimes} regimes the breaks define")
+        if len(set(self.intercept_regimes)) != len(self.intercept_regimes):
+            raise ValueError(f"intercept regimes must be distinct, got {self.intercept_regimes}")
+        # An intercept in every regime is allowed but barely identified: within
+        # a regime the equation is (alpha_k - beta_k) + beta_k x u* x (1/u), so
+        # only the variation in 1/u separates u*'s level there from the
+        # constant. That variation is thin in 2015-19, where the coefficient of
+        # variation of 1/u is 0.060, and u*'s level in such a window falls back
+        # on `eq_prior` rather than on the data.
+
+    def _validate_knots(self) -> None:
+        """Every repeated knot must sit on a break, and cannot outrank the spline's degree."""
+        max_multiplicity = 3  # the spline's degree: above this the basis gains nothing
+        for date, count in self.knot_multiplicity.items():
+            if date not in self.breaks:
+                raise ValueError(f"knot multiplicity names {date}, which is not a break: {self.breaks}")
+            if not 1 <= count <= max_multiplicity:
+                raise ValueError(f"knot multiplicity must be 1 to {max_multiplicity}, got {count} at {date}")
 
     @property
     def chart_dir(self) -> Path:
@@ -308,6 +467,7 @@ class ModelConfig:
             "breaks": list(self.breaks),
             "state": self.state,
             "natural_spline": self.natural_spline,
+            "knot_multiplicity": dict(self.knot_multiplicity),
             "sigma_ustar": self.sigma_ustar,
             "free_phi_per_regime": self.free_phi_per_regime,
             "anchor_level": self.anchor_level,
@@ -315,6 +475,8 @@ class ModelConfig:
             "theta_lo": self.theta_lo,
             "theta_hi": self.theta_hi,
             "measured_from": self.measured_from,
+            "expectations_source": self.expectations_source,
+            "splice_offset_quarters": self.splice_offset_quarters,
             "regime_sigma": self.regime_sigma,
             "adaptive_sigma": self.adaptive_sigma,
             "move_floor": self.move_floor,
@@ -324,5 +486,11 @@ class ModelConfig:
             "tot_control": self.tot_control,
             "supply_control": self.supply_control,
             "wage_equation": self.wage_equation,
+            "okun_equation": self.okun_equation,
             "student_t": self.student_t,
+            "ar1_error": self.ar1_error,
+            "beta_prior_sd": self.beta_prior_sd,
+            "beta_groups": list(self.beta_groups),
+            "intercept_regimes": list(self.intercept_regimes),
+            "intercept_prior_sd": self.intercept_prior_sd,
         }

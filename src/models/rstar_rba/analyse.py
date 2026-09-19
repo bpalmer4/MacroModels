@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from src.models.common import prior_posterior
 from src.models.common.diagnostics import save_diagnostics
 from src.models.common.inflation_scale import long_run_expectations
 from src.models.common.sources import footer_from_constants
@@ -173,42 +174,31 @@ def _prior_curve(name: str, constants: dict, xs: np.ndarray) -> np.ndarray | Non
     return None
 
 
-def plot_prior_posterior(trace: az.InferenceData, constants: dict) -> None:
+def plot_prior_posterior(trace: az.InferenceData, constants: dict) -> int:
     """One chart per estimated parameter: posterior against its own prior.
 
     The point is to see how much of each answer is data. A posterior sitting on
     its prior means the data said nothing, which is exactly what happened to the
     Dirichlet weights and nearly happened to `lambda_2`.
-    """
-    for name in ("lambda", "lambda_late", "lambda_2", "rho", "sigma_eps", "base_0"):
-        if name not in _group(trace, "posterior"):
-            continue
-        draws = np.asarray(_group(trace, "posterior")[name].values).ravel()
-        lo, hi = float(np.min(draws)), float(np.max(draws))
-        pad = 0.5 * (hi - lo) if hi > lo else 1.0
-        xs = np.linspace(lo - pad, hi + pad, 400)
-        if name == "rho":
-            xs = np.linspace(0.0, 1.0, 400)
-        if name == "sigma_eps":
-            xs = np.linspace(0.0, hi + pad, 400)
 
-        _, ax = plt.subplots()
-        ax.hist(draws, bins=60, density=True, color="darkblue", alpha=0.55,
-                label="posterior")
-        prior = _prior_curve(name, constants, xs)
-        if prior is not None:
-            ax.plot(xs, prior, color="darkred", lw=2, ls="--", label="prior")
-        ax.set_xlabel(_PARAM_LABEL.get(name, name))
-        mg.finalise_plot(
-            ax,
-            title=f"Prior and posterior: {name}",
-            ylabel="Density",
-            legend={"loc": "best", "fontsize": "small"},
-            lheader=equation(trace, constants),
-            rfooter=footer_from_constants(constants) or "Built using: RBA F1; ABS 6401.0",
-            lfooter=_LFOOTER,
-            show=False,
-        )
+    Drawing is `common.prior_posterior`, shared with every Bayesian model here.
+    What stays is this model's own priors, which include a Beta on `rho` that
+    no (kind, mu, sd) triple can express, and its parameter labels.
+    """
+    return prior_posterior.plot_all(
+        _group(trace, "posterior"),
+        lambda name: (
+            (lambda xs: _prior_curve(name, constants, xs))
+            if _prior_curve(name, constants, np.zeros(1)) is not None
+            else None
+        ),
+        footers={
+            "lheader": equation(trace, constants),
+            "rfooter": footer_from_constants(constants) or "Built using: RBA F1; ABS 6401.0",
+            "lfooter": _LFOOTER,
+        },
+        labels=_PARAM_LABEL,
+    )
 
 
 def print_diagnostics(

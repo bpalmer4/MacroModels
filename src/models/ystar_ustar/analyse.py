@@ -14,8 +14,9 @@ import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
 import pandas as pd
-from scipy.stats import gaussian_kde, halfnorm, norm
 
+from src.models.common import prior_posterior
+from src.models.common.charts import excluded_span_style
 from src.models.common.diagnostics import save_diagnostics
 from src.models.ustar import analyse as ustar_analyse
 from src.models.ustar.results import UStarResults
@@ -43,13 +44,15 @@ _LFOOTER = "Australia. Joint y* and u* model. "
 
 # The quarters where u* is not well identified: the sample opens one quarter
 # after a five-point collapse in inflation expectations, and neither the
-# inflation-defined gap nor a phased anchor can place a level there. Ends where
-# the 90% band stops being materially wider than its mid-sample width: 2.61x in
-# 1993 and 1.85x in 1994 against 1.45x by 1995 and 1.29x by 1996. The Phillips
-# residuals and the expectations date would both carry it to 1998, but the
-# concern is concentrated in the first two years and a flat block to 1998 would
-# claim 1997 is as doubtful as 1993. See MODEL_NOTES, "The early sample".
-UNIDENTIFIED_WINDOW = ("1993Q1", "1995Q4")
+# inflation-defined gap nor a phased anchor can place a level there. Ends
+# 1999Q4, on the level rather than on the band: across 1993-98 u* averages 8.71
+# against an unemployment rate of 8.90, a reported gap of -0.19 through six
+# years that opened at 10.85, which is the model calling the deepest slack in
+# the sample equilibrium. The band criterion is looser and would stop at
+# 1995Q4, the 90% band being 2.61x its mid-sample width in 1993 and 1.45x by
+# 1995, but a narrow band around a level that tracks unemployment is false
+# precision rather than identification. See MODEL_NOTES, "The early sample".
+UNIDENTIFIED_WINDOW = ("1993Q1", "1999Q4")
 
 # Used only for runs saved before `build_observations` began recording where its
 # series came from. A current run carries its own records and `_rfooter` reads
@@ -62,16 +65,6 @@ _SOURCE = "Built using: ABS 1364.0.15.003, 5206.0, 6401.0, 6457.0; NY Fed"
 # still overwhelmingly the prior, so this is a floor for "not identified" rather
 # than a threshold for "identified".
 _MIN_SHRINKAGE = 0.20
-
-_CHAIN_COLOURS = ("tab:blue", "tab:orange", "tab:green", "tab:red")
-
-# The tail probability reported on the variance charts. A HalfNormal(1) already
-# puts 8% below this, which is the point of showing prior and posterior together.
-_TAIL = 0.10
-
-# A scalar parameter's posterior array is (chain, draw); a vector latent's is
-# (chain, draw, time). This is how the two are told apart.
-_SCALAR_NDIM = 2
 
 # Where the parents put the same parameter, for the reference line.
 _SEPARATE_VALUE = {"sigma_e": _YSTAR_SIGMA_E, "sigma_okun": 0.485}
@@ -255,7 +248,7 @@ def _excluded_span(results: JointResults) -> list[dict[str, object]]:
 
     Needed on the two charts written here, because `ystar`'s and `ustar`'s own
     charts get it from their module-level global instead. Styled from
-    `ystar.analyse.excluded_span_style` so it looks the same on all of them.
+    `common.charts.excluded_span_style` so it looks the same on all of them.
 
     It matters most on the decomposition chart: inside the window `v`'s median
     across draws is zero, so the total gap and the inflation-defined part
@@ -266,7 +259,7 @@ def _excluded_span(results: JointResults) -> list[dict[str, object]]:
     if window is None:
         return []
     lo, hi = window
-    style = ystar_analyse.excluded_span_style()
+    style = excluded_span_style()
     return [{
         "xmin": pd.Period(lo, freq="Q"),
         "xmax": pd.Period(hi, freq="Q"),
@@ -472,21 +465,11 @@ _PRIORS: dict[str, tuple[str, float, float]] = {
     "rho_gap": ("normal", 0.8, 0.2),
 }
 
-_CHAIN_COLOURS = ("tab:blue", "tab:orange", "tab:green", "tab:red")
-
 # Where a parent model put the same parameter, for the reference line.
 _SEPARATE_VALUE = {
     "c": _YSTAR_C, "sigma_e": _YSTAR_SIGMA_E,
     "beta_okun": _USTAR_BETA, "gamma_pi": _USTAR_GAMMA, "sigma_okun": 0.685,
 }
-
-# The tail probability reported on the variance charts. A HalfNormal(1) already
-# puts 8% below this, which is the point of showing prior and posterior together.
-_TAIL = 0.10
-
-# A scalar parameter's posterior array is (chain, draw); a vector latent's is
-# (chain, draw, time). This is how the two are told apart.
-_SCALAR_NDIM = 2
 
 
 def _prior_for(results: JointResults, name: str) -> tuple[str, float, float] | None:
@@ -508,70 +491,19 @@ def _prior_for(results: JointResults, name: str) -> tuple[str, float, float] | N
     return _PRIORS.get(name)
 
 
-def _prior_pdf(kind: str, mu: float, sd: float, grid: np.ndarray) -> np.ndarray:
-    """Evaluate the prior density on a grid."""
-    return halfnorm.pdf(grid, scale=sd) if kind == "half" else norm.pdf(grid, loc=mu, scale=sd)
+def _chart_parameter_posteriors(results: JointResults) -> int:
+    """Draw one chart per estimated scalar the model reports, posterior against prior.
 
-
-def _chart_parameter_posterior(results: JointResults, name: str) -> None:
-    """Draw one parameter's posterior against its prior, chain by chain.
-
-    Worth a chart per parameter rather than a summary table, because the table
-    hides what matters. `sigma_okun` reports a tidy mean and a plausible
-    interval while its four chains peak in four different places, which is
-    visible here and invisible in a row of numbers. The prior is drawn alongside
-    because "the posterior sits at x" means nothing without knowing where the
-    prior already put it.
-
-    Built with raw matplotlib rather than `mg.line_plot`, because the x axis is
-    a parameter grid and mgplot requires a PeriodIndex or RangeIndex. It still
-    goes through `mg.finalise_plot`, so styling, footers and the filename match
-    every other chart in the directory.
+    The drawing is `common.prior_posterior`, shared with `ustar`. What stays
+    here is the part only this model knows: which name carries which prior,
+    and where a parent model put the same parameter for the reference line.
     """
-    prior = _prior_for(results, name)
-    if prior is None:
-        return
-    kind, mu, sd = prior
-
-    draws = np.asarray(results.posterior[name])
-    flat = draws.ravel()
-    lo = min(0.0 if kind == "half" else mu - 3.5 * sd, float(flat.min()))
-    hi = max(mu + 3.5 * sd, float(flat.max()))
-    pad = 0.08 * (hi - lo)
-    grid = np.linspace(lo - pad, hi + pad, 500)
-
-    _, ax = plt.subplots(figsize=(9, 5))
-    label = f"Prior, {'HalfNormal' if kind == 'half' else 'Normal'}"
-    label += f"({sd:g})" if kind == "half" else f"({mu:g}, {sd:g})"
-    ax.plot(grid, _prior_pdf(kind, mu, sd, grid), color="grey", ls="--", lw=1.8, label=label)
-    for i, colour in zip(range(draws.shape[0]), _CHAIN_COLOURS, strict=False):
-        ax.plot(grid, gaussian_kde(draws[i])(grid), color=colour, lw=1.0, ls=":",
-                label=f"Chain {i}")
-    ax.plot(grid, gaussian_kde(flat)(grid), color="black", lw=2.5, label="Posterior")
-    if name in _SEPARATE_VALUE:
-        ax.axvline(_SEPARATE_VALUE[name], color="darkred", lw=1.2, ls="-.",
-                   label=f"separately estimated, {_SEPARATE_VALUE[name]:g}")
-    ax.set_xlim(grid[0], grid[-1])
-
-    header = f"posterior mean {flat.mean():.3f}, prior mean {mu if kind == 'normal' else sd * 0.798:.3f}"
-    mg.finalise_plot(
-        ax,
-        title=f"{name}: posterior against prior",
-        xlabel=name,
-        ylabel="Density",
-        legend={"loc": "best", "fontsize": "x-small"},
-        lheader=header,
-        lfooter=_LFOOTER + "Dotted lines are individual chains. ",
-        rfooter=_rfooter(results),
-        show=False,
+    return prior_posterior.plot_all(
+        results.posterior,
+        lambda name: _prior_for(results, name),
+        footers={"lfooter": _LFOOTER, "rfooter": _rfooter(results)},
+        references=_SEPARATE_VALUE,
     )
-
-
-def _chart_parameter_posteriors(results: JointResults) -> None:
-    """Draw one chart per estimated scalar the model reports."""
-    for name in results.posterior.data_vars:
-        if results.posterior[name].ndim == _SCALAR_NDIM and _prior_for(results, str(name)) is not None:
-            _chart_parameter_posterior(results, str(name))
 
 
 @contextmanager

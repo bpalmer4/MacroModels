@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from src.data.world_rstar import get_world_rstar
+from src.models.common import prior_posterior
 from src.models.common.diagnostics import save_diagnostics
 from src.models.rstar_hlw.results import DEFAULT_CHART_BASE, RStarResults, load_results
 
@@ -554,7 +555,7 @@ def _density(draws: np.ndarray, edges: np.ndarray) -> np.ndarray:
     return counts / (len(draws) * np.diff(edges))
 
 
-def plot_prior_posterior(results: RStarResults, show: bool = False) -> None:
+def plot_prior_posterior(results: RStarResults, show: bool = False) -> int:  # noqa: ARG001
     """One chart per free scalar parameter: its posterior against its own prior.
 
     The question these answer is how much of each number is data. A posterior
@@ -563,53 +564,29 @@ def plot_prior_posterior(results: RStarResults, show: bool = False) -> None:
     it. For this model that matters most for `sigma_z`, which decides how fast
     r* is allowed to wander and which the sweep suggests the data cannot pin.
 
-    The prior draws come from the model itself at estimation time (see
-    `base.add_scalar_priors`), so traces saved before that was added have no
+    Unlike the other models here the prior is not stated analytically: it is
+    drawn from the model itself at estimation time (see
+    `base.add_scalar_priors`), so `common.prior_posterior` is handed the draws
+    and takes their density. Traces saved before that was added have no
     `prior` group and are skipped with a message rather than charted against a
     guess.
     """
-    import matplotlib.pyplot as plt  # noqa: PLC0415
-
-    from src.models.common.extraction import get_scalar_var  # noqa: PLC0415
-
     if "prior" not in results.trace.groups():
-        print("  no prior group in this trace — re-estimate to get prior/posterior charts")
-        return
+        print("  no prior group in this trace, re-estimate to get prior/posterior charts")
+        return 0
 
     prior_group = results.trace["prior"]
-    for name in prior_group.data_vars:
-        if name not in results.trace["posterior"].data_vars:
-            continue
-        post = np.asarray(get_scalar_var(str(name), results.trace)).ravel()
-        pri = np.asarray(prior_group[name].values).ravel()
-
-        # Window on the POSTERIOR, padded, so a parameter the data has pinned
-        # stays readable no matter how wide its prior is.
-        lo, hi = float(post.min()), float(post.max())
-        pad = 0.5 * (hi - lo) if hi > lo else max(abs(hi), 1.0)
-        edges = np.linspace(lo - pad, hi + pad, 81)
-        centres = 0.5 * (edges[:-1] + edges[1:])
-
-        _fig, ax = plt.subplots()
-        ax.fill_between(
-            centres, _density(post, edges), step="mid", color="darkblue", alpha=0.45,
-            label=f"posterior: {np.median(post):.3f} (sd {post.std():.3f})",
-        )
-        ax.step(
-            centres, _density(pri, edges), where="mid", color="darkred", lw=2, ls="--",
-            label=f"prior: {np.median(pri):.3f} (sd {pri.std():.3f})",
-        )
-        ax.set_xlabel(_PARAM_LABEL.get(str(name), str(name)))
-
-        mg.finalise_plot(
-            ax,
-            title=f"Prior and posterior: {name}",
-            ylabel="Density",
-            legend={"loc": "best", "fontsize": "small"},
-            lfooter=LFOOTER,
-            rfooter=RFOOTER + "Prior drawn from the model.",
-            show=show,
-        )
+    return prior_posterior.plot_all(
+        results.trace["posterior"],
+        lambda name: (
+            np.asarray(prior_group[name].values) if name in prior_group.data_vars else None
+        ),
+        footers={
+            "lfooter": LFOOTER,
+            "rfooter": RFOOTER + "Prior drawn from the model.",
+        },
+        labels=_PARAM_LABEL,
+    )
 
 
 @dataclass(frozen=True)

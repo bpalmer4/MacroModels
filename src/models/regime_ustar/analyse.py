@@ -77,7 +77,22 @@ def ustar_path(trace: az.InferenceData, frame: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame({"lower": q[0], "median": q[1], "upper": q[2]}, index=frame.index)
 
 
-def implied_ustar(trace: az.InferenceData, frame: pd.DataFrame) -> pd.Series:
+def beta_per_quarter(trace: az.InferenceData, regimes: np.ndarray, config: ModelConfig) -> np.ndarray:
+    """Return the posterior median slope facing each quarter.
+
+    A scalar repeated, or, when `config.beta_groups` gives the regimes their
+    own slopes, that regime's own median. The inversion divides by this, so
+    using a pooled median where the model fitted several would misstate every
+    quarter outside the largest group.
+    """
+    draws = _flat(trace, "beta")
+    if draws.ndim == 1:
+        return np.full(len(regimes), float(np.median(draws)))
+    by_group = np.median(draws, axis=0)
+    return by_group[np.asarray(config.beta_groups, dtype=int)[regimes]]
+
+
+def implied_ustar(frame: pd.DataFrame, beta: np.ndarray | float) -> pd.Series:
     """Return the u* each quarter's inflation would need, taken on its own.
 
     Invert the Phillips curve with the residual set to zero and solve for u*.
@@ -97,8 +112,10 @@ def implied_ustar(trace: az.InferenceData, frame: pd.DataFrame) -> pd.Series:
 
     Expect it to be wild: it divides a noisy residual by a coefficient the same
     equation had trouble identifying.
+
+    `beta` comes from `beta_per_quarter`, so where the regimes carry their own
+    slopes the inversion changes scale at each boundary along with them.
     """
-    beta = float(np.median(_flat(trace, "beta")))
     return frame["u"] * (1.0 + frame["surprise"] / beta)
 
 
@@ -304,7 +321,7 @@ def analyse(  # noqa: PLR0917 — one call site, and naming six arguments reads 
     """Print the table, draw the charts, write this run's diagnostics."""
     table = regime_table(trace, frame, regimes, labels)
     path = ustar_path(trace, frame)
-    implied = implied_ustar(trace, frame)
+    implied = implied_ustar(frame, beta_per_quarter(trace, regimes, config))
 
     posterior = _posterior(trace)
     names = ["beta", "sigma"]

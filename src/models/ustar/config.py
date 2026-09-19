@@ -78,8 +78,78 @@ class ModelConfig:
     # `free_sigma_ystar`.
     use_output_gap: bool = True
 
+    # A quadratic term in the unemployment gap, so the Phillips curve is convex
+    # in BOTH directions:
+    #
+    #     pi = ... + gamma x g + delta x g x |g| + ...      g = (u - u*)/u
+    #
+    # The linear form makes the likelihood equally sensitive to u* whatever the
+    # gap is. With the quadratic the sensitivity rises with |g|, so the
+    # quarters when the labour market was furthest from balance do most to
+    # place u*, and the quiet middle of the sample does least.
+    #
+    # `delta` is centred on zero, so the posterior says whether the data want
+    # it. The scale follows from the gap's own range, about -0.43 to +0.55: for
+    # the quadratic to matter as much as the linear term at a gap of 0.3,
+    # delta must be 3 to 4 times gamma.
+    quadratic_gap: bool = False
+    delta_pi_prior_sd: float = 4.0
+
     # --- Equations ---
     include_phillips: bool = True
+
+    # Include the GAP-FORM Okun equation, u - u* = -beta x ygap: the
+    # unemployment gap against the output gap, not Okun's original relating
+    # the CHANGE in unemployment to output growth. `beta` is therefore not
+    # comparable with a textbook Okun coefficient of 0.3 to 0.5.
+    #
+    # OFF: it carries no information this model does not already have, and it
+    # biases the answer. The gap-on-gap structure is exactly why.
+    #
+    # The "defined" gap is 0.1882 x (pi - 2.5) exactly, to machine precision,
+    # so u = u* - beta_okun x ygap is itself a Phillips curve in levels and the
+    # two equations read one signal. Three things follow, all measured. The
+    # reported band counts that signal twice: dropping Okun widens the mean
+    # 90% band from 0.35 to 0.58, and over 1993-98 from 0.36 to 1.15. The
+    # fitted u* sits systematically above what inflation alone implies, a mean
+    # deviation of -0.13 to -0.23 with Okun against -0.00 without. And because
+    # the gap enters with a measurement error of 0.05 while the Phillips
+    # residual is worth about 1.5 points of u*, Okun effectively dictates the
+    # level: across 1993-98 it holds u* at 8.69 against an unemployment rate
+    # of 8.90, calling the deepest slack in the sample equilibrium.
+    include_okun: bool = False
+
+    # --- The state law ---
+    # "converge" u* is a random walk pulled toward one equilibrium. It can
+    #            only draw a monotone approach, so it cannot decline and then
+    #            stop, and it needs `sigma_ustar`, which nothing measures.
+    # "spline"   u* is a natural cubic spline with knots at `spline_knots`,
+    #            deterministic given its coefficients. No innovation variance
+    #            to impose, and a segment after a knot is free to be flat while
+    #            the one before it is steep.
+    #
+    # "spline" by default, on the band test: scored against the sign of the
+    # unemployment gap over the 64 quarters where quarterly annualised trimmed
+    # mean inflation sat outside 2-3%, a knot at 2013Q1 gets 59 right against
+    # 53 for the convergence law, and 24 of 24 on the below-band quarters.
+    state_law: str = "spline"
+
+    # Interior knot dates for the spline. One knot gives three coefficients
+    # after the natural boundary reduction, which is stiff: enough to decline
+    # then level off, not enough to invent a cycle.
+    #
+    # 2013Q1 is where the low-inflation era begins, and it is where the decline
+    # in u* stops: the fitted path turns from -0.32 over 2015-2026 under the
+    # convergence law to +0.36 here. A knot at 2008Q1 was tried and scores 4
+    # quarters worse, though the two give nearly identical endpoints, because
+    # three coefficients leave the curve's shape largely determined.
+    spline_knots: tuple[str, ...] = ("2013Q1",)
+
+    # Prior on the spline coefficients. The basis is a partition of unity, so
+    # these are in unemployment-rate units and a coefficient is roughly the
+    # level u* passes through near its knot. Bounds span the sample's own
+    # range, 3.5 to 10.9.
+    spline_coef_prior: tuple[float, float, float, float] = (6.0, 3.0, 2.0, 14.0)
 
     # The inflation target, asserted flat across the sample. No phase-in: the
     # sample starts in 1993, inside the inflation-targeting era, so there is
@@ -183,6 +253,15 @@ class ModelConfig:
     #
     # Mutually exclusive with `ustar_drift`.
     ustar_converge: bool = True
+
+    # Prior mean for u* in the first quarter. None centres it on the
+    # unemployment rate of that quarter, which at a 1993Q1 start is 10.85, a
+    # recession trough. That choice is not innocuous: `phi_ustar` comes back
+    # near 0.04, so 72% of the 1993 starting level is still in the path two
+    # years later and 44% after five, which is most of what sets u* across
+    # 1993-98. The likelihood has little to say there, inflation being at
+    # target, so the posterior stays within 0.03 prior sd of this mean.
+    ustar_init_mu: float | None = None
 
     # Quarters from here on carry no drift. See `ustar_drift`.
     ustar_drift_end: str = "2000Q1"

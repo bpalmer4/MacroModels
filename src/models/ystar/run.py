@@ -107,6 +107,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tune", type=int, default=2_000)
     parser.add_argument("--chains", type=int, default=4)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--max-tree-depth", type=int, default=SamplerConfig.max_tree_depth,
+                        help="NUTS trajectory cap, as a power of two")
 
     parser.add_argument("--prefix", default="ystar", help="Output filename prefix")
     parser.add_argument("--analyse-only", action="store_true", help="Skip estimation")
@@ -161,6 +163,7 @@ def main() -> None:
             tune=args.tune,
             chains=args.chains,
             cores=args.chains,
+            max_tree_depth=args.max_tree_depth,
         )
         run_estimate(
             config=config,

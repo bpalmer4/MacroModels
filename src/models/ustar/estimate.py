@@ -11,6 +11,7 @@ import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 
+from src.models.common.spline import basis
 from src.models.ustar.config import DEFAULT_OUTPUT_DIR, ModelConfig
 from src.models.ustar.observations import build_observations
 from src.models.ystar.base import (
@@ -60,6 +61,35 @@ def _output_gap(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfig
         )
 
 
+def _ustar_spline(
+    model: pm.Model,
+    config: ModelConfig,
+    obs_index: pd.PeriodIndex | None = None,
+) -> Any:  # noqa: ANN401
+    """u* as a natural cubic spline with knots at `config.spline_knots`.
+
+        u*_t = sum_j c_j B_j(t)
+
+    Deterministic given the coefficients, so `sigma_ustar` disappears rather
+    than being chosen. More to the point it can change slope: the convergence
+    law draws a monotone approach to one equilibrium and so reports a decline
+    that never quite stops, which is a property of the functional form rather
+    than of the data.
+
+    The basis is a partition of unity, so the coefficients are in
+    unemployment-rate units and a coefficient is roughly the level u* passes
+    through near its knot.
+    """
+    if obs_index is None:
+        raise ValueError("the spline state needs obs_index to place its knots")
+    design = basis(obs_index, tuple(config.spline_knots), natural=True)
+    mu0, sd0, lo, hi = config.spline_coef_prior
+    with model:
+        pm.Data("sigma_ustar", np.nan)  # no innovation variance under this law
+        coef = pm.TruncatedNormal("coef", mu=mu0, sigma=sd0, lower=lo, upper=hi, shape=design.shape[1])
+        return pm.Deterministic("ustar", pt.dot(pt.as_tensor_variable(design), coef))
+
+
 def _ustar_state(
     obs: dict[str, np.ndarray],
     model: pm.Model,
@@ -73,15 +103,19 @@ def _ustar_state(
     would just be a slow transient at the front of the sample.
     """
     n = len(obs["u"])
-    with model:
-        # Recorded directly: set_model_coefficients only writes constants for
-        # names present in its settings dict, and sigma_ustar has no prior to
-        # be a setting for. Without this it never reaches the run log or the
-        # diagnostics, where it is the number the answer hinges on.
-        if not hasattr(model, "_fixed_constants"):
-            model._fixed_constants = {}  # noqa: SLF001 — our own metadata, as base.py does
-        model._fixed_constants.update(config.constants)  # noqa: SLF001
 
+    # Recorded before the state law is chosen, so every law records them.
+    # set_model_coefficients only writes constants for names present in its
+    # settings dict, and sigma_ustar has no prior to be a setting for. Without
+    # this they never reach the run log, the diagnostics or `results`, which
+    # reads `anchor` from here to draw the inflation decomposition.
+    if not hasattr(model, "_fixed_constants"):
+        model._fixed_constants = {}  # noqa: SLF001 — our own metadata, as base.py does
+    model._fixed_constants.update(config.constants)  # noqa: SLF001
+
+    if config.state_law == "spline":
+        return _ustar_spline(model, config, obs_index)
+    with model:
         if config.free_sigma_ustar:
             mu, sd, lower, upper = config.sigma_ustar_prior
             sigma = pm.TruncatedNormal("sigma_ustar", mu=mu, sigma=sd, lower=lower, upper=upper)
@@ -118,7 +152,10 @@ def _ustar_state(
                 },
             )
             z = pm.Normal("z_ustar", mu=0.0, sigma=1.0, shape=n)
-            init = pm.Normal("ustar_init", mu=float(obs["u"][0]), sigma=3.0)
+            init_mu = config.ustar_init_mu
+            if init_mu is None:
+                init_mu = float(obs["u"][0])
+            init = pm.Normal("ustar_init", mu=float(init_mu), sigma=3.0)
 
             def step(eps: Any, prev: Any, phi: Any, eq: Any) -> Any:  # noqa: ANN401
                 return prev + phi * (eq - prev) + eps
@@ -175,6 +212,7 @@ def _phillips_equation(
     model: pm.Model,
     ustar: Any,  # noqa: ANN401
     anchor: float,
+    config: ModelConfig,
 ) -> str:
     """Fit the price Phillips curve, anchored on the target.
 
@@ -202,6 +240,8 @@ def _phillips_equation(
             model,
             {
                 "gamma_pi": {"mu": -1.5, "sigma": 1.0},
+                **({"delta_pi": {"mu": 0.0, "sigma": config.delta_pi_prior_sd}}
+                   if config.quadratic_gap else {}),
                 "beta_pi": {"mu": 0.5, "sigma": 0.3},
                 "rho_pi": {"mu": 0.0, "sigma": 0.1},
                 "xi_gscpi": {"mu": 0.0, "sigma": 0.1},
@@ -219,6 +259,7 @@ def _phillips_equation(
         mu = (
             anchor_quarterly
             + mc["gamma_pi"] * ugap
+            + (mc["delta_pi"] * ugap * pt.abs(ugap) if config.quadratic_gap else 0.0)
             + mc["beta_pi"] * excess_quarterly
             + mc["rho_pi"] * obs["d4pm"]
             + mc["xi_gscpi"] * obs["gscpi"] ** 2 * np.sign(obs["gscpi"])
@@ -260,10 +301,11 @@ def build_model(
         )
     descriptions.append(f"State:        {state}")
 
-    descriptions.append(f"Okun:         {_okun_equation(obs, model, ustar, ygap, config)}")
+    if config.include_okun:
+        descriptions.append(f"Okun:         {_okun_equation(obs, model, ustar, ygap, config)}")
 
     if config.include_phillips:
-        descriptions.append(f"Phillips:     {_phillips_equation(obs, model, ustar, config.anchor)}")
+        descriptions.append(f"Phillips:     {_phillips_equation(obs, model, ustar, config.anchor, config)}")
     else:
         # The unemployment gap is the model's headline output either way, so it
         # is recorded here when the Phillips curve is not there to record it.
@@ -331,7 +373,8 @@ def run_estimate(
     print(f"Sample:       {config.start} -> {config.end or 'latest'}")
     print(f"Output gap:   {config.gap_source} (from {config.gap_prefix}), "
           f"measurement error {'on' if config.gap_measurement_error else 'off'}")
-    print(f"Equations:    Okun{' + Phillips' if config.include_phillips else ' only'}")
+    on = [n for n, keep in (("Okun", config.include_okun), ("Phillips", config.include_phillips)) if keep]
+    print(f"Equations:    {' + '.join(on)}")
     if config.free_sigma_ustar:
         mu, sd, lower, upper = config.sigma_ustar_prior
         bound = f"lower={lower:g}, upper={upper:g}" if upper is not None else f"lower={lower:g}"

@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 
 from src.data.expectations_model import get_model_expectations
+from src.data.expectations_spliced import get_spliced_expectations
+from src.data.gdp import get_gdp_growth
 from src.data.gscpi_live import get_gscpi_qrtly_live
 from src.data.import_prices import get_import_price_growth_lagged_annual
 from src.data.inflation import get_trimmed_mean_annual
@@ -96,6 +98,36 @@ def salience_expectation(
     return e
 
 
+def inflation_series(config: ModelConfig, sources: SourceSet) -> pd.Series:
+    """Return the year-ended inflation series the Phillips curve explains.
+
+    "spliced" runs headline until the trimmed mean starts at 1983Q1 and the
+    trimmed mean after, so the cleaner nominal signal is used everywhere it
+    exists without giving up the 1970s.
+
+    Spliced RAW, with no level adjustment. The two are measures of the same
+    object: they correlate 0.905 over their 174 overlapping quarters with a
+    mean difference of -0.04, so an offset fitted on the overlap would be
+    fitting noise. The join itself costs a -0.64 step, headline being 11.24 at
+    1983Q1 against the trimmed mean's 10.60, which a spline with knots eleven
+    years apart cannot respond to. What it can respond to is the 1990s, where
+    the trimmed mean runs 0.44 ABOVE headline for a decade inside one regime.
+    """
+    if config.inflation == "trimmed":
+        return sources.take(get_trimmed_mean_annual(), "trimmed mean CPI, year-ended", key="pi")
+    if config.inflation == "headline":
+        return sources.take(get_long_headline_annual(), "headline CPI, year-ended", key="pi")
+
+    headline = sources.take(
+        get_long_headline_annual(), "headline CPI, year-ended (to the trimmed mean's start)", key="pi",
+    )
+    trimmed = sources.take(get_trimmed_mean_annual(), "trimmed mean CPI, year-ended (from 1983Q1)", key="pi_tm")
+    switch = trimmed.first_valid_index()
+    if switch is None:
+        raise ValueError("the trimmed mean series is empty, so there is nothing to splice to")
+    return pd.concat([headline.loc[headline.index < switch], trimmed.loc[switch:]]).sort_index()
+
+
 def regime_expectation(
     pi: pd.Series, config: ModelConfig, sources: SourceSet,
 ) -> tuple[pd.Series, pd.Series]:
@@ -112,11 +144,22 @@ def regime_expectation(
     they averaged 3.15 against a 2.5 target that was not yet credible, settling
     only in 1998. Handing over early imposes no anchoring, because the series
     is not anchored there.
+
+    Under `config.expectations_source = "spliced"` that series reaches 1970Q1
+    instead, PIE_RBAQ carrying everything before 1983Q1, and the switch moves
+    with it: the rule then covers only 1959Q3-1969Q4.
     """
-    measured = sources.take(get_model_expectations(), "inflation expectations (model)", key="pi_exp")
+    if config.expectations_source == "spliced":
+        series = get_spliced_expectations(config.splice_offset_quarters)
+        measured = sources.take(series, "inflation expectations (PIE_RBAQ spliced to model)", key="pi_exp")
+    else:
+        measured = sources.take(get_model_expectations(), "inflation expectations (model)", key="pi_exp")
     pi_e = salience_expectation(pi, config)
 
+    first_measured = measured.first_valid_index()
     switch = pd.Period(config.measured_from, freq="Q")
+    if first_measured is not None:
+        switch = min(switch, pd.Period(first_measured, freq="Q"))
     usable = measured.reindex(pi_e.index)
     from_switch = pd.Series(pi_e.index >= switch, index=pi_e.index) & usable.notna()
     return pi_e.where(~from_switch, usable), from_switch
@@ -164,10 +207,7 @@ def build_observations(config: ModelConfig) -> tuple[pd.DataFrame, np.ndarray, l
       `tot`  terms of trade growth, only when the control is on
     """
     sources = SourceSet()
-    if config.inflation == "trimmed":
-        pi = sources.take(get_trimmed_mean_annual(), "trimmed mean CPI, year-ended", key="pi")
-    else:
-        pi = sources.take(get_long_headline_annual(), "headline CPI, year-ended", key="pi")
+    pi = inflation_series(config, sources)
     u = sources.take(get_unemployment_rate_qrtly(), "unemployment rate", key="u")
 
     pi_e, from_switch = regime_expectation(pi, config, sources)
@@ -194,6 +234,15 @@ def build_observations(config: ModelConfig) -> tuple[pd.DataFrame, np.ndarray, l
         columns["speed"] = sources.take(
             get_unemployment_speed_limit_qrtly(), "unemployment speed limit", key="speed",
         )
+
+    if config.okun_equation:
+        # Real GDP growth begins 1959Q4, so the block costs one quarter at the
+        # front and nothing else. `du` and `u_lag` are built from the
+        # unemployment rate BEFORE the model's own lag is applied, since the
+        # error correction is about where unemployment actually was.
+        columns["dy"] = sources.take(get_gdp_growth(), "real GDP growth", key="dy")
+        columns["du"] = u.diff()
+        columns["u_lag"] = u.shift(1)
 
     frame = pd.DataFrame(columns).dropna()
 

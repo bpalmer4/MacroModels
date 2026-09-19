@@ -185,10 +185,26 @@ def get_historical_interbank_rate(path: str | Path) -> DataSeries:
 
 
 def get_inflation_expectations() -> DataSeries:
-    """Get inflation expectations from RBA PIE_RBAQ series.
+    """Get MARTIN's inflation expectations variable, PIE_RBAQ, from the local CSV.
 
-    Loads raw RBA series from CSV file and converts quarterly to annual rate.
-    No extension needed since anchor is 2.5% target after 1998Q1 anyway.
+    Loads the series from `input_data/PIE_RBAQ.CSV` and converts the quarterly
+    rate to an annual one. No extension needed since the anchor is the 2.5%
+    target after 1998Q1 anyway.
+
+    **This is a LONG-RUN ANCHOR, not a near-term expectation.** RDP 2019-07
+    states that MARTIN's inflation expectations are exogenous to the model and
+    "constructed using the approach described in Cusbert (2017)": a random walk
+    in trend inflation, observed through the surveys and the 10-year bond
+    yield. Fitted as adaptive learning it has a half-life of 23 quarters over
+    1970-1982, so it moves slowly against a fast climb, which is what a trend
+    anchor does. See `src/data/expectations_spliced.py` for why that makes it
+    the wrong input to a Phillips curve written for near-term expectations.
+
+    From the MacroDave database (`github.com/MacroDave/MARTIN`). The data run
+    from 1970Q1 to 2019Q1. UNVERIFIED: how the pre-1983 values were produced.
+    The surveys that approach reads begin in 1989 and 1993, so the 1970s
+    cannot have come from them; the 10-year bond yield it also reads does
+    reach 1969.
 
     Returns:
         DataSeries with annual inflation expectations

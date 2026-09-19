@@ -12,10 +12,11 @@ from typing import Any
 import mgplot as mg
 import pandas as pd
 
-from src.data.inflation import get_trimmed_mean_annual
+from src.data.inflation import get_trimmed_mean_qrtly
+from src.models.common import prior_posterior
+from src.models.common.charts import excluded_span_style
 from src.models.common.diagnostics import save_diagnostics
 from src.models.ustar.results import DEFAULT_CHART_BASE, UStarResults, load_results
-from src.models.ystar.analyse import excluded_span_style
 from src.utilities.rate_conversion import annualize
 
 CHART_DIR = DEFAULT_CHART_BASE / "UStar"
@@ -26,10 +27,10 @@ CHART_DIR = DEFAULT_CHART_BASE / "UStar"
 # that model's sources rather than this one's. The GSCPI is a Phillips curve
 # input here and was missing from this line entirely.
 _RFOOTER = "Built using: ABS 1364.0.15.003, 5206.0, 6401.0, 6457.0; NY Fed"
-_LFOOTER = "Australia. u* model. "
+_LFOOTER = "Australia. ustar model. "
 # Only for charts that actually draw a band. The decomposition chart is bars
 # and a line built from median parameters, with no interval on it to widen.
-_LFOOTER_BAND = _LFOOTER + "Band widened x2 for the imposed drift; see notes. "
+_LFOOTER_BAND = _LFOOTER + "Band widened x2 for the imposed structure; see notes. "
 
 # Quarters that carried no likelihood, as ("2020Q2", "2021Q3"), or None.
 #
@@ -50,13 +51,16 @@ _UNIDENTIFIED_WINDOW: tuple[str, str] | None = None
 # The window this model's own diagnostics support, applied in `run_analysis`.
 # The joint model sets its own, to the same dates and on its own evidence.
 #
-# Ends 1995Q4, where the band criterion points rather than where the Phillips
-# residuals and the expectations date do. The 90% band runs 2.79x its
-# mid-sample width in 1993 and 1.96x in 1994, is 1.53x by 1995 and 1.36x by
-# 1996, which is close to the 1.1-1.3 it holds until 2002. Shading to 1998
-# would assert that 1997 is as doubtful as 1993, and it is not. That u* is not
-# fully settled until 1998 is left to MODEL_NOTES, which can say it in degrees.
-UNIDENTIFIED_WINDOW = ("1993Q1", "1995Q4")
+# Ends 1999Q4, on the level rather than on the band. Across 1993-98 u* averages
+# 8.69 against an unemployment rate of 8.90, so the model reports a gap of
+# -0.22 through six years that opened with unemployment at 10.85: it is saying
+# the labour market was at equilibrium in the deepest slack of the sample. The
+# band criterion is looser and would stop at 1995Q4, the 90% band being 2.79x
+# its mid-sample width in 1993, 1.53x by 1995 and 1.36x by 1996, but a narrow
+# band around a level that tracks unemployment is false precision rather than
+# identification. Independent readings of the same years differ by 2.5 points
+# and close to within 0.5 only by 2000Q2.
+UNIDENTIFIED_WINDOW = ("1993Q1", "1999Q4")
 
 # Orange rather than the excluded window's yellow, so the two are told apart at
 # a glance where both appear. Low alpha: it sits under the u* line, which is
@@ -89,7 +93,7 @@ def _unidentified_span() -> list[dict[str, Any]]:
 def _excluded_span() -> list[dict[str, Any]]:
     """Return an axvspan dict marking the unfitted window, or nothing.
 
-    Styled from `ystar.analyse.excluded_span_style` rather than restyled here,
+    Styled from `common.charts.excluded_span_style` rather than restyled here,
     so the pandemic window looks identical on every chart in the package.
     Copying the styling into each package is how it would drift.
 
@@ -110,9 +114,15 @@ def _excluded_span() -> list[dict[str, Any]]:
     }]
 
 
-def _with_excluded(kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Add the unfitted-window and weakly-identified markers to finalise kwargs."""
-    spans = _unidentified_span() + _excluded_span()
+def _with_excluded(kwargs: dict[str, Any], *, unidentified: bool = True) -> dict[str, Any]:
+    """Add the unfitted-window and weakly-identified markers to finalise kwargs.
+
+    `unidentified` is off for the inflation-shaded chart, where a third block
+    of colour over the first seven years sits on top of the red and blue
+    band-breach shading and makes both unreadable. The window is still marked
+    on the plain u* chart beside it.
+    """
+    spans = (_unidentified_span() if unidentified else []) + _excluded_span()
     if not spans:
         return kwargs
     existing = kwargs.get("axvspan") or []
@@ -132,19 +142,25 @@ _PHILLIPS_EQUATION = (
 )
 
 # The drawn band is the posterior band scaled about its median by this factor,
-# to stand in for the uncertainty the model cannot express: sigma_ustar is
-# imposed, so the posterior answers "where is u* given that it drifts at
-# exactly this rate" and carries no uncertainty about the rate itself.
+# to stand in for uncertainty about the IMPOSED STRUCTURE, which the posterior
+# cannot express. u* is a spline with a knot placed by hand, so the interval
+# answers "where is u* given this shape" and says nothing about the shape.
+# Under `--state converge` the imposed thing is `sigma_ustar` instead, and the
+# same argument applies to the drift rate.
 #
-# Two is not a round number picked for convenience. The conditional band is
-# 0.48pp wide at the endpoint and, measured across sigma_ustar from 0.024 to
-# 0.05, u* itself moves 0.39pp; the union of the conditional bands over that
-# range runs 4.44 to 5.33, about 0.89pp, which is what doubling reproduces.
-# The band width is also near-invariant to the setting (0.48 to 0.50 across the
-# whole range), so scaling rather than re-deriving is defensible.
+# TWO IS INHERITED, NOT RE-DERIVED. It was calibrated against the decay law's
+# `sigma_ustar` sweep: the conditional band was 0.48pp at the endpoint, u*
+# moved 0.39pp across sigma_ustar from 0.024 to 0.05, and the union of the
+# conditional bands over that range was about 0.89pp, which doubling
+# reproduced. No equivalent calibration exists for the spline, and the two
+# obvious candidates disagree: varying the knot count moves u* by 0.05pp over
+# the sample, which would argue for less than 2, while at 1993Q1 the spread
+# across specifications is 2.87pp, which would argue for far more.
 #
-# It is an approximation to a sweep, not a posterior, and every chart drawn
-# with it says so in its left footer.
+# So it is a convention that errs wide in the settled part of the sample and
+# nowhere near wide enough in the early part, where the shaded window is the
+# warning instead. It is an approximation, not a posterior, and every chart
+# drawn with it says so in its left footer.
 _BAND_WIDEN = 2.0
 
 _BAND_KWARGS: dict[str, Any] = {
@@ -160,7 +176,7 @@ def _band(posterior: pd.DataFrame, widen: float = _BAND_WIDEN) -> pd.DataFrame:
     """Return the 5th and 95th posterior percentiles, scaled about the median.
 
     `widen` = 1 gives the posterior band itself. The default widens it to stand
-    in for uncertainty about the imposed drift; see `_BAND_WIDEN`.
+    in for uncertainty about the imposed structure; see `_BAND_WIDEN`.
     """
     median = posterior.median(axis=1)
     lower = posterior.quantile(0.05, axis=1)
@@ -210,51 +226,62 @@ def print_diagnostics(results: UStarResults) -> None:
 _INFLATION_HIGH = 3.0
 _INFLATION_LOW = 2.0
 
+# Shading intensity ramps with the size of the breach, from just visible at the
+# band edge to full at `_SHADE_FULL` points beyond it.
+_SHADE_ALPHA_MIN = 0.03
+_SHADE_ALPHA_MAX = 0.25
+_SHADE_FULL = 2.0
+
 
 def _inflation_regime_spans(index: pd.PeriodIndex) -> list[dict[str, Any]]:
     """Return axvspan dicts shading quarters where the trimmed mean left the band.
 
-    Red above, blue below, nothing inside 2-3%. Two things the label has to be
-    careful about. The series is the annual **trimmed mean**, not headline CPI,
-    while the RBA's 2-3% band is a headline-CPI target, so this marks where the
-    core measure sat outside the band rather than where the target was missed.
-    And it is the four-quarter rate rather than the model's quarterly series,
-    because "outside the band" is a four-quarter notion and the
-    quarterly-annualised rate crosses the thresholds several times a year.
+    Red above, blue below, nothing inside 2-3%.
 
-    Contiguous quarters are merged into single spans, so the chart gets a few
-    readable blocks instead of 134 abutting rectangles with seamed edges.
+    The series is the **quarterly trimmed mean, annualised**, which is the
+    same basis the model's Phillips curve is written on, so the shading marks
+    the quarters the equation is actually reading rather than a four-quarter
+    average of them. It discriminates: scored against the sign of the
+    unemployment gap over the 64 quarters outside the band, the models
+    separate by up to 11 points on this measure and by 4 on the year-ended
+    one. The cost is more, shorter blocks, since the quarterly rate crosses
+    the thresholds several times a year.
+
+    One caveat the label has to carry: this is the **trimmed mean**, not
+    headline CPI, while the RBA's 2-3% band is a headline-CPI target, so it
+    marks where the core measure sat outside the band rather than where the
+    target was missed.
+
+    **Shaded by size, not by a threshold.** Each quarter gets its own span with
+    an alpha proportional to how far outside the band it sat, because the
+    binary version gave a quarter at 3.1 the same weight as one at 7.4 and the
+    chart became a picket fence. Half the out-of-band quarters are within 0.5
+    of an edge and a quarter of them within 0.25, against a maximum deviation
+    of 4.40, so most of that fence was inflation grazing the boundary.
+
+    Ramped from `_SHADE_ALPHA_MIN` at the edge to `_SHADE_ALPHA_MAX` at
+    `_SHADE_FULL`, flat above. 94% of out-of-band quarters sit inside the ramp,
+    so the cap only holds back the 2022-23 peak from drowning everything else.
     """
-    inflation = get_trimmed_mean_annual().data.astype(float).reindex(index)
+    quarterly_rate = get_trimmed_mean_qrtly().data.astype(float)
+    inflation = (((1 + quarterly_rate / 100) ** 4 - 1) * 100).reindex(index)
 
     spans: list[dict[str, Any]] = []
-    run_state: str | None = None
-    run_start: pd.Period | None = None
-
-    def close(end: pd.Period) -> None:
-        if run_state is None or run_start is None:
-            return
-        color = "tab:red" if run_state == "high" else "tab:blue"
-        spans.append({
-            "xmin": run_start, "xmax": end, "color": color, "alpha": 0.10, "zorder": 0,
-        })
-
-    # Paired with `index` rather than read off `inflation.items()`: the series
-    # was just reindexed onto it, so the quarters are the same ones, and this
-    # way each is a Period rather than the Hashable a Series yields.
+    step = 1  # one quarter, so each span covers the quarter it belongs to
     for period, value in zip(index, inflation.to_numpy(), strict=True):
-        if pd.isna(value):
-            state = None
-        elif value > _INFLATION_HIGH:
-            state = "high"
-        elif value < _INFLATION_LOW:
-            state = "low"
-        else:
-            state = None
-        if state != run_state:
-            close(period)
-            run_state, run_start = state, period
-    close(index[-1])
+        if pd.isna(value) or _INFLATION_LOW <= value <= _INFLATION_HIGH:
+            continue
+        high = value > _INFLATION_HIGH
+        deviation = value - _INFLATION_HIGH if high else _INFLATION_LOW - value
+        weight = min(deviation / _SHADE_FULL, 1.0)
+        spans.append({
+            "xmin": period,
+            "xmax": period + step,
+            "color": "tab:red" if high else "tab:blue",
+            "alpha": _SHADE_ALPHA_MIN + weight * (_SHADE_ALPHA_MAX - _SHADE_ALPHA_MIN),
+            "zorder": 0,
+            "linewidth": 0,
+        })
 
     return spans
 
@@ -267,9 +294,9 @@ def _rfooter(results: UStarResults) -> str:
 def plot_ustar(results: UStarResults, shade_inflation: bool = False, tag: str = "") -> None:
     """u* against the observed unemployment rate, with a credible band.
 
-    With `shade_inflation`, the background marks the quarters where annual
-    inflation sat outside the RBA's 2-3% band, so u* can be read against the
-    episodes when inflation actually left the central tendency.
+    With `shade_inflation`, the background marks the quarters where quarterly
+    annualised trimmed mean inflation sat outside the RBA's 2-3% band, so u*
+    can be read against the quarters the Phillips curve is actually reading.
 
     Note when interpreting it that the Phillips curve fits inflation with
     `gamma x u_gap` and gamma is negative, so the estimation is not neutral
@@ -304,10 +331,10 @@ def plot_ustar(results: UStarResults, shade_inflation: bool = False, tag: str = 
     if shade_inflation:
         finalise_kwargs["axvspan"] = _inflation_regime_spans(results.obs_index)
         finalise_kwargs["lheader"] = (
-            f"Shaded where the annual trimmed mean sat outside "
+            f"Shaded where quarterly annualised trimmed mean inflation sat outside "
             f"{_INFLATION_LOW:g}-{_INFLATION_HIGH:g}%: red above, blue below"
         )
-    mg.finalise_plot(ax, **_with_excluded(finalise_kwargs))
+    mg.finalise_plot(ax, **_with_excluded(finalise_kwargs, unidentified=not shade_inflation))
 
 
 def plot_ugap(results: UStarResults) -> None:
@@ -477,6 +504,53 @@ def plot_ustar_components(results: UStarResults) -> None:
     }))
 
 
+
+# The priors `estimate.py` sets, named here so the prior-posterior charts can
+# draw them. Kept beside the charts rather than exported from `estimate`,
+# because a chart needs (kind, mu, sd) and the model needs PyMC settings, and
+# tying them together would make one serve the other badly.
+_PRIORS: dict[str, tuple[str, float, float]] = {
+    "sigma_okun": ("half", 0.0, 1.0),
+    "gamma_pi": ("normal", -1.5, 1.0),
+    "beta_pi": ("normal", 0.5, 0.3),
+    "rho_pi": ("normal", 0.0, 0.1),
+    "xi_gscpi": ("normal", 0.0, 0.1),
+    "epsilon_pi": ("half", 0.0, 0.25),
+}
+
+
+def _prior_for(results: UStarResults, name: str) -> tuple[str, float, float] | None:
+    """Return (kind, mu, sd) for a parameter's prior, or None if unknown.
+
+    Two depend on run settings rather than being fixed in the source, so they
+    are read from the constants the run recorded.
+    """
+    if name == "beta_okun":
+        two_sided = bool(results.constants.get("two_sided_beta", True))
+        return ("normal", 0.5, 0.5) if two_sided else ("half", 0.5, 0.5)
+    if name == "sigma_ustar":
+        prior = results.constants.get("sigma_ustar_prior")
+        if prior is None:
+            return None
+        mu, sd = float(prior[0]), float(prior[1])
+        return ("normal", mu, sd)
+    return _PRIORS.get(name)
+
+
+def plot_prior_posterior(results: UStarResults) -> int:
+    """Draw one chart per estimated scalar, posterior against prior.
+
+    The printed diagnostics report a mean and an interval, which cannot show
+    a parameter whose chains peak in different places or one that has not
+    moved off its prior. Both have mattered here.
+    """
+    return prior_posterior.plot_all(
+        results.posterior,
+        lambda name: _prior_for(results, name),
+        footers={"lfooter": _LFOOTER, "rfooter": _rfooter(results)},
+    )
+
+
 def run_analysis(
     output_dir: Path | str | None = None,
     prefix: str = "ustar",
@@ -515,6 +589,7 @@ def run_analysis(
     plot_ustar(results, shade_inflation=True, tag="inflation")
     plot_ugap(results)
     plot_ustar_components(results)
+    print(f"Prior-posterior charts: {plot_prior_posterior(results)}")
     if results.has_phillips:
         plot_inflation_decomposition(results)
         plot_implied_ustar(results)

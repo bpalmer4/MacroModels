@@ -12,8 +12,8 @@ import pytensor
 import pytensor.tensor as pt
 import xarray as xr
 
+from src.models.common.spline import basis
 from src.models.regime_ustar.config import ModelConfig
-from src.models.regime_ustar.spline import basis
 from src.models.ystar.base import SamplerConfig, sample_model
 
 
@@ -155,6 +155,56 @@ def _wage_equation(frame: pd.DataFrame, ustar: Any, u_obs: np.ndarray, config: M
     )
 
 
+def _controls(frame: pd.DataFrame, config: ModelConfig) -> Any:  # noqa: ANN401
+    """Return the supply and terms-of-trade terms added to the Phillips curve.
+
+    The GSCPI term is squared and sign-preserving, so pressure matters more
+    than proportionally and an easing of supply chains is not treated as its
+    mirror. Zero when neither control is on.
+    """
+    total: Any = 0.0
+    if config.supply_control:
+        rho = pm.Normal("rho_pi", mu=0.0, sigma=config.rho_prior_sd)
+        xi = pm.Normal("xi_gscpi", mu=0.0, sigma=config.xi_prior_sd)
+        gscpi = np.asarray(frame["gscpi"], dtype=float)
+        total = total + rho * np.asarray(frame["d4pm"], dtype=float) + xi * gscpi**2 * np.sign(gscpi)
+    if config.tot_control:
+        gamma = pm.Normal("gamma_tot", mu=0.0, sigma=config.tot_prior_sd)
+        total = total + gamma * np.asarray(frame["tot"], dtype=float)
+    return total
+
+
+def _okun_equation(frame: pd.DataFrame, ustar: Any, config: ModelConfig) -> None:  # noqa: ANN401
+    """Add the output observation on u*, as error correction.
+
+        du_t = a + b x dy_t + lambda x (u_{t-1} - u*_{t-1}) + e
+
+    Unemployment falls when output grows, and separately drifts back toward
+    u* when it is away from it. `lambda` is that pull, so it should be
+    NEGATIVE; the prior is two-sided so the posterior reports whether the data
+    show an error correction rather than being told there is one.
+
+    **This is the only equation here that attacks the circularity.** The
+    Phillips curve alone makes `u - u*` the inflation gap scaled by `u/beta`,
+    so nothing but `u` enters, on both sides. Real GDP growth is a second
+    observable and can disagree.
+
+    `u*` is lagged to match `u_{t-1}`, which costs the equation nothing: the
+    first quarter has no lag and is already absent from the frame.
+    """
+    b_mu, b_sd = config.b_okun_prior
+    l_mu, l_sd = config.lambda_okun_prior
+
+    a = pm.Normal("a_okun", mu=0.0, sigma=config.a_okun_prior_sd)
+    b = pm.Normal("b_okun", mu=b_mu, sigma=b_sd)
+    lam = pm.Normal("lambda_okun", mu=l_mu, sigma=l_sd)
+    sigma_o = pm.HalfNormal("sigma_okun", sigma=config.sigma_okun_prior_sd)
+
+    u_lag = np.asarray(frame["u_lag"], dtype=float)
+    mu_o = a + b * np.asarray(frame["dy"], dtype=float) + lam * (u_lag - pt.concatenate([ustar[:1], ustar[:-1]]))
+    pm.Normal("du_obs", mu=mu_o, sigma=sigma_o, observed=np.asarray(frame["du"], dtype=float))
+
+
 def build_model(frame: pd.DataFrame, regimes: np.ndarray, config: ModelConfig) -> pm.Model:
     """Return the state law above, observed through one accelerationist Phillips curve.
 
@@ -193,7 +243,15 @@ def build_model(frame: pd.DataFrame, regimes: np.ndarray, config: ModelConfig) -
         # what is being asked for. The restriction is an assumption, not a
         # finding, and `beta` near zero is how the model says the data did not
         # support it.
-        beta = pm.HalfNormal("beta", sigma=config.beta_prior_sd)
+        # One slope, or one per beta group, broadcast to a slope per quarter.
+        # Each group carries the same prior: the groups say the slope may
+        # differ by era, not which era is steep.
+        if config.beta_groups:
+            groups = np.asarray(config.beta_groups, dtype=int)[regimes]
+            beta_by_group = pm.HalfNormal("beta", sigma=config.beta_prior_sd, shape=int(groups.max()) + 1)
+            beta = beta_by_group[groups]
+        else:
+            beta = pm.HalfNormal("beta", sigma=config.beta_prior_sd)
         measured = np.asarray(frame["measured"], dtype=int)
         if config.regime_sigma and 0 < measured.sum() < len(measured):
             sigma_both = pm.HalfNormal("sigma", sigma=config.sigma_prior_sd, shape=2)
@@ -219,23 +277,48 @@ def build_model(frame: pd.DataFrame, regimes: np.ndarray, config: ModelConfig) -
         # side against -0.45 on the slack side.
         u_obs = np.asarray(frame["u"], dtype=float)
         mu = -beta * (u_obs - ustar) / u_obs
-        if config.supply_control:
-            # Same form and prior scales as `ustar/estimate.py:206`. The GSCPI
-            # term is squared and sign-preserving, so pressure matters more
-            # than proportionally and relief is not treated as its mirror.
-            rho = pm.Normal("rho_pi", mu=0.0, sigma=config.rho_prior_sd)
-            xi = pm.Normal("xi_gscpi", mu=0.0, sigma=config.xi_prior_sd)
-            gscpi = np.asarray(frame["gscpi"], dtype=float)
-            mu = mu + rho * np.asarray(frame["d4pm"], dtype=float) + xi * gscpi**2 * np.sign(gscpi)
 
-        if config.tot_control:
-            gamma = pm.Normal("gamma_tot", mu=0.0, sigma=config.tot_prior_sd)
-            mu = mu + gamma * np.asarray(frame["tot"], dtype=float)
+        # A free constant for the named regimes, zero everywhere else. `which`
+        # sends every other quarter to a zero appended past the end of alpha,
+        # so no regime logic reaches the likelihood.
+        if config.intercept_regimes:
+            order = {k: j for j, k in enumerate(sorted(config.intercept_regimes))}
+            which = np.array([order.get(int(r), len(order)) for r in regimes], dtype=int)
+            alpha = pm.Normal("alpha", mu=0.0, sigma=config.intercept_prior_sd, shape=len(order))
+            mu = mu + pt.concatenate([alpha, pt.zeros(1)])[which]
+        mu = mu + _controls(frame, config)
 
         if config.wage_equation:
             _wage_equation(frame, ustar, u_obs, config)
 
+        if config.okun_equation:
+            _okun_equation(frame, ustar, config)
+
         observed = np.asarray(frame["surprise"], dtype=float)
+
+        # An AR(1) error, written as a conditional mean rather than a state.
+        # With e_t = phi e_{t-1} + eta_t and e_t = surprise_t - mu_t, the
+        # previous error is known once the parameters are, so
+        #
+        #     E[surprise_t | t-1] = mu_t + phi x (surprise_{t-1} - mu_{t-1})
+        #
+        # and `sigma` becomes the scale of the INNOVATION rather than of the
+        # residual. Costs the first quarter, which has no lagged error.
+        #
+        # The residual of the static form is autocorrelated at +0.63 overall
+        # and +0.60 to +0.88 inside every regime, so the equation was treating
+        # a persistent component as independent noise. Year-ended inflation is
+        # persistent and the expectation it is measured against is a slow
+        # trend, so the surprise inherits that persistence and nothing in the
+        # Phillips curve accounted for it.
+        if config.ar1_error:
+            pmu, psd = config.phi_e_prior
+            phi_e = pm.TruncatedNormal("phi_e", mu=pmu, sigma=psd, lower=-0.99, upper=0.99)
+            mu = mu[1:] + phi_e * (observed[:-1] - mu[:-1])
+            observed = observed[1:]
+            if getattr(sigma, "ndim", 0) == 1:
+                sigma = sigma[1:]  # a per-quarter scale must lose the same quarter
+
         if config.student_t:
             nu = pm.Exponential("nu_minus_two", lam=1.0 / config.nu_prior) + 2.0
             pm.Deterministic("nu", nu)
