@@ -44,9 +44,9 @@ from scipy.interpolate import BSpline
 DEGREE = 3
 
 
-def _augmented_knots(interior: np.ndarray, lo: float, hi: float) -> np.ndarray:
+def _augmented_knots(interior: np.ndarray, lo: float, hi: float, degree: int) -> np.ndarray:
     """Return the full knot vector: the interior knots with clamped boundaries."""
-    return np.concatenate([np.repeat(lo, DEGREE + 1), interior, np.repeat(hi, DEGREE + 1)])
+    return np.concatenate([np.repeat(lo, degree + 1), interior, np.repeat(hi, degree + 1)])
 
 
 def basis(
@@ -55,11 +55,18 @@ def basis(
     *,
     natural: bool = True,
     multiplicity: dict[str, int] | None = None,
+    degree: int = DEGREE,
 ) -> np.ndarray:
     """Return the (T x J) spline basis evaluated on the sample's own quarters.
 
     Time is the integer position in the sample rather than a calendar value, so
     the basis does not depend on where the sample happens to start.
+
+    `degree` is the polynomial degree, 3 (cubic) by default. The fitted
+    growth path is one degree below the level, so a degree-4 basis with no
+    interior knots gives a growth rate that is a single smooth cubic in time:
+    it can rise, peak, fall and then flatten, which a cubic level cannot,
+    and it does so without a knot date having to be chosen.
 
     `natural` imposes zero second derivative at both ends by reducing the basis
     rather than by adding a penalty: the two boundary-adjacent columns are
@@ -86,14 +93,14 @@ def basis(
         # a break, not a transition, and a leap has a corner in it. C0 still
         # means u* does not jump, which is what "aligned handoff" requires.
         positions.extend([float(where)] * max(1, multiplicity.get(b, 1)))
-    knots = _augmented_knots(np.asarray(positions, dtype=float), t[0], t[-1])
+    knots = _augmented_knots(np.asarray(positions, dtype=float), t[0], t[-1], degree)
 
-    n_basis = len(knots) - DEGREE - 1
+    n_basis = len(knots) - degree - 1
     columns = []
     for j in range(n_basis):
         coef = np.zeros(n_basis)
         coef[j] = 1.0
-        columns.append(BSpline(knots, coef, DEGREE, extrapolate=False)(t))
+        columns.append(BSpline(knots, coef, degree, extrapolate=False)(t))
     design = np.nan_to_num(np.column_stack(columns), nan=0.0)
 
     if natural:

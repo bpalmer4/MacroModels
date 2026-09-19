@@ -3,7 +3,7 @@
 import argparse
 
 from src.models.ustar.analyse import run_analysis
-from src.models.ustar.config import GAP_SOURCES, ModelConfig
+from src.models.ustar.config import GAP_SOURCES, USTAR_STRUCTURES, ModelConfig
 from src.models.ustar.estimate import run_estimate
 from src.models.ystar.base import SamplerConfig
 
@@ -37,10 +37,11 @@ def main() -> None:
         "--one-sided-beta", action="store_true",
         help="Truncate beta at zero, asserting Okun's law rather than testing it",
     )
-    parser.add_argument("--state", choices=("converge", "spline"), default=ModelConfig.state_law,
-                        help=f"State law for u* (default: {ModelConfig.state_law})")
+    parser.add_argument("--ustar-structure", choices=USTAR_STRUCTURES,
+                        default=ModelConfig.ustar_structure,
+                        help=f"The structure imposed on u* (default: {ModelConfig.ustar_structure})")
     parser.add_argument("--knots", nargs="*", default=list(ModelConfig.spline_knots), metavar="DATE",
-                        help="Interior knot dates for --state spline, e.g. 2013Q1")
+                        help="Interior knot dates for --ustar-structure spline, e.g. 2013Q1")
     parser.add_argument("--quadratic-gap", action="store_true",
                         help="Add delta x g x |g| to the Phillips curve, so wide gaps pull harder")
     parser.add_argument("--okun", action="store_true",
@@ -52,11 +53,6 @@ def main() -> None:
         "--ustar-drift", action="store_true",
         help="Let u* drift down while inflation expectations sit above target, "
              "instead of being a driftless random walk. See ModelConfig.ustar_drift",
-    )
-    parser.add_argument(
-        "--no-ustar-converge", action="store_true",
-        help="Make u* a driftless random walk again, the pre-2026 specification. "
-             "See ModelConfig.ustar_converge for why it is not the default",
     )
     parser.add_argument(
         "--lambda-prior-sd", type=float, default=0.1,
@@ -93,16 +89,13 @@ def main() -> None:
             include_phillips=not args.no_phillips,
             include_okun=args.okun,
             quadratic_gap=args.quadratic_gap,
-            state_law=args.state,
+            ustar_structure=args.ustar_structure,
             spline_knots=tuple(args.knots),
             two_sided_beta=not args.one_sided_beta,
             sigma_ustar=args.sigma_ustar,
             ustar_init_mu=args.ustar_init,
             free_sigma_ustar=args.free_sigma_ustar,
             ustar_drift=args.ustar_drift,
-            # --ustar-drift is the other story about the same fact, so asking
-            # for it turns this one off rather than raising.
-            ustar_converge=not args.no_ustar_converge and not args.ustar_drift,
             ustar_drift_end=args.ustar_drift_end,
             lambda_prior_sd=args.lambda_prior_sd,
         )

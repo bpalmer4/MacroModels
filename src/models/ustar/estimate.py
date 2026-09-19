@@ -71,7 +71,7 @@ def _ustar_spline(
         u*_t = sum_j c_j B_j(t)
 
     Deterministic given the coefficients, so `sigma_ustar` disappears rather
-    than being chosen. More to the point it can change slope: the convergence
+    than being chosen. More to the point it can change slope: the decay
     law draws a monotone approach to one equilibrium and so reports a decline
     that never quite stops, which is a property of the functional form rather
     than of the data.
@@ -113,7 +113,7 @@ def _ustar_state(
         model._fixed_constants = {}  # noqa: SLF001 — our own metadata, as base.py does
     model._fixed_constants.update(config.constants)  # noqa: SLF001
 
-    if config.state_law == "spline":
+    if config.ustar_structure == "spline":
         return _ustar_spline(model, config, obs_index)
     with model:
         if config.free_sigma_ustar:
@@ -140,7 +140,7 @@ def _ustar_state(
             )
             drift = -mc["lambda_ustar"] * excess[:-1]
 
-        if config.ustar_converge:
+        if config.ustar_structure == "decay":
             # u*_t = u*_{t-1} + phi·(u*_eq - u*_{t-1}) + e, written as a scan so
             # the mean reversion is on the state's own past rather than on an
             # exogenous series. Non-centred innovations, as everywhere else here.
@@ -292,7 +292,7 @@ def build_model(
     ygap = _output_gap(obs, model, config)
     ustar = _ustar_state(obs, model, config, obs_index)
     state = "u*_t = u*_{t-1} + e   (sigma imposed)"
-    if config.ustar_converge:
+    if config.ustar_structure == "decay":
         state = "u*_t = u*_{t-1} + phi x (u*_eq - u*_{t-1}) + e   (sigma imposed)"
     elif config.ustar_drift:
         state = (

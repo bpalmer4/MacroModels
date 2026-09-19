@@ -42,6 +42,7 @@ from statsmodels.tsa.arima.model import ARIMA
 
 from src.data.capital import get_capital_stock_qrtly
 from src.data.capital_share import get_capital_share
+from src.data.expectations_model import get_model_expectations_unanchored
 from src.data.gdp import get_log_gdp
 from src.data.henderson import hma
 from src.data.import_prices import get_import_price_growth_lagged_annual
@@ -138,6 +139,8 @@ def _load_series(
     smooth_pop: int,
     pi_basis: str = "quarterly",
     supply_control: str | None = None,
+    *,
+    expectations: bool = False,
 ) -> tuple[dict[str, pd.Series], SourceSet]:
     """Load the input series this specification needs, recording where they came from."""
     sources = SourceSet()
@@ -145,6 +148,15 @@ def _load_series(
         "log_gdp": sources.take(get_log_gdp(), "log GDP", key="log_gdp"),
         "pi": _inflation(pi_basis, sources),
     }
+
+    if expectations:
+        # Only for a phased anchor. Loading it unconditionally would make this
+        # model depend on another model's saved output in every run, and would
+        # trim the sample to where expectations exist even when nothing uses
+        # them.
+        columns["pi_exp"] = sources.take(
+            get_model_expectations_unanchored(), "expectations", key="pi_exp",
+        )
 
     if supply_control == "import_prices":
         columns["supply"] = sources.take(
@@ -232,6 +244,7 @@ def build_observations(
     spec: str = "core",
     pi_basis: str = "quarterly",
     supply_control: str | None = None,
+    expectations: bool = False,
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, pd.DataFrame, SourceSet]:
     """Build observation arrays for ystar estimation.
 
@@ -250,6 +263,10 @@ def build_observations(
             (four-quarter, overlapping). See ModelConfig.pi_basis.
         supply_control: None, or "import_prices" to add a cost-push regressor
             to the Phillips curve. See ModelConfig.supply_control.
+        expectations: Load the expectations model's series as `pi_exp`, for a
+            phased anchor. Off by default: it is the only input this package
+            takes from another model, and it would trim the sample to where
+            expectations exist even in runs that never use them.
 
     Returns:
         Tuple of:
@@ -259,7 +276,9 @@ def build_observations(
           - sources: the providers behind those series, for the chart footers
 
     """
-    columns, sources = _load_series(spec, smooth_pop, pi_basis, supply_control)
+    columns, sources = _load_series(
+        spec, smooth_pop, pi_basis, supply_control, expectations=expectations,
+    )
 
     if verbose:
         print(f"Input series coverage ({spec} specification):")

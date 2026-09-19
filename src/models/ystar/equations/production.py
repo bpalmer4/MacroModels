@@ -92,9 +92,11 @@ is part-smoothed and part-not.
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 
+from src.models.common.spline import basis
 from src.models.ystar.base import set_model_coefficients
 
 
@@ -127,6 +129,31 @@ def _factor_trend(
     pm.Normal(f"observed_{name}", mu=trend, sigma=sigma, observed=observed)
 
     return trend
+
+
+def _polynomial_trend(
+    name: str,
+    observed: np.ndarray,
+    obs_index: pd.PeriodIndex,
+    degree: int,
+) -> pt.TensorVariable:
+    """Build a factor trend as a global polynomial in time, with no innovations.
+
+    For `g_M*`, where a random walk is the wrong object. MFP is the Solow
+    residual, so a smoothed random walk through it is a smoothed residual of
+    GDP: the cycle enters potential through this component and nothing else.
+    Capital and hours trends do not have the problem, being smooth series in
+    their own right, so only this one is replaced.
+
+    Free ends and no interior knots, for the reason `potential.py` records:
+    end conditions on a trend that must keep moving drag its slope at both
+    boundaries, while a global polynomial has no local segment to distort.
+    """
+    design = basis(obs_index, (), natural=False, degree=degree)
+    coef = pm.Normal(
+        f"{name}_coef", mu=float(np.mean(observed)), sigma=2.0, shape=design.shape[1],
+    )
+    return pm.Deterministic(f"trend_{name}", pt.dot(pt.as_tensor_variable(design), coef))
 
 
 def _imposed_trend(
@@ -166,7 +193,10 @@ def production_potential_equation(
         constant = {}
 
     mfp_observed = bool(constant.get("mfp_observed", True))
-    required = ("ratio_gk", "ratio_gl", "ratio_a", "ratio_gm" if mfp_observed else "sigma_gm")
+    if constant.get("mfp_degree"):
+        required = ("ratio_gk", "ratio_gl", "ratio_a")
+    else:
+        required = ("ratio_gk", "ratio_gl", "ratio_a", "ratio_gm" if mfp_observed else "sigma_gm")
     missing = [key for key in required if key not in constant]
     if missing:
         raise ValueError(f"production_potential_equation requires {missing}")
@@ -180,7 +210,12 @@ def production_potential_equation(
         trend_k = _factor_trend("gk", np.asarray(obs["g_k"], float), float(constant["ratio_gk"]), n_periods)
         trend_l = _factor_trend("gl", np.asarray(obs["g_l"], float), float(constant["ratio_gl"]), n_periods)
         mfp = np.asarray(obs["mfp"], dtype=float)
-        if mfp_observed:
+        mfp_degree = int(constant.get("mfp_degree", 0))
+        if mfp_degree:
+            if constant.get("obs_index") is None:
+                raise ValueError("a polynomial MFP trend needs 'obs_index'")
+            trend_m = _polynomial_trend("gm", mfp, constant["obs_index"], mfp_degree)
+        elif mfp_observed:
             trend_m = _factor_trend("gm", mfp, float(constant["ratio_gm"]), n_periods)
         else:
             trend_m = _imposed_trend("gm", float(mfp.mean()), float(constant["sigma_gm"]), n_periods)

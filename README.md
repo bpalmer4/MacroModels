@@ -15,10 +15,12 @@ and what should not be quoted from it. The links below go there; this page is on
 - **y\* potential output** (`ystar`): potential as a slow-moving random walk, with the output gap defined by inflation's deviation from target. *Preferred for potential growth*. See [notes](src/models/ystar/MODEL_NOTES.md)
 - **u\*** (`ustar`): a NAIRU from one expectations-augmented Phillips curve, with u\* a spline. See [notes](src/models/ustar/MODEL_NOTES.md)
 - **u\* summary** (`ustar_summary`): the three specifications of `ustar` on one chart. See [notes](src/models/ustar_summary/MODEL_NOTES.md)
-- **Joint y\*/u\*** (`ystar_ustar`): both of the above in one likelihood, with the gap partly free. *Preferred for the output gap and u\**. See [notes](src/models/ystar_ustar/MODEL_NOTES.md)
+- **Joint y\*/u\*** (`ystar_ustar`): both of the above in one likelihood, with the gap partly free and u\* a spline. *Preferred for the output gap and u\**. See [notes](src/models/ystar_ustar/MODEL_NOTES.md)
 - **NAIRU + Output Gap** (`nairu`): the original joint NAIRU and potential-output model. *Superseded for potential, the gap and the NAIRU*; kept for its wage equation, regime split and variant comparison. See [notes](src/models/nairu/MODEL_NOTES.md)
 - **Cobb-Douglas MFP** (`cobb_douglas`): deterministic growth accounting into capital, labour and MFP. See [notes](src/models/cobb_douglas/MODEL_NOTES.md)
 - **g\* summary** (`gstar_summary`): every potential-growth estimate on one chart. See [notes](src/models/gstar_summary/MODEL_NOTES.md)
+- **y\* summary** (`ystar_summary`): the five `ystar` specifications on one chart. See [notes](src/models/ystar_summary/MODEL_NOTES.md)
+- **Joint y\*/u\* summary** (`ystar_ustar_summary`): the u\* structure crossed with the gap definition, eight settings. See [notes](src/models/ystar_ustar_summary/MODEL_NOTES.md)
 
 ### The neutral rate
 
@@ -168,7 +170,7 @@ Reads saved output from the expectations model. With `--okun` it also reads `yst
 
 # Specification alternatives, kept so the comparison is reproducible
 ./run-ustar.sh --okun                # restore the Okun equation
-./run-ustar.sh --state converge      # the decay law the spline replaced
+./run-ustar.sh --ustar-structure decay  # the decay the spline replaced
 ./run-ustar.sh --knots 1996Q1 2013Q1 # a second knot
 
 # Diagnostics (the last two need --okun, which supplies the gap)
@@ -183,7 +185,7 @@ Reads saved output from the expectations model only; it re-estimates both `ystar
 rather than reading them.
 
 ```bash
-# Default: quarterly gap basis, u* converging, sigma_ustar 0.020, 10,000 draws
+# Default: quarterly gap basis, u* a spline with one knot at 2013Q1, 10,000 draws
 ./run-ystar-ustar.sh
 
 # Recharts from the saved trace
@@ -193,6 +195,12 @@ rather than reading them.
 ./run-ystar-ustar.sh --no-okun       # sigma_v should return its prior (it does)
 ./run-ystar-ustar.sh --no-phillips   # sigma_v with inflation off the left-hand side
 ./run-ystar-ustar.sh --sigma-v-prior 0.5   # is sigma_v prior-driven? no
+
+# What u* is allowed to do, and what the gap is
+./run-ystar-ustar.sh --ustar-structure decay      # the structure the spline replaced
+./run-ystar-ustar.sh --knots 1996Q1 2013Q1        # a second knot
+./run-ystar-ustar.sh --gap-spec identity --one-sided-beta  # gap = y - y*
+./run-ystar-ustar.sh --okun-form ec               # error correction; does not identify
 ```
 
 ### Long-run u\*: read off flat inflation, back to 1959
@@ -358,7 +366,7 @@ src/
     │                           #   (self-contained: imports only src/data)
     ├── ustar/                  # u* from a given output gap: Okun + Phillips, one state
     │                           #   (reads expectations and ystar output)
-    ├── ystar_ustar/            # y* and u* estimated jointly, gap partly free
+    ├── ystar_ustar/            # y* and u* estimated jointly, gap partly free, u* a spline
     │                           #   (preferred for the output gap and u*)
     │                           #   (a rule, not an estimate: no likelihood, no priors)
     ├── rstar_bonds/            # r* from the bond market: AU wedge over world r*, two windows
@@ -368,6 +376,8 @@ src/
     ├── rstar_summary/          # every r* on one nominal scale (not a model)
     ├── gstar_summary/          # every potential-growth estimate on one chart (not a model)
     ├── ustar_summary/          # three specifications of the u* model on one chart (not a model)
+    ├── ystar_summary/          # five specifications of the y* model on one chart (not a model)
+    ├── ystar_ustar_summary/    # eight settings of the joint model on one chart (not a model)
     ├── is_curve/               # the IS curve plotted, not estimated: a test bench for the r* models
     ├── bank_costs/             # bank funding and lending costs vs the cash rate (exploratory, charts only)
     ├── gdp_nowcast_bridge/     # GDP nowcast: bridge equations

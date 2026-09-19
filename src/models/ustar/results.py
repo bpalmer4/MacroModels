@@ -84,8 +84,8 @@ class UStarResults:
         return self.ugap_posterior().median(axis=1)
 
     @property
-    def converges(self) -> bool:
-        """Whether u* was specified as converging to an equilibrium."""
+    def decays(self) -> bool:
+        """Whether u* was specified as decaying toward an equilibrium."""
         return "phi_ustar" in self.posterior
 
     def ustar_change_decomposition(self) -> pd.DataFrame:
@@ -102,16 +102,16 @@ class UStarResults:
         Computed on posterior medians, so it describes the reported path rather
         than integrating over uncertainty.
         """
-        if not self.converges:
-            raise ValueError("this run has no convergence terms to decompose")
+        if not self.decays:
+            raise ValueError("this run has no decay terms to decompose")
 
         median = self.posterior.median(dim=("chain", "draw"))
         phi = float(median["phi_ustar"])
         eq = float(median["ustar_eq"])
         ustar = self.ustar_median()
 
-        convergence = phi * (eq - ustar.shift(1))
-        innovation = ustar.diff() - convergence
+        decay = phi * (eq - ustar.shift(1))
+        innovation = ustar.diff() - decay
 
         # The counterfactual path: same start, no innovations at all.
         path = [ustar.iloc[0]]
@@ -121,7 +121,7 @@ class UStarResults:
         return pd.DataFrame({
             "ustar": ustar,
             "deterministic": pd.Series(path, index=ustar.index),
-            "convergence": convergence,
+            "decay": decay,
             "innovation": innovation,
         })
 

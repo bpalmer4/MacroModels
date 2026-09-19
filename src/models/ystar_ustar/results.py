@@ -66,8 +66,25 @@ class JointResults:
 
     @property
     def gap_spec(self) -> str:
-        """Which gap specification produced this trace, read from its contents."""
+        """Which gap specification produced this trace.
+
+        Read from the recorded constant where the run wrote one. Traces made
+        before it was recorded are identified by their contents, which
+        distinguishes the two specs that existed then.
+        """
+        recorded = self.constants.get("gap_spec")
+        if isinstance(recorded, str):
+            return recorded
         return "cycle" if "rho_gap" in self.posterior else "defined"
+
+    @property
+    def has_defined_gap(self) -> bool:
+        """Whether any part of the gap is `c x (pi - anchor)`.
+
+        False for the two specs that read the gap off something other than
+        inflation, where there is no decomposition to report.
+        """
+        return "c" in self.posterior
 
     # --- The three stars ---
 
@@ -127,10 +144,9 @@ class JointResults:
         overstates the inflation-defined share: 47.2% against 44.9% on the
         current run. `ystar`'s notes record being caught by the same thing.
         """
-        if self.gap_spec == "cycle":
-            # There is no decomposition to report: the gap is one latent state
-            # and inflation observes it rather than defining any part of it.
-            # That is the point of the reparameterisation.
+        if not self.has_defined_gap:
+            # There is no decomposition to report: the gap is read off
+            # something other than inflation, which defines no part of it.
             return {}
         if not self.has_free_gap:
             return {"defined": 1.0, "free": 0.0, "covariance": 0.0}

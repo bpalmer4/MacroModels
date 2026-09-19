@@ -14,13 +14,21 @@ from src.models.ystar.base import (
     get_fixed_constants,
     sample_model,
 )
-from src.models.ystar.config import DEFAULT_OUTPUT_DIR, ModelConfig
+from src.models.ystar.config import (
+    ANCHOR_GLIDE_START,
+    ANCHOR_PHASE_END,
+    DEFAULT_OUTPUT_DIR,
+    ModelConfig,
+)
 from src.models.ystar.equations.hours import hours_equation
 from src.models.ystar.equations.inflation_gap import inflation_gap_equation
 from src.models.ystar.equations.output import output_equation
 from src.models.ystar.equations.participation import participation_equation
 from src.models.ystar.equations.phillips import phillips_curve_equation
-from src.models.ystar.equations.potential import potential_output_equation
+from src.models.ystar.equations.potential import (
+    potential_output_equation,
+    potential_spline_equation,
+)
 from src.models.ystar.equations.production import production_potential_equation
 from src.models.ystar.equations.scale import scale_equation
 from src.models.ystar.equations.target_consistency import (
@@ -166,6 +174,41 @@ def _potential_constant(
     return {"break_index": break_index, "break_labels": break_labels}
 
 
+def _potential_block(
+    obs: dict[str, np.ndarray],
+    model: pm.Model,
+    latents: dict[str, Any],
+    config: ModelConfig,
+    *,
+    potential_constant: dict[str, Any] | None,
+    obs_index: pd.PeriodIndex | None,
+) -> str:
+    """Add potential output under whichever structure the config names.
+
+    One place, so the three specifications with a free level recursion cannot
+    drift apart over which structures they support.
+    """
+    if config.ystar_structure != "spline":
+        return potential_output_equation(obs, model, latents, constant=potential_constant)
+    if obs_index is None:
+        raise ValueError("the y* spline needs obs_index to place its knots")
+    if potential_constant and potential_constant.get("break_index"):
+        raise ValueError(
+            "level_break and the y* spline are two ways of saying the trend moved: "
+            "a spline has no level recursion for a step to enter",
+        )
+    return potential_spline_equation(
+        obs, model, latents,
+        constant={
+            "obs_index": obs_index,
+            "spline_knots": config.ystar_spline_knots,
+            "natural": config.ystar_spline_natural,
+            "degree": config.ystar_spline_degree,
+            "sigma_z": config.ratio_ystar_adjust * config.sigma_c,
+        },
+    )
+
+
 def _inflation_family(
     obs: dict[str, np.ndarray],
     model: pm.Model,
@@ -174,6 +217,8 @@ def _inflation_family(
     *,
     potential_constant: dict[str, Any] | None = None,
     keep: np.ndarray | None = None,
+    anchor: np.ndarray | float = 2.5,
+    obs_index: pd.PeriodIndex | None = None,
 ) -> list[str]:
     """Build the potential and gap blocks shared by `inflation` and `production`.
 
@@ -191,24 +236,79 @@ def _inflation_family(
                 "ratio_a": config.ratio_a,
                 "mfp_observed": config.mfp_observed,
                 "sigma_gm": config.sigma_gm,
+                "mfp_degree": config.mfp_degree,
+                "obs_index": obs_index,
             },
         )
     else:
-        desc = potential_output_equation(
-            obs, model, latents,
-            constant=potential_constant,
+        desc = _potential_block(
+            obs, model, latents, config,
+            potential_constant=potential_constant, obs_index=obs_index,
         )
 
     gap_desc = inflation_gap_equation(
         obs, model, latents,
         constant={
-            "anchor": config.anchor,
+            "anchor": anchor,
             "ar1_residual": config.ar1_residual,
             "two_sided_c": config.two_sided_c,
             "keep": keep,
         },
     )
     return [f"Potential:    {desc}", f"Gap:          {gap_desc}"]
+
+
+def anchor_series(
+    obs: dict[str, np.ndarray],
+    obs_index: pd.PeriodIndex | None,
+    config: ModelConfig,
+) -> np.ndarray | float:
+    """Return the inflation anchor: a constant, or expectations phasing to it.
+
+    Under "none" this is `config.anchor` and nothing changes. Under "glide" it
+    is measured expectations up to `ANCHOR_GLIDE_START`, then a linear weight
+    onto the target through `ANCHOR_PHASE_END`, then the target. The scalar is
+    returned unchanged in the "none" case rather than broadcast, so the
+    equations' printed descriptions and the recorded constants stay exactly as
+    they were for every existing run.
+    """
+    if config.anchor_phase == "none":
+        return config.anchor
+    if obs_index is None:
+        raise ValueError("a phased anchor needs obs_index to place the glide")
+    if "pi_exp" not in obs:
+        raise ValueError(
+            "a phased anchor needs the expectations series; "
+            "build_observations must be called with expectations=True",
+        )
+
+    expectations = np.asarray(obs["pi_exp"], dtype=float)
+    phase = pd.period_range(ANCHOR_GLIDE_START, ANCHOR_PHASE_END, freq="Q")
+    weight = np.where(obs_index < phase[0], 0.0, 1.0)
+    for i, period in enumerate(phase):
+        weight[obs_index == period] = i / (len(phase) - 1)
+    return (1.0 - weight) * expectations + weight * float(config.anchor)
+
+
+def _record_anchor(
+    model: pm.Model,
+    obs: dict[str, np.ndarray],
+    obs_index: pd.PeriodIndex | None,
+    config: ModelConfig,
+) -> np.ndarray | float:
+    """Resolve the anchor and record it with the run's imposed settings.
+
+    The series is recorded as well as the scalar so a chart can draw what the
+    run actually judged inflation against rather than assuming the target.
+    Call after `scale_equation`, which creates the dict this writes into.
+    """
+    anchor = anchor_series(obs, obs_index, config)
+    constants = get_fixed_constants(model)
+    constants["anchor"] = config.anchor
+    constants["anchor_phase"] = config.anchor_phase
+    if not np.isscalar(anchor):
+        constants["anchor_series"] = np.asarray(anchor, dtype=float).tolist()
+    return anchor
 
 
 def build_model(
@@ -242,6 +342,11 @@ def build_model(
 
     _record_exclusion(model, config)
 
+    # After `scale_equation`, which creates the constants dict. The series is
+    # recorded as well as the scalar so a chart can draw what the run actually
+    # judged inflation against, rather than assuming the target.
+    anchor = _record_anchor(model, obs, obs_index, config)
+
     descriptions.extend(_free_sigma_ystar(model, latents, config=config))
 
     # Potential is a state as usual; what differs is that the gap is *defined*
@@ -252,7 +357,8 @@ def build_model(
         descriptions.extend(
             _inflation_family(
                 obs, model, latents, config,
-                potential_constant=potential_constant, keep=keep,
+                potential_constant=potential_constant, keep=keep, anchor=anchor,
+                obs_index=obs_index,
             ),
         )
 
@@ -265,9 +371,9 @@ def build_model(
 
     # --- State equations ---
     if config.spec in ("core", "target"):
-        desc = potential_output_equation(
-            obs, model, latents,
-            constant=potential_constant,
+        desc = _potential_block(
+            obs, model, latents, config,
+            potential_constant=potential_constant, obs_index=obs_index,
         )
         descriptions.append(f"Potential:    {desc}")
     else:
@@ -294,7 +400,7 @@ def build_model(
         desc = target_consistency_equation(
             obs, model, latents,
             constant={
-                "anchor": config.anchor,
+                "anchor": anchor,
                 "gap_sd_on_target": config.gap_sd_on_target,
                 "gap_sd_per_pp": config.gap_sd_per_pp,
                 "pi_lag_max": config.pi_lag_max,
@@ -302,7 +408,7 @@ def build_model(
         )
         descriptions.append(f"Target:       {desc}")
     else:
-        desc = phillips_curve_equation(obs, model, latents, constant={"anchor": config.anchor})
+        desc = phillips_curve_equation(obs, model, latents, constant={"anchor": anchor})
         descriptions.append(f"Phillips:     {desc}")
 
     if verbose:
@@ -380,6 +486,7 @@ def run_estimate(
         start=config.start, end=config.end, verbose=verbose,
         smooth_pop=config.smooth_pop, spec=config.spec,
         pi_basis=config.pi_basis, supply_control=config.supply_control,
+        expectations=config.anchor_phase != "none",
     )
 
     if config.zero_deviation is not None:

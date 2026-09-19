@@ -15,8 +15,9 @@ from pathlib import Path
 import mgplot as mg
 import pandas as pd
 
+from src.data.aofm_loader import get_aofm_5y5y_forward
 from src.data.cash_rate import get_cash_rate_qrtly
-from src.models.common.inflation_scale import scale_label
+from src.models.common.inflation_scale import scale_label, to_real
 from src.models.rstar_summary.sources import DEFAULT_SCALE, SOURCES
 
 CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "rstar-summary"
@@ -27,6 +28,11 @@ _COLOURS = ("darkblue", "crimson", "darkgreen", "darkorange", "purple", "teal")
 # Since `rstar_tvpvar` was removed the chart carries two models, and those two
 # share an observable. At this count the spread chart says so in its header.
 TWO_MODELS = 2
+
+# A quarter counts as complete if it has at least this share of the median
+# number of trading days. The AOFM series runs to the current month, so the
+# last quarter is otherwise an average over a partial window.
+_COMPLETE_QUARTER = 0.8
 
 
 # This is not a model and collects almost nothing of its own: the r* paths come
@@ -58,6 +64,134 @@ def _footer(*, inflation: bool = False, supply: bool = False) -> str:
     if inflation:
         data.append("ABS 6401.0")
     return f"Models: {', '.join(models)}; {'; '.join(data)}"
+
+
+def _forward_quarterly() -> pd.Series:
+    """Return the AOFM 5y5y risk-neutral forward as quarterly means, complete quarters only.
+
+    Daily, averaged to quarters the same way `rstar_bonds` does, so the series
+    on this chart is the one the models read rather than a second version of
+    it. The BC method for the same reason: it is what both models default to.
+
+    THE PART-QUARTER IS DROPPED. The AOFM series runs to the current month, so
+    the final quarter is an average over however many trading days have
+    happened, 42 against a typical 63 at the time of writing. Plotting it puts
+    a point on the chart that will move for reasons that have nothing to do
+    with the market changing its mind, beside a cash rate that is complete.
+    """
+    daily = get_aofm_5y5y_forward("bc").data.astype(float).dropna()
+    grouped = daily.groupby(pd.PeriodIndex(daily.index, freq="Q"))
+    counts, means = grouped.count(), grouped.mean()
+    if len(counts) and counts.iloc[-1] < _COMPLETE_QUARTER * counts.median():
+        means = means.iloc[:-1]
+    return means
+
+
+def plot_forward_against_cash(start: str | None = "1993Q1") -> None:
+    """Chart the market's 5y5y forward against the cash rate it is a forecast of.
+
+    NO MODEL OUTPUT ON THIS CHART. It is the raw pair the r* models are built
+    on: a market price that is close to the expected average policy rate five
+    to ten years out, and the policy rate itself. The point is to let a reader
+    see how much of each model's r* is already in the observable before any
+    estimation happens, given both models read this series.
+
+    It is not a neutral rate. `get_aofm_5y5y_forward` says why: the forward
+    still carries whatever the market believes about the cycle over years five
+    to ten, plus whatever premium AOFM's model did not strip.
+    """
+    forward = _forward_quarterly().rename("AOFM 5y5y risk-neutral forward")
+    index = forward.index
+    frame = pd.DataFrame({
+        forward.name: forward,
+        "Cash rate": _cash_rate(index),
+    })
+    if start:
+        frame = frame.loc[pd.Period(start, freq="Q"):]
+
+    spread = (frame.iloc[:, 0] - frame.iloc[:, 1]).dropna()
+    mg.line_plot_finalise(
+        frame,
+        title="The 5y5y forward and the cash rate",
+        ylabel="Per cent, nominal",
+        color=["darkblue", "darkgrey"],
+        style=["-", "--"],
+        width=[2.0, 1.5],
+        annotate=True,
+        rounding=2,
+        legend={"loc": "best", "fontsize": "small"},
+        lheader=(
+            f"Forward less cash rate: latest {spread.iloc[-1]:+.2f}, "
+            f"mean {spread.mean():+.2f}pp"
+        ),
+        lfooter="Australia. Quarterly averages of daily data. Part-quarter dropped. ",
+        rfooter="AOFM risk-neutral curve (BC); RBA F1",
+        show=False,
+    )
+
+
+def plot_real_cash_rate(
+    frame: pd.DataFrame,
+    start: str | None = "1993Q1",
+    scale: str = DEFAULT_SCALE,
+) -> None:
+    """Chart the real cash rate on two deflators, against the models' real r*.
+
+    The nominal chart can be read as tightening while the real stance loosens,
+    which is what happened across 2025: the cash rate returned to 4.35, the
+    same level as 2024Q4, while trimmed mean inflation rose from 2.7 to 3.6,
+    so the realised real rate fell from 1.15 to 0.75.
+
+    TWO DEFLATORS BECAUSE THEY ANSWER DIFFERENT QUESTIONS, and over a period
+    when inflation moves they part company. Long-run expectations is the
+    package's own convention, the one every r* here is converted with, so the
+    gap between that line and a model's real r* IS that model's stance.
+    Realised trimmed mean is what a borrower actually paid, and is the series
+    that erodes when inflation rises.
+
+    The models are plotted in real terms by the inverse of the conversion
+    `sources.gather` applied, so nothing is deflated twice.
+    """
+    from src.data.inflation import get_trimmed_mean_annual  # noqa: PLC0415 — one chart
+
+    data = frame.loc[frame.index >= pd.Period(start, freq="Q")] if start else frame
+    index = data.index
+    if not isinstance(index, pd.PeriodIndex):
+        index = pd.PeriodIndex(index, freq="Q")
+
+    cash = _cash_rate(index)
+    inflation = get_trimmed_mean_annual().data.astype(float)
+    if isinstance(inflation.index, pd.DatetimeIndex):
+        inflation.index = inflation.index.to_period("Q")
+
+    out = pd.DataFrame({
+        f"Cash rate less {scale_label(scale)}": to_real(cash, scale=scale),
+        "Cash rate less realised trimmed mean": cash - inflation.reindex(index),
+    })
+    for column in data.columns:
+        out[f"{column}, real"] = to_real(data[column], scale=scale)
+
+    models = len(data.columns)
+    mg.line_plot_finalise(
+        out,
+        title="The real cash rate, and real r*",
+        ylabel="Per cent, real",
+        color=["black", "darkgrey", *_COLOURS[:models]],
+        style=["-", "--", *["-"] * models],
+        width=[1.8, 1.5, *[2.0] * models],
+        annotate=True,
+        rounding=2,
+        y0=True,
+        legend={"loc": "best", "fontsize": "x-small"},
+        lheader=(
+            "A rising nominal rate can be a falling real one: "
+            "the two deflators diverge whenever inflation moves"
+        ),
+        lfooter="Australia. Real r* is each model's own, deflated back. ",
+        rfooter=_footer(inflation=True),
+        show=False,
+    )
+
 
 
 def _cash_rate(index: pd.PeriodIndex) -> pd.Series:
@@ -203,6 +337,8 @@ def run_analyse(
     plot_spread(frame, start=start)
     plot_stance(frame, start=start)
     plot_stance_against_inflation(frame, start=start)
+    plot_forward_against_cash(start=start)
+    plot_real_cash_rate(frame, start=start, scale=scale)
     print(f"\nCharts saved to: {directory}")
 
 

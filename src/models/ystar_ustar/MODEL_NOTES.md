@@ -1,14 +1,17 @@
 # Joint y\* / u\*, one likelihood, and a gap that is not entirely inflation
 
 `ystar` and `ustar` estimated together, plus one addition. Three states, three observation
-equations, nine estimated parameters and two initial conditions, five imposed.
+equations, nine estimated parameters and two initial conditions, plus the three spline
+coefficients that replace u\*'s state law. Four imposed: `sigma_c`, `sigma_ystar`, `sigma_g`
+and `sigma_okun`.
 
 ```
 STATES
   g_t   = g_{t-1} + e_g                        sigma_g imposed (0.015)
   y*_t  = y*_{t-1} + g_{t-1} + e_y             sigma_ystar imposed (0.078)
-  u*_t  = u*_{t-1} + phi·(u*_eq - u*_{t-1})    sigma_ustar imposed (0.020)
-          + e_u                                phi, u*_eq estimated
+  u*_t  = sum_j c_j B_j(t)                     natural cubic spline, one knot
+                                               at 2013Q1; 3 coefficients, and
+                                               NO innovation variance at all
 
 GAP
   gap_t = c·(4·pi_q,t - 2.5) + v_t             v ~ N(0, sigma_v)
@@ -21,8 +24,20 @@ OBSERVED
               + rho·d4pm_t + xi·GSCPI_t²·sign(GSCPI_t) + e_p
 ```
 
+**u\* IS A SPLINE, NOT A DECAY.** The structure it replaced,
+`u*_t = u*_{t-1} + phi·(u*_eq - u*_{t-1}) + e_u`, can only draw a monotone
+approach: the sign of `phi·(eq - u*)` is fixed by which side of the
+equilibrium the state opened on, so from an opening level of 10.77 it could
+only ever report a fall. On the previous vintage 5.96 of its 6.03 point
+decline was the zero-innovation curve, the 134 innovations moved it by at most
+0.16 anywhere, and by 0.002 over the last two years, u\* having asymptoted
+onto `ustar_eq`. Its endpoint was a fitted scalar rather than a reading of
+recent quarters. The spline can turn, and does: +0.38 over 2015-2026 against
+-0.38. It also removes `sigma_ustar`, one of the imposed variances. See "The
+structure imposed on u\*" for the settings and what each one showed.
+
 Every prior is taken unchanged from the two parent models, and so are `sigma_ystar`, `sigma_g`
-and `sigma_ustar`, so a difference in the posterior is attributable to joint estimation and to
+and the spline coefficient prior, so a difference in the posterior is attributable to joint estimation and to
 `v` rather than to re-tuning. The one departure is `sigma_okun`, which `ustar` estimates and
 this model imposes: see "Why `sigma_okun` is imposed" for the sweep, which shows the answer does
 depend on it beyond 0.4, and for why the data do not go there.
@@ -113,16 +128,17 @@ as well, in that `sigma_okun` sampled worse on quarterly (ESS 77 against 257, wi
 posterior mass below 0.10 against the prior's 8%, where the annual run had 6%). That is moot
 now that `sigma_okun` is imposed, and it was part of why imposing it was worth doing.
 
-**Three state variances are imposed, but only one of them still sets anything.** `sigma_ystar`,
-`sigma_g` and `sigma_ustar` are all imposed, for the reason all three parents impose them: a free
-state beside a free residual is the Stock-Watson pile-up pair, and `ustar` documented all three
-routes to estimating its own drift failing.
+**Two state variances are imposed, and neither sets anything.** `sigma_ystar` and `sigma_g`,
+for the reason all the parents impose them: a free state beside a free residual is the
+Stock-Watson pile-up pair, and `ustar` documented all three routes to estimating its own drift
+failing. `sigma_ustar` used to be a third and is gone, because the spline has no innovation
+variance to impose.
 
-Two have since been swept on this model and neither moves the headline. `sigma_ustar` shifts
-`sigma_v` by 0.057 across a doubling (see the u\* 2x2); `sigma_ystar` by 0.031 across a grid from
-zero to three times the default (see its sweep). `sigma_g` has not been swept here. The imposed
-variance that does matter is not a state variance at all: it is `sigma_okun`, which has no
-external anchor and beyond 0.40 collapses the model into `ystar`.
+`sigma_ystar` shifts `sigma_v` by 0.031 across a grid from zero to three times the default (see
+its sweep). `sigma_g` has not been swept here. The imposed variance that does matter is not a
+state variance at all: it is `sigma_okun`, which has no external anchor and beyond 0.40
+collapses the model into `ystar`. That leaves **one** imposed number carrying the answer, where
+there used to be two.
 
 **No IS curve, no r\*.** The repo's central negative finding is that the rate-to-activity link
 is not identified in Australian data: `rstar_hlw` measures `a_r` ≈ −0.04 against `σ_IS` ≈ 0.70,
@@ -706,6 +722,127 @@ done
 ./run-ystar-ustar.sh --no-ustar-converge --sigma-ustar 0.020 --prefix yus_drift020 --no-analyse
 ./run-ystar-ustar.sh --no-ustar-converge --sigma-ustar 0.040 --prefix yus_drift040 --no-analyse
 ```
+
+## The structure imposed on u\*
+
+u\* is in no dataset, so something must say what shapes it may take. That is
+`--ustar-structure`, and it is the choice the fork was built to test.
+
+| | u\* 1993Q1 | now | post-2015 | band | gap 1993Q1 | now | ESS |
+|---|---|---|---|---|---|---|---|
+| `decay` | 10.77 | 4.74 | -0.38 | 0.25 | -0.10 | +0.30 | 4257 |
+| **`spline`, 1 knot 2013Q1** | **8.17** | **5.06** | **+0.38** | 0.37 | -1.80 | **+0.49** | 1333 |
+| `spline`, 2 knots | 10.20 | 4.56 | -0.66 | 0.23 | -0.42 | +0.16 | 3500 |
+| `spline`, 3 knots | 9.95 | 4.31 | -1.15 | 0.24 | -0.56 | +0.01 | 4393 |
+
+`walk` also exists, a driftless random walk at the imposed `sigma_ustar`, and
+`--ustar-drift` applies only to it.
+
+**One knot, at 2013Q1.** Three coefficients after the natural boundary
+reduction: enough for u\* to decline and then level off or turn, not enough to
+trace a cycle. It is the only setting whose post-2015 slope is positive, which
+is the property the spline was adopted for: the decay structure cannot report
+a rise at all, so its -0.38 is the shape rather than a reading.
+
+**More knots do not help.** Two and three knots both sample better but return
+the decay structure's answer: they reopen a high 1993 level and a falling
+endpoint, and the third knot takes u\* to 4.31 with a post-2015 slope of
+-1.15. The extra freedom is spent on the early sample, where nothing can
+arbitrate it.
+
+**The sampling cost is real.** One knot has the weakest ESS of the four at
+1333, against 4257 for decay. R-hat is 1.00 and divergences zero in every
+case, so it passes, but it is the least comfortable of them.
+
+---
+
+## The gap definition, and what the identity version showed
+
+`--gap-spec identity` replaces `gap = c·(pi - 2.5) + v` with `gap = y - y*`,
+deleting `c`, `v`, `sigma_v` and `sigma_e` and estimating `sigma_okun` instead
+of imposing it. It is not the default, and the comparison is close enough to
+be worth recording rather than dismissing.
+
+| | beta | sigma_okun | u\* now | gap 1993Q1 | min | now | sd | resid 93-99 | ESS |
+|---|---|---|---|---|---|---|---|---|---|
+| **defined (default)** | 1.434 | 0.200 imposed | 5.06 | -1.80 | -1.88 | +0.49 | 0.67 | **-0.80** | 1333 |
+| identity | 0.468 | 0.346 estimated | 4.67 | -6.44 | -8.73 | +1.28 | 2.32 | -0.24 | 6145 |
+
+**What the identity gap wins.** Far better sampling, no imposed `sigma_okun`,
+and a much smaller bias against what the Phillips curve alone implies for u\*
+over 1993-99, -0.24 against -0.80.
+
+**What it loses.** A 1992 output gap of -8.7 and a current gap of +1.28 with
+inflation at 3.6. Its gap has an sd of 2.32, which is not a recognisable
+business cycle, and u\* no longer turns up after 2015.
+
+**The known trap.** Under the identity gap the Okun equation sees only
+`beta·gap`, so `(beta, y*)` and `(-beta, y* reflected through y)` fit it
+identically and nothing else breaks the tie: the Phillips curve runs on the
+unemployment gap and never touches the output gap. The mirror is reachable
+whenever the trend prior is loose enough. At `ratio_g` 0.05 one chain in four
+finds it, R-hat goes to 1.53 and ESS to 7. `--one-sided-beta` bounds the slope
+at zero and closes it, and that bound is an assertion that Okun's law has the
+expected sign rather than a finding.
+
+**The circularity charge is weaker here than in `ustar`.** There the gap
+arrived as data and was exactly `0.1882·(pi - 2.5)`, so the Okun equation was
+a second copy of the Phillips curve. Here `sigma_v` is 0.603 against `c` of
+0.334, so most of the gap is `v` rather than inflation.
+
+**Quote the -0.80 wherever the default's 1990s numbers are used.** It is the
+largest residual bias of any specification tried, and it is the price of the
+defined gap.
+
+---
+
+## Explored and did not work: an error-correction Okun
+
+`--okun-form ec` replaces the level relation with
+
+```
+  du_t = -kappa·(u - u*)_{t-1} - theta·gap_{t-1} - gamma·d(gap)_t + e_o
+```
+
+and reports the long-run slope as `beta = theta/kappa`. It is Okun's original
+statement, changes against growth relative to potential, with an
+error-correction term so the level of u\* is still identified. **It does not
+identify on this data.**
+
+Two attempts, and the second failure is the informative one.
+
+The first corrected toward `u = u*`, dropping the gap from the long-run
+relation. Under the identity gap that leaves `y*` appearing only inside
+`d(gap)`, a difference, so the LEVEL of `y*` has nothing pinning it: the
+current output gap came back at **+26.10** with an sd of 8.05.
+
+The second corrected toward the right relation, `u = u* - beta·gap`, which
+fixed the economics and not the sampling: R-hat 1.35, ESS 9, and 3296
+divergences in 10,000. Estimating the product `theta = kappa·beta` directly,
+which removes the ridge where `kappa` up and `beta` down leave the likelihood
+unchanged, improved it to 1516 divergences and no further.
+
+**The cause is in the data, not the parameterisation.** The three regressors
+the form introduces are collinear because Okun's law is what makes them so:
+
+| | u - u\* (lag) | gap (lag) | d(gap) |
+|---|---|---|---|
+| u - u\* (lag) | 1.000 | **-0.936** | 0.176 |
+| gap (lag) | -0.936 | 1.000 | -0.261 |
+| d(gap) | 0.176 | -0.261 | 1.000 |
+
+The level form *asserts* `u - u* = -beta·gap` and estimates one coefficient.
+The error-correction form puts both series in with separate coefficients and
+asks the data to say how much of unemployment's movement is the level gap and
+how much is its own disequilibrium, when the two move together almost one for
+one. There is a long flat ridge in `(kappa, theta)` and the chains sit at
+different points on it.
+
+**So the level form is not a fallback.** It is the same long-run relation with
+the adjustment speed set to one instead of estimated, which is the only
+version this sample can support.
+
+---
 
 ## Explored and did not work: a free cycle instead of the inflation anchor
 

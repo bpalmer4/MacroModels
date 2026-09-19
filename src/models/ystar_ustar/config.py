@@ -45,9 +45,26 @@ EXCLUDE_SCOPES = ("all", "gdp")
 GAP_PI_BASES = ("annual", "quarterly")
 
 # How the output gap is specified. See `ModelConfig.gap_spec`.
-#   "defined" — gap = c·(pi - anchor) + v, ystar's identity plus a free part
-#   "cycle"   — gap is a free AR(1) latent, and inflation observes it
-GAP_SPECS = ("defined", "cycle")
+#   "defined"  — gap = c·(pi - anchor) + v, ystar's identity plus a free part
+#   "cycle"    — gap is a free AR(1) latent, and inflation observes it
+#   "identity" — gap = y - y*, actual less potential, with no GDP residual
+GAP_SPECS = ("defined", "cycle", "identity")
+
+# The law u* follows. See `ModelConfig.ustar_structure`.
+#   "walk"     — driftless Gaussian random walk at the imposed sigma_ustar
+#   "decay" — the walk pulled toward one estimated equilibrium
+#   "spline"   — a natural cubic spline, deterministic given its coefficients
+USTAR_STRUCTURES = ("walk", "decay", "spline")
+
+# Which form the Okun relation takes. See `_okun_equation`.
+#   "gap" — u = u* - beta x gap + e_o, a level relation
+#   "ec"  — du = -kappa x (u - u*)_{t-1} - beta x d(gap)_t + e_o
+#
+# "ec" is Okun's original statement, changes against growth relative to
+# potential, with an error-correction term added so the level of u* is still
+# identified. The pure difference form is not offered: it carries nothing
+# about where u* sits, which would leave the Phillips curve to place it alone.
+OKUN_FORMS = ("gap", "ec")
 
 # How the inflation anchor behaves across the sample. See `ModelConfig.anchor_phase`.
 #   "none"  — the anchor is `anchor` in every quarter, as it has always been
@@ -98,6 +115,31 @@ class ModelConfig:
     # What motivated the switch empirically: under "defined", `v` comes back
     # with a lag-1 autocorrelation of 0.913 despite an iid prior. The model is
     # already estimating a persistent cycle; "cycle" says so directly.
+    #
+    # "identity" reads the gap off output rather than off inflation:
+    #
+    #     gap_t = y_t - y*_t
+    #
+    # so there is no `c`, no `v` and no GDP residual. The GDP equation stops
+    # being a likelihood and becomes a definition, which is the whole content
+    # of the spec: `y - y*` is the gap, and Okun reads it.
+    #
+    # It is not "cycle" with the AR(1) removed, and the reason "cycle" fails
+    # does not apply to it. There the gap is a second free state sitting beside
+    # `y*`, the two compete for the level of GDP, and the gap wins by absorbing
+    # the unemployment cycle outright. Here the gap is not a state at all: it
+    # is data minus one latent, so the GDP block holds a single trend and there
+    # is nothing for `y*` to compete with.
+    #
+    # The price is that GDP's quarter-to-quarter noise has nowhere to go but
+    # the gap, and from there into the Okun residual, so `sigma_okun` has to be
+    # estimated rather than imposed. Two consequences follow. `beta_okun` is
+    # attenuated, because its regressor now carries that noise: on the previous
+    # vintage `sd(y - y*)` was 0.611 against 0.426 for the inflation-defined
+    # gap, the 0.413 difference being what was booked as the GDP residual. And
+    # `y*` is identified by the Okun equation plus `sigma_ystar`, the GDP
+    # equation no longer contributing, which makes that imposed variance
+    # load-bearing in a way it is not under the other two specs.
     gap_spec: str = "defined"
 
     # --- Sample ---
@@ -307,23 +349,44 @@ class ModelConfig:
     # simply track unemployment.
     ustar_drift: bool = False
 
-    # u* converges to an estimated equilibrium rather than wandering:
+    # Which law u* follows. "spline" ignores `ustar_drift` and `sigma_ustar`,
+    # being neither a walk nor an approach to anything.
     #
-    #     u*_t = u*_{t-1} + phi·(u*_eq - u*_{t-1}) + e_u
+    # "walk"     driftless Gaussian random walk at the imposed `sigma_ustar`.
+    # "decay" the walk pulled toward one estimated equilibrium:
     #
-    # Backported from `ustar`, where the driftless walk it replaces turned out to
-    # be about 8 standard deviations from its own fitted path over the sample and
-    # 17 over 1993-1999, to put u* below unemployment in all 16 quarters of
-    # 1994-1997 (a weaker point than it reads: `ustar`'s notes record that the
-    # annual trimmed mean averaged 2.41% there and sat below expectations in
-    # every quarter), and to leave a +2.5pp gap
-    # one year after the deepest recession since the 1930s. There it cut
-    # `sigma_okun` from 0.685 to 0.426 (0.486 on the current vintage) and improved
-    # sampling. Its notes carry the
-    # evidence, including the external wage check that does *not* favour it.
+    #                u*_t = u*_{t-1} + phi·(u*_eq - u*_{t-1}) + e_u
     #
-    # Mutually exclusive with `ustar_drift`.
-    ustar_converge: bool = True
+    #            It beats the plain walk, which sits about 8 standard
+    #            deviations from its own fitted path over the sample and 17
+    #            over 1993-1999, puts u* below unemployment in all 16 quarters
+    #            of 1994-1997, and leaves a +2.5pp gap one year after the
+    #            deepest recession since the 1930s. It cut `sigma_okun` from
+    #            0.685 to 0.486 and improved sampling. An external wage check
+    #            does *not* favour it.
+    # "spline"   a natural cubic spline in `spline_knots`, deterministic given
+    #            its coefficients.
+    #
+    # "spline" by default, on the endpoint. Under "decay" the sign of
+    # phi x (eq - u*) is fixed by which side of the equilibrium the state
+    # opened on, so from an opening level of 10.77 it can only ever report a
+    # fall. On the previous vintage that law took u* from 10.769 to 4.741, of
+    # which 5.961 of the 6.027 was the zero-innovation curve: the 134
+    # innovations moved it by at most 0.162 anywhere, and by 0.002 over the
+    # last two years, u* having asymptoted onto `ustar_eq`. The endpoint was
+    # a fitted scalar, not a reading of recent quarters. A spline can turn.
+    ustar_structure: str = "spline"
+
+    # Interior knot dates. One knot gives three coefficients after the natural
+    # boundary reduction, which is stiff: enough to decline and then level off,
+    # not enough to invent a cycle.
+    spline_knots: tuple[str, ...] = ("2013Q1",)
+
+    # Prior on the spline coefficients, as (mu, sd, lower, upper). The basis is
+    # a partition of unity, so these are in unemployment-rate units and a
+    # coefficient is roughly the level u* passes through near its knot. Bounds
+    # span the sample's own range of unemployment, 3.5 to 10.9.
+    spline_coef_prior: tuple[float, float, float, float] = (6.0, 3.0, 2.0, 14.0)
 
     # --- The pandemic window ---
     # `ystar` drops 2020Q2-2021Q3 from its likelihood on the ground that
@@ -355,8 +418,44 @@ class ModelConfig:
     # free v that is then unidentified, so it is a check that the covariance
     # really is what identifies sigma_v: this run should return the prior.
     include_okun: bool = True
+    okun_form: str = "gap"
 
     output_dir: Path = field(default_factory=lambda: DEFAULT_OUTPUT_DIR)
+
+    def _validate_identity_gap(self) -> None:
+        """Reject the settings the identity gap leaves nothing for.
+
+        Each of these would otherwise be accepted and silently ignored, which
+        is how a run ends up described by a setting it did not use.
+        """
+        if self.gap_spec != "identity":
+            return
+        if not self.include_okun:
+            raise ValueError(
+                "the identity gap needs the Okun equation: with the GDP equation reduced to a "
+                "definition it is the only place the gap is observed, and without it nothing "
+                "identifies y*",
+            )
+        if self.sigma_v is not None:
+            raise ValueError("the identity gap has no free component, so sigma_v means nothing")
+        if self.sigma_okun is not None:
+            raise ValueError(
+                "the identity gap puts GDP's own noise into the Okun residual, so sigma_okun "
+                "has to be estimated; drop --sigma-okun",
+            )
+
+    def _validate_ustar_structure(self) -> None:
+        """Check the u* state law and the settings that belong to only one of them."""
+        if self.ustar_structure not in USTAR_STRUCTURES:
+            raise ValueError(f"ustar_structure must be one of {USTAR_STRUCTURES}, got {self.ustar_structure!r}")
+        if self.ustar_structure == "spline" and not self.spline_knots:
+            raise ValueError("the spline state law needs at least one interior knot")
+        # A drift and an equilibrium are two stories about the same fact, and
+        # the spline tells neither.
+        if self.ustar_drift and self.ustar_structure != "walk":
+            raise ValueError(
+                f"ustar_drift is a property of the plain walk; ustar_structure is {self.ustar_structure!r}",
+            )
 
     def _validate_anchor(self) -> None:
         """Check the anchor switches. Split out to keep `__post_init__` simple."""
@@ -395,11 +494,10 @@ class ModelConfig:
                 "`ystar` with an unidentified extra variance — use ystar instead",
             )
         self._validate_anchor()
-        if self.ustar_drift and self.ustar_converge:
-            raise ValueError(
-                "ustar_drift and ustar_converge are two stories about the same fact; "
-                "pick one",
-            )
+        self._validate_ustar_structure()
+        self._validate_identity_gap()
+        if self.okun_form not in OKUN_FORMS:
+            raise ValueError(f"okun_form must be one of {OKUN_FORMS}, got {self.okun_form!r}")
         if self.sigma_okun is not None and self.sigma_okun <= 0:
             raise ValueError(f"sigma_okun must be positive, got {self.sigma_okun}")
         if self.sigma_v is not None and self.sigma_v < 0:
@@ -423,7 +521,15 @@ class ModelConfig:
             "sigma_ustar": self.sigma_ustar,
             "anchor": self.anchor,
             "anchor_phase": self.anchor_phase,
+            "ustar_structure": self.ustar_structure,
+            "gap_spec": self.gap_spec,
+            "okun_form": self.okun_form,
         }
+        if self.ustar_structure == "spline":
+            # Under the spline there is no innovation variance to report, and
+            # leaving the inherited value in place would misdescribe the run.
+            recorded["sigma_ustar"] = float("nan")
+            recorded["spline_knots"] = ",".join(self.spline_knots)
         if self.sigma_v is not None:
             recorded["sigma_v"] = self.sigma_v
         return recorded

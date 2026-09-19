@@ -56,7 +56,10 @@ uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EV
                                    #   directory, beside the charts it describes. Any other run's
                                    #   file there is cleared, so one directory = one run's charts
                                    #   plus its diagnostics.
-./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free; needs expectations)
+./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free, u* a spline;
+                                   #   needs expectations)
+./run-ystar-summary.sh             # five specifications of the y* model on one chart
+./run-ystar-ustar-summary.sh       # the u* structure crossed with the gap definition, eight
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
 uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
 uv run python -m src.models.dsge.nk_twostar_model    # Run NK two-star linear probe
@@ -113,13 +116,38 @@ src/
 │   │                              #   not frozen and the GDP and Okun equations negotiate over
 │   │                              #   it. Estimates sigma_v, which neither parent can identify.
 │   │                              #   Ranks above both because it resolves their inconsistency:
-│   │                              #   the gap is ~2x ystar's (sd 0.421 vs 0.188) and ustar's
-│   │                              #   beta_okun falls 2.14 -> 1.27 once fed the whole gap.
-│   │                              #   CONDITIONAL on sigma_okun (imposed 0.20, the one imposed
-│   │                              #   variance in the package with no external anchor): sigma_v
-│   │                              #   is flat over 0.10-0.20, and the model degenerates into
-│   │                              #   ystar by 0.70, but the free posterior puts no mass above
-│   │                              #   0.40. Feeds rstar's Taylor rule (see MODEL_NOTES.md).
+│   │                              #   the gap is ~2x ystar's and ustar's beta_okun falls once
+│   │                              #   fed the whole gap.
+│   │                              #   u* IS A SPLINE, one knot at 2013Q1, not the decay it used
+│   │                              #   to be. The decay could only draw a monotone approach, so
+│   │                              #   from 10.77 it could only ever report a fall and its
+│   │                              #   endpoint was a fitted scalar; 5.96 of its 6.03 point
+│   │                              #   decline was the zero-innovation curve. The spline turns:
+│   │                              #   +0.38 over 2015-2026 against -0.38, and sigma_ustar is
+│   │                              #   gone. Two and three knots return the decay's answer.
+│   │                              #   CONDITIONAL on sigma_okun (imposed 0.20, now the ONLY
+│   │                              #   imposed variance carrying the answer): sigma_v is flat
+│   │                              #   over 0.10-0.20 and the model degenerates into ystar by
+│   │                              #   0.70, but the free posterior puts no mass above 0.40.
+│   │                              #   --gap-spec identity makes the gap y - y*, which samples
+│   │                              #   far better (ESS 6145 vs 1333) and halves the 1993-99
+│   │                              #   residual bias, but gives a 1992 gap of -8.7; needs
+│   │                              #   --one-sided-beta or a mirror mode opens.
+│   │                              #   --okun-form ec DOES NOT IDENTIFY: u - u* and the gap are
+│   │                              #   94% collinear, so 1516 divergences even reparameterised.
+│   │                              #   Feeds rstar's Taylor rule (see MODEL_NOTES.md).
+│   ├── ystar_summary/            # NOT A MODEL. The five ystar specifications on one chart.
+│   │                              #   ITS MAIN FINDING IS AGAINST ITS OWN PACKAGE: three of the
+│   │                              #   five reproduce an HP(1600) filter of GDP at corr 1.0000,
+│   │                              #   and inflation contributes 5-21% of the deviation from
+│   │                              #   potential. Runs from 1984Q1 with a phased anchor, and the
+│   │                              #   three walk-based runs behind it carry a c collapse, so
+│   │                              #   their numbers should not be quoted (see MODEL_NOTES.md).
+│   ├── ystar_ustar_summary/      # NOT A MODEL. Eight settings of the joint model: the u*
+│   │                              #   structure (decay, 1/2/3 knots) crossed with the gap
+│   │                              #   definition. Scores leave-one-out on the two equations all
+│   │                              #   eight observe, since the identity gap's GDP equation
+│   │                              #   carries no likelihood (see MODEL_NOTES.md).
 │   ├── ystar/                     # y* potential output: potential is a slow-moving random walk,
 │   │                              #   the gap is DEFINED as c x (pi - 2.5). No Phillips curve, no
 │   │                              #   IS curve, no policy rule (see MODEL_NOTES.md).

@@ -13,7 +13,7 @@ different data and different identifying assumptions, agreement between these
 lines is close to arithmetic; only their disagreement is informative.
 
 EVERY LINE CAN TURN UP AT THE ENDPOINT, which is why the decay settings are
-not here. Under `--state converge` the sign of `phi x (eq - u*)` is fixed by
+not here. Under `--ustar-structure decay` the sign of `phi x (eq - u*)` is fixed by
 which side of the equilibrium the state opened on: from 10.75 with `eq` at
 4.86, u* approaches from above, never crosses, and can only ever report a
 fall. Its -0.32 and -0.34 over 2015-2026 are properties of the shape rather
@@ -104,11 +104,11 @@ class UstarSource:
 # read separately.
 SOURCES: list[UstarSource] = [
     UstarSource("Spline 1 knot", "ustar_sum_k1",
-                ["--state", "spline", "--knots", "2013Q1"], "darkorange", "-"),
+                ["--ustar-structure", "spline", "--knots", "2013Q1"], "darkorange", "-"),
     UstarSource("Spline 2 knots", "ustar_sum_k2",
-                ["--state", "spline", "--knots", "1996Q1", "2013Q1"], "tab:blue", "-"),
+                ["--ustar-structure", "spline", "--knots", "1996Q1", "2013Q1"], "tab:blue", "-"),
     UstarSource("Spline 2 knots, with gap-form Okun", "ustar_sum_k2_okun",
-                ["--state", "spline", "--knots", "1996Q1", "2013Q1", "--okun"], "tab:blue", "--"),
+                ["--ustar-structure", "spline", "--knots", "1996Q1", "2013Q1", "--okun"], "tab:blue", "--"),
 ]
 
 

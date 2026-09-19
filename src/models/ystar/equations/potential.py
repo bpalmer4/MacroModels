@@ -41,7 +41,106 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 
+from src.models.common.spline import basis
 from src.models.ystar.base import set_model_coefficients
+
+
+def potential_spline_equation(
+    obs: dict[str, np.ndarray],
+    model: pm.Model,
+    latents: dict[str, Any],
+    constant: dict[str, Any] | None = None,
+) -> str:
+    """Potential output as a natural cubic spline in time.
+
+        y*_t = sum_j c_j B_j(t)
+
+    Deterministic given the coefficients, so `sigma_ystar` and `sigma_g` both
+    disappear rather than being chosen.
+
+    What it buys over the random walk is not smoothness of the innovations,
+    which was never the binding problem: the walk's realised innovations sit
+    well inside their imposed sd. It is that a random walk penalises the SIZE
+    of each step and says nothing about a run of same-signed steps, so a
+    sustained pull over a business cycle moves the trend even when every
+    individual step is tiny. Three coefficients over forty years cannot dip
+    and recover inside two, whatever the likelihood asks for, which is the
+    restriction a random walk cannot express.
+
+    The knot count bounds how fast trend growth may turn while leaving its
+    amplitude free, so the long decline in potential growth is still
+    estimable; a two-year recession is not.
+    """
+    if constant is None:
+        constant = {}
+    if "obs_index" not in constant:
+        raise ValueError("potential_spline_equation requires 'obs_index' to place its knots")
+
+    knots = tuple(constant.get("spline_knots", ()))
+    # Naturality forces zero curvature at both outer knots. On a NAIRU, which
+    # is roughly flat at the ends, that is harmless. On log potential output,
+    # which must keep rising, it drags the slope toward zero at BOTH ends: the
+    # level spline opened at 0.3 per cent growth in 1984 and closed at 0.8,
+    # with a narrow band around both. Off, and with no interior knots, the
+    # basis is a global cubic in the level, so growth is a quadratic in time
+    # that rises, peaks and slows, with no end condition to distort it.
+    natural = bool(constant.get("natural", True))
+    degree = int(constant.get("degree", 3))
+    design = basis(constant["obs_index"], knots, natural=natural, degree=degree)
+    mu0, sd0 = constant.get("coef_prior", (float(obs["log_gdp"].mean()), 20.0))
+
+    # Optional slow-moving adjustment: y*_t = poly_t + z_t, with z a driftless
+    # random walk starting at zero.
+    #
+    # The polynomial cannot express a departure that is neither cyclical nor
+    # part of the long arc, and a global form has no local freedom at all. The
+    # walk supplies it. Its INNOVATION SD IS THE WHOLE CONTENT OF THE IDEA: a
+    # random walk can mimic any polynomial, so the two are separated only by
+    # how far z is allowed to move per quarter. Loose, and z absorbs the cycle
+    # and the trend chases output again, which is the defect the polynomial was
+    # brought in to fix. Imposed, never estimated, for the Stock-Watson reason
+    # that applies to every variance in this model.
+    #
+    # z starts at zero because the polynomial already carries a constant, and
+    # a free level in both is not identified.
+    sigma_z = float(constant.get("sigma_z", 0.0))
+    n_periods = len(obs["log_gdp"])
+
+    with model:
+        coef = pm.Normal("ystar_coef", mu=mu0, sigma=sd0, shape=design.shape[1])
+        smooth = pt.dot(pt.as_tensor_variable(design), coef)
+        if sigma_z > 0:
+            # Non-centred: the data are only weakly informative about any one
+            # quarter's innovation, which is the case this parameterisation is
+            # for.
+            raw = pm.Normal("z_ystar", mu=0.0, sigma=1.0, shape=n_periods - 1)
+            adjustment = pm.Deterministic(
+                "ystar_adjustment",
+                pt.concatenate([[0.0], pt.cumsum(raw * sigma_z)]),
+            )
+            smooth = smooth + adjustment
+        potential_output = pm.Deterministic("potential_output", smooth)
+        # Reported so the growth charts and the summary read the same name
+        # they do under the walk. Quarterly, in log x 100, as `trend_growth`
+        # is there.
+        trend_growth = pm.Deterministic(
+            "trend_growth",
+            pt.concatenate([[potential_output[1] - potential_output[0]],
+                            potential_output[1:] - potential_output[:-1]]),
+        )
+
+    latents["trend_growth"] = trend_growth
+    latents["potential_output"] = potential_output
+    where = ", ".join(knots) if knots else "none"
+    ends = "natural ends" if natural else "free ends"
+    # Growth is one degree below the level, which is the number the shape of
+    # the growth chart is set by: a global cubic in y* is a parabola in g*.
+    growth = f"degree {degree - 1}" + ("" if not knots else ", piecewise")
+    walk = f" + z_t  (GRW, sigma_z = {sigma_z:g} imposed)" if sigma_z > 0 else ""
+    return (
+        f"y*_t = sum_j c_j B_j(t){walk}   (degree {degree}, {ends}, "
+        f"{design.shape[1]} coefficients, knots: {where}; g* is {growth} in time)"
+    )
 
 
 def potential_output_equation(

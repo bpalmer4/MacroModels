@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from src.models.common import prior_posterior
-from src.models.common.charts import excluded_span_style
+from src.models.common.charts import excluded_span_style, ustar_structure_note
 from src.models.common.diagnostics import save_diagnostics
 from src.models.ustar import analyse as ustar_analyse
 from src.models.ustar.results import UStarResults
@@ -41,6 +41,11 @@ _USTAR_GAMMA = -1.148
 _USTAR_LEVEL = 4.83
 
 _LFOOTER = "Australia. Joint y* and u* model. "
+
+
+def _lfooter(results: JointResults, extra: str = "") -> str:
+    """Return the left footer: the model, the structure it imposed, then `extra`."""
+    return _LFOOTER + ustar_structure_note(results.constants) + extra
 
 # The quarters where u* is not well identified: the sample opens one quarter
 # after a five-point collapse in inflation expectations, and neither the
@@ -115,11 +120,10 @@ def _print_gap_composition(results: JointResults) -> None:
         print(f"  covariance term            : {shares['covariance']:+6.1%}")
 
     gap = results.output_gap_posterior().median(axis=1)
-    defined = results.defined_gap_posterior().median(axis=1)
     print(f"\n  sd(gap)         {gap.std():.3f}   against ystar's defined gap at {_YSTAR_GAP_SD}")
     print(f"  autocorr(gap)   {gap.autocorr(1):+.3f}")
-    if results.gap_spec != "cycle":
-        print(f"  sd(defined)     {defined.std():.3f}")
+    if results.has_defined_gap:
+        print(f"  sd(defined)     {results.defined_gap_posterior().median(axis=1).std():.3f}")
     if results.has_free_gap:
         print(f"  sd(v)           {results.free_gap_posterior().median(axis=1).std():.3f}")
 
@@ -298,7 +302,7 @@ def _chart_gap_decomposition(results: JointResults) -> None:
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         lheader=f"Inflation-defined share of gap variance: {shares['defined']:.0%}",
-        lfooter=_LFOOTER + "Medians. Shaded: no likelihood. ",
+        lfooter=_lfooter(results, "Medians. Shaded: no likelihood. "),
         rfooter=_rfooter(results),
         axvspan=_excluded_span(results),
         show=False,
@@ -359,7 +363,7 @@ def _chart_phillips_curve(results: JointResults) -> None:
         ylabel="Quarterly inflation less anchor,\nexpectations and supply terms",
         legend={"loc": "best", "fontsize": "small"},
         lheader=f"gamma = {gamma_median:.2f}, 90% interval [{lo_g:.2f}, {hi_g:.2f}]",
-        lfooter=_LFOOTER + "Excluded quarters dropped. Axes not independent: see notes. ",
+        lfooter=_lfooter(results, "Excluded quarters dropped. Axes not independent: see notes. "),
         rfooter=_rfooter(results),
         show=False,
     )
@@ -410,7 +414,7 @@ def _chart_implied_ustar(results: JointResults) -> None:
             f"Implied series moves {ratio:.0f}x as much quarter to quarter; "
             f"correlation with u* {implied.corr(fitted):.2f}"
         ),
-        lfooter=_LFOOTER + "Phillips inverted at posterior medians. ",
+        lfooter=_lfooter(results, "Phillips inverted at posterior medians. "),
         rfooter=_rfooter(results),
         show=False,
     )
@@ -439,7 +443,7 @@ def _chart_residuals(results: JointResults) -> None:
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         lheader=f"corr(e_c, e_o) = {results.residual_correlation():+.2f}",
-        lfooter=_LFOOTER + "Okun residual sign-flipped. Shaded: no likelihood. ",
+        lfooter=_lfooter(results, "Okun residual sign-flipped. Shaded: no likelihood. "),
         rfooter=_rfooter(results),
         axvspan=_excluded_span(results),
         show=False,
@@ -501,7 +505,7 @@ def _chart_parameter_posteriors(results: JointResults) -> int:
     return prior_posterior.plot_all(
         results.posterior,
         lambda name: _prior_for(results, name),
-        footers={"lfooter": _LFOOTER, "rfooter": _rfooter(results)},
+        footers={"lfooter": _lfooter(results), "rfooter": _rfooter(results)},
         references=_SEPARATE_VALUE,
     )
 
@@ -532,11 +536,9 @@ def _parent_chart_settings(results: JointResults) -> Iterator[None]:
     ustar_excluded = ustar_analyse._EXCLUDED_WINDOW  # noqa: SLF001
     ustar_unidentified = ustar_analyse._UNIDENTIFIED_WINDOW  # noqa: SLF001
 
-    ystar_analyse._LFOOTER = _LFOOTER  # noqa: SLF001
-    ustar_analyse._LFOOTER = _LFOOTER  # noqa: SLF001
-    ustar_analyse._LFOOTER_BAND = (  # noqa: SLF001
-        _LFOOTER + "Band widened x2 for the imposed drift; see notes. "
-    )
+    ystar_analyse._LFOOTER = _lfooter(results)  # noqa: SLF001
+    ustar_analyse._LFOOTER = _lfooter(results)  # noqa: SLF001
+    ustar_analyse._LFOOTER_BAND = _lfooter(results, "Band x2; see notes. ")  # noqa: SLF001
     ystar_analyse._RFOOTER = _SOURCE  # noqa: SLF001
     ystar_analyse._RFOOTER_CORE = _SOURCE  # noqa: SLF001
     ystar_analyse._RFOOTER_PRODUCTION = _SOURCE  # noqa: SLF001
@@ -558,6 +560,15 @@ def _parent_chart_settings(results: JointResults) -> Iterator[None]:
     # expectations do not reach the target until 1998. See MODEL_NOTES.
     ustar_analyse._UNIDENTIFIED_WINDOW = UNIDENTIFIED_WINDOW  # noqa: SLF001
 
+    # The header names the two pieces GDP's deviation from potential splits
+    # into. Under the identity gap it does not split: the deviation is the gap,
+    # there is no residual, and nothing defines it but output.
+    gap_header = ystar_analyse._ACTUAL_GAP_HEADER  # noqa: SLF001
+    if not results.has_defined_gap:
+        ystar_analyse._ACTUAL_GAP_HEADER = (  # noqa: SLF001
+            "GDP's deviation from potential, which here is the output gap itself"
+        )
+
     try:
         yield
     finally:
@@ -572,6 +583,7 @@ def _parent_chart_settings(results: JointResults) -> Iterator[None]:
         ustar_analyse._RFOOTER = ustar_fallback  # noqa: SLF001
         ustar_analyse._EXCLUDED_WINDOW = ustar_excluded  # noqa: SLF001
         ustar_analyse._UNIDENTIFIED_WINDOW = ustar_unidentified  # noqa: SLF001
+        ystar_analyse._ACTUAL_GAP_HEADER = gap_header  # noqa: SLF001
 
 
 def _draw_charts(
@@ -585,8 +597,14 @@ def _draw_charts(
     ystar_analyse.plot_potential(ystar_view, plot_from="2015Q1", tag="recent")
     ystar_analyse.plot_actual_output_gap(ystar_view, tag="full")
     ystar_analyse.plot_actual_output_gap(ystar_view, plot_from="2015Q1", tag="recent")
-    ystar_analyse.plot_inflation_defined_gap(ystar_view)
-    ystar_analyse.plot_gap_composition(ystar_view)
+    if results.has_defined_gap:
+        # Both charts are about the inflation-defined gap and neither has a
+        # subject without one. The composition chart decomposes GDP's deviation
+        # from potential into that gap plus a residual, which is identically
+        # zero when the gap IS the deviation; the other would label the whole
+        # deviation "inflation-defined", asserting the reverse of the spec.
+        ystar_analyse.plot_inflation_defined_gap(ystar_view)
+        ystar_analyse.plot_gap_composition(ystar_view)
     ystar_analyse.plot_growth_vs_potential(ystar_view, tag="full")
     ystar_analyse.plot_growth_vs_potential(ystar_view, plot_from="2015Q1", tag="recent")
     ystar_analyse.plot_gdp_growth_against_potential(ystar_view, tag="full")
@@ -617,9 +635,9 @@ def _draw_charts(
         ustar_analyse.plot_inflation_decomposition(ustar_view)
 
     # --- What neither parent can draw ---
-    if results.gap_spec != "cycle":
-        # Nothing to decompose: the gap is one state, and the whole point of the
-        # cycle spec is that inflation does not own a share of it.
+    if results.has_defined_gap:
+        # Nothing to decompose otherwise: the gap is read off something other
+        # than inflation, which owns no share of it.
         _chart_gap_decomposition(results)
     _chart_residuals(results)
     _chart_implied_ustar(results)

@@ -10,6 +10,8 @@ from src.models.ystar_ustar.config import (
     EXCLUDE_SCOPES,
     GAP_PI_BASES,
     GAP_SPECS,
+    OKUN_FORMS,
+    USTAR_STRUCTURES,
     ModelConfig,
 )
 from src.models.ystar_ustar.estimate import run_estimate
@@ -103,8 +105,17 @@ def parse_args() -> argparse.Namespace:
         help="Imposed Okun residual sd (default 0.20). See ModelConfig.sigma_okun",
     )
     parser.add_argument(
-        "--no-ustar-converge", action="store_true",
-        help="Make u* a driftless random walk again. See ModelConfig.ustar_converge",
+        "--okun-form", default="gap", choices=list(OKUN_FORMS),
+        help="'ec' uses the error-correction form, changes against growth relative to "
+             "potential plus a level pull toward u*. See ModelConfig.okun_form",
+    )
+    parser.add_argument(
+        "--ustar-structure", dest="ustar_structure", default="spline", choices=USTAR_STRUCTURES,
+        help="The law u* follows (default spline). See ModelConfig.ustar_structure",
+    )
+    parser.add_argument(
+        "--knots", nargs="+", default=["2013Q1"], metavar="QUARTER",
+        help="Interior knot dates for the spline state (default 2013Q1)",
     )
     parser.add_argument(
         "--ustar-drift", action="store_true",
@@ -169,13 +180,22 @@ def main() -> None:
             two_sided_c=args.two_sided_c,
             two_sided_beta=not args.one_sided_beta,
             beta_okun_prior_sd=args.beta_prior_sd,
-            sigma_okun=None if args.free_sigma_okun else args.sigma_okun,
+            # The identity gap carries GDP's own noise, which leaves the Okun
+            # residual as the only place for it, so the sd is estimated there
+            # whether or not --free-sigma-okun was passed.
+            sigma_okun=(
+                None
+                if args.free_sigma_okun or args.gap_spec == "identity"
+                else args.sigma_okun
+            ),
             ustar_drift=args.ustar_drift,
-            ustar_converge=not args.no_ustar_converge and not args.ustar_drift,
+            ustar_structure=args.ustar_structure,
+            spline_knots=tuple(args.knots),
             exclude_window=None if args.no_exclude_window else tuple(args.exclude_window),
             exclude_scope=args.exclude_scope,
             include_phillips=not args.no_phillips,
             include_okun=not args.no_okun,
+            okun_form=args.okun_form,
         )
         sampler_config = SamplerConfig(
             draws=args.draws, tune=args.tune, chains=args.chains,

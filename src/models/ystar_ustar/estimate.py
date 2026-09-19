@@ -15,6 +15,7 @@ import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 
+from src.models.common.spline import basis
 from src.models.ystar.base import (
     SamplerConfig,
     get_fixed_constants,
@@ -80,11 +81,40 @@ def _observe(
     pm.Normal(name, mu=mu[rows], sigma=sigma, observed=observed[rows])
 
 
-def _ustar_state(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfig) -> Any:  # noqa: ANN401
-    """u* as a driftless Gaussian random walk with an imposed innovation sd.
+def _ustar_spline(model: pm.Model, config: ModelConfig, obs_index: pd.PeriodIndex) -> Any:  # noqa: ANN401
+    """u* as a natural cubic spline with knots at `config.spline_knots`.
 
-    Taken unchanged from `ustar`, including the wide initial prior centred on
-    the sample's own mean unemployment rate.
+        u*_t = sum_j c_j B_j(t)
+
+    Deterministic given the coefficients, so `sigma_ustar` disappears rather
+    than being chosen, and the path can change slope. The decay structure it
+    replaces draws a monotone approach to one equilibrium, so it reports a
+    decline that never quite stops and then flattens onto the equilibrium it
+    was heading for; both are properties of the functional form rather than
+    readings of the data.
+
+    The basis is a partition of unity, so the coefficients are in
+    unemployment-rate units and a coefficient is roughly the level u* passes
+    through near its knot.
+    """
+    design = basis(obs_index, tuple(config.spline_knots), natural=True)
+    mu0, sd0, lo, hi = config.spline_coef_prior
+    with model:
+        pm.Data("sigma_ustar", np.nan)  # no innovation variance under this law
+        coef = pm.TruncatedNormal("coef", mu=mu0, sigma=sd0, lower=lo, upper=hi, shape=design.shape[1])
+        return pm.Deterministic("ustar", pt.dot(pt.as_tensor_variable(design), coef))
+
+
+def _ustar_state(
+    obs: dict[str, np.ndarray],
+    model: pm.Model,
+    config: ModelConfig,
+    obs_index: pd.PeriodIndex,
+) -> Any:  # noqa: ANN401
+    """u* under the law `config.ustar_structure` names: a spline, or a walk.
+
+    The walk's initial level carries a wide prior centred on the sample's own
+    mean unemployment rate.
     """
     with model:
         if not hasattr(model, "_fixed_constants"):
@@ -100,6 +130,12 @@ def _ustar_state(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfi
             "two_sided_beta": config.two_sided_beta,
         })
 
+    # After the constants, so every law records them: the spline returns early
+    # and `results` reads `anchor` from here to draw the inflation decomposition.
+    if config.ustar_structure == "spline":
+        return _ustar_spline(model, config, obs_index)
+
+    with model:
         drift: Any = 0.0
         if config.ustar_drift:
             if "pi_exp" not in obs:
@@ -116,7 +152,7 @@ def _ustar_state(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfi
             drift = -mc["lambda_ustar"] * excess[:-1]
 
         n = len(obs["u"])
-        if config.ustar_converge:
+        if config.ustar_structure == "decay":
             mc = set_model_coefficients(
                 model,
                 {
@@ -228,10 +264,29 @@ def _anchor_label(anchor: np.ndarray) -> str:
     return f"{first:g}" if bool(np.all(anchor == first)) else "a_t"
 
 
+def _identity_gap(obs: dict[str, np.ndarray], model: pm.Model, latents: dict[str, Any]) -> tuple[Any, str]:
+    """Return the gap as actual less potential, `y - y*`, and a description.
+
+    Not a state. The gap is observed GDP minus one latent, so the GDP block
+    carries a single trend and the free-cycle spec's failure, where a second
+    state competes with `y*` for the level of GDP, has nothing to arise from.
+
+    There is no residual: with the gap defined this way the GDP equation is an
+    identity, so it contributes no likelihood and is not added.
+    """
+    with model:
+        gap = pm.Deterministic(
+            "output_gap",
+            pt.as_tensor_variable(np.asarray(obs["log_gdp"], dtype=float)) - latents["potential_output"],
+        )
+    return gap, "gap_t = y_t - y*_t   [an identity: no GDP residual]"
+
+
 def _gap_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     config: ModelConfig,
+    latents: dict[str, Any],
 ) -> tuple[Any, str]:
     """Return the output gap, `c·(pi_ann - anchor) + v`, and a description.
 
@@ -243,6 +298,8 @@ def _gap_equation(
     """
     if config.gap_spec == "cycle":
         return _cycle_gap(obs, model, config)
+    if config.gap_spec == "identity":
+        return _identity_gap(obs, model, latents)
 
     n = len(obs["log_gdp"])
     deviation = np.asarray(obs["pi_gap"], dtype=float) - np.asarray(obs["anchor"], dtype=float)
@@ -293,6 +350,92 @@ def _gdp_equation(
     return "log_gdp = y* + gap + e_c"
 
 
+def _okun_error_correction(
+    obs: dict[str, np.ndarray],
+    model: pm.Model,
+    ustar: Any,  # noqa: ANN401
+    gap: Any,  # noqa: ANN401
+    *,
+    config: ModelConfig,
+    keep: np.ndarray | None,
+) -> str:
+    """Fit the error-correction form of Okun. See `_okun_equation`.
+
+        du_t = -kappa x (u_{t-1} - u*_{t-1} + beta x gap_{t-1})
+               + gamma x d(gap)_t + e_o
+
+    THE CORRECTION IS TOWARD THE LEVEL RELATION `u = u* - beta x gap`, not
+    toward `u = u*`. Correcting toward u* alone leaves the gap in the equation
+    only as a difference, and under the identity gap that is the only place
+    `y*` appears at all, so its LEVEL stops being identified and drifts: a
+    first attempt did exactly that and returned a current gap of +26 per cent.
+    Keeping the gap in the attractor is what makes this an error-correction
+    model of Okun's law rather than of unemployment alone.
+
+    `beta` is the long-run slope and `gamma` the short-run response to growth
+    relative to potential. Letting them differ is the point of the form: the
+    pure level equation forces them equal.
+
+    NO INTERCEPT. The attractor already says where unemployment returns to, so
+    a free constant would shift that level and compete with u* for it.
+
+    The likelihood drops the first quarter, since every term is a difference
+    or a lag, and `keep` is sliced to match rather than reused: the pandemic
+    mask is indexed on the sample, not on the differenced series.
+    """
+    u = np.asarray(obs["u"], dtype=float)
+    du = u[1:] - u[:-1]
+
+    with model:
+        prior = {"mu": 0.5, "sigma": config.beta_okun_prior_sd}
+        if not config.two_sided_beta:
+            prior["lower"] = 0.0
+        constant = {} if config.sigma_okun is None else {"sigma_okun": config.sigma_okun}
+        mc = set_model_coefficients(
+            model,
+            {
+                "beta_okun": prior,
+                # Bounded to (0, 1): a quarterly correction cannot be negative
+                # without the gap diverging, and cannot exceed one without
+                # overshooting every quarter. Centred low because unemployment
+                # gaps in this sample close over years, not quarters.
+                "kappa_okun": {"mu": 0.10, "sigma": 0.10, "lower": 0.0, "upper": 1.0},
+                "gamma_okun": dict(prior),
+                "sigma_okun": {"sigma": 1.0},
+            },
+            constant=constant,
+        )
+        # THE PRODUCT IS ESTIMATED, NOT THE FACTORS. Written as
+        # `-kappa x (u - u* + beta x gap)` the long-run slope appears only
+        # multiplied by kappa, so the data identify `kappa x beta` while the
+        # split between them runs along a curved ridge: kappa up and beta down
+        # leave the likelihood unchanged. That form gave R-hat 1.35, ESS 9 and
+        # 3296 divergences in 10,000. Estimating `theta = kappa x beta`
+        # directly removes the ridge, since no two parameters multiply, and
+        # the long-run slope comes back as a derived quantity with its own
+        # posterior.
+        theta = mc["beta_okun"]
+        predicted = (
+            -mc["kappa_okun"] * (u[:-1] - ustar[:-1])
+            - theta * gap[:-1]
+            # Minus, matching the long-run sign: a rising gap lowers
+            # unemployment, so `gamma` is directly comparable with `beta`.
+            - mc["gamma_okun"] * (gap[1:] - gap[:-1])
+        )
+        pm.Deterministic("beta_okun_longrun", theta / mc["kappa_okun"])
+        _observe(
+            "observed_u",
+            predicted,
+            mc["sigma_okun"],
+            du,
+            None if keep is None else keep[1:],
+        )
+    return (
+        "du = -kappa x (u - u*)_{t-1} - theta x gap_{t-1} - gamma x d(gap)_t + e_o"
+        "   (long run beta = theta / kappa)"
+    )
+
+
 def _okun_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
@@ -302,12 +445,30 @@ def _okun_equation(
     config: ModelConfig,
     keep: np.ndarray | None,
 ) -> str:
-    """Fit u = u* - beta x gap + e_o, the equation that identifies sigma_v.
+    """Fit the Okun relation, in whichever form `config.okun_form` names.
 
-    This is the only place the gap appears besides the GDP equation, and the
-    covariance it creates between the two residuals is what separates `v` from
-    `e_c`. Without it `sigma_v` returns its prior.
+    **"gap"**, u = u* - beta x gap + e_o. A level relation, and the only place
+    a level of unemployment is tied to a level of output, so it is what
+    identifies u* against the gap. Under the inflation-defined gap it is also
+    the covariance that separates `v` from `e_c`; without it `sigma_v` returns
+    its prior.
+
+    **"ec"**, the error-correction form:
+
+        du_t = -kappa x (u_{t-1} - u*_{t-1}) - beta x d(gap)_t + e_o
+
+    Okun's original relates the CHANGE in unemployment to output growth, and
+    `d(gap) = dy - dy*` is growth relative to potential, which is the form
+    that statement takes once potential is a state. The pure difference form
+    stops there, and stopping there is what makes it unusable here: changes
+    against changes carry no information about where u* sits, so u* would be
+    left to the Phillips curve alone. The error-correction term restores it.
+    In steady state `du = 0` and `d(gap) = 0` give `u = u*`, so u* remains the
+    level unemployment returns to, and `kappa` is how fast.
     """
+    if config.okun_form == "ec":
+        return _okun_error_correction(obs, model, ustar, gap, config=config, keep=keep)
+
     with model:
         prior = {"mu": 0.5, "sigma": config.beta_okun_prior_sd}
         if not config.two_sided_beta:
@@ -469,22 +630,30 @@ def build_model(
     desc = potential_output_equation(obs, model, latents)
     descriptions.append(f"Potential:    {desc}")
 
-    ustar = _ustar_state(obs, model, config)
+    ustar = _ustar_state(obs, model, config, obs_index)
     # After the state, which is where `_fixed_constants` is created. Saved as a
     # list so the pickle stays plain, and read back by `results.py` for the
     # inflation decomposition, which otherwise assumes a scalar anchor.
     get_fixed_constants(model)["anchor_series"] = anchor.tolist()
-    nairu_state = (
-        "u*_t = u*_{t-1} + phi x (u*_eq - u*_{t-1}) + e_u   (sigma imposed)"
-        if config.ustar_converge
-        else "u*_t = u*_{t-1} + e_u   (sigma imposed)"
-    )
+    nairu_state = {
+        "spline": (
+            f"u*_t = sum_j c_j B_j(t)   (natural cubic, knots "
+            f"{', '.join(config.spline_knots)})"
+        ),
+        "decay": "u*_t = u*_{t-1} + phi x (u*_eq - u*_{t-1}) + e_u   (sigma imposed)",
+        "walk": "u*_t = u*_{t-1} + e_u   (sigma imposed)",
+    }[config.ustar_structure]
     descriptions.append(f"NAIRU:        {nairu_state}")
 
-    gap, gap_desc = _gap_equation(obs, model, config)
+    gap, gap_desc = _gap_equation(obs, model, config, latents)
     descriptions.append(f"Gap:          {gap_desc}")
 
-    descriptions.append(f"Output:       {_gdp_equation(obs, model, latents, gap, keep_gdp)}")
+    # Under the identity gap this equation is `y = y* + (y - y*)`, true by
+    # construction, so adding it would only drive sigma_e to zero.
+    if config.gap_spec == "identity":
+        descriptions.append("Output:       y = y* + gap   (definition, carries no likelihood)")
+    else:
+        descriptions.append(f"Output:       {_gdp_equation(obs, model, latents, gap, keep_gdp)}")
 
     if config.include_okun:
         descriptions.append(
@@ -571,7 +740,13 @@ def run_estimate(
     print(
         f"Imposed:      sigma_ystar={scale['ratio_ystar'] * scale['sigma_c']:.4g}, "
         f"sigma_g={scale['ratio_g'] * scale['sigma_c']:.4g}, "
-        f"sigma_ustar={config.sigma_ustar:g}",
+        # The spline has no innovation variance, so quoting the inherited
+        # value would describe a setting the run does not use.
+        + (
+            "u* deterministic given its coefficients"
+            if config.ustar_structure == "spline"
+            else f"sigma_ustar={config.sigma_ustar:g}"
+        ),
     )
     equations = ["GDP"]
     if config.include_okun:

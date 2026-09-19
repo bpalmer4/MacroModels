@@ -81,19 +81,25 @@ def phillips_curve_equation(
 
     supply = obs.get("supply")
 
+    # Scalar or one value per quarter. A phased anchor is a series, because
+    # before target adoption the level inflation returns to is measured
+    # expectations rather than a target that did not exist. Sliced to match
+    # the likelihood below, which drops the first quarter for the lagged gap.
+    anchor = np.asarray(constant["anchor"], dtype=float)
+    anchor_t = anchor if anchor.ndim == 0 else anchor[1:]
+
     with model:
         settings: dict[str, dict[str, float]] = {
             "beta": {"mu": 0.15, "sigma": 0.10, "lower": 0.02},
             "sigma_pi": {"sigma": 0.40},
-            "anchor": {},
         }
         if supply is not None:
             # Pass-through of import prices to consumer prices is a fraction of
             # a per cent per per cent, and it is a cost, so the sign is known.
             settings["gamma"] = {"mu": 0.05, "sigma": 0.05, "lower": 0.0}
-        mc = set_model_coefficients(model, settings, constant)
+        mc = set_model_coefficients(model, settings, {})
 
-        predicted = mc["anchor"] + mc["beta"] * latents["output_gap"][:-1]
+        predicted = anchor_t + mc["beta"] * latents["output_gap"][:-1]
         if supply is not None:
             predicted = predicted + mc["gamma"] * supply[1:]
 
@@ -105,4 +111,5 @@ def phillips_curve_equation(
         )
 
     term = " + gamma · supply_t" if supply is not None else ""
-    return f"pi_t = {constant['anchor']:g} + beta · gap_{{t-1}}{term} + e_pi"
+    label = f"{anchor.flat[0]:g}" if anchor.ndim == 0 or anchor.min() == anchor.max() else "a_t"
+    return f"pi_t = {label} + beta · gap_{{t-1}}{term} + e_pi"

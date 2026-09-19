@@ -14,7 +14,7 @@ import pandas as pd
 
 from src.data.inflation import get_trimmed_mean_qrtly
 from src.models.common import prior_posterior
-from src.models.common.charts import excluded_span_style
+from src.models.common.charts import excluded_span_style, ustar_structure_note
 from src.models.common.diagnostics import save_diagnostics
 from src.models.ustar.results import DEFAULT_CHART_BASE, UStarResults, load_results
 from src.utilities.rate_conversion import annualize
@@ -27,10 +27,17 @@ CHART_DIR = DEFAULT_CHART_BASE / "UStar"
 # that model's sources rather than this one's. The GSCPI is a Phillips curve
 # input here and was missing from this line entirely.
 _RFOOTER = "Built using: ABS 1364.0.15.003, 5206.0, 6401.0, 6457.0; NY Fed"
-_LFOOTER = "Australia. ustar model. "
+# The fixed part of the left footer. `_LFOOTER` below is derived from it per
+# run and carries the structure imposed on u* as well, so a repeated call
+# rebuilds from here rather than appending to what a previous run left behind.
+_MODEL = "Australia. ustar model. "
+# Short because the structure it refers to is now named immediately before it
+# in the same footer, and the long form ran into the source line on the right.
+_BAND_NOTE = "Band x2; see notes. "
+_LFOOTER = _MODEL
 # Only for charts that actually draw a band. The decomposition chart is bars
 # and a line built from median parameters, with no interval on it to widen.
-_LFOOTER_BAND = _LFOOTER + "Band widened x2 for the imposed structure; see notes. "
+_LFOOTER_BAND = _LFOOTER + _BAND_NOTE
 
 # Quarters that carried no likelihood, as ("2020Q2", "2021Q3"), or None.
 #
@@ -145,7 +152,7 @@ _PHILLIPS_EQUATION = (
 # to stand in for uncertainty about the IMPOSED STRUCTURE, which the posterior
 # cannot express. u* is a spline with a knot placed by hand, so the interval
 # answers "where is u* given this shape" and says nothing about the shape.
-# Under `--state converge` the imposed thing is `sigma_ustar` instead, and the
+# Under `--ustar-structure decay` the imposed thing is `sigma_ustar` instead, and
 # same argument applies to the drift rate.
 #
 # TWO IS INHERITED, NOT RE-DERIVED. It was calibrated against the decay law's
@@ -467,13 +474,13 @@ def plot_ustar_components(results: UStarResults) -> None:
     """Show how much of u*'s path is the specification and how much is the data.
 
     The dashed line is where u* would have gone from the same 1993 starting
-    point with every innovation set to zero, so it is the convergence mechanism
+    point with every innovation set to zero, so it is the decay mechanism
     alone. The shaded distance between the two is the whole of what the data
     added. It is the honest answer to "is that narrow early credible band
     telling me the data placed u* at 10.8 in 1993": through the 1990s the two
     lines are nearly on top of each other, so they are not.
     """
-    if not results.converges:
+    if not results.decays:
         return
     d = results.ustar_change_decomposition()
 
@@ -497,7 +504,7 @@ def plot_ustar_components(results: UStarResults) -> None:
         "ylabel": "Per cent",
         "legend": {"loc": "best", "fontsize": "small"},
         "lheader": f"Of u*'s total fall of {abs(total):.2f}pp, "
-                   f"{abs(det):.2f}pp is the convergence mechanism alone",
+                   f"{abs(det):.2f}pp is the decay mechanism alone",
         "rfooter": _rfooter(results),
         "lfooter": _LFOOTER,
         "show": False,
@@ -566,6 +573,15 @@ def run_analysis(
     # 3.2:1 per point of u* even with sigma_okun free at 0.485. Guarded on the
     # sample actually starting there, so a run over a different span is not
     # given a window that was never checked for it. See MODEL_NOTES.
+    # The charts read the footers as module globals, which is also how
+    # `ystar_ustar` retitles them when it draws this model's charts for its
+    # own run. Setting them here rather than computing them inside each chart
+    # keeps that override working: whoever sets the global last wins, and there
+    # is one place to look.
+    global _LFOOTER, _LFOOTER_BAND  # noqa: PLW0603 — the footers these charts read
+    _LFOOTER = _MODEL + ustar_structure_note(results.constants)
+    _LFOOTER_BAND = _LFOOTER + _BAND_NOTE
+
     global _UNIDENTIFIED_WINDOW  # noqa: PLW0603 — the module-level marker these charts read
     _UNIDENTIFIED_WINDOW = (
         UNIDENTIFIED_WINDOW

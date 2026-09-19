@@ -1,5 +1,51 @@
 # y*: potential output from an inflation-defined gap
 
+## AN EXPLORATORY COLLECTION, NOT A PRODUCTION ESTIMATE
+
+Five specifications of one idea, kept together because comparing them is the
+useful thing about them. None is a settled answer, and the spread between them
+is not an error band: they differ in what identifies the trend, not in noise.
+
+**Three of the five reproduce an HP filter.** Over 1984Q1-2026Q2 the
+`inflation`, `production` and `production --no-mfp-observation` runs return a
+potential output path with a correlation of **1.0000** against HP(1600) on log
+GDP, sitting within 0.34 log points of it, and growth-rate correlations of
+0.974 to 0.979. The state-space apparatus, the capital and labour data and the
+production function all give back what a filter gives for free. `core` departs
+(growth correlation 0.822) and the polynomial trend departs most (0.715).
+
+**Inflation contributes 5 to 21 per cent** of GDP's deviation from potential,
+measured as the sd of `c x (pi - anchor)` against the sd of `y - y*`. The rest
+is the smoothness assumption. So the trend/cycle split is made by imposed
+variances, and inflation adjusts the level of the gap a little.
+
+**`c` and the Phillips slope are reciprocals and the package disagrees with
+itself by an order of magnitude.** `core` and `labour` estimate the slope
+directly at 0.242 and 0.273, implying `c` near 4. The inflation-defined specs
+estimate `c` at 0.082 to 0.325, implying a slope of 3.1 to 12.2. A slope of
+0.25 is the defensible number; a slope of 12 is not. Both ends of the
+reciprocal give an implausible gap, so no single `c` repairs it, and the
+linear relation `gap = c x (pi - anchor)` is not capturing what it claims to.
+
+**The structural limit: this package never observes unemployment.** No spec
+has an Okun equation or the unemployment rate in its data. So when output
+falls for two years the model has only smoothness to tell it whether capacity
+fell too, and an 11 per cent unemployment rate, which is the strongest
+available evidence that 1992 output was below potential, is invisible to it. A
+model that observes the labour market can separate trend from cycle there with
+information rather than assumption. This one cannot, and every structural fix
+tried moves the problem rather than solving it: constrain the trend and the
+cycle appears in the residual, constrain MFP and it appears in trend hours.
+
+**Symptom worth knowing.** At 2026Q2 trimmed mean inflation is 3.6, or 1.10
+above target, and the production spec with a polynomial MFP trend reports the
+economy 0.41 per cent **below** potential. The sign is wrong because `c` is
+small and the trend's endpoint dominates.
+
+Read the rest as a record of what was tried and what each thing showed.
+
+---
+
 A Bayesian unobserved-components model (PyMC + NumPyro NUTS) estimating Australian potential output and the output gap. The gap is **defined** by inflation's deviation from the RBA's target, potential is a random walk, and GDP is fitted around the two with a residual.
 
 There is no Phillips curve, no IS curve, no policy rule and no AR(2) cycle.
@@ -17,7 +63,12 @@ Three estimated quantities: `c`, `sigma_e`, and the initial level of the drift. 
 
 A second live specification, `--spec production`, keeps the level and the gap and replaces the drift with a Cobb-Douglas production function, so potential growth comes from trend capital, hours and MFP. It agrees at 2.16 against 2.14 and gives trend productivity a credible interval. `inflation` remains the default and the two are deliberately kept apart, since the agreement is only informative while they are separate specifications. See "An alternative source for potential growth".
 
-**Independent by construction.** Imports nothing from `nairu`, `rstar_hlw`, `expectations` or `models/common`. Its only dependency outside the package is `src/data`.
+**Independent by construction, in the default configuration only.** With
+`anchor_phase = "none"` the only dependency outside the package is `src/data`.
+Setting `anchor_phase = "glide"` reads a measured expectations series, which is
+another model's saved output, and trims the sample to where it exists. That is
+the one setting that ends the package's independence, and it is off by
+default.
 
 ---
 
@@ -586,6 +637,108 @@ Two things frequently taken for limitations of this model are not, and are dealt
 - **`core`**: an anchored Phillips curve on GDP and inflation, with an AR(2) cycle. Run it with `--pi-basis quarterly`; see iteration log item 2 for why.
 - **`labour`**: potential decomposed into trend hours and trend productivity, using ABS 6202.0 hours, population and participation. Five series, six equations. Its trend hours path reproduces an HP(1600) trend of hours at a correlation of 0.9972, which is why it was set aside.
 - **`target`**: a sign-only restriction: the gap must share the sign of the inflation deviation, with no magnitude claim. Superseded by the `inflation` spec, which uses the magnitude as well.
+
+---
+
+## The anchor, and why a pre-1993 sample is not simply a longer one
+
+`anchor_phase = "glide"` makes the anchor measured expectations before 1993Q1,
+phasing to the target across 1993Q1-1998Q4. It exists because the 2.5 target
+did not exist earlier, so a flat anchor over a 1984 start judges nine years of
+8 to 9 per cent inflation against a target nobody held. The config refuses a
+pre-1993 start without it.
+
+**It collapses `c` under a random-walk trend**, from 0.188 on a 1993Q1 start
+to 0.082, and nearly doubles `sigma_e`. The mechanism is worth recording
+because it is a statement about the specification rather than about the glide.
+Correlating the inflation deviation with an HP(1600) cycle:
+
+| | corr(pi - glide, HP) | corr(pi - 2.5, HP) | mean(pi - 2.5) |
+|---|---|---|---|
+| 1984Q1-1992Q4 | -0.257 | +0.284 | +3.98 |
+| 1993Q1-1998Q4 | -0.349 | -0.257 | -0.23 |
+| 1999Q1-2019Q4 | -0.221 | -0.221 | +0.05 |
+| whole sample | +0.104 | +0.160 | |
+
+Within every sub-period the deviation and the cycle comove **negatively**. The
+positive whole-sample figure comes from the 1980s carrying a mean deviation of
++3.98 alongside a positive output cycle, which is a comparison across regimes,
+not a cyclical relationship. A flat anchor over a long sample lets that
+regime-level difference support `c > 0`; the glide removes it by construction,
+since expectations track inflation, and `c` falls to its lower bound.
+
+**It does not collapse under a polynomial trend**, where `c` returns 0.325,
+higher than the 1993Q1 baseline. Once the trend cannot chase output, inflation
+has something left to explain. So the collapse needs both the glide and a
+trend free to absorb the cycle.
+
+The five runs behind any 1984-start comparison of all specifications carry
+this defect in the three walk-based specs and should not be quoted.
+
+---
+
+## What can be imposed on the trend, and what each imposition showed
+
+Four switches, all off by default. They exist because the random-walk trend
+follows output: its growth correlates 0.480 with actual growth and it dips to
+2.27 per cent in 1991Q2 while output fell 1.45 per cent.
+
+**Tightening the innovation variances does not bind.** Realised innovations
+already sit well inside their imposed sd: the level's are 0.017 to 0.048
+against 0.078, and trend growth's 0.004 to 0.010 against 0.015. A random walk
+penalises the SIZE of each step and says nothing about a run of same-signed
+steps, so a sustained pull over a business cycle moves the trend even when
+every step is tiny. That is why the variance is the wrong lever.
+
+**`ystar_structure = "spline"`** replaces the walk with a basis in time, so
+both imposed variances disappear. Options and what they gave, on the 1984Q1
+sample:
+
+| basis | g\* 1985 | 1991Q2 | now | corr(g\*,g) | verdict |
+|---|---|---|---|---|---|
+| random walk | 3.62 | 2.27 | 1.94 | 0.480 | follows output |
+| natural cubic, 1 knot 2020Q1 | 0.32 | 2.20 | 0.81 | 0.143 | both ends collapse |
+| natural cubic, knots 1998+2019 | 0.32 | 3.21 | 0.33 | 0.119 | both ends collapse |
+| natural cubic, knots 1998+2024 | 0.32 | 3.21 | 0.81 | 0.119 | ends improved, not fixed |
+| degree 3, free ends, no knots | 3.02 | 3.32 | 1.32 | 0.276 | endpoint too low |
+| **degree 4, free ends, no knots** | 2.47 | 3.30 | **1.90** | **0.263** | **the one that survives** |
+| degree 5, free ends, no knots | 2.87 | 3.23 | 2.37 | 0.290 | invents a 2021 trough |
+
+**Natural end conditions are wrong for potential output.** They force zero
+curvature at both outer knots, which on a NAIRU is harmless and on a series
+that must keep growing drags the slope toward zero at both ends. No knot
+placement fixes it, only relocates it, and the artefact comes with a narrow
+credible band, so the reported uncertainty does not warn you. Free ends and no
+knots avoid it entirely and need no knot date chosen.
+
+**Degree matters because growth is one degree below the level.** A cubic level
+gives a parabolic g\* that must keep decelerating once past its peak, which
+drags the endpoint to 1.32. A quartic lets the decline flatten. A quintic adds
+a turn that lands in the last four years, where six quarters carry no
+likelihood, and invents a trough and rebound.
+
+**`ratio_ystar_adjust`** adds a slow random walk to the polynomial trend,
+`y* = poly + z`. Swept at 0.02, 0.05 and 0.13 it is either inert or harmful:
+at 0.02 the walk's whole range is 0.028 log points and every number is
+unchanged to two decimals; at 0.13 the correlation with actual growth climbs
+back to 0.363 and `c` falls to 0.254. There is no setting at which it
+improves the estimate. Note that a walk on the LEVEL is white noise in growth,
+so it adds jitter rather than the episodic texture a walk on growth would.
+
+**`mfp_degree`** applies the same treatment to trend MFP in the `production`
+spec, which is where that spec's cyclicality lives: capital and hours trends
+stay smooth through 1990-92 while trend MFP falls 1.25 to 0.12 and runs to
+1.65 by 1997. MFP is the Solow residual, so smoothing it is smoothing a
+residual of GDP. At degree 4 trend MFP goes 0.84 to 0.86 across the recession
+instead of collapsing, `c` triples to 0.183 and the correlation falls to
+0.390. **But the dip moves rather than going: trend hours now drops 1.9 to
+1.37 across 1988-91, having been flat before.** Constraining one component
+sends the cycle to the next most flexible one.
+
+**`--no-mfp-observation`** closes a genuine double-count, since GDP is
+observed directly and again inside MFP. It lifts 1991Q2 from 2.22 to 2.41 and
+improves sampling from ESS 1380 to 2805. Most of the responsiveness was not
+the double-count.
 
 ---
 

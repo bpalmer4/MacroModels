@@ -92,7 +92,9 @@ def target_consistency_equation(
     if missing:
         raise ValueError(f"target_consistency_equation requires fixed {missing} — pass them via constant")
 
-    anchor = float(constant["anchor"])
+    # Scalar or one value per quarter: a phased anchor is a series, because
+    # before target adoption "at target" is not a statement that can be made.
+    anchor = np.asarray(constant["anchor"], dtype=float)
     s0 = float(constant["gap_sd_on_target"])
     k = float(constant["gap_sd_per_pp"])
     lag_max = int(constant["pi_lag_max"])
@@ -119,7 +121,10 @@ def target_consistency_equation(
         if not hasattr(model, "_fixed_constants"):
             model._fixed_constants = {}  # noqa: SLF001 — our own metadata on the PyMC model
         model._fixed_constants.update({  # noqa: SLF001 — matching set_model_coefficients
-            "anchor": anchor,
+            # The scalar where there is one; the series is recorded by
+            # `estimate._record_anchor`, which is the only place that has it
+            # alongside the sample index.
+            "anchor": float(anchor) if anchor.ndim == 0 else float(anchor[-1]),
             "gap_sd_on_target": s0,
             "gap_sd_per_pp": k,
             "pi_lag_max": lag_max,

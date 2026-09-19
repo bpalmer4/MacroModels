@@ -89,7 +89,10 @@ def inflation_gap_equation(
     if "potential_output" not in latents:
         raise ValueError("inflation_gap_equation requires potential_output — run potential.py first")
 
-    anchor = float(constant["anchor"])
+    # Scalar or one value per quarter. A phased anchor is a series, because
+    # before target adoption the thing inflation is judged against is measured
+    # expectations rather than a target that did not exist.
+    anchor = np.asarray(constant["anchor"], dtype=float)
     ar1 = bool(constant.get("ar1_residual", False))
     two_sided_c = bool(constant.get("two_sided_c", False))
     deviation = np.asarray(obs["pi"], dtype=float) - anchor
@@ -186,4 +189,5 @@ def inflation_gap_equation(
     latents["output_gap"] = output_gap
 
     residual = "e_c ~ AR(1)" if ar1 else "e_c ~ N(0, sigma_e)"
-    return f"gap_t = c · (pi_t - {anchor:g});  log_gdp_t = y*_t + gap_t + e_c,  {residual}"
+    label = f"{anchor.flat[0]:g}" if anchor.ndim == 0 or anchor.min() == anchor.max() else "a_t"
+    return f"gap_t = c · (pi_t - {label});  log_gdp_t = y*_t + gap_t + e_c,  {residual}"

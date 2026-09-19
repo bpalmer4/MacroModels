@@ -55,9 +55,56 @@ Reference points for the settings:
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pandas as pd
+
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
 
 SPECS = ("inflation", "production", "core", "labour", "target")
+
+# How the inflation anchor behaves across the sample.
+#   "none"  — `anchor` in every quarter, which is only valid from 1993Q1
+#   "glide" — measured expectations before 1993Q1, then linear to `anchor`
+#             across 1993Q1-1998Q4, then `anchor`
+#
+# "none" is the default, so nothing downstream moves. "glide" exists because
+# the anchor and the sample start are a matched pair: the target did not exist
+# before 1993, so a sample that begins earlier cannot judge inflation against
+# it. It reads the same series the expectations model publishes, which is the
+# one dependency this package otherwise does not have, and it is loaded only
+# when this is set.
+ANCHOR_PHASES = ("none", "glide")
+
+# The structure imposed on potential output.
+#   "walk"   — a random walk with a random-walk drift, the original
+#   "spline" — a natural cubic spline in time, deterministic given its
+#              coefficients
+#
+# "walk" is the default and nothing changes unless this is set. The spline
+# exists because the walk cannot express the restriction that a two-year
+# recession should not move potential. Its realised innovations already sit
+# well inside their imposed sd, so tightening `ratio_g` does not bind; what
+# moves the trend is a run of same-signed steps, and a random walk penalises
+# each step's SIZE while saying nothing about a run of them.
+#
+# Applies only to the specifications whose potential is a free level
+# recursion. `production` builds it from the factor trends and `labour` from
+# trend hours times trend productivity, so there is no single state to replace.
+YSTAR_STRUCTURES = ("walk", "spline")
+
+# Interior knots for that spline. One knot gives three coefficients after the
+# natural boundary reduction: enough for trend growth to rise, fall and then
+# turn once more, not enough to trace a business cycle. Zero knots would give
+# two, which the natural end conditions reduce to a straight line, asserting
+# constant potential growth across the whole sample.
+YSTAR_SPLINE_KNOTS = ("2020Q1",)
+
+# The glide runs between these, inclusive: weight 0 on the target at the first
+# and 1 at the last. 1993Q1 is target adoption and 1998Q4 is where the
+# expectations model's own series reaches the target, so the phase spans the
+# years the expectations data say were not yet anchored rather than a window
+# chosen to look tidy.
+ANCHOR_GLIDE_START = "1993Q1"
+ANCHOR_PHASE_END = "1998Q4"
 
 PI_BASES = ("quarterly", "annual")
 
@@ -125,6 +172,31 @@ class ModelConfig:
     start: str = "1993Q1"
     end: str | None = None
     anchor: float = 2.5
+    # See ANCHOR_PHASES. "glide" is what makes a pre-1993 sample start legal;
+    # with "none" the sample must begin at target adoption.
+    anchor_phase: str = "none"
+    # See YSTAR_STRUCTURES. Ignored by the production and labour specs.
+    ystar_structure: str = "walk"
+    ystar_spline_knots: tuple[str, ...] = YSTAR_SPLINE_KNOTS
+    # See `potential_spline_equation`. False with no knots gives the slowing
+    # growth form: a global cubic in the level, quadratic in growth.
+    ystar_spline_natural: bool = True
+    # Polynomial degree of the y* basis. Growth is one degree below the level,
+    # so 4 with no knots gives a growth path that can flatten after falling,
+    # which a cubic level cannot, and needs no knot date to do it.
+    ystar_spline_degree: int = 3
+    # Innovation sd of the slow-moving adjustment added to the polynomial
+    # trend, as a ratio of sigma_c, matching how every other trend variance in
+    # this model is expressed. 0 turns it off. For reference the random-walk
+    # trend's own level innovation is ratio_ystar = 0.13, so a "slow"
+    # adjustment is a small fraction of that.
+    ratio_ystar_adjust: float = 0.0
+    # Degree of a polynomial trend for MFP in the production spec; 0 keeps the
+    # random walk. MFP is the Solow residual, so smoothing it is smoothing a
+    # residual of GDP: the factor chart shows capital and hours trends staying
+    # smooth through 1990-92 while trend MFP falls 1.25 to 0.12 and then runs
+    # to 1.65 by 1997, which is the whole of potential growth's dip and spike.
+    mfp_degree: int = 0
     # "annual" for the live `inflation` spec: there inflation is a regressor
     # rather than a dependent variable, so overlapping observations create no
     # overlapping-error problem, and "at target" is an annual concept. The
@@ -394,6 +466,31 @@ class ModelConfig:
         """Validate the specification, inflation basis and supply control."""
         if self.spec not in SPECS:
             raise ValueError(f"spec must be one of {SPECS}, got {self.spec!r}")
+        if self.ystar_structure not in YSTAR_STRUCTURES:
+            raise ValueError(
+                f"ystar_structure must be one of {YSTAR_STRUCTURES}, got {self.ystar_structure!r}",
+            )
+        if self.ystar_structure == "spline" and self.spec in ("production", "labour"):
+            raise ValueError(
+                f"the {self.spec!r} spec builds potential from component trends, so there is "
+                "no single level recursion for a spline to replace",
+            )
+        if self.anchor_phase not in ANCHOR_PHASES:
+            raise ValueError(
+                f"anchor_phase must be one of {ANCHOR_PHASES}, got {self.anchor_phase!r}",
+            )
+        # The flat anchor is a claim about the regime, so a sample that opens
+        # before target adoption and asserts it is not a variant to be swept:
+        # it judges 8 per cent inflation against a target that did not exist.
+        if (
+            self.anchor_phase == "none"
+            and self.start is not None
+            and pd.Period(self.start, freq="Q") < pd.Period(ANCHOR_GLIDE_START, freq="Q")
+        ):
+            raise ValueError(
+                f"a sample starting {self.start} needs anchor_phase='glide': the "
+                f"{self.anchor:g} anchor is only valid from {ANCHOR_GLIDE_START}",
+            )
 
         # `exclude_window` is on by default, but the mask lives in the
         # inflation-gap GDP equation and only the inflation family uses it. The

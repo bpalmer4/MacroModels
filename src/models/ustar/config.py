@@ -35,6 +35,7 @@ mistake; it is a scaling onto this particular gap series.
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
 
@@ -45,6 +46,13 @@ DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs
 #       carries e_c, so Okun would read the 2020 lockdown supply disruption
 #       as a movement in u*.
 GAP_SOURCES = ("defined", "actual")
+
+# The structure imposed on u*: how it is allowed to change across the sample.
+# u* is in no dataset, so something has to say what shapes it may take, or the
+# fit would draw it straight through the unemployment rate.
+#   "decay"  — a random walk pulled toward one estimated equilibrium
+#   "spline" — a natural cubic spline, deterministic given its coefficients
+USTAR_STRUCTURES = ("decay", "spline")
 
 
 @dataclass
@@ -119,8 +127,8 @@ class ModelConfig:
     # of 8.90, calling the deepest slack in the sample equilibrium.
     include_okun: bool = False
 
-    # --- The state law ---
-    # "converge" u* is a random walk pulled toward one equilibrium. It can
+    # --- The structure imposed on u* ---
+    # "decay" u* is a random walk pulled toward one equilibrium. It can
     #            only draw a monotone approach, so it cannot decline and then
     #            stop, and it needs `sigma_ustar`, which nothing measures.
     # "spline"   u* is a natural cubic spline with knots at `spline_knots`,
@@ -131,8 +139,8 @@ class ModelConfig:
     # "spline" by default, on the band test: scored against the sign of the
     # unemployment gap over the 64 quarters where quarterly annualised trimmed
     # mean inflation sat outside 2-3%, a knot at 2013Q1 gets 59 right against
-    # 53 for the convergence law, and 24 of 24 on the below-band quarters.
-    state_law: str = "spline"
+    # 53 for the decay structure, and 24 of 24 on the below-band quarters.
+    ustar_structure: str = "spline"
 
     # Interior knot dates for the spline. One knot gives three coefficients
     # after the natural boundary reduction, which is stiff: enough to decline
@@ -140,7 +148,7 @@ class ModelConfig:
     #
     # 2013Q1 is where the low-inflation era begins, and it is where the decline
     # in u* stops: the fitted path turns from -0.32 over 2015-2026 under the
-    # convergence law to +0.36 here. A knot at 2008Q1 was tried and scores 4
+    # decay structure to +0.36 here. A knot at 2008Q1 was tried and scores 4
     # quarters worse, though the two give nearly identical endpoints, because
     # three coefficients leave the curve's shape largely determined.
     spline_knots: tuple[str, ...] = ("2013Q1",)
@@ -213,7 +221,7 @@ class ModelConfig:
     # 1994-1996 and +0.07 across 2000-2019 — but the date is a judgement and
     # should be swept.
     ustar_drift: bool = False
-    # Let u* converge to a new equilibrium instead of drifting on expectations:
+    # Let u* decay toward a new equilibrium instead of drifting on expectations:
     #
     #     u*_t = u*_{t-1} + phi·(u*_eq - u*_{t-1}) + e_u
     #
@@ -251,8 +259,8 @@ class ModelConfig:
     # recorded in MODEL_NOTES and is the honest counterweight to everything
     # above.
     #
-    # Mutually exclusive with `ustar_drift`.
-    ustar_converge: bool = True
+    # Selected by `ustar_structure = "decay"`, and mutually exclusive with
+    # `ustar_drift`.
 
     # Prior mean for u* in the first quarter. None centres it on the
     # unemployment rate of that quarter, which at a 1993Q1 start is 10.85, a
@@ -282,7 +290,7 @@ class ModelConfig:
     #
     # All three were derived on the driftless random walk, where the innovation
     # had to carry the whole 3.7pp decline in u* over the sample. Under
-    # convergence the mechanism carries that and the innovation carries only
+    # decay the mechanism carries that and the innovation carries only
     # deviations from it, so the calibration no longer describes the same job.
     # The model says so itself: at 0.040 the realised innovation sd was 0.021,
     # about half the allowance, and it was spending that allowance in the wrong
@@ -298,12 +306,12 @@ class ModelConfig:
     # u* means a larger, more persistent unemployment gap, so `gamma_pi`
     # flattens from -1.48 to -1.15, and in the joint model `sigma_v` rises as
     # work is pushed onto the free gap component. And the tighter u* is, the
-    # more of it is the convergence mechanism rather than the data: see the
+    # more of it is the decay mechanism rather than the data: see the
     # "what moves u*" chart, where the data's share of the total fall drops
     # from 3% to about 1%.
     #
     # Still outstanding: the 2012Q4-2015Q4 ceiling test has not been re-run
-    # under convergence, and it is the argument that pushed the old number up.
+    # under decay, and it is the argument that pushed the old number up.
     # If it no longer binds, 0.024 from `ystar`'s rule is the only remaining
     # anchor and 0.020 sits just below it.
     # Imposed, and the single most consequential setting in the model: u* runs
@@ -362,23 +370,35 @@ class ModelConfig:
 
     def __post_init__(self) -> None:
         """Validate the specification switches."""
-        if self.ustar_drift and self.ustar_converge:
+        if self.ustar_structure not in USTAR_STRUCTURES:
             raise ValueError(
-                "ustar_drift and ustar_converge are two stories about the same fact; "
-                "pick one",
+                f"ustar_structure must be one of {USTAR_STRUCTURES}, got {self.ustar_structure!r}",
             )
+        # A drift and an equilibrium are two stories about the same fact, and
+        # the spline tells neither.
+        if self.ustar_drift and self.ustar_structure != "decay":
+            raise ValueError(
+                "ustar_drift belongs to the decay structure; "
+                f"ustar_structure is {self.ustar_structure!r}",
+            )
+        if self.ustar_structure == "spline" and not self.spline_knots:
+            raise ValueError("the spline structure needs at least one interior knot")
         if self.gap_source not in GAP_SOURCES:
             raise ValueError(f"gap_source must be one of {GAP_SOURCES}, got {self.gap_source!r}")
 
     @property
-    def constants(self) -> dict[str, float]:
+    def constants(self) -> dict[str, Any]:
         """The imposed settings, recorded on the model for the run log.
 
-        Empty when `sigma_ustar` is estimated: it is then a parameter with a
-        posterior, and listing it as an imposed constant would misreport the
+        `sigma_ustar` is absent when it is estimated: it is then a parameter
+        with a posterior, and listing it as an imposed constant would misreport the
         run in the log and in the diagnostics.
         """
-        constants = {"anchor": self.anchor}
+        constants: dict[str, Any] = {"anchor": self.anchor, "ustar_structure": self.ustar_structure}
+        if self.ustar_structure == "spline":
+            # The knot count is what a reader cannot infer from the fitted
+            # curve, so the charts state it and read it from here.
+            constants["spline_knots"] = ",".join(self.spline_knots)
         if not self.free_sigma_ustar:
             constants["sigma_ustar"] = self.sigma_ustar
         return constants

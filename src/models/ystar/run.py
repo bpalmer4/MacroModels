@@ -12,10 +12,13 @@ import argparse
 from src.models.ystar.analyse import run_analysis
 from src.models.ystar.base import SamplerConfig
 from src.models.ystar.config import (
+    ANCHOR_PHASES,
     DEFAULT_EXCLUDE_WINDOW,
     PI_BASES,
     SPECS,
     SUPPLY_CONTROLS,
+    YSTAR_SPLINE_KNOTS,
+    YSTAR_STRUCTURES,
     ModelConfig,
 )
 from src.models.ystar.estimate import run_estimate
@@ -28,7 +31,38 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start", default="1993Q1", help="Sample start (default 1993Q1)")
     parser.add_argument("--end", default=None, help="Sample end (default: latest)")
     parser.add_argument("--anchor", type=float, default=2.5, help="Inflation anchor, annual %%")
+    parser.add_argument(
+        "--anchor-phase", default="none", choices=list(ANCHOR_PHASES),
+        help="'glide' uses measured expectations before 1993Q1 and phases to the anchor "
+             "across 1993Q1-1998Q4, which is what a pre-1993 sample start requires. "
+             "See ModelConfig.anchor_phase",
+    )
     parser.add_argument("--spec", default="inflation", choices=SPECS, help="Specification")
+    parser.add_argument(
+        "--ystar-structure", default="walk", choices=list(YSTAR_STRUCTURES),
+        help="Structure imposed on potential output (default: walk). "
+             "'spline' replaces the random walk with a natural cubic in time, "
+             "which a two-year recession cannot bend. See ModelConfig.ystar_structure",
+    )
+    parser.add_argument(
+        "--ystar-free-ends", action="store_true",
+        help="Drop the natural end conditions on the y* spline. With no knots this is "
+             "the slowing-growth form: a global cubic in the level, quadratic in growth",
+    )
+    parser.add_argument(
+        "--ystar-adjust", type=float, default=0.0, metavar="RATIO",
+        help="Add a slow-moving random walk to the polynomial trend, with innovation sd "
+             "RATIO x sigma_c (0 = off). See ModelConfig.ratio_ystar_adjust",
+    )
+    parser.add_argument(
+        "--ystar-degree", type=int, default=3,
+        help="Polynomial degree of the y* basis (default 3). Growth is one degree lower",
+    )
+    parser.add_argument(
+        "--ystar-knots", nargs="*", default=list(YSTAR_SPLINE_KNOTS), metavar="QUARTER",
+        help="Interior knots for the y* spline. None gives a straight line, so "
+             "constant potential growth across the sample",
+    )
     parser.add_argument(
         "--pi-basis", default="annual", choices=PI_BASES,
         help="Trimmed mean basis: 'annual' (four-quarter, the default) or "
@@ -94,6 +128,8 @@ def parse_args() -> argparse.Namespace:
                         help="production: MFP trend/obs sd ratio")
     parser.add_argument("--ratio-a", type=float, default=0.00625,
                         help="production: capital share trend/obs sd ratio")
+    parser.add_argument("--mfp-degree", type=int, default=0,
+                        help="production: polynomial degree for the MFP trend (0 = random walk)")
     parser.add_argument("--no-mfp-observation", action="store_true",
                         help="production: drop the MFP observation equation, which double-counts GDP")
     parser.add_argument("--sigma-gm", type=float, default=0.015,
@@ -132,6 +168,12 @@ def main() -> None:
         start=args.start,
         end=args.end,
         anchor=args.anchor,
+        anchor_phase=args.anchor_phase,
+        ystar_structure=args.ystar_structure,
+        ystar_spline_knots=tuple(args.ystar_knots),
+        ystar_spline_natural=not args.ystar_free_ends,
+        ystar_spline_degree=args.ystar_degree,
+        ratio_ystar_adjust=args.ystar_adjust,
         pi_basis=args.pi_basis,
         supply_control=args.supply_control,
         gap_sd_on_target=args.gap_sd_on_target,
@@ -150,6 +192,7 @@ def main() -> None:
         ratio_gm=args.ratio_gm,
         ratio_a=args.ratio_a,
         mfp_observed=not args.no_mfp_observation,
+        mfp_degree=args.mfp_degree,
         sigma_gm=args.sigma_gm,
         ratio_pr_star=args.ratio_pr_star,
         ratio_hpp_star=args.ratio_hpp_star,

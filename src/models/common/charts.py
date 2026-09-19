@@ -30,6 +30,30 @@ _EXCLUDED_SPAN: dict[str, Any] = {
 }
 
 
+def ustar_structure_note(constants: dict[str, Any]) -> str:
+    """Describe the structure imposed on u*, for a chart footer.
+
+    Built from the run's own recorded constants, so a chart cannot describe a
+    structure the run did not use. The knot count is the thing a reader cannot
+    infer from the fitted curve: one knot and three give very different
+    freedom, and the charts were silent about which was in force.
+
+    Empty for a trace saved before the structure was recorded, which is the
+    right failure: better to say nothing than to state a default that may not
+    be what produced the line.
+    """
+    law = constants.get("ustar_structure")
+    if not isinstance(law, str):
+        return ""
+    if law != "spline":
+        return f"u*: {law}. "
+    knots = [k for k in str(constants.get("spline_knots", "")).split(",") if k]
+    if not knots:
+        return "u*: spline. "
+    count = f"{len(knots)} knot" + ("s" if len(knots) > 1 else "")
+    return f"u*: spline, {count} ({', '.join(knots)}). "
+
+
 def excluded_span_style() -> dict[str, Any]:
     """Return the styling for the excluded-window span.
 
