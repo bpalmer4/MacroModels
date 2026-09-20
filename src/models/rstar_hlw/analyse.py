@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
 import pandas as pd
@@ -10,6 +11,7 @@ import pandas as pd
 from src.data.world_rstar import get_world_rstar
 from src.models.common import prior_posterior
 from src.models.common.diagnostics import save_diagnostics
+from src.models.common.extraction import get_scalar_var, get_vector_var
 from src.models.rstar_hlw.results import DEFAULT_CHART_BASE, RStarResults, load_results
 
 if TYPE_CHECKING:
@@ -193,8 +195,6 @@ def _mode_conditional_r_star(
     indexed_10y − k) and α > ``high_thresh`` (trend-growth mode: r* tracks g),
     plus the draw counts. Empty Series where a mode has no draws.
     """
-    import numpy as np  # noqa: PLC0415
-
     posterior = results.trace["posterior"]
     # xarray's stack/.values throughout this function, not pandas': the PD
     # rules cannot tell the two apart, and `.melt` / `.to_numpy` are not
@@ -245,8 +245,6 @@ def plot_r_star_bimodal_decomposition(
     Together they show what G's posterior actually says: r* is *either* g
     *or* indexed_10y − k, not a 50/50 blend.
     """
-    import numpy as np  # noqa: PLC0415
-
     posterior = results.trace["posterior"]
     # xarray's stack/.values throughout this function, not pandas': the PD
     # rules cannot tell the two apart, and `.melt` / `.to_numpy` are not
@@ -345,8 +343,6 @@ def plot_r_star_decomposition(results: RStarResults, show: bool = False) -> None
     Plot r*, the trend-growth anchor (g), and the bond-implied anchor
     (indexed_10y - k_median) so the user can see where r* sits between them.
     """
-    from src.models.common.extraction import get_scalar_var  # noqa: PLC0415
-
     indexed = pd.Series(results.obs["indexed_10y"], index=results.obs_index)
     k_median = float(get_scalar_var("k", results.trace).median())
     bond_anchor = indexed - k_median
@@ -484,10 +480,6 @@ def plot_alpha_posterior(results: RStarResults, show: bool = False) -> None:
     alpha=1 means r* tracks trend growth (Resolution A);
     alpha=0 means r* tracks the bond-implied real rate (Resolution B).
     """
-    import matplotlib.pyplot as plt  # noqa: PLC0415
-
-    from src.models.common.extraction import get_scalar_var  # noqa: PLC0415
-
     alpha = get_scalar_var("alpha_rstar", results.trace)
     median = float(alpha.median())
     hdi_lo, hdi_hi = float(alpha.quantile(0.05)), float(alpha.quantile(0.95))
@@ -649,11 +641,6 @@ def _detect_resolution(posterior_vars: Container[Hashable]) -> _ResolutionFlags:
 
 def _print_blend_summary(results: RStarResults, flags: _ResolutionFlags) -> None:
     """Print the alpha / k / z lines that only the blend resolutions have."""
-    from src.models.common.extraction import (  # noqa: PLC0415
-        get_scalar_var,
-        get_vector_var,
-    )
-
     if flags.is_h:
         # alpha_rstar is a vector (T,) under H — show first, last and range.
         alpha_path = get_vector_var("alpha_rstar", results.trace)
@@ -692,8 +679,6 @@ def _print_blend_summary(results: RStarResults, flags: _ResolutionFlags) -> None
 
 def _print_summary(results: RStarResults, flags: _ResolutionFlags) -> None:
     """Print the headline numbers for a loaded trace."""
-    from src.models.common.extraction import get_scalar_var  # noqa: PLC0415
-
     r_star = results.r_star_median()
     g = results.trend_growth_median()
     print(f"  Sample:        {results.obs_index[0]} to {results.obs_index[-1]}")

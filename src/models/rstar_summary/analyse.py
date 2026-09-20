@@ -17,10 +17,14 @@ import pandas as pd
 
 from src.data.aofm_loader import get_aofm_5y5y_forward
 from src.data.cash_rate import get_cash_rate_qrtly
-from src.models.common.inflation_scale import scale_label, to_real
+from src.data.gdp import get_gdp_per_capita
+from src.data.inflation import get_trimmed_mean_annual
+from src.models.common.inflation_scale import TARGET, scale_label, to_real
 from src.models.rstar_summary.sources import DEFAULT_SCALE, SOURCES
+from src.models.ystar_ustar.results import load_results
+from src.paths import CHARTS
 
-CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "rstar-summary"
+CHART_DIR = CHARTS / "rstar-summary"
 
 # Chosen for contrast against each other AND against the grey cash rate, which
 # matters more than matching each model's own suite colours.
@@ -33,6 +37,23 @@ TWO_MODELS = 2
 # number of trading days. The AOFM series runs to the current month, so the
 # last quarter is otherwise an average over a partial window.
 _COMPLETE_QUARTER = 0.8
+
+# Quarters in the rolling window behind trend per-capita growth. Ten years, so
+# the window spans a cycle and neither the mining boom nor the pandemic can own
+# it: at 40 quarters the trend moves between 0.63 and 2.84 over its life, where
+# a 20-quarter window runs 0.11 to 3.18 and reads as a cycle rather than a
+# trend. Long enough that the last observation is not news, which is the point
+# of a reference line.
+_TREND_WINDOW = 40
+
+# One label, because the line appears on two charts and a reader moving between
+# them must be able to see it is the same series.
+TREND_G_LABEL = "Trend GDP per capita growth + 2.5% target"
+
+# Named so the proxy chart can subtract one proxy from the other by name. It
+# used to difference `iloc[:, 0] - iloc[:, 1]`, which was the forward less the
+# cash rate and silently became the wrong pair the moment a column was added.
+FORWARD_LABEL = "AOFM 5y5y risk-neutral forward"
 
 
 # This is not a model and collects almost nothing of its own: the r* paths come
@@ -87,36 +108,84 @@ def _forward_quarterly() -> pd.Series:
     return means
 
 
-def plot_forward_against_cash(start: str | None = "1993Q1") -> None:
-    """Chart the market's 5y5y forward against the cash rate it is a forecast of.
+def _trend_growth_nominal(index: pd.PeriodIndex) -> pd.Series:
+    """Return trend real per-capita GDP growth plus the target, on `index`.
 
-    NO MODEL OUTPUT ON THIS CHART. It is the raw pair the r* models are built
-    on: a market price that is close to the expected average policy rate five
-    to ten years out, and the policy rate itself. The point is to let a reader
-    see how much of each model's r* is already in the observable before any
-    estimation happens, given both models read this series.
+    THE OTHER REFERENCE POINT FOR r*. The market's 5y5y forward is one; the
+    growth rate of the economy is the other, and it comes from the Euler
+    condition rather than from any asset price, so it is the one piece of
+    evidence on these charts that no model here and no bond market produced.
+
+    PER CAPITA, NOT AGGREGATE, and the distinction decides the answer rather
+    than decorating it. The consumption-Euler link that makes r* track g is
+    about growth per head; the version people quote in passing is aggregate.
+    Australia's population growth sits between them and is worth about 1.2pp,
+    which is larger than the entire spread across the r* models on these
+    charts. Aggregate trend growth runs near 1.9, so aggregate-plus-target
+    would put this line around 4.4, above every model; per capita puts it at
+    3.24, among them. Switching the series would not shift the line, it would
+    change what the chart says.
+
+    THE FLAT 2.5 TARGET, NOT ANCHORED EXPECTATIONS, which is deliberate and is
+    the one place this package departs from its own convention. `to_nominal`
+    converts the SCALE of an estimated real neutral rate, and matches what the
+    RBA and CBA publish. This is not an estimate being converted: it is the
+    golden-rule statement that nominal neutral is real growth plus the
+    inflation the central bank is aiming at. The target IS the second term, so
+    substituting what people expect would make the benchmark drift with
+    sentiment. Over 1993Q1 on, the two conventions differ by up to about 0.5pp
+    in the 1990s and little since, and the footers say which one this is.
+    """
+    per_capita = get_gdp_per_capita().data.astype(float)
+    if isinstance(per_capita.index, pd.DatetimeIndex):
+        per_capita.index = per_capita.index.to_period("Q")
+    yearly = (per_capita / per_capita.shift(4) - 1) * 100
+    trend = yearly.rolling(_TREND_WINDOW).mean() + TARGET
+    return trend.reindex(index)
+
+
+def plot_proxies(start: str | None = "1993Q1") -> None:
+    """Chart the two proxies for nominal r*, against the cash rate.
+
+    NO MODEL OUTPUT ON THIS CHART. Both proxies are things the world produced
+    rather than things this repo estimated: the market's 5y5y forward, a price
+    close to the expected average policy rate five to ten years out, and trend
+    per-capita growth plus the target, which is the golden-rule statement of
+    where a neutral nominal rate should sit. Neither is r*. They are the two
+    standing reference points a neutral rate gets judged against, and they
+    disagree with each other as readily as the models do.
+
+    The cash rate is behind them because it is what both are a comparison for.
+
+    The forward is also the observable BOTH r* models read, so this chart
+    doubles as a look at how much of each model's answer was in the data
+    before any estimation happened. See `_trend_growth_nominal` for why the
+    growth line is per capita and why it uses the flat target.
 
     It is not a neutral rate. `get_aofm_5y5y_forward` says why: the forward
     still carries whatever the market believes about the cycle over years five
     to ten, plus whatever premium AOFM's model did not strip.
     """
-    forward = _forward_quarterly().rename("AOFM 5y5y risk-neutral forward")
+    forward = _forward_quarterly().rename(FORWARD_LABEL)
     index = forward.index
+    if not isinstance(index, pd.PeriodIndex):
+        index = pd.PeriodIndex(index, freq="Q")
     frame = pd.DataFrame({
         forward.name: forward,
         "Cash rate": _cash_rate(index),
+        TREND_G_LABEL: _trend_growth_nominal(index),
     })
     if start:
         frame = frame.loc[pd.Period(start, freq="Q"):]
 
-    spread = (frame.iloc[:, 0] - frame.iloc[:, 1]).dropna()
+    spread = (frame[FORWARD_LABEL] - frame["Cash rate"]).dropna()
     mg.line_plot_finalise(
         frame,
-        title="The 5y5y forward and the cash rate",
+        title="Macroeconomic proxies for nominal r*",
         ylabel="Per cent, nominal",
-        color=["darkblue", "darkgrey"],
-        style=["-", "--"],
-        width=[2.0, 1.5],
+        color=["darkblue", "darkgrey", "darkorange"],
+        style=["-", "--", "-."],
+        width=[2.0, 1.5, 1.8],
         annotate=True,
         rounding=2,
         legend={"loc": "best", "fontsize": "small"},
@@ -125,7 +194,7 @@ def plot_forward_against_cash(start: str | None = "1993Q1") -> None:
             f"mean {spread.mean():+.2f}pp"
         ),
         lfooter="Australia. Quarterly averages of daily data. Part-quarter dropped. ",
-        rfooter="AOFM risk-neutral curve (BC); RBA F1",
+        rfooter="AOFM risk-neutral curve (BC); RBA F1; ABS 5206.0",
         show=False,
     )
 
@@ -152,8 +221,6 @@ def plot_real_cash_rate(
     The models are plotted in real terms by the inverse of the conversion
     `sources.gather` applied, so nothing is deflated twice.
     """
-    from src.data.inflation import get_trimmed_mean_annual  # noqa: PLC0415 — one chart
-
     data = frame.loc[frame.index >= pd.Period(start, freq="Q")] if start else frame
     index = data.index
     if not isinstance(index, pd.PeriodIndex):
@@ -337,7 +404,7 @@ def run_analyse(
     plot_spread(frame, start=start)
     plot_stance(frame, start=start)
     plot_stance_against_inflation(frame, start=start)
-    plot_forward_against_cash(start=start)
+    plot_proxies(start=start)
     plot_real_cash_rate(frame, start=start, scale=scale)
     print(f"\nCharts saved to: {directory}")
 
@@ -349,9 +416,6 @@ def _demand_gap(index: pd.PeriodIndex, target: float = 2.5) -> pd.Series:
     decomposition on a four-quarter basis, the same series and annualisation
     `rstar_bonds` uses for its Taylor rule.
     """
-    from src.data.inflation import get_trimmed_mean_annual  # noqa: PLC0415
-    from src.models.ystar_ustar.results import load_results  # noqa: PLC0415 — optional dependency
-
     inflation = get_trimmed_mean_annual().data.astype(float)
     inflation.index = pd.PeriodIndex(inflation.index, freq="Q")
     supply = load_results(prefix="ystar_ustar").inflation_decomposition()["supply"].rolling(4).sum()
@@ -433,8 +497,11 @@ def plot_stance_against_inflation(frame: pd.DataFrame, start: str | None = "1993
     stances = _stances(data).dropna(how="all")
     if stances.empty:
         return
+    index = stances.index
+    if not isinstance(index, pd.PeriodIndex):
+        index = pd.PeriodIndex(index, freq="Q")
     try:
-        gap = _demand_gap(stances.index)
+        gap = _demand_gap(index)
     except (FileNotFoundError, KeyError, ValueError) as exc:
         print(f"  note: demand gap unavailable ({type(exc).__name__}); chart skipped")
         return

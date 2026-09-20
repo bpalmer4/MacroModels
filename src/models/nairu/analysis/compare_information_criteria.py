@@ -69,6 +69,13 @@ PRICE_REFERENCE = [
 PRICE_LL = "observed_price_inflation"
 THIN = 10  # 50k draws -> 5k; ample for stable LOO/WAIC, keeps memory sane
 
+# PSIS-LOO Pareto-k reliability cutoffs, from Vehtari et al. Not ours to choose,
+# which is why they are named rather than tuned. The table's column labels are
+# built from them, so a change here cannot leave the headings saying otherwise.
+K_GOOD = 0.5
+K_OK = 0.7
+K_BAD = 1.0
+
 
 def _loglik_dataset(prefix: str) -> xr.Dataset:
     """Return the log_likelihood group for a variant, computing+caching as needed."""
@@ -116,11 +123,11 @@ def _pareto_k_table(loos: dict[str, az.ELPDData]) -> pd.DataFrame:
         n = len(k)
         rows[name] = {
             "n": n,
-            "good(<=0.5)": int((k <= 0.5).sum()),
-            "ok(0.5-0.7)": int(((k > 0.5) & (k <= 0.7)).sum()),
-            "bad(0.7-1)": int(((k > 0.7) & (k <= 1.0)).sum()),
-            "vbad(>1)": int((k > 1.0).sum()),
-            "%>0.7": round(100 * (k > 0.7).mean(), 1),
+            f"good(<={K_GOOD:g})": int((k <= K_GOOD).sum()),
+            f"ok({K_GOOD:g}-{K_OK:g})": int(((k > K_GOOD) & (k <= K_OK)).sum()),
+            f"bad({K_OK:g}-{K_BAD:g})": int(((k > K_OK) & (k <= K_BAD)).sum()),
+            f"vbad(>{K_BAD:g})": int((k > K_BAD).sum()),
+            f"%>{K_OK:g}": round(100 * (k > K_OK).mean(), 1),
             "max_k": round(float(k.max()), 2),
         }
     return pd.DataFrame(rows).T

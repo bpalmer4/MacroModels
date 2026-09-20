@@ -181,6 +181,62 @@ midpoint of the band and carries nothing the band does not already show.
 So the chart maps the landscape of *published* possibilities. The landscape of defensible
 ones is larger.
 
+## The proxies chart
+
+`plot_proxies` draws **Macroeconomic proxies for nominal r\***: the AOFM 5y5y risk-neutral
+forward, trend real GDP per capita growth plus the 2.5% target, and the cash rate behind
+both. It was called `plot_forward_against_cash` and titled "The 5y5y forward and the cash
+rate" until the growth line went on.
+
+**No model output, and that is the point.** Everything here was produced by the world rather
+than estimated in this repo. The two proxies are the standing reference points a neutral rate
+gets judged against — one a market price, one the golden-rule statement that nominal neutral
+is real growth plus the inflation the central bank aims at. Neither is r\*. The cash rate is
+behind them because it is what both are a comparison for.
+
+As at 2026Q2: forward **3.80**, growth proxy **3.24**, cash rate **4.35**. Against the models
+on the summary chart, 3.33 and 3.89, the growth proxy sits just under the bond-market line.
+
+**The two proxies disagree as readily as the models do.** Forward less growth proxy is +0.57pp
+latest, −0.32pp on average, and has been **2.20pp** at its widest — about four times the
+0.56pp span between the two models. Agreement between them now is not a general fact about
+them.
+
+### Per capita, not aggregate
+
+This decides the answer rather than decorating it. The consumption-Euler link that makes r\*
+track g is about growth per head; the version quoted in passing is aggregate. Australian
+population growth sits between them and is worth roughly 1.2pp, **larger than the entire
+spread across the r\* models on these charts**. Aggregate potential growth runs near 1.9 (see
+[`gstar_summary`](../gstar_summary/MODEL_NOTES.md)), so aggregate-plus-target would put this
+line about 4.4 and above every model on the chart; per capita puts it at 3.24, among them.
+Switching the series would not shift the line, it would change what the chart says.
+
+### The flat target, not anchored expectations
+
+The one place this package departs from [its own convention](#the-nominal-conversion), and
+deliberately. `to_nominal` converts the SCALE of an *estimated* real neutral rate, and matches
+what the RBA and CBA publish. This is not an estimate being converted: the golden rule says
+nominal neutral is real growth plus the inflation being targeted, so the target IS the second
+term. Substituting what people expect would make the benchmark drift with sentiment. The two
+conventions differ by up to about 0.5pp through the 1990s re-anchoring and little since.
+
+**So one chart carries two nominal conventions.** The models on the summary chart use anchored
+expectations; the growth proxy here uses the flat 2.5. They are not interchangeable and the
+difference is not zero.
+
+### The window
+
+A 40-quarter rolling mean of year-ended growth, `_TREND_WINDOW`. Ten years, so it spans a
+cycle and neither the mining boom nor the pandemic can own it: at 40 quarters the trend runs
+0.63 to 2.84 over its life, where 20 quarters runs 0.11 to 3.18 and reads as a cycle rather
+than a trend. It is still a backward-looking mean, so the mid-2000s hump is the boom sitting
+inside the window rather than a contemporaneous belief about neutral.
+
+The series is ABS 5206.0 key aggregates, "GDP per capita: Chain volume measures", seasonally
+adjusted, via `src.data.gdp.get_gdp_per_capita`. Quarterly back to 1959Q3, so the trend starts
+1984Q2 and covers the whole 1993Q1-on chart window.
+
 ## Usage
 
 ```bash

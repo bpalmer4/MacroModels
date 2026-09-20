@@ -34,6 +34,7 @@ So "slow moving" and "accurate" pull against each other, and the default
 window is short for that reason rather than by oversight.
 """
 
+import arviz as az
 import numpy as np
 import pandas as pd
 
@@ -84,8 +85,6 @@ def resolve_beta(config: ModelConfig, override: float | None = None) -> tuple[fl
     """
     if override is not None:
         return override, f"supplied ({override:.3f})"
-
-    import arviz as az  # noqa: PLC0415 — only needed on this path
 
     path = config.output_dir / f"{config.prefix}_trace.nc"
     if not path.is_file():

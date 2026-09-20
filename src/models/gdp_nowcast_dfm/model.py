@@ -86,6 +86,7 @@ from src.models.common.nowcast_core import (
     print_qoq_tty_header,
     truncate_monthly,
 )
+from src.models.common.nowcast_diagnostics import print_capex_imports_hotness
 
 logger = logging.getLogger(__name__)
 
@@ -762,8 +763,6 @@ def _print_summary(result: NowcastResult) -> None:
         print(f"    {name:<25} {status}")
 
     try:
-        from src.models.common.nowcast_diagnostics import print_capex_imports_hotness  # noqa: PLC0415
-
         print_capex_imports_hotness(target_quarter=result.target_quarter)
     except (ValueError, KeyError, OSError) as exc:
         logger.warning("Capex-imports hotness diagnostic failed: %s", exc)

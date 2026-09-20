@@ -7,7 +7,7 @@ the actual model specification.
 
 import inspect
 import re
-from collections.abc import Callable  # noqa: TC003 — used in annotations only but kept for readability
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 

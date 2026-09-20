@@ -14,11 +14,13 @@ from src.models.common import prior_posterior
 from src.models.common.diagnostics import save_diagnostics
 from src.models.common.inflation_scale import long_run_expectations
 from src.models.common.sources import footer_from_constants
+from src.models.rstar_bonds.results import load_results as load_bonds
 from src.models.rstar_rba.ensemble import load_ensemble, print_ensemble
 from src.models.rstar_rba.estimate import load_results, posterior_median
 from src.models.rstar_rba.injection import load_injection, print_injection
+from src.paths import CHARTS
 
-CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "RStarRBA"
+CHART_DIR = CHARTS / "RStarRBA"
 
 _LFOOTER = "Australia. Neutral inferred from the RBA's response to inflation. "
 _ERAS = {
@@ -726,8 +728,6 @@ def _taylor_inputs(prefix: str = "rstar_bonds") -> tuple[pd.Series, pd.Series]:
     `rstar_bonds` results, which already assemble them. Chart-only: a missing
     run costs this chart and nothing else.
     """
-    from src.models.rstar_bonds.results import load_results as load_bonds  # noqa: PLC0415
-
     try:
         bonds = load_bonds(prefix=prefix)
     except (FileNotFoundError, KeyError, ValueError) as exc:

@@ -22,8 +22,9 @@ import pandas as pd
 
 from src.data.cash_rate import get_cash_rate_qrtly
 from src.data.rba_loader import get_bank_bill_rate, get_deposit_rate, get_lending_rate
+from src.paths import CHARTS
 
-CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "BankCosts"
+CHART_DIR = CHARTS / "BankCosts"
 
 _RFOOTER = "Built using: RBA F1/F4/F5"
 _LFOOTER = "Australia. Bank funding and lending rates. "

@@ -32,7 +32,7 @@ Usage::
 import argparse
 import pickle
 from dataclasses import replace
-from pathlib import Path  # noqa: TC003 — used at runtime in function signatures
+from pathlib import Path
 
 import mgplot as mg
 import numpy as np

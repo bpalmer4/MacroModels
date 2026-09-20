@@ -7,14 +7,19 @@ Usage:
 """
 
 import argparse
-from pathlib import Path
 
+from src.models.nairu.analyse import run_analyse
+from src.models.nairu.analysis import plot_nairu_comparison, plot_output_gap_comparison
 from src.models.nairu.config import PRESETS, ModelConfig
+from src.models.nairu.estimate import run_estimate
+from src.models.nairu.forecast import run_forecast
 from src.models.nairu.observations import AnchorMode
-from src.models.nairu.results import DEFAULT_CHART_BASE
+from src.models.nairu.results import DEFAULT_CHART_BASE, load_results
+from src.models.nairu.validate import run_validate
+from src.paths import MODEL_OUTPUTS
 
 # Default output directory
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
 
 
 def _run_prefix(label: str, anchor_mode: AnchorMode) -> str:
@@ -41,8 +46,6 @@ def _run_variant(
         print(f"ESTIMATE [{label} / {anchor_mode}]")
         print("=" * 60)
 
-        from src.models.nairu.estimate import run_estimate  # noqa: PLC0415 — conditional pipeline stage
-
         run_estimate(
             anchor_mode=anchor_mode,
             config=config,
@@ -56,8 +59,6 @@ def _run_variant(
         print(f"VALIDATE [{label} / {anchor_mode}]")
         print("=" * 60)
 
-        from src.models.nairu.validate import run_validate  # noqa: PLC0415 — conditional pipeline stage
-
         run_validate(prefix=prefix, chart_dir=chart_dir, verbose=verbose)
         print()
 
@@ -66,8 +67,6 @@ def _run_variant(
         print(f"ANALYSE [{label} / {anchor_mode}]")
         print("=" * 60)
 
-        from src.models.nairu.analyse import run_analyse  # noqa: PLC0415 — conditional pipeline stage
-
         run_analyse(prefix=prefix, chart_dir=chart_dir, verbose=verbose)
         print()
 
@@ -75,8 +74,6 @@ def _run_variant(
         print("=" * 60)
         print(f"FORECAST [{label} / {anchor_mode}]")
         print("=" * 60)
-
-        from src.models.nairu.forecast import run_forecast  # noqa: PLC0415 — conditional pipeline stage
 
         run_forecast(prefix=prefix, chart_dir=chart_dir, verbose=verbose)
         print()
@@ -129,9 +126,6 @@ def main(
         )
 
     if len(variants) > 1 and not estimate_only:
-        from src.models.nairu.analysis import plot_nairu_comparison, plot_output_gap_comparison  # noqa: PLC0415
-        from src.models.nairu.results import load_results  # noqa: PLC0415
-
         print("\n" + "#" * 60)
         print("# COMPARISON CHARTS")
         print("#" * 60 + "\n")

@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from mgplot.finalisers import DataT, LPFKwargs
 
+from src.data.gov_spending import get_gov_consumption_qrtly
 from src.data.henderson import hma
 from src.models.common.charts import excluded_span_style
 from src.models.common.diagnostics import save_diagnostics
@@ -724,8 +725,6 @@ def plot_gov_growth_against_potential(
     about composition: whether the public component has been running above or
     below the pace the economy's supply side can sustain.
     """
-    from src.data.gov_spending import get_gov_consumption_qrtly  # noqa: PLC0415
-
     gov = get_gov_consumption_qrtly()
     log_gov = np.log(gov.data) * 100
     _growth_against_potential(

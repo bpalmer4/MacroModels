@@ -8,6 +8,7 @@ import pandas as pd
 from matplotlib.axes import Axes
 
 from src.data.rba_loader import get_inflation_expectations
+from src.models.common.timeseries import plot_posterior_timeseries
 
 if TYPE_CHECKING:
     from src.models.expectations.model import ExpectationsResults
@@ -110,8 +111,6 @@ def plot_validation(
         Axes if finalise=False, None otherwise
 
     """
-    from src.models.common.timeseries import plot_posterior_timeseries  # noqa: PLC0415 — avoid circular import
-
     pie_rbaq = get_pie_rbaq()
     data = results.expectations_posterior()
 
@@ -135,13 +134,15 @@ def plot_validation(
     if start is not None:
         pie_rbaq = pie_rbaq[pie_rbaq.index >= start]
 
-    # Plot RBA series
+    # Plot RBA series. The legend entry comes from the series' own name:
+    # `line_plot` takes no `label`, and passing one only warned and dropped it,
+    # leaving this line unlabelled against the model's.
+    pie_rbaq = pie_rbaq.rename("RBA PIE_RBAQ")
     ax = mg.line_plot(
         pie_rbaq,
         ax=ax,
         color="red",
         width=1.5,
-        label="RBA PIE_RBAQ",
         annotate=False,
         zorder=5,
     )

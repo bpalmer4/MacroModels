@@ -42,8 +42,10 @@ and its level is barely identified.
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
-DEFAULT_CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts"
+from src.paths import CHARTS, MODEL_OUTPUTS
+
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
+DEFAULT_CHART_DIR = CHARTS
 
 # An IS curve has a negative slope. At or above this it is a sign error.
 MAX_SLOPE = 0.0

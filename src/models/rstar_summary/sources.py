@@ -27,12 +27,19 @@ import pandas as pd
 
 from src.models.common import inflation_scale
 from src.models.common.timeseries import last_complete_quarter
+from src.models.rstar_bonds.results import load_results as load_bonds_results
+from src.models.rstar_rba.estimate import (
+    load_results as load_rba_results,
+)
+from src.models.rstar_rba.estimate import (
+    posterior_median,
+)
+from src.paths import MODEL_OUTPUTS, ROOT
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-ROOT = Path(__file__).parent.parent.parent.parent
-OUTPUT_DIR = ROOT / "model_outputs"
+OUTPUT_DIR = MODEL_OUTPUTS
 
 # Real converts to nominal by adding LONG-RUN INFLATION EXPECTATIONS, which is
 # what the RBA and CBA both do, so these lines are comparable with a published
@@ -85,9 +92,7 @@ class RstarSource:
 
 def _load_bonds(prefix: str) -> pd.Series:
     """Bond-market r*, real. Anchored to a world real rate plus an AU wedge."""
-    from src.models.rstar_bonds.results import load_results  # noqa: PLC0415
-
-    return load_results(prefix=prefix).rstar_median()
+    return load_bonds_results(prefix=prefix).rstar_median()
 
 
 def _load_rba(prefix: str) -> pd.Series:
@@ -97,9 +102,7 @@ def _load_rba(prefix: str) -> pd.Series:
     inflation response on top and is not a neutral rate. That distinction is
     the one `rstar_rba`'s notes insist on, so it is made explicitly here.
     """
-    from src.models.rstar_rba.estimate import load_results, posterior_median  # noqa: PLC0415
-
-    trace, frame, _ = load_results(prefix=prefix)
+    trace, frame, _ = load_rba_results(prefix=prefix)
     index = frame.index
     if not isinstance(index, pd.PeriodIndex):
         index = pd.PeriodIndex(index, freq="Q")

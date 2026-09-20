@@ -11,6 +11,7 @@ import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
+from src.data.aofm_loader import get_aofm_5y5y_forward
 from src.data.cash_rate import get_cash_rate_qrtly
 from src.data.fred_loader import get_fred_quarterly
 from src.data.gdp import get_gdp_growth
@@ -18,6 +19,7 @@ from src.data.inflation import get_trimmed_mean_qrtly
 from src.models.common.sources import SourceSet
 from src.models.rstar_rba.config import DEFAULT_OUTPUT_DIR, WORLD_REAL_RATE, ModelConfig
 from src.models.ystar.base import SamplerConfig, get_fixed_constants, sample_model
+from src.models.ystar_ustar.results import load_results as load_joint
 
 
 def _jump_series(config: ModelConfig, sources: SourceSet) -> pd.Series:
@@ -48,8 +50,6 @@ def _unemployment_gap(config: ModelConfig, sources: SourceSet) -> pd.Series:
     term is the specification, so silently dropping it would estimate a
     different model than the one asked for.
     """
-    from src.models.ystar_ustar.results import load_results as load_joint  # noqa: PLC0415
-
     joint = load_joint(prefix=config.ustar_prefix)
     recorded = SourceSet.from_records(joint.constants.get("sources"))
     if recorded is not None:
@@ -87,8 +87,6 @@ def _forward(config: ModelConfig, sources: SourceSet) -> pd.Series:
     which is now what holds the level. The assertion has MOVED, not vanished.
     The series is also re-estimated full-sample monthly, so it revises.
     """
-    from src.data.aofm_loader import get_aofm_5y5y_forward  # noqa: PLC0415 — optional input
-
     series = sources.take(get_aofm_5y5y_forward(config.forward_method)).astype(float).dropna()
     return series.groupby(pd.PeriodIndex(series.index, freq="Q")).mean()
 

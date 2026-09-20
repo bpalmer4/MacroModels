@@ -21,10 +21,13 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from src.data.cash_rate import get_cash_rate_qrtly
+from src.data.inflation import get_trimmed_mean_annual
 from src.models.common import prior_posterior
 from src.models.common.inflation_scale import to_nominal
 from src.models.rstar_tvpvar.ensemble import load_ensemble
 from src.models.rstar_tvpvar.results import TvpVarResults
+from src.models.ystar_ustar.results import load_results
 
 # A scalar parameter's posterior array is (chain, draw); a vector's carries
 # a third axis, which is pooled across before charting.
@@ -95,8 +98,6 @@ def plot_prior_posterior(results: TvpVarResults, footer: str, lfooter: str) -> i
 def plot_policy_stance(results: TvpVarResults, footer: str, lfooter: str) -> None:
     """Plot the cash rate against nominal r*: what a neutral rate is for."""
     # The NOMINAL cash rate, since the line it is compared against is nominal.
-    from src.data.cash_rate import get_cash_rate_qrtly  # noqa: PLC0415 — local to keep imports light
-
     nominal = to_nominal(results.rstar_median())
     nominal_cash = get_cash_rate_qrtly().data.astype(float)
     nominal_cash.index = pd.PeriodIndex(nominal_cash.index, freq="Q")
@@ -127,8 +128,6 @@ def plot_policy_stance(results: TvpVarResults, footer: str, lfooter: str) -> Non
 
 def _output_gap() -> pd.Series:
     """Return the joint model's output gap, for the Taylor rule."""
-    from src.models.ystar_ustar.results import load_results  # noqa: PLC0415 — optional dependency
-
     return load_results(prefix="ystar_ustar").output_gap_median()
 
 
@@ -146,9 +145,6 @@ def plot_taylor_rule(results: TvpVarResults, footer: str, lfooter: str) -> None:
     except (FileNotFoundError, KeyError, ValueError) as exc:
         print(f"  note: output gap unavailable ({type(exc).__name__}); Taylor chart skipped")
         return
-
-    from src.data.cash_rate import get_cash_rate_qrtly  # noqa: PLC0415
-    from src.data.inflation import get_trimmed_mean_annual  # noqa: PLC0415
 
     cash = get_cash_rate_qrtly().data.astype(float)
     cash.index = pd.PeriodIndex(cash.index, freq="Q")

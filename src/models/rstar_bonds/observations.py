@@ -63,10 +63,13 @@ from src.models.rstar_bonds.config import (
     US_PREMIUM_SOURCES,
     WORLD_REAL_SERIES,
 )
+from src.models.ustar.results import load_results as load_ustar_results
+from src.models.ystar.results import load_results as load_ystar_results
+from src.models.ystar_ustar.results import load_results as load_joint_results
 
 if TYPE_CHECKING:
-    # Type only. The runtime import stays inside `_joint_results`, so a missing
-    # joint run costs the Taylor-rule charts rather than the whole module.
+    # The class itself, for annotations only; the loader it comes from is
+    # imported above as `load_joint_results`.
     from src.models.ystar_ustar.results import JointResults
 
 _NAME_WIDTH = 26
@@ -231,27 +234,21 @@ def _joint_results(prefix: str, sources: SourceSet) -> JointResults:
     instead, they do not: `ustar` takes `ystar`'s gap as data, so its
     unemployment gap is conditional on a gap `ystar` may since have revised.
     """
-    from src.models.ystar_ustar.results import load_results  # noqa: PLC0415 — optional dependency
-
-    results = load_results(prefix=prefix)
+    results = load_joint_results(prefix=prefix)
     _record_parent(results, sources)
     return results
 
 
 def _ystar_gap(prefix: str, sources: SourceSet) -> pd.Series:
     """Return the median output gap from a completed ystar run."""
-    from src.models.ystar.results import load_results  # noqa: PLC0415 — optional dependency
-
-    results = load_results(prefix=prefix)
+    results = load_ystar_results(prefix=prefix)
     _record_parent(results, sources)
     return results.output_gap_median()
 
 
 def _ustar_gap(prefix: str, sources: SourceSet) -> pd.Series:
     """Return the median unemployment gap from a completed ustar run."""
-    from src.models.ustar.results import load_results  # noqa: PLC0415 — optional dependency
-
-    results = load_results(prefix=prefix)
+    results = load_ustar_results(prefix=prefix)
     _record_parent(results, sources)
     return results.ugap_median()
 
@@ -275,9 +272,7 @@ def _ustar_supply(prefix: str, sources: SourceSet) -> pd.Series:
     quarter sum — not `annualize()`, which the decomposition chart uses but
     which is a compounding transform and not additive across components.
     """
-    from src.models.ustar.results import load_results  # noqa: PLC0415 — optional dependency
-
-    results = load_results(prefix=prefix)
+    results = load_ustar_results(prefix=prefix)
     _record_parent(results, sources)
     return _supply_annual(results.inflation_decomposition()["supply"])
 

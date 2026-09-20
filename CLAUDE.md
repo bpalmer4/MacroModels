@@ -71,6 +71,10 @@ uv run python -m src.models.gdp_nowcast_bridge.backtest  # Run nowcast backtest
 
 ```
 src/
+├── paths.py                       # ROOT, CHARTS, MODEL_OUTPUTS, INPUT_DATA, OUTPUT, CACHE.
+│                                  #   Import these rather than counting `.parent` back
+│                                  #   from __file__: the depth differs by module and a
+│                                  #   file moved one level then reads the wrong place.
 ├── data/                          # Data loading and transformation modules
 │   ├── abs_loader.py              # ABS data retrieval via readabs
 │   ├── rba_loader.py              # RBA data retrieval
@@ -367,7 +371,12 @@ src/
 │   ├── bank_costs/                # Bank funding and lending costs against the cash rate.
 │   │                              #   EXPLORATORY: charts only, no model, no MODEL_NOTES.
 │   ├── expectations/              # Inflation expectations model
-│   └── common/                    # Shared model utilities (diagnostics, extraction, timeseries, sources)
+│   └── common/                    # Shared model machinery, no economics. results.py holds
+│                                  #   PosteriorResults, the base each model's results class
+│                                  #   inherits for the trace/posterior/_vector/_scalar
+│                                  #   plumbing; cli.py holds the sampler and run arguments
+│                                  #   every run.py shares. Also diagnostics, extraction,
+│                                  #   timeseries, sources, charts, spline, inflation_scale.
 │
 └── utilities/                     # General utilities (rate_conversion)
 
@@ -433,6 +442,25 @@ Key parameters:
 - Ruff configured with aggressive linting (`line-length=119`, most rules enabled)
 - Specific ignores for Jupyter patterns (useless expressions, module-level imports)
 - Uses `.loc[]` over `.at[]` per mypy preferences
+- **Do not add `# noqa`.** Either agree a rule-level ignore in `pyproject.toml`,
+  with a comment saying why, or fix the code. A per-line suppression hides a real
+  diagnostic where nobody rereads it, and its justification goes stale unchecked:
+  three in this repo asserted a circular import that did not exist. Directives
+  already in the tree are legacy, to be removed as their files are worked on.
+  Never run `ruff check --select <RULE> --fix`: narrowing `--select` deselects
+  every other rule, so `RUF100` then judges nearly every existing directive
+  unused and strips them all.
+- **Economics notation is exempt, by rule not by suppression.** `N803` and `N806`
+  are ignored so `T`, `R`, `Z`, `Q`, `H`, `P0` can keep the names of the
+  state-space algebra they implement, and `U` can be unemployment.
+- **All imports at the top of the file.** Not inside functions, not inside
+  `if __name__` blocks. Where two modules need each other, move the shared
+  names into a third module rather than deferring an import: `nairu/forecast`
+  and `nairu/forecast_plots` both take `ForecastResults` from
+  `nairu/forecast_types`, and `gdp_nowcast_components/model` and its
+  `diagnostics` both take `CHART_DIR` from the package `__init__`.
+- Magic numbers get a named constant with a comment, and any label quoting the
+  value is built from the constant so the two cannot drift.
 
 ### Git
 - Never use git commands - no commits, no status, nothing

@@ -26,8 +26,9 @@ from src.models.rstar_hlw.equations.r_star_tv_alpha import r_star_tv_alpha_equat
 from src.models.rstar_hlw.equations.trend_growth import trend_growth_equation
 from src.models.rstar_hlw.equations.z_star import z_star_equation
 from src.models.rstar_hlw.observations import DEFAULT_START, build_observations
+from src.paths import MODEL_OUTPUTS
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
 
 # The lockdown quarters, dropped from the IS and Phillips likelihoods by
 # default. Same window `ystar` uses, and for the same reason: with it in,

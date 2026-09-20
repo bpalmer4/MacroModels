@@ -33,10 +33,21 @@ z = [ε_d, ε_s, ω, R₋₁, k, n, q₋₁,  c, q, π]   (7 states, 3 forward)
 
 from dataclasses import dataclass, field
 
+import mgplot as mg
 import numpy as np
+import pandas as pd
 from scipy import linalg
 
+from src.data.abs_loader import load_series
+from src.data.bonds import get_corporate_spread
+from src.data.cash_rate import get_cash_rate_qrtly
+from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY
+from src.models.dsge.data_loader import load_estimation_data
+from src.models.dsge.estimation import ModelSpec, estimate_model
+from src.models.dsge.kalman import kalman_filter, kalman_smoother
 from src.models.dsge.nk_model import IndeterminacyError, NoSolutionError
+from src.models.dsge.shared import SINGULAR_TOL
+from src.paths import CHARTS, MODEL_OUTPUTS
 
 
 @dataclass
@@ -84,6 +95,7 @@ class FANKParameters:
     sigma_monetary: float = 0.25
 
     def to_dict(self) -> dict:
+        """Convert to dictionary."""
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
 
 
@@ -141,7 +153,9 @@ class FANKModel:
     def _build_system_matrices(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         p = self.params
         n = self.n_states + self.n_forward  # 10
-        A = np.zeros((n, n)); B = np.zeros((n, n)); C = np.zeros((n, self.n_shocks))
+        A = np.zeros((n, n))
+        B = np.zeros((n, n))
+        C = np.zeros((n, self.n_shocks))
 
         (EPSD, EPSS, OMEGA, RLAG, K, N, QLAG, Cc, Q, PI) = range(10)
         a1 = 1.0 - p.beta * (1.0 - p.delta)            # weight on mpk in r^k
@@ -157,9 +171,15 @@ class FANKModel:
         RK_QLAG = -1.0
 
         # R0-R2: exogenous AR(1) shocks
-        A[EPSD, EPSD] = 1.0; B[EPSD, EPSD] = p.rho_demand; C[EPSD, 0] = p.sigma_demand
-        A[EPSS, EPSS] = 1.0; B[EPSS, EPSS] = p.rho_supply; C[EPSS, 1] = p.sigma_supply
-        A[OMEGA, OMEGA] = 1.0; B[OMEGA, OMEGA] = p.rho_omega; C[OMEGA, 2] = p.sigma_omega
+        A[EPSD, EPSD] = 1.0
+        B[EPSD, EPSD] = p.rho_demand
+        C[EPSD, 0] = p.sigma_demand
+        A[EPSS, EPSS] = 1.0
+        B[EPSS, EPSS] = p.rho_supply
+        C[EPSS, 1] = p.sigma_supply
+        A[OMEGA, OMEGA] = 1.0
+        B[OMEGA, OMEGA] = p.rho_omega
+        C[OMEGA, 2] = p.sigma_omega
 
         # R3: Taylor rule defines R_lag' = R_t = ρ_i·R₋₁ + (1−ρ_i)(φ_π·π + φ_y·y) + ε_m
         A[RLAG, RLAG] = 1.0
@@ -226,21 +246,23 @@ class FANKModel:
         return A, B, C
 
     def check_determinacy(self) -> tuple[bool, np.ndarray]:
+        """Return whether the unstable eigenvalues number `n_forward`, and them."""
         A, B, _ = self._build_system_matrices()
         _, _, alpha, beta_eig, _, _ = linalg.ordqz(B, A, sort="iuc")
         with np.errstate(divide="ignore", invalid="ignore"):
-            eig = np.where(np.abs(beta_eig) < 1e-10, np.inf, alpha / beta_eig)
-        n_unstable = int(np.sum(np.abs(eig) > 1.0 + 1e-10))
+            eig = np.where(np.abs(beta_eig) < SINGULAR_TOL, np.inf, alpha / beta_eig)
+        n_unstable = int(np.sum(np.abs(eig) > 1.0 + SINGULAR_TOL))
         return n_unstable == self.n_forward, eig
 
     def solve(self) -> FANKSolution:
+        """Solve by Blanchard-Kahn, raising if the model is not determinate."""
         A, B, C = self._build_system_matrices()
         p = self.params
         n = self.n_states + self.n_forward
 
         is_det, eig = self.check_determinacy()
         if not is_det:
-            n_unstable = int(np.sum(np.abs(eig) > 1.0 + 1e-10))
+            n_unstable = int(np.sum(np.abs(eig) > 1.0 + SINGULAR_TOL))
             if n_unstable < self.n_forward:
                 raise IndeterminacyError(
                     f"Indeterminacy: {n_unstable} unstable eigenvalues, need {self.n_forward}."
@@ -251,7 +273,7 @@ class FANKModel:
 
         S, T, alpha, beta_eig, Q, Z = linalg.ordqz(B, A, sort="iuc")
         with np.errstate(divide="ignore", invalid="ignore"):
-            eig = np.where(np.abs(beta_eig) < 1e-10, np.inf, alpha / beta_eig)
+            eig = np.where(np.abs(beta_eig) < SINGULAR_TOL, np.inf, alpha / beta_eig)
 
         n_stable = n - self.n_forward  # 7
         Zt = Z.conj().T
@@ -259,14 +281,14 @@ class FANKModel:
         Z12 = Zt[:n_stable, self.n_states:]
         Z21 = Zt[n_stable:, :self.n_states]
         Z22 = Zt[n_stable:, self.n_states:]
-        if np.abs(linalg.det(Z22)) < 1e-10:
+        if np.abs(linalg.det(Z22)) < SINGULAR_TOL:
             raise NoSolutionError("Z22 singular.")
         R = -linalg.inv(Z22) @ Z21  # 3×7
 
         S11 = S[:n_stable, :n_stable]
         T11 = T[:n_stable, :n_stable]
         Z_s = Z11 + Z12 @ R
-        if np.abs(linalg.det(Z_s)) < 1e-10:
+        if np.abs(linalg.det(Z_s)) < SINGULAR_TOL:
             raise NoSolutionError("Cannot solve for P.")
         P = np.real(linalg.inv(Z_s) @ linalg.solve(T11, S11) @ Z_s)  # 7×7
 
@@ -301,6 +323,7 @@ class FANKModel:
                 "k": k, "n": n, "omega": omega}
 
     def compute_irf(self, shock_name: str, periods: int = 24) -> dict[str, np.ndarray]:
+        """Return the impulse response of states and jumps to a one-sd shock."""
         sol = self.solve()
         shock_map = {"demand": 0, "supply": 1, "omega": 2, "monetary": 3}
         eta = np.zeros(self.n_shocks)
@@ -320,7 +343,6 @@ class FANKModel:
 # Observation equation, likelihood, data, estimation
 # =============================================================================
 
-import pandas as pd  # noqa: E402
 
 COVID_START = pd.Period("2020Q1", freq="Q")
 COVID_END = pd.Period("2021Q4", freq="Q")
@@ -349,7 +371,9 @@ def _observation_matrix(model: "FANKModel", solution: FANKSolution) -> np.ndarra
     EPSD, EPSS, OMEGA, RLAG, K, N, QLAG = range(7)
 
     def e(i: int) -> np.ndarray:
-        v = np.zeros(ns); v[i] = 1.0; return v
+        v = np.zeros(ns)
+        v[i] = 1.0
+        return v
 
     c_row, q_row, pi_row = Rp[0], Rp[1], Rp[2]
     y_row = Y_C * c_row + Y_K * e(K) + Y_Q * q_row              # output gap
@@ -377,7 +401,6 @@ def _fa_state_space(model: "FANKModel", solution: FANKSolution | None = None):
 
 
 def compute_fa_nk_log_likelihood(y_obs: np.ndarray, params: FANKParameters, labour_block: bool = False) -> float:
-    from src.models.dsge.kalman import kalman_filter
     try:
         model = FANKModel(params=params, labour_block=labour_block)
         T, R, Z, Q, H = _fa_state_space(model)
@@ -397,7 +420,6 @@ def _fa_nk_labour_likelihood(params: FANKParameters, data: dict) -> float:
 
 
 def fa_nk_extract_states(params: FANKParameters, data: dict, labour_block: bool = False) -> dict:
-    from src.models.dsge.kalman import kalman_smoother
     try:
         model = FANKModel(params=params, labour_block=labour_block)
         solution = model.solve()
@@ -432,9 +454,6 @@ def load_fa_nk_data(start: str = "1993Q1", end: str | None = None, exclude_covid
     1993. Excludes COVID (2020Q1-2021Q4); keeps the GFC (its spread blowout
     identifies the financial block).
     """
-    from src.data.bonds import get_corporate_spread
-    from src.models.dsge.data_loader import load_estimation_data
-
     # 3 core observables, complete-case from `start`
     base = load_estimation_data(start=start, end=end, n_observables=3, anchor_inflation=True)
     spread = get_corporate_spread().data
@@ -471,7 +490,6 @@ FA_NK_PARAM_BOUNDS = {
     "sigma_monetary": (0.05, 3.0),
 }
 
-from src.models.dsge.estimation import ModelSpec  # noqa: E402
 
 FA_NK_SPEC = ModelSpec(
     name="FA-NK",
@@ -498,7 +516,6 @@ def run_fa_nk(start: str = "1993Q1", end: str | None = None, verbose: bool = Tru
     The credit spread is missing before 2005 (filter handles it); the other three
     observables run from 1993.
     """
-    from src.models.dsge.estimation import estimate_model
     data = load_fa_nk_data(start=start, end=end)
     if verbose:
         print(f"FA-NK estimation: {data['dates'][0]} to {data['dates'][-1]} (n={len(data['dates'])})")
@@ -528,7 +545,6 @@ FA_NK_LABOUR_SPEC = ModelSpec(
 
 def run_fa_nk_labour(start: str = "1993Q1", end: str | None = None, verbose: bool = True) -> dict:
     """Estimate the FA-NK with the Tier-1 labour block (structural marginal cost)."""
-    from src.models.dsge.estimation import estimate_model
     data = load_fa_nk_data(start=start, end=end)
     if verbose:
         print(f"FA-NK (labour block) estimation: {data['dates'][0]} to {data['dates'][-1]} (n={len(data['dates'])})")
@@ -541,10 +557,6 @@ def run_fa_nk_labour(start: str = "1993Q1", end: str | None = None, verbose: boo
 def _mean_real_rate(dates: pd.PeriodIndex) -> float:
     """Empirical mean real cash rate (cash rate − annualised trimmed-mean inflation)
     over the estimation dates — used to re-centre deviation-space rates as levels."""
-    from src.data.abs_loader import load_series
-    from src.data.cash_rate import get_cash_rate_qrtly
-    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY
-
     cash = get_cash_rate_qrtly().data.copy()
     inf = load_series(CPI_TRIMMED_MEAN_QUARTERLY).data.copy()
     for s in (cash, inf):
@@ -563,8 +575,6 @@ def _historical_decomposition(model: "FANKModel", solution: FANKSolution, data: 
     so for any observation row Z[i], `contrib[j] @ Z[i]` is shock j's contribution
     to that observable and the four sum to the smoothed total.
     """
-    from src.models.dsge.kalman import kalman_smoother
-
     Tm, Rm, Z, Qc, H = _fa_state_space(model, solution)
     res = kalman_smoother(data["y"], Tm, Rm, Z, Qc, H)
     S = res.smoothed_states  # (T, 7)
@@ -596,13 +606,8 @@ def produce_fa_nk_outputs(out: dict | None = None, start: str = "2005Q1", end: s
     the natural rate; EFP wedge; shock decompositions of the wedge and the output
     gap; financial-block internals; IRFs to financial and monetary shocks.
     """
-    from pathlib import Path
-
-    import mgplot as mg
-
-    root = Path(__file__).parent.parent.parent.parent
-    chart_dir = root / "charts" / "dsge-fa-nk"
-    output_dir = root / "model_outputs"
+    chart_dir = CHARTS / "dsge-fa-nk"
+    output_dir = MODEL_OUTPUTS
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if out is None:
@@ -722,11 +727,15 @@ def produce_fa_nk_outputs(out: dict | None = None, start: str = "2005Q1", end: s
     # 6 & 7. Impulse responses at the ESTIMATED parameters
     def irf(shock: str, T: int = 20) -> pd.DataFrame:
         idx = {"demand": 0, "supply": 1, "omega": 2, "monetary": 3}[shock]
-        eta = np.zeros(4); eta[idx] = sol.Sigma[idx, idx]
+        eta = np.zeros(4)
+        eta[idx] = sol.Sigma[idx, idx]
         s = sol.Q @ eta
-        Sx = np.zeros((T + 1, 7)); Jx = np.zeros((T + 1, 3))
+        Sx = np.zeros((T + 1, 7))
+        Jx = np.zeros((T + 1, 3))
         for t in range(T + 1):
-            Sx[t] = s; Jx[t] = sol.R @ s; s = sol.P @ s
+            Sx[t] = s
+            Jx[t] = sol.R @ s
+            s = sol.P @ s
         d = model.derive(Sx, Jx)
         efp = p.chi * (Jx[:, 1] + np.r_[Sx[1:, 4], np.nan] - np.r_[Sx[1:, 5], np.nan]) + Sx[:, 2]
         return pd.DataFrame({
@@ -761,7 +770,7 @@ if __name__ == "__main__":
     # 1. Determinacy at calibrated defaults
     m = FANKModel()
     det, eig = m.check_determinacy()
-    n_unstable = int(np.sum(np.abs(eig) > 1.0 + 1e-10))
+    n_unstable = int(np.sum(np.abs(eig) > 1.0 + SINGULAR_TOL))
     print(f"\n[1] Calibrated solve: determinate={det}, "
           f"{n_unstable} unstable eigenvalues (need {m.n_forward})")
 
@@ -771,7 +780,8 @@ if __name__ == "__main__":
     p, est, st = out["params"], out["estimation_result"], out["states"]
     print("\n    parameter estimates:")
     for k in FA_NK_PARAM_BOUNDS:
-        v = getattr(p, k); lo, hi = FA_NK_PARAM_BOUNDS[k]
+        v = getattr(p, k)
+        lo, hi = FA_NK_PARAM_BOUNDS[k]
         at = " <-- LOWER" if abs(v - lo) < 0.01 * (hi - lo) + 1e-6 else (
              " <-- UPPER" if abs(v - hi) < 0.01 * (hi - lo) + 1e-6 else "")
         print(f"      {k:15s} = {v:7.3f}   [{lo}, {hi}]{at}")

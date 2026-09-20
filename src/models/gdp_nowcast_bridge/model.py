@@ -37,6 +37,7 @@ import logging
 import warnings
 from dataclasses import dataclass
 
+import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
 import pandas as pd
@@ -46,12 +47,17 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 from src.data import (
     get_building_approvals_monthly,
+    get_capital_growth_qrtly,
     get_capital_share,
     get_goods_balance_real_monthly,
+    get_hourly_coe_growth_qrtly,
+    get_hours_growth_qrtly,
     get_hours_worked_monthly,
     get_household_spending_cvm_growth_latest,
+    get_labour_force_growth_qrtly,
     get_retail_turnover_real_monthly,
     get_trimmed_mean_qrtly,
+    get_ulc_growth_qrtly,
 )
 from src.data.abs_loader import load_series
 from src.data.business_indicators import (
@@ -64,7 +70,9 @@ from src.data.construction import get_total_construction_growth_qrtly
 from src.data.dataseries import DataSeries
 from src.data.gdp import get_gdp
 from src.data.gov_finance import get_gov_consumption_spliced_growth_qrtly
+from src.data.henderson import hma as henderson_hma
 from src.data.inflation import get_genuine_monthly_cpi_index, get_monthly_cpi_index
+from src.data.productivity import get_labour_productivity_growth, get_mfp_growth
 from src.data.series_specs import EMPLOYMENT_PERSONS
 from src.data.surveys import get_nab_business_conditions_monthly
 from src.data.wpi import get_wpi_growth_qrtly
@@ -76,6 +84,7 @@ from src.models.common.nowcast_core import (
     print_qoq_tty_header,
     truncate_monthly,
 )
+from src.models.common.nowcast_diagnostics import print_capex_imports_hotness
 
 logger = logging.getLogger(__name__)
 
@@ -581,14 +590,6 @@ def _build_production_bridge(
     hours, retail, approvals, and trade data from different ABS catalogues).
 
     """
-    from src.data import (  # noqa: PLC0415
-        get_capital_growth_qrtly,
-        get_hourly_coe_growth_qrtly,
-        get_hours_growth_qrtly,
-        get_labour_force_growth_qrtly,
-        get_ulc_growth_qrtly,
-    )
-
     alpha_ds = get_capital_share()
     alpha = alpha_ds.data
 
@@ -602,7 +603,6 @@ def _build_production_bridge(
 
     # Use unfloored MFP: for nowcasting actual GDP (not potential output),
     # negative TFP is real and informative — it captures the productivity drag
-    from src.data.productivity import get_mfp_growth  # noqa: PLC0415
 
     mfp_raw = get_mfp_growth(
         ulc_growth=ulc_growth,
@@ -613,7 +613,6 @@ def _build_production_bridge(
     ).data
 
     # HMA smooth but do NOT floor at zero
-    from src.data.henderson import hma as henderson_hma  # noqa: PLC0415
 
     mfp_clean = mfp_raw.dropna()
     mfp_trend = henderson_hma(mfp_clean, 51).reindex(mfp_raw.index)
@@ -756,10 +755,6 @@ def _get_labour_productivity_trend(target_quarter: pd.Period) -> pd.Series:
     Not floored: negative productivity is real and informative for nowcasting.
 
     """
-    from src.data import get_hourly_coe_growth_qrtly, get_ulc_growth_qrtly  # noqa: PLC0415
-    from src.data.henderson import hma as henderson_hma  # noqa: PLC0415
-    from src.data.productivity import get_labour_productivity_growth  # noqa: PLC0415
-
     ulc = get_ulc_growth_qrtly().data
     hcoe = get_hourly_coe_growth_qrtly().data
     lp = get_labour_productivity_growth(ulc, hcoe).data
@@ -1160,8 +1155,6 @@ def _print_summary(result: NowcastResult) -> None:
         print(f"    {name:<25} {status}")
 
     try:
-        from src.models.common.nowcast_diagnostics import print_capex_imports_hotness  # noqa: PLC0415
-
         print_capex_imports_hotness(target_quarter=result.target_quarter)
     except (ValueError, KeyError, OSError) as exc:
         logger.warning("Capex-imports hotness diagnostic failed: %s", exc)
@@ -1174,8 +1167,6 @@ def _print_summary(result: NowcastResult) -> None:
 
 def _plot_bridge_weights(result: NowcastResult) -> None:
     """Plot bridge weights and nowcast values as two horizontal bar charts."""
-    import matplotlib.pyplot as plt  # noqa: PLC0415
-
     active = [(b.name, b.nowcast_qoq, result.weights.get(b.name, 0))
               for b in result.bridge_results if b.available]
 

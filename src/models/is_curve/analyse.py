@@ -12,7 +12,6 @@ within-era response an IS curve claims. The colouring makes that visible
 instead of leaving it to be assumed.
 """
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -28,11 +27,12 @@ from src.models.is_curve.observations import (
     blocks,
     build_observations,
 )
+from src.paths import CHARTS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "ISCurve"
+CHART_DIR = CHARTS / "ISCurve"
 
 _LFOOTER = "Australia. Output gap from the joint y*/u* model. "
 

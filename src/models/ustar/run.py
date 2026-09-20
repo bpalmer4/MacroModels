@@ -2,6 +2,7 @@
 
 import argparse
 
+from src.models.common.cli import add_run_args, add_sampler_args
 from src.models.ustar.analyse import run_analysis
 from src.models.ustar.config import GAP_SOURCES, USTAR_STRUCTURES, ModelConfig
 from src.models.ustar.estimate import run_estimate
@@ -67,15 +68,8 @@ def main() -> None:
         help="Estimate the drift under a constrained prior instead of imposing it",
     )
 
-    parser.add_argument("--draws", type=int, default=2_000)
-    parser.add_argument("--tune", type=int, default=2_000)
-    parser.add_argument("--chains", type=int, default=4)
-    parser.add_argument("--seed", type=int, default=None)
-
-    parser.add_argument("--prefix", default="ustar", help="Output filename prefix")
-    parser.add_argument("--analyse-only", action="store_true", help="Skip estimation")
-    parser.add_argument("--no-analyse", action="store_true", help="Estimate without charting")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed output")
+    add_sampler_args(parser)
+    add_run_args(parser, prefix="ustar")
     args = parser.parse_args()
 
     if not args.analyse_only:

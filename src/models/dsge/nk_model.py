@@ -23,8 +23,27 @@ Solution approach:
 
 from dataclasses import dataclass, field
 
+import mgplot as mg
 import numpy as np
+import pandas as pd
 from scipy import linalg
+
+from src.models.dsge.data_loader import load_estimation_data
+from src.models.dsge.estimation import (
+    ModelSpec,
+    estimate_two_stage,
+    print_single_result,
+)
+from src.models.dsge.kalman import kalman_filter, kalman_smoother
+from src.models.dsge.plot_output_gap import plot_output_gap
+from src.models.dsge.shared import (
+    N_OBS_BASE,
+    N_OBS_WITH_RATE,
+    N_OBS_WITH_UGAP,
+    N_OBS_WITH_WAGES,
+    SINGULAR_TOL,
+)
+from src.paths import CHARTS
 
 
 class IndeterminacyError(Exception):
@@ -240,10 +259,10 @@ class NKModel:
 
         # Compute eigenvalues of transition matrix
         with np.errstate(divide="ignore", invalid="ignore"):
-            eigenvalues = np.where(np.abs(beta_eig) < 1e-10, np.inf, alpha / beta_eig)
+            eigenvalues = np.where(np.abs(beta_eig) < SINGULAR_TOL, np.inf, alpha / beta_eig)
 
         # Count unstable (outside unit circle)
-        n_unstable = np.sum(np.abs(eigenvalues) > 1.0 + 1e-10)
+        n_unstable = np.sum(np.abs(eigenvalues) > 1.0 + SINGULAR_TOL)
 
         is_determinate = n_unstable == self.n_forward
 
@@ -263,7 +282,7 @@ class NKModel:
         # Check determinacy
         is_det, eigenvalues = self.check_determinacy()
         if not is_det:
-            n_unstable = np.sum(np.abs(eigenvalues) > 1.0 + 1e-10)
+            n_unstable = np.sum(np.abs(eigenvalues) > 1.0 + SINGULAR_TOL)
             if n_unstable < self.n_forward:
                 raise IndeterminacyError(
                     f"Indeterminacy: {n_unstable} eigenvalues outside unit circle, "
@@ -280,7 +299,7 @@ class NKModel:
 
         # Compute eigenvalues for reference
         with np.errstate(divide="ignore", invalid="ignore"):
-            eigenvalues = np.where(np.abs(beta_eig) < 1e-10, np.inf, alpha / beta_eig)
+            eigenvalues = np.where(np.abs(beta_eig) < SINGULAR_TOL, np.inf, alpha / beta_eig)
 
         n_stable = n - self.n_forward  # 4 stable eigenvalues
 
@@ -292,7 +311,7 @@ class NKModel:
         Z22 = Z_full[n_stable:, self.n_states:]  # 3×3
 
         # Check Z22 invertibility
-        if np.abs(linalg.det(Z22)) < 1e-10:
+        if np.abs(linalg.det(Z22)) < SINGULAR_TOL:
             raise NoSolutionError("Z22 matrix is singular - no unique solution.")
 
         # Policy function R: controls = R @ states
@@ -307,7 +326,7 @@ class NKModel:
         # Z_s maps states to stable block
         Z_s = Z11 + Z12 @ R  # 4×4
 
-        if np.abs(linalg.det(Z_s)) < 1e-10:
+        if np.abs(linalg.det(Z_s)) < SINGULAR_TOL:
             raise NoSolutionError("Cannot solve for state transition matrix P.")
 
         Z_s_inv = linalg.inv(Z_s)
@@ -374,21 +393,21 @@ class NKModel:
         # y_t = [ŷ, π, π_w] = R_policy @ s_t
         R_policy = solution.R  # 3×4
 
-        if n_observables == 2:
+        if n_observables == N_OBS_BASE:
             # Observables: [ŷ, π]
             Z = R_policy[:2, :]  # 2×4
-        elif n_observables == 3:
+        elif n_observables == N_OBS_WITH_RATE:
             # Observables: [ŷ, π, i]
             # i is the 4th state (index 3)
             i_row = np.zeros((1, self.n_states))
             i_row[0, 3] = 1.0
             Z = np.vstack([R_policy[:2, :], i_row])  # 3×4
-        elif n_observables == 4:
+        elif n_observables == N_OBS_WITH_WAGES:
             # Observables: [ŷ, π, i, π_w]
             i_row = np.zeros((1, self.n_states))
             i_row[0, 3] = 1.0
             Z = np.vstack([R_policy[:2, :], i_row, R_policy[2:3, :]])  # 4×4
-        elif n_observables == 5:
+        elif n_observables == N_OBS_WITH_UGAP:
             # Observables: [ŷ, π, i, π_w, u_gap]
             # u_gap = -omega * ŷ + measurement_error (Okun's law with error)
             # ŷ is in R_policy[0, :], so u_gap row = -omega * R_policy[0, :]
@@ -523,8 +542,6 @@ def compute_nk_log_likelihood(
         Log-likelihood
 
     """
-    from src.models.dsge.kalman import kalman_filter
-
     try:
         model = NKModel(params=params)
         solution = model.solve()
@@ -545,7 +562,6 @@ def compute_nk_log_likelihood(
 # Data Loading
 # =============================================================================
 
-import pandas as pd
 
 
 def load_nk_data(
@@ -561,8 +577,6 @@ def load_nk_data(
         y: Observations (T × 5)
         dates: Period index
     """
-    from src.models.dsge.data_loader import load_estimation_data
-
     # Load base data with 5 observables
     df = load_estimation_data(
         start=start, end=end, n_observables=5, anchor_inflation=anchor_inflation
@@ -602,8 +616,6 @@ def nk_extract_states(params: NKParameters, data: dict) -> dict:
 
     Returns dict with states DataFrame.
     """
-    from src.models.dsge.kalman import kalman_smoother
-
     try:
         model = NKModel(params=params)
         solution = model.solve()
@@ -665,7 +677,6 @@ NK_PARAM_BOUNDS = {
 # Model Specification
 # =============================================================================
 
-from src.models.dsge.estimation import ModelSpec
 
 NK_SPEC = ModelSpec(
     name="NK",
@@ -688,15 +699,10 @@ NK_SPEC = ModelSpec(
 
 
 if __name__ == "__main__":
-    from pathlib import Path
 
-    import mgplot as mg
-
-    from src.models.dsge.estimation import estimate_two_stage, print_single_result
-    from src.models.dsge.plot_output_gap import plot_output_gap
 
     # Chart setup
-    CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "dsge-nk"
+    CHART_DIR = CHARTS / "dsge-nk"
     mg.set_chart_dir(str(CHART_DIR))
     mg.clear_chart_dir()
 

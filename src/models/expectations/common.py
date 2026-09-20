@@ -1,11 +1,11 @@
 """Common constants and utilities for expectations models."""
 
-from pathlib import Path
+from src.paths import CHARTS, OUTPUT
 
 # --- Paths ---
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "output" / "expectations"
-CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "expectations"
+OUTPUT_DIR = OUTPUT / "expectations"
+CHART_DIR = CHARTS / "expectations"
 
 # --- Sampler Settings ---
 

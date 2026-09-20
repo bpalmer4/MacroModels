@@ -1,6 +1,6 @@
 """Charts and printed diagnostics for the rstar model."""
 
-from pathlib import Path  # noqa: TC003 — used at runtime in function signatures
+from pathlib import Path
 from typing import Any
 
 import mgplot as mg

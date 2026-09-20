@@ -1,65 +1,26 @@
 """Results container and I/O for the ystar model."""
 
 import pickle
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import arviz as az
 import numpy as np
 import pandas as pd
-import xarray as xr
 
-from src.models.common.sources import footer_from_constants
+from src.models.common.results import PosteriorResults
 from src.models.ystar.config import DEFAULT_OUTPUT_DIR
+from src.paths import CHARTS
 
-DEFAULT_CHART_BASE = Path(__file__).parent.parent.parent.parent / "charts"
+DEFAULT_CHART_BASE = CHARTS
 
 
-@dataclass
-class PotentialResults:
+@dataclass(kw_only=True)
+class PotentialResults(PosteriorResults):
     """Container for ystar posterior draws plus the observations."""
 
-    trace: az.InferenceData
     obs: dict[str, np.ndarray]
-    obs_index: pd.PeriodIndex
-    constants: dict[str, Any] = field(default_factory=dict)
     chart_obs: pd.DataFrame | None = None
-
-    @property
-    def posterior(self) -> xr.Dataset:
-        """The trace's posterior group, narrowed at runtime.
-
-        `az.InferenceData` builds its groups dynamically, so a static checker
-        cannot see `.posterior` and every access reads as an attribute error.
-        Narrowing here once means the rest of the class is checkable, and it
-        turns a missing group into a clear failure rather than an AttributeError
-        several frames deep.
-        """
-        posterior = getattr(self.trace, "posterior", None)
-        if not isinstance(posterior, xr.Dataset):
-            raise TypeError("trace has no posterior group — was it loaded from a completed run?")
-        return posterior
-
-    def _vector(self, var_name: str) -> pd.DataFrame:
-        """Return a time x draw DataFrame for a vector-valued latent."""
-        # xarray's .stack, not pandas' — PD013 does not apply.
-        stacked = self.posterior[var_name].stack(sample=("chain", "draw"))  # noqa: PD013
-        return pd.DataFrame(np.asarray(stacked.values), index=self.obs_index)
-
-    def _scalar(self, var_name: str) -> np.ndarray:
-        """Return the flattened posterior draws for a scalar parameter."""
-        return np.asarray(self.posterior[var_name].values).ravel()
-
-    @property
-    def source_footer(self) -> str | None:
-        """The "Built using: ..." line for this run's inputs, or None for an older run.
-
-        Runs saved before `build_observations` began recording where its series
-        came from carry no "sources" key, so the charting module falls back to
-        its own constant.
-        """
-        return footer_from_constants(self.constants)
 
     @property
     def spec(self) -> str:

@@ -6,7 +6,7 @@ Deliberately self-contained: this model does not import from `nairu`,
 """
 
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 — used at runtime in function signatures
+from pathlib import Path
 from typing import Any
 
 import arviz as az

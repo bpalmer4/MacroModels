@@ -20,6 +20,8 @@ Data sources:
 Note: Uses same parsing logic as ~/ABS/notebooks/World Bank Commodity Prices.ipynb
 """
 
+import re
+import urllib.request
 from functools import cache
 
 import numpy as np
@@ -52,10 +54,7 @@ def _resolve_pink_sheet_url() -> str:
     The document URL changes with each vintage. Falls back to the pinned
     PINK_SHEET_URL (with a warning) if the page cannot be scraped.
     """
-    import re  # noqa: PLC0415 — scraping-only dependencies
-    import urllib.request  # noqa: PLC0415
-
-    pattern = r'https://thedocs\.worldbank\.org/en/doc/[^"\']+/CMO-Historical-Data-Monthly\.xlsx'
+    pattern =r'https://thedocs\.worldbank\.org/en/doc/[^"\']+/CMO-Historical-Data-Monthly\.xlsx'
     try:
         req = urllib.request.Request(
             PINK_SHEET_LANDING_PAGE, headers={"User-Agent": "Mozilla/5.0"},

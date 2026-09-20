@@ -37,11 +37,14 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from src.models.ystar.results import load_results as load_ystar_results
+from src.models.ystar_ustar.results import load_results as load_joint_results
+from src.paths import MODEL_OUTPUTS, ROOT
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-ROOT = Path(__file__).parent.parent.parent.parent
-OUTPUT_DIR = ROOT / "model_outputs"
+OUTPUT_DIR = MODEL_OUTPUTS
 
 
 @dataclass(frozen=True)
@@ -85,16 +88,12 @@ class GstarSource:
 
 def _load_ystar(prefix: str) -> pd.Series:
     """Potential growth from `ystar`, on whichever spec `prefix` was run with."""
-    from src.models.ystar.results import load_results  # noqa: PLC0415
-
-    return load_results(prefix=prefix).potential_growth_posterior().median(axis=1)
+    return load_ystar_results(prefix=prefix).potential_growth_posterior().median(axis=1)
 
 
 def _load_joint(prefix: str) -> pd.Series:
     """Potential growth from the joint y*/u* model."""
-    from src.models.ystar_ustar.results import load_results  # noqa: PLC0415
-
-    return load_results(prefix=prefix).potential_growth_posterior().median(axis=1)
+    return load_joint_results(prefix=prefix).potential_growth_posterior().median(axis=1)
 
 
 # WHY `cobb_douglas` IS NOT HERE: COVID artefacts.

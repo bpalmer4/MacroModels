@@ -1,7 +1,7 @@
 """Build, sample and persist the regime u* model."""
 
 import pickle
-from pathlib import Path  # noqa: TC003 — used at runtime in function signatures
+from pathlib import Path
 from typing import Any
 
 import arviz as az
@@ -355,9 +355,16 @@ def save_trace(trace: az.InferenceData, frame: pd.DataFrame, labels: list[str], 
     return path
 
 
-def load_trace(config: ModelConfig) -> tuple[az.InferenceData, pd.DataFrame, list[str]]:
-    """Read back a saved run, for charting without re-sampling."""
+def load_trace(
+    config: ModelConfig,
+) -> tuple[az.InferenceData, pd.DataFrame, list[str], dict[str, object]]:
+    """Read back a saved run, for charting without re-sampling.
+
+    The constants come back too: they are the specification the trace was
+    estimated under, and charting it under anything else is reading the wrong
+    model. See `ModelConfig.with_saved_settings`.
+    """
     trace = az.from_netcdf(str(config.output_dir / f"{config.prefix}_trace.nc"))
     with (config.output_dir / f"{config.prefix}_data.pkl").open("rb") as handle:
         saved = pickle.load(handle)  # noqa: S301 — our own file
-    return trace, saved["frame"], saved["labels"]
+    return trace, saved["frame"], saved["labels"], saved.get("constants", {})

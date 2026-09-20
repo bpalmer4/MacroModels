@@ -1,58 +1,27 @@
 """Container and loader for ustar posterior draws."""
 
 import pickle
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import arviz as az
 import numpy as np
 import pandas as pd
-import xarray as xr
 
-from src.models.common.sources import footer_from_constants
+from src.models.common.results import PosteriorResults
+from src.paths import CHARTS, MODEL_OUTPUTS
 from src.utilities.rate_conversion import quarterly
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
-DEFAULT_CHART_BASE = Path(__file__).parent.parent.parent.parent / "charts"
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
+DEFAULT_CHART_BASE = CHARTS
 
 
-@dataclass
-class UStarResults:
+@dataclass(kw_only=True)
+class UStarResults(PosteriorResults):
     """Container for ustar posterior draws plus the observations."""
 
-    trace: az.InferenceData
     obs: dict[str, np.ndarray]
-    obs_index: pd.PeriodIndex
-    constants: dict[str, Any] = field(default_factory=dict)
     chart_obs: pd.DataFrame | None = None
-
-    @property
-    def posterior(self) -> xr.Dataset:
-        """The trace's posterior group, narrowed at runtime."""
-        posterior = getattr(self.trace, "posterior", None)
-        if not isinstance(posterior, xr.Dataset):
-            raise TypeError("trace has no posterior group — was it loaded from a completed run?")
-        return posterior
-
-    def _vector(self, var_name: str) -> pd.DataFrame:
-        """Return a time x draw DataFrame for a vector-valued latent."""
-        stacked = self.posterior[var_name].stack(sample=("chain", "draw"))  # noqa: PD013
-        return pd.DataFrame(np.asarray(stacked.values), index=self.obs_index)
-
-    def _scalar(self, var_name: str) -> np.ndarray:
-        """Return the flattened posterior draws for a scalar parameter."""
-        return np.asarray(self.posterior[var_name].values).ravel()
-
-    @property
-    def source_footer(self) -> str | None:
-        """The "Built using: ..." line for this run's inputs, or None for an older run.
-
-        Runs saved before `build_observations` began recording where its series
-        came from carry no "sources" key, so the charting module falls back to
-        its own constant.
-        """
-        return footer_from_constants(self.constants)
 
     @property
     def has_phillips(self) -> bool:

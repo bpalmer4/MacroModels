@@ -70,9 +70,9 @@ import pandas as pd
 import xarray as xr
 
 from src.models.ystar_ustar.results import load_results
+from src.paths import MODEL_OUTPUTS, ROOT
 
-ROOT = Path(__file__).parent.parent.parent.parent
-OUTPUT_DIR = ROOT / "model_outputs"
+OUTPUT_DIR = MODEL_OUTPUTS
 RUN_SCRIPT = ROOT / "run-ystar-ustar.sh"
 
 

@@ -10,9 +10,16 @@ Usage:
 import argparse
 from typing import Final, Literal
 
-# Estimation defaults live in `estimate.py`, which is imported lazily (it pulls
-# in PyMC). This sentinel stands in for them until that import happens, so the
-# values are not duplicated here.
+from src.models.rstar_hlw.analyse import run_analyse
+from src.models.rstar_hlw.estimate import (
+    DEFAULT_EXCLUDE_WINDOW,
+    DEFAULT_LAMBDA_G,
+    run_estimate,
+)
+
+# Estimation defaults live in `estimate.py`. This sentinel means "whatever that
+# module defaults to", which None cannot say: None is a real setting here,
+# meaning switch the feature off.
 USE_ESTIMATE_DEFAULT: Final = "default"
 
 # What the CLI may hand `main`: an explicit setting, None for "switch it off",
@@ -43,11 +50,6 @@ def main(
     prefix = f"rstar_hlw_{resolution}"
 
     if estimate:
-        from src.models.rstar_hlw.estimate import (  # noqa: PLC0415
-            DEFAULT_EXCLUDE_WINDOW,
-            DEFAULT_LAMBDA_G,
-            run_estimate,
-        )
         # isinstance rather than a comparison with the sentinel, so the types
         # narrow here as well as at runtime.
         window: tuple[str, str] | None = (
@@ -87,7 +89,6 @@ def main(
         print("=" * 60)
         print(f"ANALYSE [HLW r-star, Resolution {resolution}]")
         print("=" * 60)
-        from src.models.rstar_hlw.analyse import run_analyse  # noqa: PLC0415
         run_analyse(prefix=prefix, resolution=resolution, verbose=verbose)
         print()
 

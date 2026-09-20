@@ -2,6 +2,7 @@
 
 import argparse
 
+from src.models.common.cli import add_run_args, add_sampler_args
 from src.models.ystar.base import SamplerConfig
 from src.models.ystar_ustar.analyse import run_analysis
 from src.models.ystar_ustar.config import (
@@ -137,24 +138,18 @@ def parse_args() -> argparse.Namespace:
     # and still returned r_hat 1.08; imposed, the same model reports 0
     # divergences and a minimum ess of 2,553. Use --free-sigma-okun with
     # --draws 6000 to reproduce the original.
-    parser.add_argument("--draws", type=int, default=2_500)
-    parser.add_argument("--tune", type=int, default=2_000)
-    parser.add_argument("--chains", type=int, default=4)
+    add_sampler_args(parser, draws=2_500)
     parser.add_argument(
         "--target-accept", type=float, default=0.95,
         help="NUTS target acceptance rate; raise it if the run reports divergences",
     )
-    parser.add_argument("--seed", type=int, default=None)
 
-    parser.add_argument("--prefix", default="ystar_ustar", help="Output filename prefix")
+    add_run_args(parser, prefix="ystar_ustar")
     parser.add_argument(
         "--chart-dir", default=None,
         help="Where to write charts (default charts/YStarUStar). Use a separate "
              "directory for variant runs: charting clears its directory first",
     )
-    parser.add_argument("--analyse-only", action="store_true", help="Skip estimation")
-    parser.add_argument("--no-analyse", action="store_true", help="Estimate without charting")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed output")
     return parser.parse_args()
 
 

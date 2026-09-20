@@ -13,13 +13,11 @@ Example:
 
 """
 
-from pathlib import Path
-
 from src.data.abs_loader import ReqsTuple
+from src.paths import INPUT_DATA
 
 # --- Local data files ---
-_PROJECT_ROOT = Path(__file__).parent.parent.parent
-HISTORICAL_RATE_FILE = str(_PROJECT_ROOT / "input_data" / "interbank_overnight_rate_historical.parquet")
+HISTORICAL_RATE_FILE = str(INPUT_DATA / "interbank_overnight_rate_historical.parquet")
 
 # --- Labour Force (6202.0) ---
 

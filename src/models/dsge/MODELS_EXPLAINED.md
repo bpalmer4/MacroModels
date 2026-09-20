@@ -333,6 +333,59 @@ For reliable NAIRU/output gap estimation, consider the **Bayesian state-space mo
 - Better identification through multiple equations
 - More plausible estimates
 
+### First priority if this package is developed further: one Blanchard-Kahn solver
+
+**`solver.py` is a complete, general Blanchard-Kahn solver that nothing imports.**
+It offers `solve_blanchard_kahn`, `check_determinacy`, `compute_irfs`, a
+`BKSolution` container and the two error types, in 273 lines. Four models carry
+their own inline copy of the same procedure instead:
+
+| model | `check_determinacy` | `solve` |
+| --- | --- | --- |
+| `nk_model.py` | line 243 | line 271 |
+| `nk_twostar_model.py` | line 214 | line 223 |
+| `fa_nk_model.py` | line 247 | line 255 |
+| `fa_nk_wage_model.py` | line 194 | line 201 |
+
+Every copy does the same five things: assemble A, B, C; take a QZ
+decomposition; count eigenvalues outside the unit circle against `n_forward`;
+invert the Z22 and Z_s blocks; return P, Q, R. They differ only in the length of
+the state vector, which is data rather than logic.
+
+What the duplication costs, measurably:
+
+- The singularity tolerance is read in **30 places** across the four files. It
+  is now `shared.SINGULAR_TOL` rather than an inline literal, which makes it
+  changeable in one place, but the thirty *readers* remain.
+- `IndeterminacyError` and `NoSolutionError` are defined **twice**, in
+  `nk_model` and again in `solver`. Three models import `nk_model`'s pair;
+  `solver`'s pair is unreachable. A caller catching the wrong pair catches
+  nothing.
+- A correction to the solve has to be made four times and verified four times.
+  A model whose QZ handling drifts from its siblings returns a different answer
+  for reasons that have nothing to do with its economics, and nothing in the
+  package would reveal it.
+
+**Adopting `solver.py` is not a drop-in, and that is the work.** The two
+conventions disagree:
+
+| | models | `solver.py` |
+| --- | --- | --- |
+| call | `ordqz(B, A, sort="iuc")` | `ordqz(A, B, sort="ouc")` |
+| ordering | unstable first | stable first |
+| eigenvalue | `alpha / beta_eig` off `(B, A)` | `alpha / beta` off `(A, B)` |
+
+Swapping the argument order inverts the generalised eigenvalues, and the sort
+mode decides which block the partition indices select. Consolidation therefore
+has to settle which convention is right, not merely delete three copies. The
+guard is cheap: the four models solve to fixed matrices under default
+parameters, so a digest of `P`, `Q`, `R` and the sorted eigenvalues before and
+after will show whether a rewrite preserved the answers.
+
+The same duplication shows up in the surrounding code. The matrix-assembly
+blocks and the Kalman signatures (`T`, `R`, `Z`, `Q`, `H`, `P0`) repeat across
+the same four files, so the solver is the extraction that pays first.
+
 ---
 
 ## References

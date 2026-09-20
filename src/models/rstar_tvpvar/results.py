@@ -31,26 +31,25 @@ tails of the stability count are not, which is why that is reported as a share.
 """
 
 import pickle
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import arviz as az
 import numpy as np
 import pandas as pd
-import xarray as xr
 
 from src.models.common.inflation_scale import long_run_expectations
-from src.models.common.sources import footer_from_constants
+from src.models.common.results import PosteriorResults
 from src.models.rstar_tvpvar.config import TARGET, ModelConfig
 from src.models.rstar_tvpvar.observations import ols_fit, ordering, variable_index
+from src.paths import CHARTS, MODEL_OUTPUTS
 
 # The shipped default for the inflation conditioning, read from the config so
 # the two cannot drift apart.
 DEFAULT_ANCHORING = ModelConfig().anchor_projection
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
-DEFAULT_CHART_BASE = Path(__file__).parent.parent.parent.parent / "charts"
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
+DEFAULT_CHART_BASE = CHARTS
 
 # Enough to pin a median and a 90% band without turning the projection into the
 # slow part of the analysis.
@@ -61,28 +60,12 @@ DEFAULT_MAX_DRAWS = 1_000
 STABILITY_LIMIT = 0.999
 
 
-@dataclass
-class TvpVarResults:
+@dataclass(kw_only=True)
+class TvpVarResults(PosteriorResults):
     """Posterior draws plus the data the VAR was fitted to."""
 
-    trace: az.InferenceData
     data: np.ndarray
-    obs_index: pd.PeriodIndex
-    constants: dict[str, Any] = field(default_factory=dict)
     frame: pd.DataFrame | None = None
-
-    @property
-    def posterior(self) -> xr.Dataset:
-        """The trace's posterior group, narrowed at runtime."""
-        posterior = getattr(self.trace, "posterior", None)
-        if not isinstance(posterior, xr.Dataset):
-            raise TypeError("trace has no posterior group — was it loaded from a completed run?")
-        return posterior
-
-    @property
-    def source_footer(self) -> str | None:
-        """The "Built using: ..." line for this run's inputs."""
-        return footer_from_constants(self.constants)
 
     @property
     def lags(self) -> int:

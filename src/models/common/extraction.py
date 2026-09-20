@@ -3,19 +3,20 @@
 import arviz as az
 import pandas as pd
 
+from src.models.common.results import vector_draws
+
 
 def get_vector_var(var_name: str, trace: az.InferenceData) -> pd.DataFrame:
     """Extract chains/draws for a vector variable.
 
     Returns DataFrame with rows=time periods, columns=samples.
+
+    Takes a trace and a name, where `vector_draws` takes the DataArray, so the
+    two are not interchangeable at the call site. The flattening itself is
+    shared: two routes to it existed and returned the same draws in the same
+    order, which is one route too many to keep in step.
     """
-    return (
-        az.extract(trace, var_names=var_name)  # noqa: PD010 — unstacking MultiIndex level, not pivoting
-        .transpose("sample", ...)
-        .to_dataframe()[var_name]
-        .unstack(level=2)
-        .T
-    )
+    return vector_draws(trace.posterior[var_name])
 
 
 def get_scalar_var(var_name: str, trace: az.InferenceData) -> pd.Series:

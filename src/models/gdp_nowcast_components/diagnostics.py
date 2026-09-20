@@ -35,8 +35,8 @@ import readabs as ra
 from readabs import metacol as mc
 
 from src.models.common.nowcast_core import detect_target_quarter
+from src.models.gdp_nowcast_components import CHART_DIR
 from src.models.gdp_nowcast_components import data as cd
-from src.models.gdp_nowcast_components.model import CHART_DIR
 
 if TYPE_CHECKING:
     from collections.abc import Callable

@@ -28,7 +28,7 @@ enough for that: ten years gets 1993Q1 to 7.03 where thirty gets 7.14, against
 `ustar`'s 10.75.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
 DEFAULT_OUTPUT_DIR = Path("model_outputs")
@@ -494,3 +494,28 @@ class ModelConfig:
             "intercept_regimes": list(self.intercept_regimes),
             "intercept_prior_sd": self.intercept_prior_sd,
         }
+
+    def with_saved_settings(self, constants: dict[str, object]) -> "ModelConfig":
+        """Return this config with the settings a saved run was estimated under.
+
+        Charting a saved trace has to use the specification that produced it,
+        not whatever the command line defaults to. `beta_groups` is the case
+        that bites: a run estimated with two slopes writes a `beta` of width
+        two, and analysing it under the default single slope indexes an empty
+        array. Everything `constants` records is restored, so a setting added
+        there is covered without touching this method.
+
+        Where the output goes is NOT restored. `prefix`, `output_dir` and the
+        chart directory say where to read and write, which is the caller's to
+        choose; the model settings are the run's own and are not.
+        """
+        names = {f.name for f in fields(self)}
+        restored: dict[str, object] = {}
+        for key, value in constants.items():
+            if key not in names:
+                continue  # derived entries such as n_regimes
+            current = getattr(self, key)
+            restored[key] = tuple(value) if isinstance(current, tuple) else value
+        # `replace` re-runs __post_init__, so a trace whose settings contradict
+        # each other is caught here rather than part-way through charting.
+        return replace(self, **restored)

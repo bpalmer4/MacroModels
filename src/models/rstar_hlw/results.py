@@ -1,34 +1,26 @@
 """Results container and I/O for the HLW r-star model."""
 
 import pickle
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import arviz as az
 import numpy as np
 import pandas as pd
 
-from src.models.common.extraction import get_vector_var
+from src.models.common.results import PosteriorResults
+from src.paths import CHARTS, MODEL_OUTPUTS
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
-DEFAULT_CHART_BASE = Path(__file__).parent.parent.parent.parent / "charts"
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
+DEFAULT_CHART_BASE = CHARTS
 
 
-@dataclass
-class RStarResults:
+@dataclass(kw_only=True)
+class RStarResults(PosteriorResults):
     """Container for HLW r-star posterior + observations."""
 
-    trace: az.InferenceData
     obs: dict[str, np.ndarray]
-    obs_index: pd.PeriodIndex
-    constants: dict[str, Any] = field(default_factory=dict)
     chart_obs: pd.DataFrame | None = None
-
-    def _vector(self, var_name: str) -> pd.DataFrame:
-        samples = get_vector_var(var_name, self.trace)
-        samples.index = self.obs_index
-        return samples
 
     # --- Posteriors ---
 

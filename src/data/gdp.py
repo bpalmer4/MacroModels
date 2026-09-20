@@ -63,6 +63,56 @@ def get_gdp(gdp_type: str = "CVM", seasonal: str = "SA") -> DataSeries:
     )
 
 
+def get_gdp_per_capita(seasonal: str = "SA") -> DataSeries:
+    """Fetch ABS real GDP per capita from the key aggregates table.
+
+    A SIBLING OF `get_gdp` RATHER THAN A FLAG ON IT. `get_gdp` selects on the
+    aggregate descriptions held in its own dict, and several models call it;
+    per capita is a different data item, not a different cut of the same one.
+
+    Chain volume measures only. Current-price GDP per capita exists in the same
+    table, but the reason this is here is as a real growth trend, and offering
+    a nominal option invites someone to add the inflation target to a series
+    that already carries inflation.
+
+    Args:
+        seasonal: Seasonal adjustment - "SA", "T" (Trend), or "O" (Original)
+
+    Returns:
+        DataSeries containing real GDP per capita, in dollars
+
+    """
+    seasonals = {
+        "SA": "Seasonally Adjusted",
+        "S": "Seasonally Adjusted",
+        "T": "Trend",
+        "O": "Original",
+    }
+    if seasonal not in seasonals:
+        raise ValueError(f"Invalid seasonal adjustment type: {seasonal}")
+
+    # The trailing " ;" matters: without it this also matches the published
+    # "- Percentage changes" item, which is the same concept as a rate and
+    # would make `find_abs_id` ambiguous.
+    did = "GDP per capita: Chain volume measures ;"
+    cat = "5206.0"
+    seo = "5206001_Key_Aggregates"
+    data, meta = ra.read_abs_cat(cat, single_excel_only=seo, verbose=False)
+    selector = {did: mc.did, seasonals[seasonal]: mc.stype}
+    table, series_id, units = ra.find_abs_id(meta, selector, verbose=False)
+
+    return DataSeries(
+        data=data[table][series_id],
+        source="ABS",
+        units=units,
+        description=did.rstrip(" ;"),
+        series_id=series_id,
+        table=table,
+        cat=cat,
+        stype=seasonals[seasonal],
+    )
+
+
 def get_log_gdp() -> DataSeries:
     """Load GDP as log levels (scaled by 100).
 

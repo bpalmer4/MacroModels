@@ -6,7 +6,7 @@ _plot_scenarios helper does the work; thin wrappers configure
 the data source, labels, and reference lines.
 """
 
-from collections.abc import Callable  # noqa: TC003 — used in annotations
+from collections.abc import Callable
 from pathlib import Path
 
 import mgplot as mg
@@ -14,7 +14,7 @@ import pandas as pd
 from matplotlib.axes import Axes
 
 from src.data.inflation import get_trimmed_mean_qrtly
-from src.models.nairu.forecast import (
+from src.models.nairu.forecast_types import (
     SCENARIO_COLORS,
     SCENARIO_ORDER,
     ForecastResults,

@@ -13,6 +13,7 @@ import re
 import time
 from functools import cache
 from pathlib import Path
+from urllib.parse import urljoin
 
 import numpy as np
 import openpyxl
@@ -20,6 +21,7 @@ import pandas as pd
 import requests
 
 from src.data.dataseries import DataSeries
+from src.data.gov_spending import get_gov_growth_qrtly
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +78,6 @@ def _download_gfs_workbook() -> Path:
     xlsx_url = xlsx_match.group(1)
     if not xlsx_url.startswith("http"):
         # Relative URL — construct absolute
-        from urllib.parse import urljoin  # noqa: PLC0415
-
         xlsx_url = urljoin(GFS_URL, xlsx_url)
 
     # Download workbook
@@ -179,8 +179,6 @@ def get_gov_consumption_spliced_growth_qrtly() -> DataSeries:
         DataSeries with quarterly GFCE growth (% per quarter)
 
     """
-    from src.data.gov_spending import get_gov_growth_qrtly  # noqa: PLC0415
-
     na_growth = get_gov_growth_qrtly().data  # 5206.0 — long history
     gfs_growth = get_gov_consumption_gfs_growth_qrtly().data  # GFS — early release
 

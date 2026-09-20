@@ -27,6 +27,11 @@ from src.data.gdp import get_gdp
 # GFC, COVID, and aligns with the panel one of the models is fit on.
 HISTORY_START = pd.Period("1997Q4", freq="Q-DEC")
 
+# How far capex and imports must diverge, in percentage points of GDP, before
+# the gap is called a signal rather than noise. Symmetric: the same size in the
+# other direction reads as the model running cold.
+HOTNESS_THRESHOLD_PP = 0.10
+
 
 @dataclass
 class CapexImportsHotness:
@@ -148,9 +153,9 @@ def print_capex_imports_hotness(
         print("    Diagnostic suppressed: would compare wrong quarter to nowcast.")
         return
 
-    if h.hotness_pp > 0.10:
+    if h.hotness_pp > HOTNESS_THRESHOLD_PP:
         interp = "model may be HOT"
-    elif h.hotness_pp < -0.10:
+    elif h.hotness_pp < -HOTNESS_THRESHOLD_PP:
         interp = "model may be COLD"
     else:
         interp = "negligible"

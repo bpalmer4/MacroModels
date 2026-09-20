@@ -4,47 +4,41 @@ Shared by validate.py, analyse.py, and forecast.py.
 """
 
 import pickle
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
 
-from src.models.common.extraction import get_vector_var
+from src.models.common.results import PosteriorResults
 from src.models.nairu.config import ModelConfig
+from src.models.nairu.estimate import build_model
+from src.paths import CHARTS, MODEL_OUTPUTS
 
 # Default paths
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
-DEFAULT_CHART_BASE = Path(__file__).parent.parent.parent.parent / "charts"
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
+DEFAULT_CHART_BASE = CHARTS
 
 
-@dataclass
-class NAIRUResults:
+@dataclass(kw_only=True)
+class NAIRUResults(PosteriorResults):
     """Results from NAIRU + Output Gap estimation."""
 
-    trace: az.InferenceData
     obs: dict[str, np.ndarray]
-    obs_index: pd.PeriodIndex
     config: ModelConfig
     anchor_label: str
     model: pm.Model | None = None
-    constants: dict[str, Any] = field(default_factory=dict)
     chart_obs: pd.DataFrame | None = None
 
     def nairu_posterior(self) -> pd.DataFrame:
         """Extract NAIRU posterior as DataFrame."""
-        samples = get_vector_var("nairu", self.trace)
-        samples.index = self.obs_index
-        return samples
+        return self._vector("nairu")
 
     def potential_posterior(self) -> pd.DataFrame:
         """Extract potential output posterior as DataFrame."""
-        samples = get_vector_var("potential_output", self.trace)
-        samples.index = self.obs_index
-        return samples
+        return self._vector("potential_output")
 
     def nairu_median(self) -> pd.Series:
         """NAIRU point estimate (posterior median)."""
@@ -111,7 +105,6 @@ def load_results(
     # Optionally rebuild model (needed for posterior predictive checks)
     model = None
     if rebuild_model:
-        from src.models.nairu.estimate import build_model  # noqa: PLC0415 — circular import
         model = build_model(obs, config)
 
     return NAIRUResults(

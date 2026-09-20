@@ -10,6 +10,28 @@ For estimation, see estimation.py which provides ModelSpec and estimate_model().
 import pandas as pd
 
 # =============================================================================
+# Numerical tolerances
+# =============================================================================
+
+# Below this a generalised eigenvalue's denominator counts as zero (the
+# eigenvalue is infinite) and a QZ block counts as singular. Shared because the
+# four Blanchard-Kahn solvers in this package are near-copies of each other:
+# with the value inline, changing it meant finding sixteen sites across four
+# files and getting every one of them.
+SINGULAR_TOL = 1e-10
+
+# =============================================================================
+# The observable ladder
+# =============================================================================
+
+# How many series a model was handed, and therefore which ones. Cumulative:
+# each rung is the one below plus one more, in this fixed order.
+N_OBS_BASE = 2        # output gap, inflation
+N_OBS_WITH_RATE = 3   # + the cash rate
+N_OBS_WITH_WAGES = 4  # + wage inflation
+N_OBS_WITH_UGAP = 5   # + the unemployment gap
+
+# =============================================================================
 # Regime Definitions
 # =============================================================================
 

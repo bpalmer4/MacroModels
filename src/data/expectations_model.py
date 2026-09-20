@@ -10,15 +10,14 @@ This gives a more plausible gradual decline in the 1980s (Long Run) while
 using the richer survey information once available (Target Anchored).
 """
 
-from pathlib import Path
-
 import pandas as pd
 
 from src.data.dataseries import DataSeries
+from src.paths import OUTPUT
 
 # --- Output Location ---
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "output" / "expectations"
+OUTPUT_DIR = OUTPUT / "expectations"
 
 # --- Splice Configuration ---
 

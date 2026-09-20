@@ -47,6 +47,7 @@ import numpy as np
 import pandas as pd
 
 from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
+from src.models.rstar_bonds.results import load_results as load_bonds
 from src.models.rstar_hlw.estimate import build_model, save_results
 from src.models.rstar_hlw.observations import build_observations
 from src.models.rstar_hlw.results import load_results
@@ -63,8 +64,6 @@ def _external_rstar(obs_index: pd.PeriodIndex) -> pd.Series:
     assumption wearing the costume of an external anchor, which is the whole
     thing this test is meant to avoid.
     """
-    from src.models.rstar_bonds.results import load_results as load_bonds  # noqa: PLC0415
-
     series = load_bonds(prefix="rstar_bonds").rstar_median()
     aligned = series.reindex(obs_index)
     if aligned.isna().any():

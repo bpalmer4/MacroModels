@@ -5,7 +5,9 @@ from pathlib import Path
 import mgplot as mg
 import pandas as pd
 
-CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "gstar-summary"
+from src.paths import CHARTS
+
+CHART_DIR = CHARTS / "gstar-summary"
 
 # The two y* specs are deliberately adjacent in hue, being one model run two
 # ways; the joint model is clearly separate from both.

@@ -37,7 +37,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
+from src.paths import MODEL_OUTPUTS
+
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
 
 # Which ystar series feeds the Okun equation.
 #   "defined" — c·(pi - anchor), the inflation-defined gap. Demand-only by

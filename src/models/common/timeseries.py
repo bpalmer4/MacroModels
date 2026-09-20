@@ -1,6 +1,6 @@
 """Posterior time series plotting with credible intervals."""
 
-from collections.abc import Sequence  # noqa: TC003 — used in annotations
+from collections.abc import Sequence
 from typing import Any
 
 import arviz as az

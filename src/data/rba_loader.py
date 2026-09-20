@@ -15,6 +15,7 @@ import pandas as pd
 from readabs import read_rba_ocr
 
 from src.data.dataseries import DataSeries
+from src.paths import INPUT_DATA
 
 # --- Constants ---
 
@@ -211,7 +212,7 @@ def get_inflation_expectations() -> DataSeries:
 
     """
     # Load RBA PIE_RBAQ series from CSV (in project input_data/ directory)
-    csv_path = Path(__file__).parent.parent.parent / "input_data" / "PIE_RBAQ.CSV"
+    csv_path = INPUT_DATA / "PIE_RBAQ.CSV"
     rba_pie = pd.read_csv(csv_path, index_col=0, parse_dates=False)["PIE_RBAQ"]
     rba_pie.index = pd.PeriodIndex(rba_pie.index, freq="Q")
     rba_pie = rba_pie.dropna()

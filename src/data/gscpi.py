@@ -8,12 +8,11 @@ only use GSCPI during the COVID period (2020Q1-2023Q2) and set
 it to zero otherwise - that masking is a model-level decision.
 """
 
-from pathlib import Path
-
 import pandas as pd
 import readabs as ra
 
 from src.data.dataseries import DataSeries
+from src.paths import INPUT_DATA
 
 
 def get_gscpi_monthly() -> DataSeries:
@@ -25,7 +24,7 @@ def get_gscpi_monthly() -> DataSeries:
         DataSeries with monthly GSCPI
 
     """
-    gscpi_path = Path(__file__).parent.parent.parent / "input_data" / "gscpi_data.xls"
+    gscpi_path = INPUT_DATA / "gscpi_data.xls"
     gscpi = pd.read_excel(
         gscpi_path,
         sheet_name="GSCPI Monthly Data",

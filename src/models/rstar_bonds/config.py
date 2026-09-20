@@ -38,7 +38,9 @@ the identification depends on the short series.
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
+from src.paths import MODEL_OUTPUTS
+
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
 
 # Which published r* series stands in for the world rate.
 #   "mean" — the simple average of the three, i.e. "the global financial cycle"

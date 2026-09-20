@@ -20,7 +20,6 @@ models that incorporate Phillips curve information.
 
 import argparse
 from dataclasses import dataclass
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import mgplot as mg
@@ -31,14 +30,18 @@ from statsmodels.tsa.filters.hp_filter import hpfilter
 from src.data import (
     get_capital_share,
     get_capital_stock_qrtly,
+    get_employment_growth_qrtly,
     get_hourly_coe_growth_qrtly,
     get_hours_worked_qrtly,
     get_labour_force_growth_qrtly,
+    get_labour_force_qrtly,
     get_mfp_growth,
     get_trimmed_mean_annual,
     get_ulc_growth_qrtly,
 )
 from src.data.gdp import get_gdp
+from src.data.henderson import hma
+from src.paths import CHARTS
 from src.utilities.rate_conversion import annualize
 
 # --- Constants ---
@@ -1022,9 +1025,6 @@ def plot_labour_growth(result: DecompositionResult, show: bool = True) -> None:
 
 def plot_labour_force_growth(show: bool = True) -> None:
     """Plot labour force growth (through-the-year with HP and HMA trends)."""
-    from src.data import get_labour_force_qrtly  # noqa: PLC0415 — optional plot dependency
-    from src.data.henderson import hma  # noqa: PLC0415
-
     # Get labour force levels and compute through-the-year growth
     lf = get_labour_force_qrtly().data.dropna()
     lf_tty = (np.log(lf) - np.log(lf.shift(4))) * 100  # 4-quarter log change
@@ -1061,8 +1061,6 @@ def plot_labour_force_growth(show: bool = True) -> None:
 
 def plot_labour_force_growth_quarterly(show: bool = True) -> None:
     """Plot labour force Q/Q growth as used in NAIRU model."""
-    from src.data.henderson import hma  # noqa: PLC0415 — optional plot dependency
-
     # Q/Q growth (what the NAIRU model uses)
     lf_qq = get_labour_force_growth_qrtly().data.dropna()
 
@@ -1168,7 +1166,6 @@ def plot_hours_vs_labour_force(result: DecompositionResult, show: bool = True) -
     g_hours_trend, _ = apply_hp_filter(g_hours)
 
     # Employment growth (employed persons, not labour force)
-    from src.data import get_employment_growth_qrtly  # noqa: PLC0415 — optional plot dependency
     emp_growth = get_employment_growth_qrtly().data
     emp_growth_trend, _ = apply_hp_filter(emp_growth.dropna())
 
@@ -1440,7 +1437,7 @@ def print_summary(result: DecompositionResult, verbose: bool = False) -> None:
 
 def main(verbose: bool = False) -> None:
     """Run Cobb-Douglas MFP decomposition from command line."""
-    chart_dir = Path(__file__).parent.parent.parent.parent / "charts" / "cobb_douglas"
+    chart_dir = CHARTS / "cobb_douglas"
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
 

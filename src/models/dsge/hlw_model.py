@@ -36,9 +36,25 @@ Usage:
 
 from dataclasses import dataclass, field
 
+import mgplot as mg
 import numpy as np
 import pandas as pd
 from scipy import linalg
+
+from src.data.abs_loader import load_series
+from src.data.cash_rate import get_cash_rate_qrtly
+from src.data.import_prices import get_import_price_growth_annual
+from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY
+from src.models.dsge.data_loader import load_estimation_data
+from src.models.dsge.estimation import (
+    ModelSpec,
+    estimate_two_stage,
+    print_single_result,
+)
+from src.models.dsge.plot_output_gap import plot_output_gap
+from src.models.dsge.plot_rstar import plot_rstar
+from src.models.dsge.shared import ensure_period_index
+from src.paths import CHARTS
 
 
 @dataclass
@@ -65,6 +81,7 @@ class HLWParameters:
     sigma_okun: float = 0.1  # Measurement error on Okun's law
 
     def to_dict(self) -> dict:
+        """Convert to dictionary."""
         return {
             "rho_y": self.rho_y,
             "beta_r": self.beta_r,
@@ -383,13 +400,6 @@ def load_hlw_data(
         import_price_growth: Year-on-year import price growth (T,)
         dates: Period index
     """
-    from src.data.abs_loader import load_series
-    from src.data.cash_rate import get_cash_rate_qrtly
-    from src.data.import_prices import get_import_price_growth_annual
-    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY
-    from src.models.dsge.data_loader import load_estimation_data
-    from src.models.dsge.shared import ensure_period_index
-
     # Load base data with 5 observables
     df = load_estimation_data(
         start=start, end=end, n_observables=5, anchor_inflation=anchor_inflation
@@ -474,7 +484,6 @@ def hlw_extract_states(params: HLWParameters, data: dict) -> dict:
 # Model Specification
 # =============================================================================
 
-from src.models.dsge.estimation import ModelSpec
 
 HLW_SPEC = ModelSpec(
     name="HLW",
@@ -497,16 +506,10 @@ HLW_SPEC = ModelSpec(
 
 
 if __name__ == "__main__":
-    from pathlib import Path
 
-    import mgplot as mg
-
-    from src.models.dsge.estimation import estimate_two_stage, print_single_result
-    from src.models.dsge.plot_output_gap import plot_output_gap
-    from src.models.dsge.plot_rstar import plot_rstar
 
     # Chart setup
-    CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "dsge-hlw"
+    CHART_DIR = CHARTS / "dsge-hlw"
     mg.set_chart_dir(str(CHART_DIR))
     mg.clear_chart_dir()
 

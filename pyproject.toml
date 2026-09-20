@@ -76,12 +76,18 @@ lint.ignore = [
     "RUF003",  # ambiguous Unicode in comments
     "FBT001",  # boolean positional argument (common: show=False in plotting)
     "FBT002",  # boolean default positional argument
+    "N803",    # argument should be lowercase - the state-space signatures take
+               #   T, R, Z, Q, H, P0 straight from the algebra they implement,
+               #   and U_obs is unemployment; renaming them severs the link
     "N806",    # variable should be lowercase (U for unemployment, Y for output)
     "PLC2401", # non-ASCII variable names (π, Δ are standard economics notation)
     "ERA001",  # commented-out code (often explanatory formulas in economics code)
     "RUF022",  # __all__ not sorted - prefer categorical grouping for readability
     "TC001",   # move application import into TYPE_CHECKING block - too aggressive
     "TC002",   # move third-party import into TYPE_CHECKING block - too aggressive
+    "TC003",   # move stdlib import into TYPE_CHECKING block - would need
+               #   `from __future__ import annotations` everywhere, since the
+               #   annotations it targets are dataclass fields evaluated at runtime
     "CPY001",  # missing copyright notice - not used in this project
 
     # --- specifically for Jupyter notebooks.

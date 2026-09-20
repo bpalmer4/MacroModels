@@ -53,6 +53,7 @@ from src.data.surveys import get_nab_business_conditions_qrtly
 from src.data.wpi import get_wpi_growth_qrtly
 from src.models.common.nowcast_charts import NowcastChartSpec, plot_nowcast_charts
 from src.models.common.nowcast_core import compute_tty, print_qoq_tty_header
+from src.models.common.nowcast_diagnostics import print_capex_imports_hotness
 
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -70,6 +71,10 @@ N_LAGS = 2          # VAR(2)
 LAMBDA_TIGHT = 0.2  # overall tightness of Minnesota prior (smaller = more shrinkage)
 LAMBDA_CROSS = 0.5  # cross-variable tightness (relative to own-variable)
 LAMBDA_DECAY = 1.0  # lag decay exponent (1 = harmonic, 2 = quadratic)
+
+# Below this many non-missing observations an AR(1) residual variance is not
+# worth fitting, and the raw variance stands in for the prior's scale.
+MIN_AR1_OBS = 5
 
 
 # --- BVAR with Minnesota prior ---
@@ -112,7 +117,7 @@ def _ar1_residual_variance(series: np.ndarray) -> float:
     Used to set the Minnesota prior's variance scaling, following Litterman.
     """
     s = series[~np.isnan(series)]
-    if len(s) < 5:
+    if len(s) < MIN_AR1_OBS:
         return float(np.var(s))
     y = s[1:]
     x = s[:-1]
@@ -560,8 +565,6 @@ def _print_summary(result: NowcastResult) -> None:
     print(f"  Minnesota prior: λ_tight={LAMBDA_TIGHT}, λ_cross={LAMBDA_CROSS}, λ_decay={LAMBDA_DECAY}")
 
     try:
-        from src.models.common.nowcast_diagnostics import print_capex_imports_hotness  # noqa: PLC0415
-
         print_capex_imports_hotness(target_quarter=result.target_quarter)
     except (ValueError, KeyError, OSError) as exc:
         logger.warning("Capex-imports hotness diagnostic failed: %s", exc)

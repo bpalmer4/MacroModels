@@ -23,6 +23,7 @@ from src.data.series_specs import (
     GDP_CVM,
     UNEMPLOYMENT_RATE,
 )
+from src.models.dsge.shared import N_OBS_WITH_RATE, N_OBS_WITH_UGAP, N_OBS_WITH_WAGES
 
 # Inflation targeting parameters
 PI_TARGET = 2.5  # RBA target midpoint
@@ -180,7 +181,7 @@ def load_estimation_data(
     }
 
     # Add interest rate if requested (spliced OCR + historical interbank rate)
-    if n_observables >= 3:
+    if n_observables >= N_OBS_WITH_RATE:
         cash_rate_series = get_cash_rate_qrtly()
         cash_rate_q = cash_rate_series.data
         cash_rate_q.name = "interest_rate"
@@ -188,7 +189,7 @@ def load_estimation_data(
         data_dict["interest_rate"] = cash_rate_q
 
     # Add wage inflation if requested (using Compensation of Employees growth)
-    if n_observables >= 4:
+    if n_observables >= N_OBS_WITH_WAGES:
         coe_series = load_series(COMPENSATION_OF_EMPLOYEES)
         coe = coe_series.data
 
@@ -201,7 +202,7 @@ def load_estimation_data(
         data_dict["wage_inflation"] = wage_inflation
 
     # Add unemployment gap if requested (HP-filtered unemployment rate)
-    if n_observables >= 5:
+    if n_observables >= N_OBS_WITH_UGAP:
         ur_series = load_series(UNEMPLOYMENT_RATE)
         ur = ur_series.data
 
@@ -233,7 +234,7 @@ def load_estimation_data(
         df = df[df.index >= start_period]
 
     # Demean interest rate to match model (which is in deviations)
-    if n_observables >= 3:
+    if n_observables >= N_OBS_WITH_RATE:
         df["interest_rate"] = df["interest_rate"] - df["interest_rate"].mean()
 
     return df

@@ -6,7 +6,7 @@ weight, because the question that matters is not what u* is but whether the
 data placed it there.
 """
 
-from pathlib import Path  # noqa: TC003 — used at runtime in function signatures
+from pathlib import Path
 from typing import Any
 
 import mgplot as mg

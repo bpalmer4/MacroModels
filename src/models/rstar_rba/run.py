@@ -2,6 +2,7 @@
 
 import argparse
 
+from src.models.common.cli import add_run_args, add_sampler_args
 from src.models.rstar_rba.analyse import run_analysis
 from src.models.rstar_rba.config import WEIGHT_SCHEMES, ModelConfig
 from src.models.rstar_rba.ensemble import DEFAULT_SIGMA_R_VALUES, run_sigma_r_ensemble
@@ -116,14 +117,8 @@ def main() -> None:
              "Omitted, the config default applies, which keeps every quarter: excluding "
              "them was tried and made the concavity slightly stronger, not weaker",
     )
-    parser.add_argument("--draws", type=int, default=2_000)
-    parser.add_argument("--tune", type=int, default=2_000)
-    parser.add_argument("--chains", type=int, default=4)
-    parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--prefix", default="rstar_rba", help="Output filename prefix")
-    parser.add_argument("--analyse-only", action="store_true", help="Skip estimation")
-    parser.add_argument("--no-analyse", action="store_true", help="Estimate without charting")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed output")
+    add_sampler_args(parser)
+    add_run_args(parser, prefix="rstar_rba")
     args = parser.parse_args()
 
     if not args.analyse_only:

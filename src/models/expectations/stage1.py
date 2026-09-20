@@ -10,7 +10,7 @@ Run with: uv run python -m src.models.expectations.stage1
 """
 
 import pickle
-from pathlib import Path  # noqa: TC003 — used in annotations
+from pathlib import Path
 from typing import TypedDict
 
 import arviz as az
@@ -31,6 +31,7 @@ from src.models.common.diagnostics import check_model_diagnostics, save_diagnost
 from src.models.expectations.common import (
     ANCHOR_SIGMA,
     ANCHOR_TARGET,
+    CHART_DIR,
     DEFAULT_CHAINS,
     DEFAULT_DRAWS,
     DEFAULT_TUNE,

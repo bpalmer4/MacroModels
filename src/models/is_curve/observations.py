@@ -31,7 +31,15 @@ import pandas as pd
 from src.data.cash_rate import get_cash_rate_qrtly
 from src.data.expectations_model import get_model_expectations_unanchored
 from src.models.common.sources import SourceSet
+from src.models.rstar_bonds.results import load_results as load_bonds_results
+from src.models.rstar_rba.estimate import (
+    load_results as load_rba_results,
+)
+from src.models.rstar_rba.estimate import (
+    posterior_median,
+)
 from src.models.ystar_ustar.config import DEFAULT_EXCLUDE_WINDOW
+from src.models.ystar_ustar.results import load_results as load_joint_results
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -140,9 +148,7 @@ def blocks(index: pd.PeriodIndex, excluded: pd.PeriodIndex) -> list[pd.PeriodInd
 
 def _joint_gap(prefix: str, sources: SourceSet) -> pd.Series:
     """Return the median output gap from a completed joint y*/u* run."""
-    from src.models.ystar_ustar.results import load_results  # noqa: PLC0415 — optional dependency
-
-    results = load_results(prefix=prefix)
+    results = load_joint_results(prefix=prefix)
     constants = getattr(results, "constants", None)
     if isinstance(constants, dict):
         recorded = SourceSet.from_records(constants.get("sources"))
@@ -154,10 +160,8 @@ def _joint_gap(prefix: str, sources: SourceSet) -> pd.Series:
 
 def _rstar_median(prefix: str, sources: SourceSet) -> pd.Series:
     """Return the median r* from a completed rstar run, or an empty series."""
-    from src.models.rstar_bonds.results import load_results  # noqa: PLC0415 — optional dependency
-
     try:
-        results = load_results(prefix=prefix)
+        results = load_bonds_results(prefix=prefix)
     except (FileNotFoundError, KeyError, ValueError) as exc:
         print(f"  note: rstar output unavailable ({type(exc).__name__}); the 'rstar' variant will be skipped")
         return pd.Series(dtype=float)
@@ -184,13 +188,8 @@ def _rule_rstar_median(prefix: str, sources: SourceSet) -> pd.Series:
     document. Read it as evidence for the central negative finding, not against
     it.
     """
-    from src.models.rstar_rba.estimate import (  # noqa: PLC0415 — optional dependency
-        load_results,
-        posterior_median,
-    )
-
     try:
-        trace, frame, constants = load_results(prefix=prefix)
+        trace, frame, constants = load_rba_results(prefix=prefix)
     except (FileNotFoundError, KeyError, ValueError) as exc:
         print(f"  note: rstar_rba output unavailable ({type(exc).__name__}); "
               "the 'rule' variant will be skipped")

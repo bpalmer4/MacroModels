@@ -21,16 +21,15 @@ contents; rotating the key simply orphans the old entries.
 
 import json
 from functools import cache
-from pathlib import Path
 from urllib.parse import urlencode
 
 import pandas as pd
 from readabs.download_cache import get_file
 
 from src.data.dataseries import DataSeries
+from src.paths import ROOT
 
-_ROOT = Path(__file__).parent.parent.parent
-_KEY_FILE = _ROOT / "fred.api"
+_KEY_FILE = ROOT / "fred.api"
 _BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
 

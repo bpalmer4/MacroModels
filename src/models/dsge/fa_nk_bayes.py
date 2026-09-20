@@ -30,16 +30,31 @@ Run:
 
 from __future__ import annotations
 
-from pathlib import Path
+import sys
 
+import arviz as az
+import matplotlib.pyplot as plt
+import mgplot as mg
 import numpy as np
 import pandas as pd
+import pymc as pm
 import pytensor.tensor as pt
 from pytensor.graph.basic import Apply
 from pytensor.graph.op import Op
+from scipy.stats import gaussian_kde
 
 from src.models.common.diagnostics import save_diagnostics
 from src.models.dsge.estimation import ModelSpec
+from src.models.dsge.fa_nk_model import (
+    FA_NK_SPEC,
+    FANKModel,
+    _fa_state_space,
+    _mean_real_rate,
+    load_fa_nk_data,
+)
+from src.models.dsge.fa_nk_wage_model import WAGE_SPEC, load_wage_data
+from src.models.dsge.kalman import kalman_smoother
+from src.paths import CHARTS, MODEL_OUTPUTS
 
 # =============================================================================
 # Black-box likelihood Op
@@ -66,10 +81,12 @@ class DSGELogLike(Op):
         self.base = base
 
     def make_node(self, theta) -> Apply:  # noqa: ANN001
+        """Declare the graph node: a parameter vector in, a scalar out."""
         theta = pt.as_tensor_variable(theta)
         return Apply(self, [theta], [pt.scalar(dtype="float64")])
 
     def perform(self, node, inputs, outputs) -> None:  # noqa: ANN001
+        """Evaluate the log-likelihood at `theta`, writing it to `outputs`."""
         (theta,) = inputs
         pdict = dict(self.base)
         for name, value in zip(self.names, np.asarray(theta), strict=True):
@@ -112,8 +129,6 @@ PRIOR_SPECS: dict[str, tuple[str, dict]] = {
 
 
 def _build_prior(name: str):  # noqa: ANN202 -- returns a pymc RV
-    import pymc as pm
-
     if name not in PRIOR_SPECS:
         raise KeyError(f"No prior defined for estimated parameter '{name}'")
     dist_name, kwargs = PRIOR_SPECS[name]
@@ -133,13 +148,11 @@ def run_bayes(
     chains: int = 4,
     seed: int = 12345,
     verbose: bool = True,
-):  # noqa: ANN201 -- returns arviz.InferenceData
+):
     """Sample the posterior of `spec`'s estimated parameters via DEMetropolis-Z.
 
     Returns an arviz InferenceData with `posterior` and `prior` groups.
     """
-    import pymc as pm
-
     names = list(spec.estimate_params)
     missing = [n for n in names if n not in PRIOR_SPECS]
     if missing:
@@ -208,14 +221,8 @@ def produce_bayes_outputs(idata, spec: ModelSpec, tag: str) -> None:
     on an Axes and then finalised through mgplot's `finalise_plot` (consistent
     titles / footers / save / close), per the project's charting convention.
     """
-    import arviz as az
-    import matplotlib.pyplot as plt
-    import mgplot as mg
-    from scipy.stats import gaussian_kde
-
-    root = Path(__file__).parent.parent.parent.parent
-    chart_dir = root / "charts" / "dsge-fa-nk-bayes"
-    out_dir = root / "model_outputs"
+    chart_dir = CHARTS / "dsge-fa-nk-bayes"
+    out_dir = MODEL_OUTPUTS
     chart_dir.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -312,7 +319,6 @@ def produce_bayes_outputs(idata, spec: ModelSpec, tag: str) -> None:
 
 
 def run_fa_nk_bayes(smoke: bool = False, **kw):  # noqa: ANN201
-    from src.models.dsge.fa_nk_model import FA_NK_SPEC, load_fa_nk_data
 
     data = load_fa_nk_data()
     cfg = {"draws": 500, "tune": 500, "chains": 2} if smoke else {}
@@ -322,7 +328,6 @@ def run_fa_nk_bayes(smoke: bool = False, **kw):  # noqa: ANN201
 
 
 def run_fa_nk_wage_bayes(smoke: bool = False, observe_u: bool = False, **kw):  # noqa: ANN201
-    from src.models.dsge.fa_nk_wage_model import WAGE_SPEC, load_wage_data
 
     data = load_wage_data(observe_u=observe_u)
     cfg = {"draws": 500, "tune": 500, "chains": 2} if smoke else {}
@@ -343,9 +348,6 @@ def _fa_nk_states_for_params(params, data) -> pd.DataFrame:
     r^n = smoothed eps_d / sigma (state 0). Deviation-space series; rates are
     re-levelled to per cent by the caller.
     """
-    from src.models.dsge.fa_nk_model import FANKModel, _fa_state_space
-    from src.models.dsge.kalman import kalman_smoother
-
     model = FANKModel(params=params)
     sol = model.solve()
     T, R, Z, Q, H = _fa_state_space(model, sol)
@@ -426,14 +428,8 @@ def produce_fa_nk_extractions(idata=None, n_draws: int = 400) -> None:  # noqa: 
     Bands are layered with mgplot (`fill_between_plot` + `line_plot`) and closed
     out with `finalise_plot`.
     """
-    import arviz as az
-    import mgplot as mg
-
-    from src.models.dsge.fa_nk_model import FA_NK_SPEC, _mean_real_rate, load_fa_nk_data
-
-    root = Path(__file__).parent.parent.parent.parent
-    chart_dir = root / "charts" / "dsge-fa-nk-bayes"
-    out_dir = root / "model_outputs"
+    chart_dir = CHARTS / "dsge-fa-nk-bayes"
+    out_dir = MODEL_OUTPUTS
 
     if idata is None:
         idata = az.from_netcdf(str(out_dir / "fa_nk_bayes_fa_nk.nc"))
@@ -497,7 +493,6 @@ def produce_fa_nk_extractions(idata=None, n_draws: int = 400) -> None:  # noqa: 
 
 
 if __name__ == "__main__":
-    import sys
 
     smoke = "--smoke" in sys.argv
     print("=" * 64)

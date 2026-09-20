@@ -1,20 +1,19 @@
 """Container and loader for rstar posterior draws, plus the derived series."""
 
 import pickle
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
 
 import arviz as az
 import numpy as np
 import pandas as pd
-import xarray as xr
 
 from src.models.common.inflation_scale import long_run_expectations
-from src.models.common.sources import footer_from_constants
+from src.models.common.results import PosteriorResults
+from src.paths import CHARTS, MODEL_OUTPUTS
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
-DEFAULT_CHART_BASE = Path(__file__).parent.parent.parent.parent / "charts"
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
+DEFAULT_CHART_BASE = CHARTS
 
 # `premium_audit` compares era averages at each end of the sample rather than
 # single quarters, so a shift has to persist to register. Four years at each
@@ -23,38 +22,12 @@ _AUDIT_ERA_QUARTERS = 16
 _AUDIT_MIN_QUARTERS = 8
 
 
-@dataclass
-class RStarResults:
+@dataclass(kw_only=True)
+class RStarResults(PosteriorResults):
     """Container for rstar posterior draws plus the observations."""
 
-    trace: az.InferenceData
     obs: dict[str, np.ndarray]
-    obs_index: pd.PeriodIndex
-    constants: dict[str, Any] = field(default_factory=dict)
     chart_obs: pd.DataFrame | None = None
-
-    @property
-    def posterior(self) -> xr.Dataset:
-        """The trace's posterior group, narrowed at runtime."""
-        posterior = getattr(self.trace, "posterior", None)
-        if not isinstance(posterior, xr.Dataset):
-            raise TypeError("trace has no posterior group — was it loaded from a completed run?")
-        return posterior
-
-    @property
-    def source_footer(self) -> str | None:
-        """The "Built using: ..." line for this run's inputs, or None for an older run.
-
-        Runs saved before `build_observations` began recording where its series
-        came from carry no "sources" key, so the charting module falls back to
-        its own constant.
-        """
-        return footer_from_constants(self.constants)
-
-    def _vector(self, var_name: str) -> pd.DataFrame:
-        """Return a time x draw DataFrame for a vector-valued latent."""
-        stacked = self.posterior[var_name].stack(sample=("chain", "draw"))  # noqa: PD013
-        return pd.DataFrame(np.asarray(stacked.values), index=self.obs_index)
 
     def through(self, last: pd.Period) -> "RStarResults":  # noqa: UP037 — dataclass self-reference
         """Return a copy of this run truncated at `last`, for CHARTING only.
@@ -81,21 +54,18 @@ class RStarResults:
             for dim, size in self.posterior.sizes.items()
             if size == n_periods and dim not in ("chain", "draw")
         }
-        trace = az.InferenceData(posterior=self.posterior.isel(time_dims))
-        return RStarResults(
-            trace=trace,
+        # `replace` rather than naming the fields: a field added to either this
+        # class or its base would otherwise be silently dropped by the copy.
+        return replace(
+            self,
+            trace=az.InferenceData(posterior=self.posterior.isel(time_dims)),
             obs={
                 key: (value[:keep] if getattr(value, "shape", (0,))[:1] == (n_periods,) else value)
                 for key, value in self.obs.items()
             },
             obs_index=self.obs_index[:keep],
-            constants=self.constants,
             chart_obs=None if self.chart_obs is None else self.chart_obs.iloc[:keep],
         )
-
-    def _scalar(self, var_name: str) -> np.ndarray:
-        """Return the flattened posterior draws for a scalar parameter."""
-        return np.asarray(self.posterior[var_name].values).ravel()
 
     def _extra(self, name: str) -> pd.Series:
         """Return one of the ragged chart series, or an all-NaN series."""

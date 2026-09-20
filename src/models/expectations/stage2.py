@@ -10,7 +10,7 @@ Run with: uv run python -m src.models.expectations.stage2
 
 import pickle
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 — used in annotations
+from pathlib import Path
 
 import arviz as az
 import mgplot as mg

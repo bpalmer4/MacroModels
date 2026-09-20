@@ -13,6 +13,8 @@ import-price denominator) and more exogenous than net exports (no quantity
 feedback from domestic demand).
 """
 
+import numpy as np
+import pandas as pd
 from readabs import read_rba_table
 
 from src.data.dataseries import DataSeries
@@ -23,7 +25,6 @@ _SERIES_ID_AUD = "GRCPAIAD"  # Commodity prices – A$, monthly index, 2024/25 =
 
 def get_icp_aud_qrtly() -> DataSeries:
     """RBA Index of Commodity Prices in AUD, quarterly average level."""
-    import pandas as pd  # noqa: PLC0415
     data, _ = read_rba_table(_TABLE)
     monthly = pd.to_numeric(data[_SERIES_ID_AUD], errors="coerce").dropna()
     if not isinstance(monthly.index, pd.PeriodIndex):
@@ -41,7 +42,6 @@ def get_icp_aud_qrtly() -> DataSeries:
 
 def get_icp_aud_change_qrtly() -> DataSeries:
     """Quarterly percentage change in the RBA ICP (AUD), log diff x 100."""
-    import numpy as np  # noqa: PLC0415
     icp = get_icp_aud_qrtly().data
     delta = (np.log(icp) - np.log(icp.shift(1))) * 100
     return DataSeries(

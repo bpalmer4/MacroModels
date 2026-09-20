@@ -22,11 +22,26 @@ State z = [ε_d, ε_s, ω, ε_w, R₋₁, k, n_worth, q₋₁, w,  c, q, π, π_
 
 from dataclasses import dataclass, field
 
+import mgplot as mg
 import numpy as np
+import pandas as pd
 from scipy import linalg
 
-from src.models.dsge.fa_nk_model import FANKParameters
+from src.data.abs_loader import load_series
+from src.data.bonds import get_corporate_spread
+from src.data.series_specs import UNEMPLOYMENT_RATE
+from src.models.dsge.data_loader import load_estimation_data
+from src.models.dsge.estimation import ModelSpec, estimate_model
+from src.models.dsge.fa_nk_model import (
+    COVID_END,
+    COVID_START,
+    FA_NK_PARAM_BOUNDS,
+    FANKParameters,
+)
+from src.models.dsge.kalman import kalman_filter, kalman_smoother
 from src.models.dsge.nk_model import IndeterminacyError, NoSolutionError
+from src.models.dsge.shared import SINGULAR_TOL
+from src.paths import CHARTS
 
 
 @dataclass
@@ -69,7 +84,9 @@ class FANKWageModel:
     def _build_system_matrices(self):
         p = self.params
         n = self.n_states + self.n_forward  # 13
-        A = np.zeros((n, n)); B = np.zeros((n, n)); C = np.zeros((n, self.n_shocks))
+        A = np.zeros((n, n))
+        B = np.zeros((n, n))
+        C = np.zeros((n, self.n_shocks))
         (EPSD, EPSS, OMEGA, EPSW, RLAG, K, NW, QLAG, W, Cc, Q, PI, PIW) = range(13)
 
         a1 = 1.0 - p.beta * (1.0 - p.delta)
@@ -81,10 +98,18 @@ class FANKWageModel:
         ri, ppi, py = p.rho_i, p.phi_pi, p.phi_y
 
         # exogenous AR(1) shocks
-        A[EPSD, EPSD] = 1.0; B[EPSD, EPSD] = p.rho_demand; C[EPSD, 0] = p.sigma_demand
-        A[EPSS, EPSS] = 1.0; B[EPSS, EPSS] = p.rho_supply; C[EPSS, 1] = p.sigma_supply
-        A[OMEGA, OMEGA] = 1.0; B[OMEGA, OMEGA] = p.rho_omega; C[OMEGA, 2] = p.sigma_omega
-        A[EPSW, EPSW] = 1.0; B[EPSW, EPSW] = p.rho_wage; C[EPSW, 3] = p.sigma_wage
+        A[EPSD, EPSD] = 1.0
+        B[EPSD, EPSD] = p.rho_demand
+        C[EPSD, 0] = p.sigma_demand
+        A[EPSS, EPSS] = 1.0
+        B[EPSS, EPSS] = p.rho_supply
+        C[EPSS, 1] = p.sigma_supply
+        A[OMEGA, OMEGA] = 1.0
+        B[OMEGA, OMEGA] = p.rho_omega
+        C[OMEGA, 2] = p.sigma_omega
+        A[EPSW, EPSW] = 1.0
+        B[EPSW, EPSW] = p.rho_wage
+        C[EPSW, 3] = p.sigma_wage
 
         # Taylor rule  R₋₁' = ρ_i R₋₁ + (1−ρ_i)(φ_π π + φ_y y) + ε_m
         A[RLAG, RLAG] = 1.0
@@ -96,11 +121,14 @@ class FANKWageModel:
         C[RLAG, 4] = p.sigma_monetary
 
         # capital  k' = k + (δ/ψ)q
-        A[K, K] = 1.0; B[K, K] = 1.0; B[K, Q] = p.delta / psi
+        A[K, K] = 1.0
+        B[K, K] = 1.0
+        B[K, Q] = p.delta / psi
 
         # net worth  nw' = κ_n nw + (1−κ_n)lev(rk − R₋₁ + π);  rk = a1·mpk + bd·q − qlag
         g = (1 - p.kappa_n) * p.lev_k
-        A[NW, NW] = 1.0; B[NW, NW] = p.kappa_n
+        A[NW, NW] = 1.0
+        B[NW, NW] = p.kappa_n
         B[NW, Cc] = g * a1 * mpk["C"]
         B[NW, K] += g * a1 * mpk["K"]
         B[NW, Q] = g * (a1 * mpk["Q"] + bd)
@@ -110,13 +138,18 @@ class FANKWageModel:
         B[NW, PI] += g * (1.0)
 
         # qlag' = q
-        A[QLAG, QLAG] = 1.0; B[QLAG, Q] = 1.0
+        A[QLAG, QLAG] = 1.0
+        B[QLAG, Q] = 1.0
 
         # real wage  w' = w + π_w' − π'   →   E[w'] − E[π_w'] + E[π'] = w
-        A[W, W] = 1.0; A[W, PIW] = -1.0; A[W, PI] = 1.0; B[W, W] = 1.0
+        A[W, W] = 1.0
+        A[W, PIW] = -1.0
+        A[W, PI] = 1.0
+        B[W, W] = 1.0
 
         # consumption Euler  E c' + σ E π' = c + σ R(systematic) − ε_d
-        A[Cc, Cc] = 1.0; A[Cc, PI] = p.sigma
+        A[Cc, Cc] = 1.0
+        A[Cc, PI] = p.sigma
         B[Cc, Cc] = 1.0 + p.sigma * (1 - ri) * py * Y_C
         B[Cc, RLAG] = p.sigma * ri
         B[Cc, PI] = p.sigma * (1 - ri) * ppi
@@ -139,7 +172,8 @@ class FANKWageModel:
         B[Q, OMEGA] = 1.0
 
         # price Phillips  β E π' = π − κ_p·mc − ε_s
-        A[PI, PI] = p.beta; B[PI, PI] = 1.0
+        A[PI, PI] = p.beta
+        B[PI, PI] = 1.0
         B[PI, Cc] = -p.kappa_p * mc["C"]
         B[PI, K] += -p.kappa_p * mc["K"]
         B[PI, Q] = -p.kappa_p * mc["Q"]
@@ -147,7 +181,8 @@ class FANKWageModel:
         B[PI, EPSS] = -1.0
 
         # wage Phillips  β E π_w' = π_w + κ_w·μ_w − ε_w
-        A[PIW, PIW] = p.beta; B[PIW, PIW] = 1.0
+        A[PIW, PIW] = p.beta
+        B[PIW, PIW] = 1.0
         B[PIW, Cc] = p.kappa_w * muw["C"]
         B[PIW, K] += p.kappa_w * muw["K"]
         B[PIW, Q] = p.kappa_w * muw["Q"]
@@ -156,35 +191,37 @@ class FANKWageModel:
 
         return A, B, C
 
-    def check_determinacy(self):
+    def check_determinacy(self) -> tuple[bool, np.ndarray]:
+        """Return whether the unstable eigenvalues number `n_forward`, and them."""
         A, B, _ = self._build_system_matrices()
         _, _, alpha, beta_eig, _, _ = linalg.ordqz(B, A, sort="iuc")
         with np.errstate(divide="ignore", invalid="ignore"):
-            eig = np.where(np.abs(beta_eig) < 1e-10, np.inf, alpha / beta_eig)
-        return int(np.sum(np.abs(eig) > 1.0 + 1e-10)) == self.n_forward, eig
+            eig = np.where(np.abs(beta_eig) < SINGULAR_TOL, np.inf, alpha / beta_eig)
+        return int(np.sum(np.abs(eig) > 1.0 + SINGULAR_TOL)) == self.n_forward, eig
 
     def solve(self) -> FANKWageSolution:
+        """Solve by Blanchard-Kahn, raising if the model is not determinate."""
         A, B, C = self._build_system_matrices()
         p = self.params
         n = self.n_states + self.n_forward
         det, eig = self.check_determinacy()
         if not det:
-            nu = int(np.sum(np.abs(eig) > 1.0 + 1e-10))
+            nu = int(np.sum(np.abs(eig) > 1.0 + SINGULAR_TOL))
             raise (IndeterminacyError if nu < self.n_forward else NoSolutionError)(
                 f"{nu} unstable eigenvalues, need {self.n_forward}")
         S, T, alpha, beta_eig, Q, Z = linalg.ordqz(B, A, sort="iuc")
         with np.errstate(divide="ignore", invalid="ignore"):
-            eig = np.where(np.abs(beta_eig) < 1e-10, np.inf, alpha / beta_eig)
+            eig = np.where(np.abs(beta_eig) < SINGULAR_TOL, np.inf, alpha / beta_eig)
         ns = n - self.n_forward
         Zt = Z.conj().T
         Z11, Z12 = Zt[:ns, :self.n_states], Zt[:ns, self.n_states:]
         Z21, Z22 = Zt[ns:, :self.n_states], Zt[ns:, self.n_states:]
-        if np.abs(linalg.det(Z22)) < 1e-10:
+        if np.abs(linalg.det(Z22)) < SINGULAR_TOL:
             raise NoSolutionError("Z22 singular.")
         R = -linalg.inv(Z22) @ Z21
         S11, T11 = S[:ns, :ns], T[:ns, :ns]
         Z_s = Z11 + Z12 @ R
-        if np.abs(linalg.det(Z_s)) < 1e-10:
+        if np.abs(linalg.det(Z_s)) < SINGULAR_TOL:
             raise NoSolutionError("cannot solve P.")
         P = np.real(linalg.inv(Z_s) @ linalg.solve(T11, S11) @ Z_s)
         try:
@@ -210,13 +247,18 @@ class FANKWageModel:
                 "u_gap": u_gap, "R": p.rho_i * S[:, 4] + (1 - p.rho_i) * (p.phi_pi * pi + p.phi_y * y)}
 
     def compute_irf(self, shock: str, periods: int = 16) -> dict:
+        """Return the impulse response of states and jumps to a one-sd shock."""
         sol = self.solve()
         idx = {"demand": 0, "supply": 1, "omega": 2, "wage": 3, "monetary": 4}[shock]
-        eta = np.zeros(5); eta[idx] = sol.Sigma[idx, idx]
+        eta = np.zeros(5)
+        eta[idx] = sol.Sigma[idx, idx]
         s = sol.Q @ eta
-        S = np.zeros((periods, 9)); J = np.zeros((periods, 4))
+        S = np.zeros((periods, 9))
+        J = np.zeros((periods, 4))
         for t in range(periods):
-            S[t] = s; J[t] = sol.R @ s; s = sol.P @ s
+            S[t] = s
+            J[t] = sol.R @ s
+            s = sol.P @ s
         return self.derive(S, J)
 
 
@@ -224,10 +266,7 @@ class FANKWageModel:
 # Observation, likelihood, data, estimation, U* chart
 # =============================================================================
 
-import pandas as pd  # noqa: E402
 
-from src.models.dsge.estimation import ModelSpec  # noqa: E402
-from src.models.dsge.fa_nk_model import COVID_START, COVID_END, FA_NK_PARAM_BOUNDS  # noqa: E402
 
 N_OBS = 5  # [output_gap, inflation, cash_rate, credit_spread, wage_inflation]
 
@@ -244,7 +283,9 @@ def _obs_matrix(model: FANKWageModel, sol: FANKWageSolution, observe_u: bool = F
     EPSD, EPSS, OMEGA, EPSW, RLAG, K, NW, QLAG, W = range(9)
 
     def e(i):
-        v = np.zeros(ns); v[i] = 1.0; return v
+        v = np.zeros(ns)
+        v[i] = 1.0
+        return v
 
     c_row, q_row, pi_row, piw_row = Rp[0], Rp[1], Rp[2], Rp[3]
     y_row = Y_C * c_row + Y_K * e(K) + Y_Q * q_row
@@ -272,7 +313,6 @@ def _state_space(model, sol=None, observe_u: bool = False):
 
 
 def compute_wage_ll(y, params, observe_u: bool = False) -> float:
-    from src.models.dsge.kalman import kalman_filter
     try:
         m = FANKWageModel(params=params)
         T, R, Z, Q, H = _state_space(m, observe_u=observe_u)
@@ -288,7 +328,6 @@ def _wage_likelihood(params, data):
 
 
 def wage_extract_states(params, data, observe_u: bool | None = None) -> dict:
-    from src.models.dsge.kalman import kalman_smoother
     if observe_u is None:
         observe_u = data.get("observe_u", False)
     try:
@@ -311,10 +350,6 @@ def wage_extract_states(params, data, observe_u: bool | None = None) -> dict:
 
 def load_wage_data(start="1993Q1", end=None, exclude_covid=True, observe_u=False) -> dict:
     """5 (or 6, with unemployment) observables; credit spread NaN before 2005."""
-    from src.data.abs_loader import load_series
-    from src.data.bonds import get_corporate_spread
-    from src.data.series_specs import UNEMPLOYMENT_RATE
-    from src.models.dsge.data_loader import load_estimation_data
     base = load_estimation_data(start=start, end=end, n_observables=4, anchor_inflation=True)
     spread = get_corporate_spread().data
     if not isinstance(spread.index, pd.PeriodIndex):
@@ -366,7 +401,6 @@ WAGE_SPEC = ModelSpec(
 
 
 def run_wage(start="1993Q1", end=None, verbose=True, observe_u=False) -> dict:
-    from src.models.dsge.estimation import estimate_model
     data = load_wage_data(start=start, end=end, observe_u=observe_u)
     if verbose:
         print(f"FA-NK-wage estimation ({data['n_observables']} obs): "
@@ -379,11 +413,6 @@ def run_wage(start="1993Q1", end=None, verbose=True, observe_u=False) -> dict:
 
 def produce_ustar(out=None, observe_u=False) -> None:
     """Estimate (if needed) and chart actual unemployment vs the model NAIRU U*."""
-    from pathlib import Path
-    import mgplot as mg
-    from src.data.abs_loader import load_series
-    from src.data.series_specs import UNEMPLOYMENT_RATE
-
     if out is None:
         out = run_wage(verbose=False, observe_u=observe_u)
     st = out["states"]
@@ -399,8 +428,7 @@ def produce_ustar(out=None, observe_u=False) -> None:
     full = pd.period_range(st.index.min(), st.index.max(), freq="Q")
     chart = pd.DataFrame({"Unemployment rate": U, "NAIRU U* (FA-NK-wage)": ustar}).reindex(full)
 
-    root = Path(__file__).parent.parent.parent.parent
-    mg.set_chart_dir(str(root / "charts" / "dsge-fa-nk"))
+    mg.set_chart_dir(str(CHARTS / "dsge-fa-nk"))
     tag = "uobs" if observe_u else "free"
     title = ("FA-NK-wage NAIRU U-star (unemployment observed)" if observe_u
              else "FA-NK-wage unemployment and NAIRU U-star")
@@ -416,7 +444,7 @@ def produce_ustar(out=None, observe_u=False) -> None:
 if __name__ == "__main__":
     m = FANKWageModel()
     det, eig = m.check_determinacy()
-    nu = int(np.sum(np.abs(eig) > 1.0 + 1e-10))
+    nu = int(np.sum(np.abs(eig) > 1.0 + SINGULAR_TOL))
     print(f"determinate = {det}   unstable = {nu} (need {m.n_forward})")
     if det:
         print("\nIRF to a wage-markup shock — expect unemployment UP, wage inflation DOWN:")

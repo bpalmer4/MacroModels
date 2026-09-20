@@ -23,7 +23,7 @@ Usage::
 """
 
 import argparse
-from pathlib import Path  # noqa: TC003 — used at runtime in function signatures
+from pathlib import Path
 
 import mgplot as mg
 import pandas as pd

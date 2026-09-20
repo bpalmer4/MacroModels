@@ -106,7 +106,10 @@ def main() -> None:
     )
 
     if args.analyse_only:
-        trace, frame, labels = load_trace(config)
+        trace, frame, labels, saved = load_trace(config)
+        # The specification the trace was estimated under, not the defaults
+        # this invocation happens to carry.
+        config = config.with_saved_settings(saved)
         index = frame.index
         if not isinstance(index, pd.PeriodIndex):
             raise TypeError("the saved frame has lost its quarterly PeriodIndex")

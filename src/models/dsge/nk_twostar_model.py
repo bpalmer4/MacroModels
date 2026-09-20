@@ -50,7 +50,17 @@ import numpy as np
 import pandas as pd
 from scipy import linalg
 
+from src.data.bonds import get_indexed_yield_filled
+from src.data.gdp import get_log_gdp
+from src.models.dsge.data_loader import hp_filter, load_estimation_data
+from src.models.dsge.estimation import (
+    ModelSpec,
+    estimate_model,
+    print_single_result,
+)
+from src.models.dsge.kalman import kalman_filter, kalman_smoother
 from src.models.dsge.nk_model import IndeterminacyError, NoSolutionError
+from src.models.dsge.shared import SINGULAR_TOL
 
 
 @dataclass
@@ -144,9 +154,15 @@ class NKTwoStarModel:
         C = np.zeros((n, self.n_shocks))
 
         # 1-3. Exogenous AR(1) shocks
-        A[0, 0] = 1.0; B[0, 0] = p.rho_demand; C[0, 0] = p.sigma_demand
-        A[1, 1] = 1.0; B[1, 1] = p.rho_supply; C[1, 1] = p.sigma_supply
-        A[2, 2] = 1.0; B[2, 2] = p.rho_wage; C[2, 2] = p.sigma_wage
+        A[0, 0] = 1.0
+        B[0, 0] = p.rho_demand
+        C[0, 0] = p.sigma_demand
+        A[1, 1] = 1.0
+        B[1, 1] = p.rho_supply
+        C[1, 1] = p.sigma_supply
+        A[2, 2] = 1.0
+        B[2, 2] = p.rho_wage
+        C[2, 2] = p.sigma_wage
 
         # 4. Taylor rule with smoothing; neutral anchor is r*_goods (state 4):
         #    ĩ_{t+1} = i_t = ρ_i·ĩ_t + (1-ρ_i)·(r_goods_t + φ_π·π_t + φ_y·ŷ_t) + ε_m
@@ -158,10 +174,14 @@ class NKTwoStarModel:
         C[3, 3] = p.sigma_monetary
 
         # 5. r*_goods dynamics (exogenous AR(1), pinned by the bond-yield observation)
-        A[4, 4] = 1.0; B[4, 4] = p.rho_rg; C[4, 4] = p.sigma_rg
+        A[4, 4] = 1.0
+        B[4, 4] = p.rho_rg
+        C[4, 4] = p.sigma_rg
 
         # 6. wedge ω dynamics (exogenous AR(1), pinned by the (g - bond) observation)
-        A[5, 5] = 1.0; B[5, 5] = p.rho_omega; C[5, 5] = p.sigma_omega
+        A[5, 5] = 1.0
+        B[5, 5] = p.rho_omega
+        C[5, 5] = p.sigma_omega
 
         # 7. IS curve:  ŷ = E[ŷ'] - σ(i - E[π'] - r_goods) - σ_k·ω + ε_d
         #    Substitute i = ρ_i·ĩ + (1-ρ_i)(r_goods + φ_π·π + φ_y·ŷ) + ε_m  (drop ε_m
@@ -178,10 +198,16 @@ class NKTwoStarModel:
         B[6, 0] = -1.0                     # ε_d
 
         # 8. Price Phillips: π = β·E[π'] + κ_p·ŷ + ε_s
-        A[7, 7] = p.beta; B[7, 7] = 1.0; B[7, 6] = -p.kappa_p; B[7, 1] = -1.0
+        A[7, 7] = p.beta
+        B[7, 7] = 1.0
+        B[7, 6] = -p.kappa_p
+        B[7, 1] = -1.0
 
         # 9. Wage Phillips: π_w = β·E[π_w'] + κ_w·ŷ + ε_w
-        A[8, 8] = p.beta; B[8, 8] = 1.0; B[8, 6] = -p.kappa_w; B[8, 2] = -1.0
+        A[8, 8] = p.beta
+        B[8, 8] = 1.0
+        B[8, 6] = -p.kappa_w
+        B[8, 2] = -1.0
 
         return A, B, C
 
@@ -190,8 +216,8 @@ class NKTwoStarModel:
         A, B, _ = self._build_system_matrices()
         _, _, alpha, beta_eig, _, _ = linalg.ordqz(B, A, sort="iuc")
         with np.errstate(divide="ignore", invalid="ignore"):
-            eigenvalues = np.where(np.abs(beta_eig) < 1e-10, np.inf, alpha / beta_eig)
-        n_unstable = np.sum(np.abs(eigenvalues) > 1.0 + 1e-10)
+            eigenvalues = np.where(np.abs(beta_eig) < SINGULAR_TOL, np.inf, alpha / beta_eig)
+        n_unstable = np.sum(np.abs(eigenvalues) > 1.0 + SINGULAR_TOL)
         return n_unstable == self.n_forward, eigenvalues
 
     def solve(self) -> NKTwoStarSolution:
@@ -202,7 +228,7 @@ class NKTwoStarModel:
 
         is_det, eigenvalues = self.check_determinacy()
         if not is_det:
-            n_unstable = np.sum(np.abs(eigenvalues) > 1.0 + 1e-10)
+            n_unstable = np.sum(np.abs(eigenvalues) > 1.0 + SINGULAR_TOL)
             if n_unstable < self.n_forward:
                 raise IndeterminacyError(
                     f"Indeterminacy: {n_unstable} unstable eigenvalues, need {self.n_forward}."
@@ -213,7 +239,7 @@ class NKTwoStarModel:
 
         S, T, alpha, beta_eig, Q, Z = linalg.ordqz(B, A, sort="iuc")
         with np.errstate(divide="ignore", invalid="ignore"):
-            eigenvalues = np.where(np.abs(beta_eig) < 1e-10, np.inf, alpha / beta_eig)
+            eigenvalues = np.where(np.abs(beta_eig) < SINGULAR_TOL, np.inf, alpha / beta_eig)
 
         n_stable = n - self.n_forward  # 6
 
@@ -223,7 +249,7 @@ class NKTwoStarModel:
         Z21 = Z_full[n_stable:, :self.n_states]
         Z22 = Z_full[n_stable:, self.n_states:]
 
-        if np.abs(linalg.det(Z22)) < 1e-10:
+        if np.abs(linalg.det(Z22)) < SINGULAR_TOL:
             raise NoSolutionError("Z22 singular - no unique solution.")
 
         R = -linalg.inv(Z22) @ Z21  # 3×6 policy function
@@ -231,7 +257,7 @@ class NKTwoStarModel:
         S11 = S[:n_stable, :n_stable]
         T11 = T[:n_stable, :n_stable]
         Z_s = Z11 + Z12 @ R  # 6×6
-        if np.abs(linalg.det(Z_s)) < 1e-10:
+        if np.abs(linalg.det(Z_s)) < SINGULAR_TOL:
             raise NoSolutionError("Cannot solve for state transition P.")
 
         P = np.real(linalg.inv(Z_s) @ linalg.solve(T11, S11) @ Z_s)  # 6×6
@@ -323,8 +349,6 @@ class NKTwoStarModel:
 
 def compute_nk_twostar_log_likelihood(y_obs: np.ndarray, params: NKTwoStarParameters) -> float:
     """Log-likelihood via Kalman filter (returns -1e10 on solve failure)."""
-    from src.models.dsge.kalman import kalman_filter
-
     try:
         model = NKTwoStarModel(params=params)
         T, R, Z, Q, H = model.state_space_matrices()
@@ -342,8 +366,6 @@ def _nk_twostar_likelihood(params: NKTwoStarParameters, data: dict) -> float:
 
 def nk_twostar_extract_states(params: NKTwoStarParameters, data: dict) -> dict:
     """Kalman-smoothed states + implied controls and the two natural rates."""
-    from src.models.dsge.kalman import kalman_smoother
-
     try:
         model = NKTwoStarModel(params=params)
         solution = model.solve()
@@ -395,10 +417,6 @@ def load_nk_twostar_data(
         treats as a single transition step (same crude handling the other DSGE
         models use for their crisis exclusion).
     """
-    from src.data.bonds import get_indexed_yield_filled
-    from src.data.gdp import get_log_gdp
-    from src.models.dsge.data_loader import hp_filter, load_estimation_data
-
     # Core 5 observables (output_gap, inflation [anchor-adjusted], i [demeaned], wage, u_gap)
     base = load_estimation_data(start=start, end=end, n_observables=5, anchor_inflation=True)
 
@@ -468,7 +486,6 @@ NK_TWOSTAR_PARAM_BOUNDS = {
     "sigma_omega": (0.05, 3.0),
 }
 
-from src.models.dsge.estimation import ModelSpec  # noqa: E402
 
 NK_TWOSTAR_SPEC = ModelSpec(
     name="NK-TwoStar",
@@ -496,8 +513,6 @@ def run_full_sample(start: str = "1993Q1", end: str | None = None, verbose: bool
     The wedge's identification lives in the 2008-2020 divergence, so unlike the
     other DSGE models we do NOT exclude the crisis window here.
     """
-    from src.models.dsge.estimation import estimate_model
-
     data = load_nk_twostar_data(start=start, end=end)
     if verbose:
         print(f"NK-TwoStar - full-sample estimation: {data['dates'][0]} to {data['dates'][-1]} "
@@ -513,7 +528,6 @@ def run_full_sample(start: str = "1993Q1", end: str | None = None, verbose: bool
 
 
 if __name__ == "__main__":
-    from src.models.dsge.estimation import print_single_result
 
     print("NK Two-Star Model - full-sample estimation")
     print("=" * 60)

@@ -42,9 +42,10 @@ from src.models.nairu.equations.potential import (
     potential_output_skewnormal_equation,
 )
 from src.models.nairu.observations import ANCHOR_LABELS, AnchorMode, build_observations
+from src.paths import MODEL_OUTPUTS
 
 # Default output directory
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
 
 
 def build_model(obs: dict[str, np.ndarray], config: ModelConfig) -> pm.Model:  # noqa: C901, PLR0912, PLR0915

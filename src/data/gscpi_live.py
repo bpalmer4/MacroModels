@@ -25,12 +25,12 @@ that makes them.
 
 from functools import cache
 from io import BytesIO
-from pathlib import Path
 
 import pandas as pd
 import readabs as ra
 
 from src.data.dataseries import DataSeries
+from src.paths import CACHE
 
 GSCPI_URL = (
     "https://www.newyorkfed.org/medialibrary/research/interactives/gscpi/downloads/gscpi_data.xls"
@@ -38,11 +38,6 @@ GSCPI_URL = (
 
 _SHEET = "GSCPI Monthly Data"
 _COLUMN = "GSCPI"
-
-# Sits beside the ABS cache rather than in `input_data`, because it is a cache
-# and not an input: it is re-fetched when the NY Fed updates the workbook, and
-# is safe to delete.
-_CACHE_DIR = Path(__file__).parent.parent.parent / ".readabs_cache"
 
 
 @cache
@@ -57,9 +52,12 @@ def get_gscpi_monthly_live(verbose: bool = False) -> DataSeries:
         DataSeries with the monthly GSCPI, indexed by month-end timestamps.
 
     """
+    # Sits beside the ABS cache rather than in `input_data`, because it is a
+    # cache and not an input: it is re-fetched when the NY Fed updates the
+    # workbook, and is safe to delete.
     content = ra.download_cache.get_file(
         GSCPI_URL,
-        cache_dir=_CACHE_DIR,
+        cache_dir=CACHE,
         cache_prefix="gscpi",
         verbose=verbose,
     )

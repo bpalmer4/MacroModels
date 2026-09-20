@@ -22,7 +22,7 @@ state, so r* is part nowcast rather than an estimate of neutral.
 """
 
 import argparse
-from pathlib import Path  # noqa: TC003 — used at runtime in the CHART_DIR default
+from pathlib import Path
 
 import mgplot as mg
 import pandas as pd

@@ -354,10 +354,12 @@ saved trace without re-sampling.
 
 ```
 src/
+├── paths.py            # Where the project's directories are, resolved once
 ├── data/               # Data fetching (ABS, RBA) and preparation
 ├── utilities/          # Shared utilities (rate conversion, etc.)
 └── models/
-    ├── common/                 # Shared model utilities (diagnostics, extraction, timeseries, sources)
+    ├── common/                 # Shared model machinery (results, cli, diagnostics,
+    │                           #   extraction, timeseries, sources, charts)
     ├── expectations/           # Inflation expectations signal extraction
     ├── nairu/                  # NAIRU + Output Gap model (estimate → validate → analyse → forecast)
     │   └── analysis/           # Plotting and diagnostics modules

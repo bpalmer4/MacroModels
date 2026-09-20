@@ -30,8 +30,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
-CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "YStarUStar"
+from src.paths import CHARTS, MODEL_OUTPUTS
+
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
+CHART_DIR = CHARTS / "YStarUStar"
 
 # Inherited from ystar: the pandemic quarters that carry no likelihood.
 DEFAULT_EXCLUDE_WINDOW = ("2020Q2", "2021Q3")

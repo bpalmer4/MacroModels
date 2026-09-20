@@ -1,6 +1,6 @@
 """Charts and printed diagnostics for the TVP-VAR."""
 
-from pathlib import Path  # noqa: TC003 — used at runtime in function signatures
+from pathlib import Path
 
 import mgplot as mg
 import pandas as pd

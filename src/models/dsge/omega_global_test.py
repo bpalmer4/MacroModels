@@ -13,13 +13,13 @@ not "global QE free money" narrowly.
 Run: uv run python -m src.models.dsge.omega_global_test
 """
 
-from pathlib import Path
-
+import mgplot as mg
 import numpy as np
 import pandas as pd
 
+from src.paths import CHARTS, MODEL_OUTPUTS
+
 FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={}"
-ROOT = Path(__file__).parent.parent.parent.parent
 
 
 def _fred(sid: str) -> pd.Series | None:
@@ -38,7 +38,7 @@ def _fred(sid: str) -> pd.Series | None:
 
 def load_omega() -> pd.Series:
     """Smoothed FA-NK financial shock ω (data-pinned from 2005, where the spread exists)."""
-    st = pd.read_csv(ROOT / "model_outputs" / "fa_nk_states.csv", index_col=0)
+    st = pd.read_csv(MODEL_OUTPUTS / "fa_nk_states.csv", index_col=0)
     st.index = pd.PeriodIndex(st.index, freq="Q")
     return st["omega"].dropna()
 
@@ -67,8 +67,6 @@ def run() -> None:
                   f"QE-era 2010-19={dp['o'].corr(dp['x']):+.2f}")
 
     # Chart: omega vs the strongest correlate (Chicago Fed FCI), both z-scored
-    import mgplot as mg
-
     def z(s: pd.Series) -> pd.Series:
         return (s - s.mean()) / s.std()
 
@@ -77,7 +75,7 @@ def run() -> None:
                           "Chicago Fed financial conditions": fetched["NFCI"]}).dropna()
         d = d.apply(z)
         full = pd.period_range(d.index.min(), d.index.max(), freq="Q")
-        mg.set_chart_dir(str(ROOT / "charts" / "dsge-fa-nk"))
+        mg.set_chart_dir(str(CHARTS / "dsge-fa-nk"))
         mg.line_plot_finalise(
             d.reindex(full), width=2, color=["firebrick", "navy"], dropna=False,
             title="FA-NK financial shock vs global financial conditions",
@@ -85,7 +83,7 @@ def run() -> None:
             rfooter="FA-NK DSGE; FRED",
             lfooter=f"Australia. omega vs Chicago Fed FCI, corr={d.corr().iloc[0, 1]:+.2f}. ",
         )
-        print(f"\nChart written to {ROOT / 'charts' / 'dsge-fa-nk'}/")
+        print(f"\nChart written to {CHARTS / 'dsge-fa-nk'}/")
 
 
 if __name__ == "__main__":

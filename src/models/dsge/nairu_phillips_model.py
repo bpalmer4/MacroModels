@@ -27,9 +27,26 @@ Usage:
 
 from dataclasses import dataclass, field
 
+import mgplot as mg
 import numpy as np
 import pandas as pd
 from scipy import linalg
+
+from src.data.abs_loader import load_series
+from src.data.energy import get_coal_change_annual, get_oil_change_lagged_annual
+from src.data.import_prices import get_import_price_growth_annual
+from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY, UNEMPLOYMENT_RATE
+from src.data.ulc import get_ulc_growth_qrtly
+from src.models.dsge.data_loader import compute_inflation_anchor
+from src.models.dsge.estimation import (
+    ModelSpec,
+    estimate_two_stage,
+    print_single_result,
+)
+from src.models.dsge.kalman import kalman_smoother_tv
+from src.models.dsge.plot_nairu import plot_nairu
+from src.models.dsge.shared import ensure_period_index, filter_date_range
+from src.paths import CHARTS
 
 
 @dataclass
@@ -50,6 +67,7 @@ class NairuPhillipsParameters:
     sigma_w: float = 0.5       # Wage Phillips shock
 
     def to_dict(self) -> dict:
+        """Convert to dictionary."""
         return {
             "gamma_p": self.gamma_p,
             "gamma_w": self.gamma_w,
@@ -216,8 +234,6 @@ def extract_nairu_estimates(
         nairu_std: Standard deviation of NAIRU estimates (T,)
 
     """
-    from src.models.dsge.kalman import kalman_smoother_tv
-
     p = params
 
     # State transition (time-invariant)
@@ -296,14 +312,6 @@ def load_nairu_phillips_data(
         nairu_prior: Prior mean for NAIRU (regime average U)
         dates: Period index
     """
-    from src.data.abs_loader import load_series
-    from src.data.energy import get_coal_change_annual, get_oil_change_lagged_annual
-    from src.data.import_prices import get_import_price_growth_annual
-    from src.data.series_specs import CPI_TRIMMED_MEAN_QUARTERLY, UNEMPLOYMENT_RATE
-    from src.data.ulc import get_ulc_growth_qrtly
-    from src.models.dsge.data_loader import compute_inflation_anchor
-    from src.models.dsge.shared import ensure_period_index, filter_date_range
-
     # Load and process inflation
     inflation_raw = ensure_period_index(load_series(CPI_TRIMMED_MEAN_QUARTERLY).data)
     inflation_annual = ((1 + inflation_raw / 100) ** 4 - 1) * 100
@@ -433,7 +441,6 @@ def nairu_phillips_extract_states(params: NairuPhillipsParameters, data: dict) -
 # =============================================================================
 
 # Import here to avoid circular imports
-from src.models.dsge.estimation import ModelSpec
 
 NAIRU_PHILLIPS_SPEC = ModelSpec(
     name="NAIRU-Phillips",
@@ -456,15 +463,10 @@ NAIRU_PHILLIPS_SPEC = ModelSpec(
 
 
 if __name__ == "__main__":
-    from pathlib import Path
 
-    import mgplot as mg
-
-    from src.models.dsge.estimation import estimate_two_stage, print_single_result
-    from src.models.dsge.plot_nairu import plot_nairu
 
     # Chart setup
-    CHART_DIR = Path(__file__).parent.parent.parent.parent / "charts" / "dsge-nairu-phillips"
+    CHART_DIR = CHARTS / "dsge-nairu-phillips"
     mg.set_chart_dir(str(CHART_DIR))
     mg.clear_chart_dir()
 

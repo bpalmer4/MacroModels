@@ -9,6 +9,7 @@ Usage::
 
 import argparse
 
+from src.models.common.cli import add_run_args, add_sampler_args
 from src.models.ystar.analyse import run_analysis
 from src.models.ystar.base import SamplerConfig
 from src.models.ystar.config import (
@@ -139,22 +140,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ratio-lp-star", type=float, default=0.10)
     parser.add_argument("--ratio-g-lp", type=float, default=0.025)
 
-    parser.add_argument("--draws", type=int, default=2_000)
-    parser.add_argument("--tune", type=int, default=2_000)
-    parser.add_argument("--chains", type=int, default=4)
-    parser.add_argument("--seed", type=int, default=None)
+    add_sampler_args(parser)
     parser.add_argument("--max-tree-depth", type=int, default=SamplerConfig.max_tree_depth,
                         help="NUTS trajectory cap, as a power of two")
 
-    parser.add_argument("--prefix", default="ystar", help="Output filename prefix")
-    parser.add_argument("--analyse-only", action="store_true", help="Skip estimation")
-    parser.add_argument("--no-analyse", action="store_true", help="Estimate without charting")
+    add_run_args(parser, prefix="ystar")
     parser.add_argument(
         "--no-decompose", action="store_true",
         help="Skip the hours/productivity accounting split (avoids loading labour force data). "
              "Always skipped for the labour and production specs, which split potential internally",
     )
-    parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed output")
 
     return parser.parse_args()
 

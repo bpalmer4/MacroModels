@@ -18,7 +18,9 @@ from pathlib import Path
 
 import pandas as pd
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "model_outputs"
+from src.paths import MODEL_OUTPUTS
+
+DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
 
 WEIGHT_SCHEMES = ("flat", "geometric", "dirichlet")
 

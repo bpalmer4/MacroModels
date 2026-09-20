@@ -2,6 +2,7 @@
 
 import argparse
 
+from src.models.common.cli import add_run_args, add_sampler_args
 from src.models.rstar_tvpvar.analyse import run_analysis
 from src.models.rstar_tvpvar.config import (
     ANCHOR_SOURCES,
@@ -111,9 +112,7 @@ def _build_parser() -> argparse.ArgumentParser:
              "A quarter outside the sample is an error, not a silent no-op",
     )
 
-    parser.add_argument("--draws", type=int, default=1_000)
-    parser.add_argument("--tune", type=int, default=1_000)
-    parser.add_argument("--chains", type=int, default=4)
+    add_sampler_args(parser, draws=1_000, tune=1_000)
     parser.add_argument(
         "--target-accept", type=float, default=None,
         help=f"NUTS acceptance target (default {SamplerConfig().target_accept:g}, or 0.9 with "
@@ -122,7 +121,6 @@ def _build_parser() -> argparse.ArgumentParser:
              "the step size. Note max_tree_depth is 10 and raising it was tried and does "
              "nothing (see ystar/base.py)",
     )
-    parser.add_argument("--seed", type=int, default=None)
     parser.add_argument(
         "--smoke", action="store_true",
         help="A fast, low-draw run to check the model builds and samples at all",
@@ -137,10 +135,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--ensemble-values", type=float, nargs="*", default=None,
         help="sigma_q values for the sweep (default: 0 0.002 0.005 0.01 0.02 0.05)",
     )
-    parser.add_argument("--prefix", default="rstar_tvpvar", help="Output filename prefix")
-    parser.add_argument("--analyse-only", action="store_true", help="Skip estimation")
-    parser.add_argument("--no-analyse", action="store_true", help="Estimate without charting")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed output")
+    add_run_args(parser, prefix="rstar_tvpvar")
     return parser
 
 

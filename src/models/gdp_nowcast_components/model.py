@@ -37,17 +37,18 @@ Usage:
 import logging
 from dataclasses import dataclass, field
 
+import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
 import pandas as pd
 
 from src.models.common.nowcast_charts import NowcastChartSpec, plot_nowcast_charts
 from src.models.common.nowcast_core import compute_tty, detect_target_quarter
+from src.models.gdp_nowcast_components import CHART_DIR, diagnostics
 from src.models.gdp_nowcast_components import data as cd
 
 logger = logging.getLogger(__name__)
 
-CHART_DIR = "./charts/GDP-Nowcast-Components/"
 CHART_START = "2022Q2"
 SHOW = False
 
@@ -563,8 +564,6 @@ def plot_average_vs_nowcast(result: NowcastResult) -> None:
     chart; a black dot marks each bar's net (GDP growth). mgplot has no horizontal
     stacked bar, so this layers matplotlib ``barh`` and finalises through mgplot.
     """
-    import matplotlib.pyplot as plt  # noqa: PLC0415
-
     pub = result.pub
     n = _AVG_WINDOW_YEARS * 4
     identity = list(_COMPONENT_PUB.values())
@@ -638,8 +637,6 @@ def plot_input_distributions(result: NowcastResult) -> None:
     colours, headers and footers as the contributions charts. mgplot has no
     boxplot, so this layers matplotlib and finalises through mgplot.
     """
-    import matplotlib.pyplot as plt  # noqa: PLC0415
-
     pub = result.pub.tail(_AVG_WINDOW_YEARS * 4)  # trailing 30 years, matching the benchmark bar
     identity = list(_COMPONENT_PUB.values())
 
@@ -715,7 +712,6 @@ def run_nowcast() -> NowcastResult:
         show=SHOW,
     ))
     # Eight estimate-vs-NA scatter checks, drawn into the chart dir set above.
-    from src.models.gdp_nowcast_components import diagnostics  # noqa: PLC0415
     diagnostics.plot_all_checks()
     return result
 

@@ -9,15 +9,13 @@ Note: Trading partner GDP growth data can be sourced from:
 - Or constructed from individual country GDP weighted by trade shares
 """
 
-from pathlib import Path
-
 import pandas as pd
 
 from src.data.dataseries import DataSeries
+from src.paths import ROOT
 
 # --- Data file paths ---
-_PROJECT_ROOT = Path(__file__).parent.parent.parent
-FOREIGN_DEMAND_FILE = _PROJECT_ROOT / "data" / "foreign_demand.parquet"
+FOREIGN_DEMAND_FILE = ROOT / "data" / "foreign_demand.parquet"
 
 
 def get_major_trading_partner_growth_qrtly() -> DataSeries:
