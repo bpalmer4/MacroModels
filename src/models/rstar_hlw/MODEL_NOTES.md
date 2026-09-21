@@ -50,7 +50,9 @@ Itemise what HLW actually asserts:
 - two random walks (y*, g), which are smoothness assumptions, not economics;
 - an IS curve that is a reduced-form AR(2) with a rate term;
 - a Phillips curve that is a reduced-form regression;
-- **one economic statement: `r* = g + z`**.
+- **one economic statement: `r* = g + z`**, which has no free coefficient left in the
+  reference implementation: LW2001 wrote `r* = c x g + z` and estimated c at 0.97, and HLW2017
+  imposes c = 1 because the relationship is "not well identified in the data".
 
 That statement is the whole structural content, and with z unanchored the model has no way to
 fill it in. On the shipped settings it fills it in with nothing: z = **+0.02**,
@@ -127,6 +129,70 @@ decomposition and constitutionally incapable of identifying r*, because it conta
 statement linking r* to anything observable. That is not a defect of this implementation. It
 is what the model is.
 
+## The original papers do not estimate the variances either
+
+The non-identification above is not a finding about Australian data or about this
+implementation. LW2001 and HLW2017 reach it, patch it, and say so in the text. Quotations are
+from LW2001 (FEDS 2001-56) and HLW2017 (FRBSF WP 2016-11); published versions may word things
+differently.
+
+**Maximum likelihood returns zero.** LW2001 on the innovation standard deviations of trend
+growth and z: "likely to be biased towards zero owing to the so-called 'pile-up problem'
+discussed by Stock (1994). Indeed, the maximum likelihood estimates of both of these
+parameters were zero." HLW2017 repeats the reasoning.
+
+**So the ratios are imposed rather than estimated.** Both papers use Stock-Watson (1998)
+median-unbiased estimation to obtain `lambda_g` = sigma_g / sigma_ystar and
+`lambda_z` = a_r x sigma_z / sigma_ygap, then "impose these ratios when estimating the
+remaining model parameters". Three sequential steps:
+
+1. Kalman filter a cut-down model with the real rate gap deleted from the IS equation and
+   trend growth held constant, giving a preliminary potential output. Andrews-Ploberger
+   exponential Wald test for a break at unknown date on its first difference, mapped to
+   `lambda_g` through Stock-Watson's tables.
+2. Impose `lambda_g`. Include the rate gap but hold z constant. Exponential Wald test for an
+   intercept shift in the IS equation, mapped to `lambda_z`.
+3. Impose both and estimate the remaining parameters by maximum likelihood.
+
+Each stage takes its input from a model that assumes away what the next stage measures:
+`lambda_g` from a specification in which r* has no effect on output, `lambda_z` from one in
+which z does not move.
+
+**The likelihood cannot choose between the resulting answers.** LW2001's Table 1 reports
+`lambda_g` 0.039 with a 90% interval of [0.000, 0.103], which contains zero, and `lambda_z`
+0.071 with [0.015, 0.117]. Re-estimating with `lambda_z` imposed at each end of its interval:
+"based on the log likelihood values, the data are not able to discern between the alternative
+specifications." Where z is non-stationary they also decline to report t-statistics for the
+coefficient on trend growth, because "inference based on the standard errors is invalid".
+
+**Two further quantities are imposed.** HLW2017 fixes the coefficient on trend growth at one:
+"Because this relationship is not well identified in the data, we chose to impose a
+coefficient of unity." LW2001 estimated it and got 0.97. HLW2017 also constrains the signs,
+"we impose the constraints that the slope a_r of the IS equation is negative and the slope b_y
+of the Phillips curve is positive", calling them "minimal priors" that "facilitate the
+convergence of the numerical optimization". The sign of the IS slope is therefore not a result
+in the reference implementation.
+
+With the coefficient on trend growth fixed at one and `lambda_z` small, r* is trend growth
+plus a driftless random walk of imposed amplitude. That is the specification behaving as
+written, and it is what `corr(r*, g)` = 0.998 records.
+
+**And the imprecision survives good identification.** HLW2017's US estimates are the
+favourable case: "The slope coefficients a_r and b_y for the U.S. are reasonably large and
+precisely estimated, suggesting that both the output gap and the real rate gap are well
+identified." Even there, "even with hindsight, the natural rate of interest is estimated
+imprecisely, with a sample average standard error of 1.1 percentage points", and the one-sided
+estimates that correspond to real-time use are worse again. A wide band on r* is therefore not
+a symptom of Australian data, of this sample, or of estimating the model by MCMC rather than
+maximum likelihood. It is what the model returns where its own identifying equation works.
+
+**What this implementation does instead.** There is no median-unbiased step here. `sigma_z` is
+free under a HalfNormal prior and `sigma_ystar` is imposed at 0.078, which is HLW's device
+applied to one variance. `sigma_z_sweep.py` and `sigma_z_prior_sweep.py` are the Bayesian
+counterpart of the median-unbiased step: rather than taking a ratio from a break test and
+conditioning on it, they vary the prior and report how much of the answer follows it. Most of
+it does. LW2001's own sensitivity check reports the same fact by a different route.
+
 ## One of three routes, all flawed
 
 This repo contains three separate attempts at Australian r\*, and the useful thing is that
@@ -200,10 +266,10 @@ not shutdown-distorted GDP. Same 134-quarter sample, 8 quarters dropped instead 
 | g latest | 2.23% | 2.24% |
 | output gap sd | 2.04 | 2.05 |
 | gap, 2022Q4 → 2026Q2 | +4.43 → +2.56 | +4.46 → +2.66 |
-| divergences | 12 | **0** |
+| divergences | 2 | **0** |
 | overall R-hat / min ESS | 1.200 / 8 | **1.040 / 72** |
-| `r_star` R-hat / min ESS | 1.090 / 39 | **1.010 / 395** |
-| BFMI | 0.03 | 0.03 |
+| `r_star` R-hat / min ESS | 1.010 / 402 | 1.010 / 395 |
+| BFMI | 0.02 | 0.03 |
 
 **It buys sampling, and it costs the rate channel.** Divergences go to zero, `r_star` mixes
 properly (ESS 39 → 395), and overall R-hat falls from 1.20 to 1.04. Five of six diagnostics
@@ -235,8 +301,8 @@ shipped setting: `./run-rstar-hlw.sh --exclude-window 2020Q2:2022Q1`.
 | long-run slope | **−0.84** | −2.11 |
 | persistence `a_y1+a_y2` | 0.947 | 0.953 |
 | potential, quarterly change sd | 0.189 (GDP 0.972) | 0.195 (GDP 0.950) |
-| divergences | 12 | 5 |
-| `r_star` R-hat / min ESS | **1.090 / 39** | 1.010 / 1,203 |
+| divergences | 2 | 5 |
+| `r_star` R-hat / min ESS | **1.010 / 402** | 1.010 / 1,203 |
 
 **This is a trade, not a free win.** The gap, the Phillips curve and the long-run IS slope all
 improve. The IS curve's per-quarter identification and r*'s sampling both get materially
@@ -430,8 +496,18 @@ enough to: `b_y` × gap against `sigma_pi` is a signal-to-noise of about 0.6. Do
 that to "a Phillips curve cannot adjudicate": `ystar_ustar` has a strong one and still does not
 settle it, for a different reason. See "How big should the gap be" below.
 
-**λ_g at HLW's own US value is rejected by Australian data** (`lambda_g_sweep.py`). Re-run on
-the 1993Q1 default, with the original 1986Q3 run in brackets:
+**Why the pile-up problem does not bite the same way here.** LW and HLW impose both ratios
+because maximum likelihood drives the two variances to zero (see "The original papers do not
+estimate the variances either"). This build leaves `lambda_g` free and still returns a sensible
+`sigma_g` of 0.105, because `sigma_ystar` is imposed: fixing one member of the pair gives the
+other a scale to be measured against. `sigma_z` has no such partner and does not escape. It is
+the worst-sampled parameter in the model on every measure, which is the pile-up appearing as
+posterior geometry rather than as a point estimate of zero.
+
+**λ_g at HLW's own US value is rejected by Australian data** (`lambda_g_sweep.py`). That value
+is not an estimate in HLW either: it comes from the break test in the median-unbiased procedure
+above, and HLW's own 90% interval for it runs 0.004 to 0.132. Re-run on the 1993Q1 default,
+with the original 1986Q3 run in brackets:
 
 | λ_g | 0.053 (HLW US) | 0.15 | 0.34 | free |
 |---|---|---|---|---|
@@ -835,7 +911,8 @@ External data dependencies for the SOE block and the comparison chart: `src/data
 
 ## References
 
-- Holston, Laubach, Williams (2017): "Measuring the Natural Rate of Interest"; (2023 update): NY Fed Staff Report 1063
+- Laubach, Williams (2001): "Measuring the Natural Rate of Interest", FEDS 2001-56 (published REStat 2003): the origin of the three-step median-unbiased procedure, and of the finding that maximum likelihood puts both innovation variances at zero
+- Holston, Laubach, Williams (2017): "Measuring the Natural Rate of Interest", FRBSF WP 2016-11 (published JIE 2017); (2023 update): NY Fed Staff Report 1063
 - Buncic (2021): "On a standard method for measuring the natural rate of interest": MUE critique. Code: https://github.com/4db83/Issues-with-HLWs-natural-rate-Code
 - **Buncic, Pagan, Robinson (2023)**: "On Constructing a Country-Specific Time Series for the Natural Rate of Interest", the formal identification critique these notes confirm on AU data
 - Lewis, Vazquez-Grande (2019): "Measuring the Natural Rate of Interest": λ_z reparameterisation, AR(1) z. Code: https://github.com/kflewis/rStarLVGPublic
