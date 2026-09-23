@@ -1,4 +1,4 @@
-"""Re-run all resolutions A-G on the gap-filled observation sample.
+"""Re-run all resolutions on the gap-filled observation sample.
 
 After wiring ``get_indexed_yield_filled`` into ``observations.py`` (which
 fills the 2013Q3-2014Q3 gap in the indexed 10y bond yield via nominal −
@@ -14,6 +14,8 @@ from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_mod
 from src.models.rstar_hlw.analyse import run_analyse
 from src.models.rstar_hlw.estimate import build_model, save_results
 from src.models.rstar_hlw.observations import build_observations
+from src.models.rstar_hlw.stepwise import RESOLUTION as STEPWISE_RESOLUTION
+from src.models.rstar_hlw.stepwise import main as run_stepwise
 
 RUNS = [
     # (resolution, prefix, chart_subdir, label)
@@ -64,6 +66,15 @@ def main() -> None:
             resolution=resolution,
             verbose=True,
         )
+
+    # S last, and outside the loop, because it is not one model: three in
+    # serial, each locking a variance for the next. It builds its own
+    # observations and writes its own prefixes and charts.
+    print()
+    print("=" * 70)
+    print(f"{STEPWISE_RESOLUTION} (staged estimation of A's identity)")
+    print("=" * 70)
+    run_stepwise()
 
 
 if __name__ == "__main__":

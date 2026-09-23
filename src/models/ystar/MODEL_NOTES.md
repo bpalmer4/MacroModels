@@ -742,6 +742,68 @@ the double-count.
 
 ---
 
+## Comparing specifications (`--compare`)
+
+`--compare` runs this model five ways and charts the results together. It is not
+a different model: each specification is a set of this model's own flags,
+re-estimated if its saved run is not from today, into its own `yss84_*` prefix so
+the default run is never touched.
+
+| specification | potential's growth from | the gap identified by |
+|---|---|---|
+| `inflation` | a free drift state | defined as `c x (pi - anchor)` |
+| `production` | capital, labour and MFP | defined as `c x (pi - anchor)` |
+| `core` | a free drift state | a Phillips curve on an AR(2) cycle |
+| `labour` | trend hours x productivity | a Phillips curve on an AR(2) cycle |
+| `target` | a free drift state | inflation's later sign only, no slope |
+
+`inflation` and `production` are a pair differing only in potential; so are `core`
+and `labour`; `target` is `core` with the Phillips curve replaced by a sign
+restriction.
+
+**All five run from 1984Q1 with the phased anchor**: measured expectations before
+1993Q1, gliding to the target across 1993-98. A flat 2.5 over a sample opening in
+1984 would judge nine years of high inflation against a target that did not yet
+exist, and the first two specifications put the anchor directly into the gap.
+
+**What it found, and it tells against the model it compares.** Three of the five
+reproduce an HP filter of GDP almost exactly, and inflation does very little of the
+work in any of them. The state-space apparatus, the factor data and the production
+function return what a filter gives for free. The two that depart are the ones with
+a real restriction on the trend (the AR(2) cycle, and a polynomial trend), which
+stops the trend chasing output; only then does inflation start to do work.
+
+**They do not observe the same data**, so they cannot be ranked on fit. Only GDP is
+common, so the fit column scores GDP alone, over the quarters every specification
+actually fitted, and it favours a specification that spends everything on GDP.
+Read it as one input beside the sampling gate (R-hat, ESS, divergences) and the
+descriptive columns, not as a ranking.
+
+**What should not be quoted from it.** Under the phased anchor the random-walk
+specifications lose their inflation-defined gap: its coefficient collapses and the
+early-1990s recession goes into potential instead, which is the dip in their
+potential growth around 1990. Those early-1990s potential growth figures are not an
+outside check on anything; in particular the production function's is not
+independent evidence, since its dip sits in trend MFP, a smoothed residual of GDP.
+The spread across specifications does not narrow over the sample either: the extra
+data do not settle the specification question.
+
+**The deeper problem, which this model cannot fix.** It never observes
+unemployment. When output falls for two years, only smoothness tells it whether
+capacity fell too. Every structural fix tried moved the problem rather than
+removing it. And the inflation-defined coefficient and the Phillips slope are
+reciprocals: the Phillips-curve specifications imply one implausible gap and the
+inflation-defined ones another, so no single coefficient repairs both.
+
+**What it prints and charts.** A table per specification (fit on GDP, bad Pareto
+k, R-hat, ESS, divergences, potential growth at three dates, the gap in 1992Q4 and
+now, and the gap's volatility), and five charts in `charts/YStar-compare/`:
+potential growth, the output gap (log GDP less potential in every case, so like is
+compared with like), potential output, and the range across specifications for
+growth and for the gap.
+
+---
+
 ## File structure
 
 ```
@@ -752,7 +814,10 @@ ystar/
 ├── estimate.py          build_model / sample / save
 ├── results.py           PotentialResults + load_results
 ├── analyse.py           diagnostics + charts
-├── run.py               CLI entry point
+├── run.py               CLI entry point (the default run, or --compare)
+├── cli.py               the flags, shared by the default run and --compare
+├── specs.py             the --compare specifications and how to refresh them
+├── specs_charts.py      the --compare table and charts
 ├── compare.py           overlay saved runs
 ├── realtime.py          pseudo-real-time revisions (raises for non-core specs)
 ├── decompose.py         post-modelling hours/productivity growth accounting
@@ -782,6 +847,8 @@ Charts are written to `charts/YStar/`: `potential-growth`, `output-gap`, `output
 ```bash
 ./run-ystar.sh                  # the model above: estimate + chart
 ./run-ystar.sh --analyse-only   # recharts from the saved trace
+./run-ystar.sh --compare        # five specifications on one chart (see "Comparing specifications")
+./run-ystar.sh --compare --analyse-only   # the same, from the saved runs as they stand
 
 # The second live specification: potential growth from a production function,
 # same level and gap. Charts to charts/YStar-production/.

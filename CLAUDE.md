@@ -36,13 +36,17 @@ uv sync                            # Install dependencies
 ./run-rstar-bonds.sh               # Run r* from the bond market (needs ystar_ustar for the Taylor rule)
 ./run-rstar-rba.sh                 # Run neutral revealed by the RBA's reaction to inflation (two series;
                                    #   also runs the sigma_r ensemble and the injection test, ~38s)
+./run-rstar-qpm.sh                 # Semi-structural open-economy model: trend r* and short-run
+                                   #   neutral (--recovery re-estimates simulated economies)
+uv run python -m src.models.rstar_hlw_kalman.run   # canonical HLW by Kalman filter + ML:
+                                   #   a FAILED attempt at the original specification
 ./run-rstar-invert.sh              # r* by conditional inversion of an ASSERTED IS curve
                                    #   (--ensemble sweeps how slow r* is; --lag-sweep the rate lag)
 ./run-rstar-tvpvar.sh              # RETIRED. TVP-VAR (Lubik-Matthes); still runs, but r* comes
                                    #   back as the real cash rate (see MODEL_NOTES)
 ./run-rstar-summary.sh             # every r* model on one nominal scale; re-runs any whose
                                    #   saved trace is not from today, which regenerates THEIR charts
-./run-ustar-summary.sh             # three specifications of the u* model on one chart
+./run-ustar.sh --compare           # three specifications of the u* model on one chart
 ./run-gstar-summary.sh             # every g* (potential growth) estimate on one chart; refresh
                                    #   is OFF by default (--refresh would overwrite ystar's
                                    #   production spec with the inflation spec)
@@ -58,7 +62,7 @@ uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EV
                                    #   plus its diagnostics.
 ./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free, u* a spline;
                                    #   needs expectations)
-./run-ystar-summary.sh             # five specifications of the y* model on one chart
+./run-ystar.sh --compare           # five specifications of the y* model on one chart
 ./run-ystar-ustar-summary.sh       # the u* structure crossed with the gap definition, eight
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
 uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
@@ -89,294 +93,31 @@ src/
 │   ├── business_indicators.py      # Quarterly profits, inventories, wages, sales (5676.0)
 │   └── ...                        # Individual data series modules (inflation, gdp, etc.)
 │
-├── models/
-│   ├── nairu/                     # NAIRU + output gap model. SUPERSEDED THROUGHOUT: potential,
-│   │                              #   gap and NAIRU. Potential is not estimated, the posterior
-│   │                              #   median reproduces the Cobb-Douglas input (1.66 vs 1.74),
-│   │                              #   and that input tracks the cycle rather than trend, going
-│   │                              #   negative in 2020 and swinging 4.8 -> 0.15 across 1990-92.
-│   │                              #   The gap is therefore actual minus filtered actual, and
-│   │                              #   Okun carries it into the NAIRU. Use ystar for potential
-│   │                              #   growth and ystar_ustar for the gap and u*. Still the only
-│   │                              #   model with a wage equation, the anchor transition, the
-│   │                              #   regime split and LOO/WAIC variant comparison, which is
-│   │                              #   what it is for (see MODEL_NOTES.md).
-│   ├── gdp_nowcast_bridge/        # GDP nowcasting via bridge equations (see MODEL_NOTES.md)
-│   ├── gdp_nowcast_dfm/            # GDP nowcasting via Dynamic Factor Model (see MODEL_NOTES.md)
-│   ├── gdp_nowcast_bvar/           # GDP nowcasting via Bayesian VAR, T-0 only (see MODEL_NOTES.md)
-│   ├── gdp_nowcast_components/     # GDP nowcasting via expenditure-identity components, T-0 only (see MODEL_NOTES.md)
-│   ├── rstar_hlw/                 # NOT A SOURCE OF r*, and cannot be: z has no observation
-│   │                              #   equation, so r* is trend growth (corr 0.998) and sigma_z
-│   │                              #   only picks which answer to report. Excluded from
-│   │                              #   rstar_summary; use rstar_bonds or rstar_rba instead.
-│   │                              #   THE DECOMPOSITION IS A SEPARATE CLAIM AND IT WORKS:
-│   │                              #   repaired 2026-09-12 (sigma_ystar imposed at 0.078,
-│   │                              #   lockdowns excluded) and the output gap now matches Okun
-│   │                              #   at 1993-95, 2008-09 and 2026Q2. Do not read that as a
-│   │                              #   rehabilitated r*. Default: Resolution A, start 1993Q1,
-│   │                              #   rate lag t-6, lambda_g off (see MODEL_NOTES.md).
-│   ├── ystar_ustar/               # ** PREFERRED for the output gap and u*. ** y* and u*
-│   │                              #   estimated JOINTLY, gap = c x (pi - 2.5) + v, so the gap is
-│   │                              #   not frozen and the GDP and Okun equations negotiate over
-│   │                              #   it. Estimates sigma_v, which neither parent can identify.
-│   │                              #   Ranks above both because it resolves their inconsistency:
-│   │                              #   the gap is ~2x ystar's and ustar's beta_okun falls once
-│   │                              #   fed the whole gap.
-│   │                              #   u* IS A SPLINE, one knot at 2013Q1, not the decay it used
-│   │                              #   to be. The decay could only draw a monotone approach, so
-│   │                              #   from 10.77 it could only ever report a fall and its
-│   │                              #   endpoint was a fitted scalar; 5.96 of its 6.03 point
-│   │                              #   decline was the zero-innovation curve. The spline turns:
-│   │                              #   +0.38 over 2015-2026 against -0.38, and sigma_ustar is
-│   │                              #   gone. Two and three knots return the decay's answer.
-│   │                              #   CONDITIONAL on sigma_okun (imposed 0.20, now the ONLY
-│   │                              #   imposed variance carrying the answer): sigma_v is flat
-│   │                              #   over 0.10-0.20 and the model degenerates into ystar by
-│   │                              #   0.70, but the free posterior puts no mass above 0.40.
-│   │                              #   --gap-spec identity makes the gap y - y*, which samples
-│   │                              #   far better (ESS 6145 vs 1333) and halves the 1993-99
-│   │                              #   residual bias, but gives a 1992 gap of -8.7; needs
-│   │                              #   --one-sided-beta or a mirror mode opens.
-│   │                              #   --okun-form ec DOES NOT IDENTIFY: u - u* and the gap are
-│   │                              #   94% collinear, so 1516 divergences even reparameterised.
-│   │                              #   Feeds rstar's Taylor rule (see MODEL_NOTES.md).
-│   ├── ystar_summary/            # NOT A MODEL. The five ystar specifications on one chart.
-│   │                              #   ITS MAIN FINDING IS AGAINST ITS OWN PACKAGE: three of the
-│   │                              #   five reproduce an HP(1600) filter of GDP at corr 1.0000,
-│   │                              #   and inflation contributes 5-21% of the deviation from
-│   │                              #   potential. Runs from 1984Q1 with a phased anchor, and the
-│   │                              #   three walk-based runs behind it carry a c collapse, so
-│   │                              #   their numbers should not be quoted (see MODEL_NOTES.md).
-│   ├── ystar_ustar_summary/      # NOT A MODEL. Eight settings of the joint model: the u*
-│   │                              #   structure (decay, 1/2/3 knots) crossed with the gap
-│   │                              #   definition. Scores leave-one-out on the two equations all
-│   │                              #   eight observe, since the identity gap's GDP equation
-│   │                              #   carries no likelihood (see MODEL_NOTES.md).
-│   ├── ystar/                     # y* potential output: potential is a slow-moving random walk,
-│   │                              #   the gap is DEFINED as c x (pi - 2.5). No Phillips curve, no
-│   │                              #   IS curve, no policy rule (see MODEL_NOTES.md).
-│   │                              #   Self-contained: imports only src/data, no other model.
-│   │                              #   Still the preferred source for POTENTIAL GROWTH: the joint
-│   │                              #   model agrees (1.99 vs 1.94) and this is the simpler
-│   │                              #   statement of the same answer. Superseded for the GAP.
-│   ├── ustar/                     # u* from ONE expectations-augmented Phillips curve, with u*
-│   │                              #   a natural cubic spline, one knot at 2013Q1. Sample 1993Q1.
-│   │                              #   THE OKUN EQUATION IS OFF. ystar's defined gap IS
-│   │                              #   0.1882 x (pi - 2.5) exactly (R2 = 1.0000), so
-│   │                              #   u = u* - beta x ygap is a Phillips curve in levels and the
-│   │                              #   two equations read ONE signal. Dropping it widens the mean
-│   │                              #   90% band 0.35 -> 0.58 (0.36 -> 1.15 over 1993-98), removes
-│   │                              #   a -0.13/-0.23 bias against what inflation alone implies,
-│   │                              #   and takes 1993-98 from 8.69 to 7.14. --okun restores it.
-│   │                              #   THE SPLINE replaces a decay law that could only draw a
-│   │                              #   monotone approach and so declined forever; --state
-│   │                              #   converge restores it, and only there do sigma_ustar,
-│   │                              #   phi_ustar and ustar_eq exist.
-│   │                              #   DO NOT QUOTE ANYTHING BEFORE 2000: the disinflation is in
-│   │                              #   1991-92, outside the sample, so the model opens on a calm
-│   │                              #   nominal picture beside 10.9% unemployment. Charts shade
-│   │                              #   1993Q1-1999Q4 (see MODEL_NOTES.md).
-│   ├── rstar_bonds/               # r* from the bond market: one state, an AU wedge over
-│   │                              #   a market world real rate, moving as a StudentT random
-│   │                              #   walk, read off THREE windows on one curve: the indexed
-│   │                              #   real 10y yield, the real cash rate, and the AOFM 5y5y
-│   │                              #   risk-neutral forward (deflated). Anchor is the
-│   │                              #   Cleveland Fed 10y expected real rate LESS the published
-│   │                              #   US term premium, NOT HLW, which is inert across the
-│   │                              #   whole monetary cycle. The term premium is PINNED to the
-│   │                              #   AOFM's published Australian series; only the real-nominal
-│   │                              #   spread is estimated. b_world is IMPOSED at 1 (free, it
-│   │                              #   collapses to 0.015 once the premium is data, which is
-│   │                              #   non-identification not a finding). nu_walk IMPOSED at 9;
-│   │                              #   the third window will not sample without it.
-│   │                              #   NO IS CURVE, three efforts here found the
-│   │                              #   rate/output-gap link unidentifiable on AU data. Level
-│   │                              #   Taylor rule on top. r* 0.80 real / 3.33 nominal with
-│   │                              #   the wedge at -0.20, so Australia sits BELOW the world
-│   │                              #   rate. QUOTE THE LAST COMPLETE QUARTER: the bond block is
-│   │                              #   daily, so the model also estimates the quarter in
-│   │                              #   progress off a part-month average with inflation and the
-│   │                              #   gaps missing, and that ran 0.25pp higher (1.05 / 3.57,
-│   │                              #   wedge -0.29) on no extra uncertainty. Charts stop at the
-│   │                              #   last finished quarter; the trace does not.
-│   │                              #   THE LEVEL IS NOW PARTLY IDENTIFIED and is worth
-│   │                              #   quoting: the 5y5y window took the 90% band from 2.59 to
-│   │                              #   1.28 and it no longer contains zero. Costs: the wedge is
-│   │                              #   4x jumpier quarter to quarter (some of that is market
-│   │                              #   noise booked as r*), amplitude worsens 3.66 -> 4.12, and
-│   │                              #   forward_bias is uninterpreted. The forward also ABOLISHES
-│   │                              #   negative r*: 2016-19 and 2020-21 go from -0.11/-0.70 to
-│   │                              #   +0.42/+0.14. --no-forward restores the two-window model.
-│   │                              #   A DIFFERENT third window (--curve) and the 90-day bank
-│   │                              #   bill (--short-rate bill) were both tried as defaults and
-│   │                              #   rejected; the QE term-premium finding does not survive
-│   │                              #   the second window (see MODEL_NOTES.md).
-│   ├── cobb_douglas/              # Cobb-Douglas MFP decomposition. NOT COVID-ROBUST: its
-│   │                              #   three HP filters run through the pandemic, leaving a
-│   │                              #   COVID-shaped wobble of a few tenths in g* from 2020 on.
-│   │                              #   Excluding a window was tried several ways and abandoned
-│   │                              #   (it changes the wobble's sign, not its existence), so
-│   │                              #   gstar_summary excludes this model and its post-2019
-│   │                              #   potential growth should not be quoted. The growth
-│   │                              #   ACCOUNTING is unaffected. Also SUPERSEDED by ystar and
-│   │                              #   ystar_ustar for potential output and the output gap: its
-│   │                              #   potential path is re-anchored to actual GDP at four dates
-│   │                              #   and is not disciplined by inflation. Use it only for the
-│   │                              #   growth accounting (capital / labour / MFP), which neither
-│   │                              #   Bayesian model attempts.
-│   ├── dsge/                      # DSGE + HLW-style models (see MODELS_EXPLAINED.md)
-│   │                              #   fa_nk_model.py: financial-accelerator DSGE, two r* + endogenous EFP wedge (labour_block flag)
-│   │                              #   fa_nk_wage_model.py: FA-NK + sticky wages + Galí unemployment / U*
-│   │                              #   nk_twostar_model.py: NK + reduced-form wedge (linear probe)
-│   │                              #   fa_nk_bayes.py: Bayesian re-estimation (black-box Op + priors, DEMetropolis-Z); identifies the Taylor block (φ_π≈2.6)
-│   ├── rstar_rba/                 # Neutral revealed by the RBA's reaction function. Assumes a
-│   │                              #   neutral cash rate that moves SLOWLY, with the RBA reacting
-│   │                              #   responding on top of it to inflation away from the 2.5 TARGET
-│   │                              #   (not to being outside the band: g_t is linear in
-│   │                              #   pi - 2.5, and the band half-width only sets lambda's
-│   │                              #   units), and splits the cash rate into those two pieces.
-│   │                              #   NEUTRAL IS b_t, stored as `neutral`. b_t + lambda.g_t is
-│   │                              #   the rule's PRESCRIBED rate, stored as `prescribed`, and is
-│   │                              #   not neutral. `stance` = cash less neutral,
-│   │                              #   `rule_residual` = cash less prescribed. Say which one a
-│   │                              #   number is: 3.89 vs 4.25 nominal at 2026Q2.
-│   │                              #   THE LEVEL IS PINNED BY A MARKET PRICE since 2026-09-16:
-│   │                              #   the AOFM 5y5y forward (deflated) is a SECOND observation
-│   │                              #   window, f_t = b_t + bias + e_t. Before it, the level
-│   │                              #   rested on the sample-average cash rate and ran -0.05 to
-│   │                              #   1.05 real across defensible sigma_r, wider than the
-│   │                              #   credible interval; now the spread across sigma_r is 0.31
-│   │                              #   and the rule residual falls +0.87 -> +0.10. Real neutral
-│   │                              #   1.35. forward_bias -0.109 [-0.289, +0.068], i.e. the
-│   │                              #   market's 5y5y IS the model's neutral, which is a result
-│   │                              #   rather than an assumption. sigma_r = 0.125, chosen on
-│   │                              #   SAMPLING grounds (0.15 failed diagnostics).
-│   │                              #   lambda = 0.46 per pp is a NOMINAL response; not comparable
-│   │                              #   with Taylor's 1.5. UNITS: stored per BAND-WIDTH (0.228),
-│   │                              #   and the band half-width is 0.5, so per pp is twice the
-│   │                              #   stored value. It is stable across sigma_r only
-│   │                              #   CONDITIONAL ON ZERO POLICY SMOOTHING: allow partial
-│   │                              #   adjustment and it runs to 2.57, because one coefficient
-│   │                              #   carries both the immediate and the ultimate response.
-│   │                              #   sigma_r and phi decide the same thing and two series
-│   │                              #   cannot pin both. Two published series only
-│   │                              #   (see MODEL_NOTES.md for everything else).
-│   ├── rstar_invert/              # r* by CONDITIONAL INVERSION of an asserted IS curve.
-│   │                              #   Asserts the line (negative slope, through the origin on
-│   │                              #   gap-vs-gap axes) and a slow r*, takes the ystar_ustar gap
-│   │                              #   and the real cash rate as GIVEN, and reports the r* path
-│   │                              #   those assertions force. NOT AN ESTIMATE.
-│   │                              #   THE ANSWER IS DECIDED BY sigma_rstar, which nothing
-│   │                              #   measures: below 0.05-0.10 the model explains nothing and
-│   │                              #   r* is flat, above it r* swings 5pp and the 2016-19 stance
-│   │                              #   flips sign (-3.19 to +0.52). sigma_e falls monotonically
-│   │                              #   as r* is loosened, so the data cannot choose.
-│   │                              #   A DEFENSIBLE SLOPE AND A USABLE r* ARE INCOMPATIBLE:
-│   │                              #   -0.09 (matching is_curve's -0.108) gives r* of -3.9 to
-│   │                              #   +7.0; a well-behaved r* needs -0.38, which survives only
-│   │                              #   because the r*-prior parameterisation rewards inflating it.
-│   │                              #   What it measures well is the GAP's own slow component
-│   │                              #   (44% of gap variance vs the rate term's 14%), divided by a
-│   │                              #   small number. Quote the conditioning (see MODEL_NOTES.md).
-│   │                              #   REMOVED FROM rstar_summary 2026-09-16: its line restated
-│   │                              #   the asserted IS curve rather than adding a third view.
-│   ├── rstar_tvpvar/              # RETIRED. TVP-VAR after Lubik-Matthes: three variables,
-│   │                              #   drifting coefficients, r* = the 20-quarter projection.
-│   │                              #   It reads neutral off the economy's own dynamics, which
-│   │                              #   needs the economy to SETTLE. Australia's does not: no
-│   │                              #   stationary stretch exists in 1993-2026, so the fitted VAR
-│   │                              #   sits at a spectral radius of 0.983 and r* comes back as
-│   │                              #   the real cash rate (corr 0.95). Not fixable by estimand,
-│   │                              #   sample, shrinkage or sampling; all four were tried.
-│   │                              #   THE FINDING GENERALISES and is why the notes are kept:
-│   │                              #   it sinks any model that MEASURES equilibrium from
-│   │                              #   behaviour, not those that ASSERT a structure defining it
-│   │                              #   (rstar_rba's rule, rstar_bonds' market price).
-│   │                              #   Do not quote a level (see MODEL_NOTES.md).
-│   ├── rstar_summary/             # NOT A MODEL. Loads every r* the repo produces, re-runs any
-│   │                              #   whose trace is not from TODAY (which regenerates that
-│   │                              #   model's own charts), converts all to NOMINAL on
-│   │                              #   long-run expectations, and charts them. TWO lines since
-│   │                              #   2026-09-17: rstar_bonds and rstar_rba.
-│   │                              #   rstar_hlw is EXCLUDED: its z state has no
-│   │                              #   observation equation, so its r* is trend growth.
-│   │                              #   rstar_invert was REMOVED 2026-09-16: it asserts an IS
-│   │                              #   curve no method here can recover the sign of, so its
-│   │                              #   line restated an assumption rather than adding a view.
-│   │                              #   rstar_tvpvar was REMOVED 2026-09-17, not discredited but
-│   │                              #   not ready to carry a level: at a median spectral radius
-│   │                              #   of 0.983 the 20q projection is 71% nowcast, a third of
-│   │                              #   draw-quarters are explosive, and the steady state
-│   │                              #   divides by almost nothing. Its sample-MEAN level and
-│   │                              #   2016-19 sign survive its sigma_q sweep; its LATEST value
-│   │                              #   (the only thing the chart plots) runs 1.08 to 3.17.
-│   │                              #   NOTE both remaining models share an observable
-│   │                              #   (the AOFM 5y5y forward), so some of their agreement is
-│   │                              #   one series counted twice, and that now applies to the
-│   │                              #   WHOLE chart. Models end on DIFFERENT
-│   │                              #   quarters (bonds runs a quarter longer); never average
-│   │                              #   across them. The central line is a MEAN, not a median,
-│   │                              #   and at n=2 it is just the band's midpoint; it is not an
-│   │                              #   estimate (see MODEL_NOTES.md).
-│   ├── ustar_summary/            # NOT A MODEL. Three SPECIFICATIONS of ustar on one chart, not
-│   │                              #   three models: knot count (1 or 2) crossed with whether
-│   │                              #   Okun is in. They share a sample, a Phillips curve and an
-│   │                              #   expectations series, so agreement is close to arithmetic
-│   │                              #   and only disagreement informs.
-│   │                              #   ALL THREE ARE SPLINES, so any of them can turn u* UP at
-│   │                              #   the endpoint if the data warrant it. The decay settings
-│   │                              #   are absent for that reason: the sign of phi x (eq - u*)
-│   │                              #   is fixed by which side of eq the state opened on, so
-│   │                              #   from 10.75 they can only ever report a fall, and their
-│   │                              #   -0.32/-0.34 post-2015 is the shape rather than the data.
-│   │                              #   ONE CARRIES OKUN, which ustar's default excludes. It is
-│   │                              #   the only one in which u* comes DOWN through the 1990s, a
-│   │                              #   regime change from high to low inflation working slowly
-│   │                              #   through the labour market: unemployment fell 4.53pp over
-│   │                              #   1993-99 and it falls 3.43, against 0.50 and 0.81. Not
-│   │                              #   about the 1995 episode, two shallow quarters that should
-│   │                              #   drag nothing. It also carries the steepest post-2015
-│   │                              #   decline of anything tried, -0.59; its 1990s credentials
-│   │                              #   lend that no weight.
-│   │                              #   SPREAD 2.87pp at 1993Q1 to 0.03pp now, latest u*
-│   │                              #   4.67-4.70. Not an error band: the gap is the two
-│   │                              #   readings of the 1990s. Knot count alone is worth 0.05pp.
-│   │                              #   The mean is a description. Each spec writes to its own
-│   │                              #   ustar_sum_* prefix (see MODEL_NOTES.md).
-│   ├── gstar_summary/            # NOT A MODEL. Potential growth on one chart: ystar
-│   │                              #   (inflation + production specs) and the joint model.
-│   │                              #   They agree to 0.09pp (1.90-1.99 at 2026Q2) against
-│   │                              #   ~1.0pp for r*, which is the point of the package. BUT
-│   │                              #   all three share the y* core, so nothing here would catch
-│   │                              #   a smoothing assumption common to them. cobb_douglas was
-│   │                              #   the outside check and is EXCLUDED for COVID artefacts.
-│   │                              #   Refresh is OFF by default (--refresh would overwrite
-│   │                              #   ystar's production spec). rstar_hlw also excluded
-│   │                              #   (see MODEL_NOTES.md).
-│   ├── is_curve/                  # THE IS CURVE PLOTTED, NOT ESTIMATED. A test bench, not a
-│   │                              #   model: nothing estimated, nothing downstream consumes it.
-│   │                              #   Output gap against the real rate under four r* treatments.
-│   │                              #   The slope's sign depends on the sample; the strongest
-│   │                              #   relationship is contemporaneous and POSITIVE, which is the
-│   │                              #   policy reaction function rather than transmission; and
-│   │                              #   dropping 2008Q4-2021Q3 manufactures a convincing IS curve
-│   │                              #   out of two clusters that individually disagree.
-│   │                              #   Default lag 6, matching rstar_hlw and rstar_invert. At
-│   │                              #   that lag all four variants are indistinguishable from
-│   │                              #   zero, and the block split is the sharpest form of the
-│   │                              #   finding: 1993-2020 +0.099, 2021Q4-2026Q2 -0.136, so the
-│   │                              #   whole negative reading sits in 19 quarters.
-│   │                              #   THE IS-CURVE PROBLEM IN AU DATA REMAINS UNRESOLVED
-│   │                              #   (see MODEL_NOTES.md).
-│   ├── bank_costs/                # Bank funding and lending costs against the cash rate.
-│   │                              #   EXPLORATORY: charts only, no model, no MODEL_NOTES.
-│   ├── expectations/              # Inflation expectations model
-│   └── common/                    # Shared model machinery, no economics. results.py holds
-│                                  #   PosteriorResults, the base each model's results class
-│                                  #   inherits for the trace/posterior/_vector/_scalar
-│                                  #   plumbing; cli.py holds the sampler and run arguments
-│                                  #   every run.py shares. Also diagnostics, extraction,
-│                                  #   timeseries, sources, charts, spline, inflation_scale.
+├── models/                        # Every model has a MODEL_NOTES.md: read it before quoting.
+│   ├── expectations/              # Inflation expectations (target-anchored, unanchored, short, market)
+│   ├── ystar/                     # Potential output; preferred source for POTENTIAL GROWTH; --compare
+│   ├── ustar/                     # u* from one Phillips curve, spline; don't quote before 2000; --compare
+│   ├── ystar_ustar/               # Joint y*/u*: PREFERRED for the output gap and u*
+│   ├── nairu/                     # SUPERSEDED for potential, gap and NAIRU; kept for wages, LOO/WAIC
+│   ├── cobb_douglas/              # Growth accounting only; not COVID-robust, don't quote post-2019 g*
+│   ├── rstar_bonds/               # r* from the bond market; quote the last complete quarter
+│   ├── rstar_rba/                 # Neutral from the RBA's reaction function; neutral != prescribed
+│   ├── rstar_qpm/                 # QPM-style semi-structural r*; wedge clipped by default; IS weak
+│   ├── rstar_hlw/                 # NOT a source of r*; its trend/cycle split does work
+│   ├── rstar_hlw_kalman/          # Failed attempt at canonical HLW (Kalman + ML); degenerate
+│   ├── rstar_invert/              # r* from an ASSERTED IS curve; not an estimate
+│   ├── rstar_tvpvar/              # RETIRED: r* comes back as the real cash rate
+│   ├── rstar_summary/             # NOT A MODEL: r* lines on one nominal scale; all share the 5y5y
+│   ├── gstar_summary/             # NOT A MODEL: potential growth estimates on one chart
+│   ├── ystar_ustar_summary/       # NOT A MODEL: ystar_ustar run 8 ways (u* structure x gap def)
+│   ├── is_curve/                  # Test bench: the IS curve plotted, not estimated
+│   ├── gdp_nowcast_bridge/        # GDP nowcast, bridge equations
+│   ├── gdp_nowcast_dfm/           # GDP nowcast, dynamic factor model
+│   ├── gdp_nowcast_bvar/          # GDP nowcast, Bayesian VAR (T-0 only)
+│   ├── gdp_nowcast_components/    # GDP nowcast, expenditure components (T-0 only)
+│   ├── dsge/                      # Experimental DSGE family; not usable (see MODELS_EXPLAINED.md)
+│   ├── bank_costs/                # Exploratory charts only
+│   └── common/                    # Shared machinery, no economics (results, cli, diagnostics, charts)
 │
 └── utilities/                     # General utilities (rate_conversion)
 

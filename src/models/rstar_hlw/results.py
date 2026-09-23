@@ -32,6 +32,14 @@ class RStarResults(PosteriorResults):
         """Draws of trend growth g, quarters down the rows."""
         return self._vector("trend_growth")
 
+    def z_star_posterior(self) -> pd.DataFrame:
+        """Draws of z, the part of r* that is not trend growth.
+
+        Only the resolutions carrying the canonical r* = g + z identity have
+        this state; the blend resolutions raise.
+        """
+        return self._vector("z_star")
+
     def potential_posterior(self) -> pd.DataFrame:
         """Draws of potential output, quarters down the rows."""
         return self._vector("potential_output")
@@ -51,6 +59,10 @@ class RStarResults(PosteriorResults):
     def trend_growth_median(self) -> pd.Series:
         """Posterior median trend growth path."""
         return self.trend_growth_posterior().median(axis=1)
+
+    def z_star_median(self) -> pd.Series:
+        """Posterior median z path."""
+        return self.z_star_posterior().median(axis=1)
 
     def potential_median(self) -> pd.Series:
         """Posterior median potential output path."""

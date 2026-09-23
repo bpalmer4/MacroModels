@@ -16,13 +16,27 @@ import pymc as pm
 from src.models.nairu.base import set_model_coefficients
 from src.models.rstar_hlw.equations.exclusion import drop_excluded
 
+# The two priors on the Phillips slope. HLW2017 impose only that b_y is
+# positive; this repo's default also centres it at 0.10. The lower bound of
+# 0.02 is kept in both, because it is what stops the curve collapsing and
+# letting y* absorb all of output, and HLW bound the slope away from zero
+# too. See `_A_R_PRIOR` in `is_curve.py` for the sd of the sign-only form.
+#
+# Unlike a_r, this constraint is not binding: the posterior sits above 0.27,
+# more than ten times the floor, so the two priors should give the same
+# answer. That is the point of running it.
+_B_Y_PRIOR = {"mu": 0.10, "sigma": 0.05, "lower": 0.02}
+_B_Y_PRIOR_SIGN_ONLY = {"mu": 0.0, "sigma": 0.5, "lower": 0.02}
+
 
 def phillips_curve_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     latents: dict[str, Any],
+    *,
     constant: dict[str, Any] | None = None,
     keep: np.ndarray | None = None,
+    sign_prior_only: bool = False,
 ) -> str:
     """Anchor-augmented Phillips curve on annual trimmed mean.
 
@@ -46,7 +60,7 @@ def phillips_curve_equation(
 
     with model:
         settings = {
-            "b_y": {"mu": 0.10, "sigma": 0.05, "lower": 0.02},
+            "b_y": dict(_B_Y_PRIOR_SIGN_ONLY if sign_prior_only else _B_Y_PRIOR),
             "sigma_pi": {"sigma": 0.30},
         }
         mc = set_model_coefficients(model, settings, constant)

@@ -9,9 +9,8 @@ from src.paths import CHARTS
 
 CHART_DIR = CHARTS / "gstar-summary"
 
-# The two y* specs are deliberately adjacent in hue, being one model run two
-# ways; the joint model is clearly separate from both.
-_COLOURS = ("navy", "steelblue", "darkorange", "seagreen")
+# A range needs at least two models on the same quarters.
+MIN_MODELS_FOR_RANGE = 2
 
 
 def plot_summary(
@@ -31,7 +30,6 @@ def plot_summary(
     # actual against potential on its own charts, at a sensible scale.
     ax = mg.line_plot(
         data,
-        color=list(_COLOURS[:len(data.columns)]),
         width=2.0,
         annotate=True,
         rounding=2,
@@ -46,7 +44,7 @@ def plot_summary(
         ylabel="Year-ended per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "x-small"},
-        lheader="All three share the y* state-space core: agreement is not independence",
+        lheader="All share a slowly drifting potential: agreement is not independence",
         rheader=f"Latest: {latest}",
         rfooter="Built using: ABS",
         lfooter="Australia. ",
@@ -67,19 +65,25 @@ def plot_spread(frame: pd.DataFrame, start: str | None = "1993Q1") -> None:
     """
     data = frame.loc[frame.index >= pd.Period(start, freq="Q")] if start else frame
     usable = data.dropna(how="any")
-    if usable.empty or len(usable.columns) < 2:  # noqa: PLR2004 — a range needs two
+    if usable.empty or len(usable.columns) < MIN_MODELS_FOR_RANGE:
         print("  note: fewer than two models overlap; skipping the spread chart")
         return
 
     band = pd.DataFrame({"lower": usable.min(axis=1), "upper": usable.max(axis=1)})
-    ax = mg.fill_between_plot(band, color="crimson", alpha=0.18, label="Range across models")
+    ax = mg.fill_between_plot(band, color="darkblue", alpha=0.18, label="Range across models")
+    # The band's edges as thin lines, so their latest values are annotated. The
+    # leading underscore keeps them out of the legend.
+    mg.line_plot(
+        band.rename(columns={"upper": "_top", "lower": "_bottom"})[["_top", "_bottom"]],
+        ax=ax, color=["darkblue", "darkblue"], width=[0.25, 0.25], annotate=True, rounding=2,
+    )
     # A mean across structural assumptions is a value no model produces. It
     # describes where the models sit; it is not an estimate. Same caveat as
     # `rstar_summary`, and the same reason `rstar_hlw`'s notes object to its
     # own blended median.
     mg.line_plot(
         usable.mean(axis=1).rename("Mean across models"),
-        ax=ax, color=["crimson"], width=2.5, annotate=True, rounding=2,
+        ax=ax, color=["darkblue"], width=2.5, annotate=True, rounding=2,
     )
     width = band["upper"] - band["lower"]
     mg.finalise_plot(

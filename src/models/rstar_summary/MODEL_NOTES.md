@@ -8,12 +8,46 @@ Its purpose is the **disagreement**. Each of those models anchors r\* to a diffe
 and returns roughly what its anchor implies, so the spread between the lines is three
 structural assumptions, not sampling error.
 
+## What the package concludes
+
+**In Australia, r\* is a market-and-behaviour concept, not an IS-equilibrium one.** The models
+here say where markets and the RBA's conduct put neutral. None of them can say, with any
+weight, where the rate sits that closes the output gap, because the link that concept needs,
+an IS curve from interest rates to output, cannot carry that weight on Australian data.
+
+**The IS curve is not load-bearing.** The repo has found this several independent ways. No
+single-equation IS curve recovers even the sign of the rate effect. A model whose r\* rests on
+the IS curve cannot identify r\* at all. And in the semi-structural model the rate term explains
+almost none of the output gap's movements, while switching the IS curve off leaves the level of
+r\* where it was.
+
+**That is a statement about measurement, not a finding that monetary policy does not work.** The
+semi-structural model's recovery test shows it would detect strong transmission if the data held
+it, so the weakness is real within its assumptions. But those assumptions include a linear curve
+with its sign imposed, measured rather than model-consistent expectations, and a central bank
+that offsets demand shocks and so removes the very correlation the IS curve is estimated from.
+How weak transmission looks also depends on where r\* is anchored. The defensible claim is that
+Australian data do not let an IS curve pin neutral down.
+
+**So the three lines are three ways of shaping a market-anchored level, not three independent
+estimates.** Every model on the chart leans on the AOFM 5y5y forward for its level, two of them
+almost entirely. They differ in what shapes the path around that level: the bond model balances
+three market windows against a world real rate; the reaction-function model reads the Bank's
+response to inflation; the semi-structural model lets its structure and the world rate move a
+slow-moving trend. Their agreement is partly one series counted more than once. Their
+disagreements are the informative part: where the world rate and the Australian forward part
+company, as in 2022-23, the lines separate.
+
+**Short-run neutral inherits the weakness.** It is the rate that closes the output gap within a
+horizon, so it is IS-based by construction, and it should not be leaned on.
+
 ## What is on the chart
 
 | line | anchored to | what to distrust |
 |---|---|---|
 | Bond market (`rstar_bonds`) | a premium-stripped world real rate, plus an AU wedge, with the AOFM 5y5y forward pinning the level | the wedge is four times jumpier since the forward went in, so some of the path is bond-market noise booked as r\*; `forward_bias` is uninterpreted |
 | RBA reaction function (`rstar_rba`) | the Bank's response to inflation away from target, with the same 5y5y forward as a second window | the level is conditional on `sigma_r`, though the forward cut that dependence from a 1.10 spread to 0.31 |
+| Semi-structural open economy (`rstar_qpm`) | trend r\*: a world real rate plus an AU wedge, inside an IS / exchange-rate / Phillips / policy-rule system, with the same 5y5y forward as an observation | how fast the wedge may move is imposed, and that choice decides how much the path departs from the forward; the level is still the forward's on average |
 | ~~TVP-VAR (`rstar_tvpvar`)~~ | REMOVED 2026-09-17 | see below |
 
 Both are conditional. That is not a reason to prefer one: it is the state of the
@@ -184,22 +218,23 @@ ones is larger.
 ## The proxies chart
 
 `plot_proxies` draws **Macroeconomic proxies for nominal r\***: the AOFM 5y5y risk-neutral
-forward, trend real GDP per capita growth plus the 2.5% target, and the cash rate behind
+forward, trend real GDP per capita growth plus long-run inflation expectations (the same
+conversion the model lines use), and the cash rate behind
 both. It was called `plot_forward_against_cash` and titled "The 5y5y forward and the cash
 rate" until the growth line went on.
 
 **No model output, and that is the point.** Everything here was produced by the world rather
 than estimated in this repo. The two proxies are the standing reference points a neutral rate
-gets judged against — one a market price, one the golden-rule statement that nominal neutral
-is real growth plus the inflation the central bank aims at. Neither is r\*. The cash rate is
+gets judged against: one a market price, one the golden-rule statement that nominal neutral
+is real growth plus expected inflation. Neither is r\*. The cash rate is
 behind them because it is what both are a comparison for.
 
-As at 2026Q2: forward **3.80**, growth proxy **3.24**, cash rate **4.35**. Against the models
-on the summary chart, 3.33 and 3.89, the growth proxy sits just under the bond-market line.
+As at 2026Q2: forward **3.80**, growth proxy **3.27**, cash rate **4.35**. Against the models
+on the summary chart, 3.33 to 3.89, the growth proxy sits just under the bond-market line.
 
-**The two proxies disagree as readily as the models do.** Forward less growth proxy is +0.57pp
-latest, −0.32pp on average, and has been **2.20pp** at its widest — about four times the
-0.56pp span between the two models. Agreement between them now is not a general fact about
+**The two proxies disagree as readily as the models do.** Forward less growth proxy is +0.53pp
+latest, −0.42pp on average, and has been **1.58pp** at its widest (1993Q1), nearly three times
+the 0.56pp span across the models. Agreement between them now is not a general fact about
 them.
 
 ### Per capita, not aggregate

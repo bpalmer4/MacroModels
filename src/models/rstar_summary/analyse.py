@@ -16,22 +16,18 @@ import mgplot as mg
 import pandas as pd
 
 from src.data.aofm_loader import get_aofm_5y5y_forward
-from src.data.cash_rate import get_cash_rate_qrtly
+from src.data.cash_rate import get_cash_rate_monthly, get_cash_rate_qrtly
 from src.data.gdp import get_gdp_per_capita
 from src.data.inflation import get_trimmed_mean_annual
-from src.models.common.inflation_scale import TARGET, scale_label, to_real
+from src.models.common.inflation_scale import scale_label, to_nominal, to_real
 from src.models.rstar_summary.sources import DEFAULT_SCALE, SOURCES
 from src.models.ystar_ustar.results import load_results
 from src.paths import CHARTS
 
 CHART_DIR = CHARTS / "rstar-summary"
 
-# Chosen for contrast against each other AND against the grey cash rate, which
-# matters more than matching each model's own suite colours.
-_COLOURS = ("darkblue", "crimson", "darkgreen", "darkorange", "purple", "teal")
-# Since `rstar_tvpvar` was removed the chart carries two models, and those two
-# share an observable. At this count the spread chart says so in its header.
-TWO_MODELS = 2
+# A range needs at least two models on the same quarters.
+MIN_MODELS_FOR_RANGE = 2
 
 # A quarter counts as complete if it has at least this share of the median
 # number of trading days. The AOFM series runs to the current month, so the
@@ -48,7 +44,7 @@ _TREND_WINDOW = 40
 
 # One label, because the line appears on two charts and a reader moving between
 # them must be able to see it is the same series.
-TREND_G_LABEL = "Trend GDP per capita growth + 2.5% target"
+TREND_G_LABEL = "Trend GDP per capita growth + long-run inflation expectations"
 
 # Named so the proxy chart can subtract one proxy from the other by name. It
 # used to difference `iloc[:, 0] - iloc[:, 1]`, which was the forward less the
@@ -87,25 +83,55 @@ def _footer(*, inflation: bool = False, supply: bool = False) -> str:
     return f"Models: {', '.join(models)}; {'; '.join(data)}"
 
 
-def _forward_quarterly() -> pd.Series:
-    """Return the AOFM 5y5y risk-neutral forward as quarterly means, complete quarters only.
+def _forward_monthly() -> pd.Series:
+    """Return the AOFM 5y5y risk-neutral forward as monthly means, complete months only.
 
-    Daily, averaged to quarters the same way `rstar_bonds` does, so the series
-    on this chart is the one the models read rather than a second version of
-    it. The BC method for the same reason: it is what both models default to.
-
-    THE PART-QUARTER IS DROPPED. The AOFM series runs to the current month, so
-    the final quarter is an average over however many trading days have
-    happened, 42 against a typical 63 at the time of writing. Plotting it puts
-    a point on the chart that will move for reasons that have nothing to do
-    with the market changing its mind, beside a cash rate that is complete.
+    The same daily BC series the models read, averaged to months for the
+    charts that show it beside the monthly cash rate. The month in progress is
+    dropped on the same rule as the part-quarter: fewer than
+    `_COMPLETE_QUARTER` of the median month's trading days.
     """
     daily = get_aofm_5y5y_forward("bc").data.astype(float).dropna()
-    grouped = daily.groupby(pd.PeriodIndex(daily.index, freq="Q"))
+    grouped = daily.groupby(pd.PeriodIndex(daily.index, freq="M"))
     counts, means = grouped.count(), grouped.mean()
     if len(counts) and counts.iloc[-1] < _COMPLETE_QUARTER * counts.median():
         means = means.iloc[:-1]
     return means
+
+
+def _middle_month(data: pd.DataFrame) -> pd.DataFrame:
+    """Put quarterly values at their quarter's middle month, for a monthly chart.
+
+    Nothing is invented inside the quarter: each quarterly value is one point,
+    and the chart joins the points. The middle month because every quarterly
+    series here is an average over its quarter.
+    """
+    index = data.index
+    if not isinstance(index, pd.PeriodIndex):
+        index = pd.PeriodIndex(index, freq="Q")
+    out = data.copy()
+    out.index = pd.PeriodIndex([quarter.asfreq("M", how="S") + 1 for quarter in index], freq="M")
+    return out
+
+
+def _months(start: pd.Period, end: pd.Period | None = None) -> pd.PeriodIndex:
+    """Monthly index from `start` to `end`, or to the last complete month."""
+    last = pd.Period(pd.Timestamp.today(), freq="M") - 1
+    stop = min(end, last) if end is not None else last
+    return pd.period_range(start.asfreq("M", how="start"), stop, freq="M")
+
+
+def _held(quarterly: pd.Series, months: pd.PeriodIndex) -> pd.Series:
+    """Hold each quarterly value across its three months, to deflate a monthly series."""
+    return pd.Series(quarterly.reindex(months.asfreq("Q")).to_numpy(), index=months)
+
+
+def _cash_rate_monthly(months: pd.PeriodIndex) -> pd.Series:
+    """Return the nominal cash rate, monthly, on `months`."""
+    cash = get_cash_rate_monthly().data.astype(float)
+    if not isinstance(cash.index, pd.PeriodIndex):
+        cash.index = pd.PeriodIndex(cash.index, freq="M")
+    return cash.reindex(months)
 
 
 def _trend_growth_nominal(index: pd.PeriodIndex) -> pd.Series:
@@ -126,22 +152,17 @@ def _trend_growth_nominal(index: pd.PeriodIndex) -> pd.Series:
     3.24, among them. Switching the series would not shift the line, it would
     change what the chart says.
 
-    THE FLAT 2.5 TARGET, NOT ANCHORED EXPECTATIONS, which is deliberate and is
-    the one place this package departs from its own convention. `to_nominal`
-    converts the SCALE of an estimated real neutral rate, and matches what the
-    RBA and CBA publish. This is not an estimate being converted: it is the
-    golden-rule statement that nominal neutral is real growth plus the
-    inflation the central bank is aiming at. The target IS the second term, so
-    substituting what people expect would make the benchmark drift with
-    sentiment. Over 1993Q1 on, the two conventions differ by up to about 0.5pp
-    in the 1990s and little since, and the footers say which one this is.
+    NOMINAL ON LONG-RUN EXPECTATIONS, the same `to_nominal` every model line
+    here goes through, so the proxy and the models are on one scale. Against a
+    flat 2.5 target this lifts the line by 0.48pp on average over 1993-99 (up
+    to 1.0pp, while expectations were still re-anchoring) and by under 0.1pp
+    on average since 2000.
     """
     per_capita = get_gdp_per_capita().data.astype(float)
     if isinstance(per_capita.index, pd.DatetimeIndex):
         per_capita.index = per_capita.index.to_period("Q")
     yearly = (per_capita / per_capita.shift(4) - 1) * 100
-    trend = yearly.rolling(_TREND_WINDOW).mean() + TARGET
-    return trend.reindex(index)
+    return to_nominal(yearly.rolling(_TREND_WINDOW).mean().reindex(index))
 
 
 def plot_proxies(start: str | None = "1993Q1") -> None:
@@ -150,8 +171,8 @@ def plot_proxies(start: str | None = "1993Q1") -> None:
     NO MODEL OUTPUT ON THIS CHART. Both proxies are things the world produced
     rather than things this repo estimated: the market's 5y5y forward, a price
     close to the expected average policy rate five to ten years out, and trend
-    per-capita growth plus the target, which is the golden-rule statement of
-    where a neutral nominal rate should sit. Neither is r*. They are the two
+    per-capita growth plus long-run inflation expectations, which is the
+    golden-rule statement of where a neutral nominal rate should sit. Neither is r*. They are the two
     standing reference points a neutral rate gets judged against, and they
     disagree with each other as readily as the models do.
 
@@ -160,41 +181,38 @@ def plot_proxies(start: str | None = "1993Q1") -> None:
     The forward is also the observable BOTH r* models read, so this chart
     doubles as a look at how much of each model's answer was in the data
     before any estimation happened. See `_trend_growth_nominal` for why the
-    growth line is per capita and why it uses the flat target.
+    growth line is per capita.
+
+    MONTHLY where the data are: the forward is a monthly average of the daily
+    series and the cash rate is drawn as the step it is. The growth proxy is
+    quarterly, one point per quarter at its middle month.
 
     It is not a neutral rate. `get_aofm_5y5y_forward` says why: the forward
     still carries whatever the market believes about the cycle over years five
     to ten, plus whatever premium AOFM's model did not strip.
     """
-    forward = _forward_quarterly().rename(FORWARD_LABEL)
-    index = forward.index
-    if not isinstance(index, pd.PeriodIndex):
-        index = pd.PeriodIndex(index, freq="Q")
-    frame = pd.DataFrame({
-        forward.name: forward,
-        "Cash rate": _cash_rate(index),
-        TREND_G_LABEL: _trend_growth_nominal(index),
-    })
-    if start:
-        frame = frame.loc[pd.Period(start, freq="Q"):]
+    forward = _forward_monthly().rename(FORWARD_LABEL)
+    months = _months(pd.Period(start, freq="Q") if start else forward.index.min().asfreq("Q"))
+    cash = _cash_rate_monthly(months).rename("Cash rate")
+    quarters = pd.period_range(months.min().asfreq("Q"), months.max().asfreq("Q"), freq="Q")
+    growth = _middle_month(_trend_growth_nominal(quarters).to_frame(TREND_G_LABEL))
 
-    spread = (frame[FORWARD_LABEL] - frame["Cash rate"]).dropna()
-    mg.line_plot_finalise(
-        frame,
+    spread = (forward.reindex(months) - cash).dropna()
+    ax = mg.line_plot(cash, color="darkgrey", style="--", width=1.5, drawstyle="steps-post",
+                      annotate=True, rounding=2)
+    lines = pd.concat([forward.reindex(months), growth[TREND_G_LABEL].reindex(months)], axis=1)
+    mg.line_plot(lines, ax=ax, style=["-", "-."], width=[2.0, 1.8], annotate=True, rounding=2)
+    mg.finalise_plot(
+        ax,
         title="Macroeconomic proxies for nominal r*",
         ylabel="Per cent, nominal",
-        color=["darkblue", "darkgrey", "darkorange"],
-        style=["-", "--", "-."],
-        width=[2.0, 1.5, 1.8],
-        annotate=True,
-        rounding=2,
         legend={"loc": "best", "fontsize": "small"},
         lheader=(
             f"Forward less cash rate: latest {spread.iloc[-1]:+.2f}, "
             f"mean {spread.mean():+.2f}pp"
         ),
-        lfooter="Australia. Quarterly averages of daily data. Part-quarter dropped. ",
-        rfooter="AOFM risk-neutral curve (BC); RBA F1; ABS 5206.0",
+        lfooter="Australia. Monthly averages of daily data, part-month dropped; growth quarterly. ",
+        rfooter="AOFM risk-neutral curve (BC); RBA F1; ABS 5206.0; expectations",
         show=False,
     )
 
@@ -226,28 +244,42 @@ def plot_real_cash_rate(
     if not isinstance(index, pd.PeriodIndex):
         index = pd.PeriodIndex(index, freq="Q")
 
-    cash = _cash_rate(index)
+    # The cash rate is monthly; both deflators are quarterly, so each is held
+    # across its quarter's three months. The real cash rates therefore step at
+    # every cash rate decision and at every quarter's new deflator.
+    months = _months(index.min())
+    quarters = pd.period_range(index.min(), months.max().asfreq("Q"), freq="Q")
+    cash = _cash_rate_monthly(months)
+    expected = _held(to_nominal(pd.Series(0.0, index=quarters), scale=scale), months)
     inflation = get_trimmed_mean_annual().data.astype(float)
     if isinstance(inflation.index, pd.DatetimeIndex):
         inflation.index = inflation.index.to_period("Q")
+    realised = _held(inflation, months)
 
-    out = pd.DataFrame({
-        f"Cash rate less {scale_label(scale)}": to_real(cash, scale=scale),
-        "Cash rate less realised trimmed mean": cash - inflation.reindex(index),
+    references = pd.DataFrame({
+        f"Cash rate less {scale_label(scale)}": cash - expected,
+        "Cash rate less realised trimmed mean": cash - realised,
     })
-    for column in data.columns:
-        out[f"{column}, real"] = to_real(data[column], scale=scale)
+    models = _middle_month(pd.DataFrame({
+        f"{column}, real": to_real(data[column], scale=scale) for column in data.columns
+    }))
 
-    models = len(data.columns)
-    mg.line_plot_finalise(
-        out,
-        title="The real cash rate, and real r*",
-        ylabel="Per cent, real",
-        color=["black", "darkgrey", *_COLOURS[:models]],
-        style=["-", "--", *["-"] * models],
-        width=[1.8, 1.5, *[2.0] * models],
+    # The two real cash rates are references, drawn in brown and grey
+    # as steps; the model lines take mgplot's own palette.
+    ax = mg.line_plot(
+        references,
+        color=["brown", "darkgrey"],
+        style=["--", "--"],
+        width=[1.0, 1.0],
+        drawstyle="steps-post",
         annotate=True,
         rounding=2,
+    )
+    mg.line_plot(models.reindex(months), ax=ax, width=2.0, annotate=True, rounding=2)
+    mg.finalise_plot(
+        ax,
+        title="The real cash rate, and real r*",
+        ylabel="Per cent, real",
         y0=True,
         legend={"loc": "best", "fontsize": "x-small"},
         lheader=(
@@ -259,6 +291,15 @@ def plot_real_cash_rate(
         show=False,
     )
 
+
+
+def _forward_header(labels: list[str]) -> str:
+    """Say how many of the charted lines read the AOFM 5y5y forward."""
+    reading = {s.label for s in SOURCES if s.reads_forward}
+    count = sum(label in reading for label in labels)
+    if count == len(labels):
+        return f"All {count} lines read the same AOFM 5y5y forward"
+    return f"{count} of {len(labels)} lines read the same AOFM 5y5y forward"
 
 
 def _cash_rate(index: pd.PeriodIndex) -> pd.Series:
@@ -286,14 +327,16 @@ def plot_summary(
     if not isinstance(index, pd.PeriodIndex):
         index = pd.PeriodIndex(index, freq="Q")
 
+    # Monthly axis: the cash rate as the step it is, each model's quarterly r*
+    # one point per quarter at its middle month.
+    months = _months(index.min())
     ax = mg.line_plot(
-        _cash_rate(index).rename("Nominal cash rate"),
-        color=["darkgrey"], width=1.5, style="--", annotate=False,
+        _cash_rate_monthly(months).rename("Nominal cash rate"),
+        color=["darkgrey"], width=1.5, style="--", drawstyle="steps-post", annotate=False,
     )
     mg.line_plot(
-        data,
+        _middle_month(data).reindex(months),
         ax=ax,
-        color=list(_COLOURS[:len(data.columns)]),
         width=2.0,
         annotate=True,
         rounding=2,
@@ -329,30 +372,35 @@ def plot_spread(frame: pd.DataFrame, start: str | None = "1993Q1") -> None:
     """
     data = frame.loc[frame.index >= pd.Period(start, freq="Q")] if start else frame
     usable = data.dropna(how="any")
-    if usable.empty or len(usable.columns) < 2:  # noqa: PLR2004 — a range needs two
+    if usable.empty or len(usable.columns) < MIN_MODELS_FOR_RANGE:
         print("  note: fewer than two models overlap; skipping the spread chart")
         return
 
     band = pd.DataFrame({"lower": usable.min(axis=1), "upper": usable.max(axis=1)})
-    ax = mg.fill_between_plot(band, color="crimson", alpha=0.18, label="Range across models")
+    ax = mg.fill_between_plot(band, color="darkblue", alpha=0.18, label="Range across models")
+    # The band's edges as thin lines, so their latest values are annotated. The
+    # leading underscore keeps them out of the legend.
+    mg.line_plot(
+        band.rename(columns={"upper": "_top", "lower": "_bottom"})[["_top", "_bottom"]],
+        ax=ax, color=["darkblue", "darkblue"], width=[0.25, 0.25], annotate=True, rounding=2,
+    )
     # MEAN, not median. With an odd number of series the median is whichever
     # model happens to sit in the middle that quarter, so it switches identity
     # wherever the lines cross and picks up kinks that say nothing about r*. The
     # mean uses every model and moves smoothly.
     #
-    # SINCE `rstar_tvpvar` WAS REMOVED (2026-09-17) THERE ARE TWO, so this line
-    # is the midpoint of the band drawn above it and carries no information the
-    # band does not already show. It is kept because the chart's whole subject
-    # is the spread, and a centre makes the spread readable. Do not read it as a
-    # consensus: with n = 2 it is an arithmetic midpoint between two models that
-    # share the AOFM 5y5y forward.
+    # With so few models this line carries little the band does not already
+    # show. It is kept because the chart's whole subject is the spread, and a
+    # centre makes the spread readable. Do not read it as a consensus: every
+    # model on the chart reads the AOFM 5y5y forward, so it averages lines that
+    # share their level anchor.
     #
     # Neither is an estimate. An average across structural assumptions is a
     # value no model produces, which is the objection `rstar_hlw`'s notes make
     # to its own blended median. It describes where the models sit.
     mg.line_plot(
         usable.mean(axis=1).rename("Mean across models"),
-        ax=ax, color=["crimson"], width=2.5, annotate=True, rounding=2,
+        ax=ax, color=["darkblue"], width=2.5, annotate=True, rounding=2,
     )
     # The cash rate behind, as on the levels chart. Without it the band is a
     # picture of disagreement with nothing to judge it against: whether a
@@ -371,15 +419,11 @@ def plot_spread(frame: pd.DataFrame, start: str | None = "1993Q1") -> None:
         ylabel="Per cent, nominal",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        # With two models left, the shared observable is the thing a reader most
-        # needs to know: `rstar_bonds` and `rstar_rba` both read the AOFM 5y5y
-        # forward, so part of any agreement is one series counted twice. Said
-        # here rather than in a footer because the footers are already full.
-        lheader=(
-            "Both lines read the same AOFM 5y5y forward"
-            if len(usable.columns) == TWO_MODELS
-            else f"Across {len(usable.columns)} models, on their common quarters"
-        ),
+        # The shared observable is the thing a reader most needs to know: every
+        # model here reads the AOFM 5y5y forward, so part of any agreement is
+        # one series counted more than once. Said here rather than in a footer
+        # because the footers are already full.
+        lheader=_forward_header(list(usable.columns)),
         rheader=f"Widest {widest.max():.2f}pp in {widest.idxmax()}; "
                 f"latest {widest.iloc[-1]:.2f}pp",
         rfooter=_footer(),
@@ -451,7 +495,6 @@ def plot_stance(frame: pd.DataFrame, start: str | None = "1993Q1") -> None:
         return
     ax = mg.line_plot(
         stances,
-        color=list(_COLOURS[:len(stances.columns)]),
         width=2.0,
         annotate=True,
         rounding=2,
@@ -510,7 +553,6 @@ def plot_stance_against_inflation(frame: pd.DataFrame, start: str | None = "1993
 
     ax = mg.line_plot(
         stances,
-        color=list(_COLOURS[:len(stances.columns)]),
         width=1.8,
         annotate=True,
         rounding=2,

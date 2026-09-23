@@ -14,6 +14,8 @@ disinflation and represents what agents actually expected (rather than a
 target-counterfactual).
 """
 
+from typing import Literal
+
 import numpy as np
 import pandas as pd
 
@@ -46,11 +48,78 @@ _NAME_WIDTH = 20
 # Pass `--start 1980Q1` to reproduce the older runs, including the sweeps.
 DEFAULT_START = "1993Q1"
 
+# Quarters in the trailing window behind the `cagr40` g-anchor. Ten years:
+# long enough that one recession cannot set the level, and the cost is that a
+# window this long dates a change in trend about five years late, which is
+# what being one-sided buys and what it charges.
+_CAGR_WINDOW_QTRS = 40
+
+GAnchor = Literal["linear", "cagr40"]
+DEFAULT_G_ANCHOR: GAnchor = "linear"
+
+# How each anchor is named on a chart. Built from `_CAGR_WINDOW_QTRS` so the
+# label cannot claim a window the series does not use.
+G_ANCHOR_LABELS: dict[str, str] = {
+    "linear": "linear trend of YoY growth",
+    "cagr40": f"{_CAGR_WINDOW_QTRS}q trailing CAGR",
+}
+
+
+def _g_anchor(
+    kind: GAnchor,
+    log_gdp: pd.Series,
+    index: pd.PeriodIndex,
+) -> tuple[pd.Series, str]:
+    """Build the soft anchor on trend growth, annualised %, plus a description.
+
+    `linear` regresses year-on-year growth on time across the estimation
+    sample. A single shock barely moves a regression line, which is why it
+    replaced an HMA that had the 2020 dip baked into it. The costs are that it
+    is monotone by construction, so it cannot show the growth slowdown
+    pausing, and that it is fitted on quarters that come after each date it
+    describes.
+
+    `cagr40` is the trailing compound annual growth rate over
+    `_CAGR_WINDOW_QTRS`. It uses only data up to each date and is free to
+    flatten out. It is computed on the whole GDP series rather than the
+    filtered sample, so the window is already full in the sample's first
+    quarter and no warm-up is lost.
+    """
+    if kind == "linear":
+        yoy = log_gdp.diff(4).reindex(index).dropna()
+        t = np.arange(len(yoy))
+        slope, intercept = np.polyfit(t, yoy.to_numpy(dtype=float), 1)
+        anchor = pd.Series(intercept + slope * t, index=yoy.index).reindex(index)
+        desc = (
+            f"linear trend: slope {slope * 4:+.3f} pp/year, "
+            f"{anchor.iloc[0]:.2f}% -> {anchor.iloc[-1]:.2f}%"
+        )
+        return anchor, desc
+
+    k = _CAGR_WINDOW_QTRS
+    # log_gdp is log x 100, so a k-quarter log difference scaled by 4/k is
+    # already an annualised percentage growth rate.
+    anchor = ((log_gdp - log_gdp.shift(k)) * 4.0 / k).reindex(index)
+    if anchor.isna().any():
+        missing = index[anchor.isna()]
+        raise ValueError(
+            f"a {k}-quarter trailing window needs GDP back to {k} quarters before "
+            f"{index[0]}, and {len(missing)} quarters have none "
+            f"({missing[0]} to {missing[-1]}). Start the sample later or shorten "
+            f"the window",
+        )
+    desc = (
+        f"{k}q trailing CAGR: {anchor.iloc[0]:.2f}% -> {anchor.iloc[-1]:.2f}%, "
+        f"range {anchor.min():.2f} to {anchor.max():.2f}"
+    )
+    return anchor, desc
+
 
 def build_observations(
     start: str | None = DEFAULT_START,
     end: str | None = None,
     verbose: bool = False,
+    g_anchor: GAnchor = DEFAULT_G_ANCHOR,
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, pd.DataFrame]:
     """Build observation arrays for HLW estimation.
 
@@ -58,6 +127,9 @@ def build_observations(
         start: Start period (default 1980Q1, matching NAIRU model)
         end: End period (default: latest available)
         verbose: Print per-series ranges and the aligned sample
+        g_anchor: Which soft anchor on trend growth to build, `linear` or
+            `cagr40`. Only the resolutions that wire the anchor in consume it;
+            A and B drop the series. See `_g_anchor`.
 
     Returns:
         Tuple of:
@@ -105,23 +177,16 @@ def build_observations(
     if end:
         df = df.loc[df.index <= pd.Period(end, "Q")]
 
-    # Linear regression of year-on-year GDP growth over the filtered sample,
-    # used as a soft anchor for trend growth g. Computed *after* filtering so
-    # the slope/intercept reflect the model period only.
-    yoy_growth_full = get_log_gdp().data.diff(4)
-    yoy_in_sample = yoy_growth_full.reindex(df.index).dropna()
-    t = np.arange(len(yoy_in_sample))
-    slope, intercept = np.polyfit(t, yoy_in_sample.to_numpy(dtype=float), 1)
-    linear_trend = pd.Series(intercept + slope * t, index=yoy_in_sample.index)
-    df["trend_growth_obs"] = linear_trend.reindex(df.index)
+    # Soft anchor for trend growth g, used by the resolutions that wire it in.
+    anchor, anchor_desc = _g_anchor(g_anchor, get_log_gdp().data, df.index)
+    df["trend_growth_obs"] = anchor
     df = df.dropna()
 
     if verbose:
         print(f"\nObservation sample: {df.index[0]} to {df.index[-1]} ({len(df)} periods)")
         for col in df.columns:
             print(f"  {col:<{_NAME_WIDTH}}: [{df[col].min():.2f}, {df[col].max():.2f}]")
-        print(f"  linear g-anchor:     slope {slope * 4:+.3f} pp/year, "
-              f"{linear_trend.iloc[0]:.2f}% -> {linear_trend.iloc[-1]:.2f}%")
+        print(f"  g-anchor ({g_anchor}): {anchor_desc}")
 
     obs = {col: df[col].to_numpy() for col in df.columns}
 

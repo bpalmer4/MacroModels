@@ -16,25 +16,27 @@ Latest quarter, 2026Q2:
 
 | source | g* | what it is built from |
 |---|---|---|
-| Joint y*/u* | **1.99** | y* and u* estimated together, with Okun and a Phillips curve |
+| Semi-structural open economy (`rstar_qpm`) | **2.12** | y* a drifting random walk inside an IS / exchange-rate / Phillips / rule system; its trend-growth state g |
+| Joint y*/u* | **1.95** | y* and u* estimated together, with Okun and a Phillips curve |
 | y* (inflation spec) | **1.94** | potential is a slow random walk; the gap is defined by inflation |
 | y* (production spec) | **1.90** | growth from capital, hours and MFP trends; level and gap still inflation-defined |
 
-**A spread of 0.09pp, against about 1.0pp for r\*.** That contrast is the reason this package
+**A spread of 0.22pp, against about 1.0pp for r\*.** That contrast is the reason this package
 exists as a sibling to [`rstar_summary`](../rstar_summary/MODEL_NOTES.md) rather than a section
 inside it. The two answer the same kind of question, "what does this repo actually know", and
 get opposite answers. For r* no model identifies a level and the honest band is the
-cross-model spread. For g* three specifications land within a tenth of a percentage point,
+cross-model spread. For g* four estimates land within about a sixth of a percentage point,
 though see the caveat below about how much of that is independence.
 
-The mean across models ends at **1.92**, which is close to the RBA's ~2.0 and well below
+The mean across models ends at **1.98**, which is close to the RBA's ~2.0 and well below
 Treasury's 2.5. It is a description of where the models sit, not an estimate: an average
 across structural assumptions is a value no model produces, the same objection `rstar_hlw`'s
 notes make to its own blended median.
 
-## Three lines, and not three independent votes
+## Four lines, and not four independent votes
 
-**All three share the y\* state-space core**, so the agreement is weaker evidence than it looks.
+**Three share the y\* state-space core, and the fourth shares its key assumption**, so the
+agreement is weaker evidence than it looks.
 
 - `ystar`'s **inflation** and **production** specs are one package run two ways. They share the
   data, the sample, the level equation and the gap definition, differing only in where
@@ -43,15 +45,21 @@ notes make to its own blended median.
   estimate**: its growth comes from factor trends, but inflation still positions its level and
   defines its gap, which is why its chart directory contains an inflation-defined output gap.
 - The **joint y*/u\*** model is built on the same y* core and adds Okun and a Phillips curve.
+- **`rstar_qpm`** is a separate package, potential drifting with a trend-growth state inside an
+  open-economy system. Its line is that trend-growth state, potential growth without the
+  level shocks to potential, which would otherwise read as swings in growth. But it too
+  treats potential as a slowly drifting random walk, and how smooth that walk is comes from
+  a prior, because `sigma_ystar` is not identified there. A partial outside check, not an
+  independent one. It sits a little above the rest in recent years.
 
-There is no line from outside that framework. `cobb_douglas` was the candidate and is excluded
-for COVID artefacts, below. **If a smoothing assumption common to the three were wrong, nothing
-on this chart would catch it**, and that is the honest limitation of the agreement above.
+`cobb_douglas`, the one line built a different way, is excluded for COVID artefacts, below.
+**If a smoothing assumption common to all four were wrong, nothing on this chart would catch
+it**, and that is the honest limitation of the agreement above.
 
 ## Why `cobb_douglas` is not here: COVID artefacts
 
-It was the one line from outside the y* family, which is exactly the independent check the
-three above lack, so it was worth several attempts. All failed.
+It was the one line built without a random-walk potential, which is exactly the independent
+check the others lack, so it was worth several attempts. All failed.
 
 Its three HP filters run through the pandemic. Filtered straight through, potential growth
 humps to 2.48 in 2022Q2 against about 1.85 for the state-space models, and is still falling
@@ -90,7 +98,7 @@ reading before quoting the spread.
 
 **Refresh is OFF by default here**, unlike `rstar_summary`. `ystar`'s production spec is not
 what `run-ystar.sh` produces by default, so an automatic refresh would overwrite it with the
-inflation spec and silently turn three lines into two. Refresh it deliberately:
+inflation spec and silently merge the two y* lines into one. Refresh it deliberately:
 
 ```bash
 ./run-ystar.sh --spec production --prefix ystar_production

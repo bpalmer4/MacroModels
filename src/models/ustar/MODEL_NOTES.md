@@ -147,8 +147,8 @@ What it brings in exchange is everything in the table above: a band halved by
 counting one signal twice, a systematic bias against what inflation alone
 implies, and a level in 1993-98 that calls the deepest slack in the sample
 equilibrium. The default takes that trade, and the cost of taking it is the
-flat 1990s. `ustar_summary` charts one Okun setting alongside the default so
-the choice stays visible.
+flat 1990s. `--compare` charts one Okun setting alongside the default so the
+choice stays visible (see "Comparing specifications").
 
 `--okun` restores the equation.
 
@@ -260,7 +260,8 @@ and a band of 0.58 against 0.83.
 
 ## Strengths and weaknesses of each specification
 
-Run `./run-ustar-summary.sh` to reproduce this table and the charts.
+`./run-ustar.sh --compare` charts the three of these kept for comparison; see
+"Comparing specifications".
 
 | | band test | 1993-98 | post-2015 | latest | band | bias |
 |---|---|---|---|---|---|---|
@@ -364,25 +365,82 @@ any one of them of **0.65**: the estimation uncertainty is the larger term and
 the choice of path barely matters. Pooling in the Okun settings raises the
 spread to 0.55pp, but that gap is the distance between two readings of the
 1990s rather than error, so it should be quoted as a range with each end
-named. See `ustar_summary/MODEL_NOTES.md`.
+named. See "Comparing specifications".
 
 The exception is the early sample, where the spread reaches 3.47pp at 1993Q1.
 There the specification is the whole of the answer.
 
 ---
 
+## Comparing specifications (`--compare`)
+
+`--compare` runs this model three ways and charts the results together. It is
+not a different model and estimates nothing new: each specification is a set of
+this model's own flags, re-estimated if its saved run is not from today, into a
+prefix of its own so the default run is never touched.
+
+| specification | knots | Okun |
+|---|---|---|
+| **Spline, 1 knot** (the default) | 2013Q1 | out |
+| Spline, 2 knots | 1996Q1, 2013Q1 | out |
+| Spline, 2 knots, with gap-form Okun | 1996Q1, 2013Q1 | in |
+
+**Why these three.** The knot count asks how much the flexibility allowed to u\*
+matters. The Okun setting is kept because it is the only one in which u\* comes
+down through the 1990s. That decade was a regime change, inflation moving from
+high to low and taking years to work through the labour market, and the default
+reads almost all of the fall in unemployment over those years as cyclical. The
+Okun run reads much of it as a fall in u\* itself. Neither reading is settled,
+and the comparison exists so the choice is visible rather than buried in a
+default. The same Okun run also claims the steepest recent decline in u\* of
+anything tried; its 1990s reading lends that claim no weight.
+
+**Why no decay settings.** Under the decay law the sign of u\*'s movement is
+fixed by which side of its equilibrium it starts on, so from the high
+unemployment of 1993 it can only ever report a fall. On a chart about how much
+the specification matters, that shape would be read as evidence. Every spline
+here can turn u\* up at the end if the data warrant it.
+
+**How to read it.** The three share the sample, the Phillips curve, the
+expectations series and the inflation measure, so their agreement is close to
+arithmetic and only their disagreement informs.
+
+- The knot count barely matters once Okun is out.
+- The spread is widest in the early 1990s, where u\* is least identified, and
+  has all but closed today. The choices argued above bear on the 1990s
+  narrative, not on the number to quote now.
+- The spread is not an error band. The specifications differ in a structured
+  way, whether Okun is in, so the range is the distance between two readings of
+  the 1990s. Quote the range and name what sits at each end.
+- The mean line on the range chart is a mean, not a median (with three series
+  the median switches identity wherever lines cross), and it describes where
+  the specifications sit; it is not an estimate.
+
+**What it prints and charts.** A table per specification (the inflation band
+test, the 1993-98 level, the post-2015 slope, the latest value, the average 90%
+band, bias against the inflation-implied series, and the volatility of u\*),
+the spread with and without Okun, and four charts in `charts/UStar-compare/`:
+the three u\* paths against unemployment (colour for the knot count, dashes for
+Okun), the unemployment gap each implies, the range with its mean, and the
+range's width over time. The poorly identified 1993-99 window is shaded.
+
 ## Files and usage
 
 ```bash
 ./run-ustar.sh                                   # the default above
 ./run-ustar.sh --okun                            # restore the Okun equation
-./run-ustar.sh --state converge                  # the decay law
+./run-ustar.sh --ustar-structure decay           # the decay law
 ./run-ustar.sh --knots 1996Q1 2013Q1             # a second knot
 ./run-ustar.sh --gap-source actual               # log_gdp - y* instead of the defined gap
 ./run-ustar.sh --analyse-only                    # re-chart a saved run
 ./run-ustar.sh --prefix name                     # write somewhere other than `ustar`
-./run-ustar-summary.sh                           # all six specifications on one chart
+./run-ustar.sh --compare                         # three specifications on one chart
+./run-ustar.sh --compare --analyse-only          # the same, from the saved runs as they stand
 ```
+
+The comparison lives in `compare.py` (the specifications) and `compare_charts.py`
+(the table and charts). `cli.py` holds the flags, shared by the default run and
+the comparison.
 
 `config.py` holds every imposed quantity and records it in `constants`, saved
 beside the trace. Charts and this run's diagnostics go to `charts/UStar/`.

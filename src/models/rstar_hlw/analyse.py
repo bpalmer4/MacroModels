@@ -12,6 +12,7 @@ from src.data.world_rstar import get_world_rstar
 from src.models.common import prior_posterior
 from src.models.common.diagnostics import save_diagnostics
 from src.models.common.extraction import get_scalar_var, get_vector_var
+from src.models.rstar_hlw.observations import DEFAULT_G_ANCHOR, G_ANCHOR_LABELS
 from src.models.rstar_hlw.results import DEFAULT_CHART_BASE, RStarResults, load_results
 
 if TYPE_CHECKING:
@@ -293,22 +294,27 @@ def plot_r_star_bimodal_decomposition(
 
 
 def plot_g_vs_anchor(results: RStarResults, show: bool = False) -> None:
-    """Diagnostic: posterior g vs its linear-trend anchor and raw YoY GDP growth.
+    """Diagnostic: posterior g vs its soft anchor and raw YoY GDP growth.
 
-    Tests whether the IS curve / y* equation move g away from the soft
-    linear-trend anchor. If posterior g overlays the linear trend, the IS
-    curve is not pulling g; if it parts ways, the IS curve is doing real
-    work via the y* drift channel.
+    Tests whether the IS curve / y* equation move g away from the anchor. If
+    posterior g overlays it, the IS curve is not pulling g; if it parts ways,
+    the IS curve is doing real work via the y* drift channel.
+
+    Which anchor the run used is read from the saved constants, so the labels
+    cannot go on describing a series the run did not use.
     """
     g = results.trend_growth_median()
     anchor = pd.Series(results.obs["trend_growth_obs"], index=results.obs_index)
     log_gdp = pd.Series(results.obs["log_gdp"], index=results.obs_index)
     yoy = log_gdp.diff(4)  # annual log-growth in log x 100 units = YoY % growth
 
+    kind = str(results.constants.get("g_anchor", DEFAULT_G_ANCHOR))
+    anchor_label = G_ANCHOR_LABELS.get(kind, kind)
+
     df = pd.DataFrame({
-        "g (posterior median)":              g,
-        "Linear trend of YoY growth (anchor)": anchor,
-        "YoY GDP growth (raw)":              yoy,
+        "g (posterior median)":                 g,
+        f"{anchor_label.capitalize()} (anchor)": anchor,
+        "YoY GDP growth (raw)":                 yoy,
     })
 
     diff = g - anchor
@@ -317,7 +323,7 @@ def plot_g_vs_anchor(results: RStarResults, show: bool = False) -> None:
 
     mg.line_plot_finalise(
         df,
-        title="Trend growth: posterior g vs linear-trend anchor",
+        title=f"Trend growth: posterior g vs {anchor_label} anchor",
         ylabel="Per cent per annum",
         color=["navy", "darkorange", "lightsteelblue"],
         width=[2.5, 1.5, 0.9],
@@ -326,8 +332,8 @@ def plot_g_vs_anchor(results: RStarResults, show: bool = False) -> None:
         rounding=1,
         y0=True,
         lheader=(
-            f"If g and the linear-trend anchor overlap, the IS curve is not "
-            f"moving g. RMSE = {rmse:.2f} pp, max |gap| = {max_abs:.2f} pp."
+            f"If g and the anchor overlap, the IS curve is not moving g. "
+            f"RMSE = {rmse:.2f} pp, max |gap| = {max_abs:.2f} pp."
         ),
         lfooter=LFOOTER,
         rfooter=RFOOTER + "Diagnostic: is the IS curve identifying g away from its anchor?",

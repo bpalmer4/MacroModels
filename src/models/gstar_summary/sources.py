@@ -9,7 +9,8 @@ level. g* spans about 0.2pp, and the models that disagree about it disagree for
 reasons you can name: whether potential is a slow random walk disciplined by
 inflation, or built up from factor trends, or fitted jointly with u*.
 
-THREE LINES, AND NOT THREE INDEPENDENT VOTES. All three share the y* core.
+FOUR LINES, AND NOT FOUR INDEPENDENT VOTES. Three share the y* core, and the
+fourth shares its key assumption.
 
 - `ystar`'s inflation and production specs are the same package run two ways,
   sharing the data, the sample, the level equation and the gap definition, and
@@ -21,11 +22,15 @@ THREE LINES, AND NOT THREE INDEPENDENT VOTES. All three share the y* core.
   its charts include an inflation-defined output gap.
 - The joint y*/u* model builds on the same y* core and adds Okun and a Phillips
   curve.
+- `rstar_qpm` is a separate package: potential drifts with a trend-growth
+  state inside an open-economy system (IS curve, exchange rate, Phillips
+  curve, policy rule). But it too treats potential as a slowly drifting random
+  walk, and how smooth that walk is comes from a prior (`sigma_ystar` is not
+  identified there). So it is a partial outside check, not an independent one.
 
-**So the agreement here is weaker evidence than it looks.** There is no line
-from outside that framework: `cobb_douglas` was the candidate and is excluded
-for COVID artefacts, below. If a smoothing assumption common to the three were
-wrong, nothing here would catch it.
+**So the agreement here is weaker evidence than it looks.** `cobb_douglas`, the
+one line built a different way, is excluded for COVID artefacts, below. If a
+smoothing assumption common to all four were wrong, nothing here would catch it.
 """
 
 import subprocess
@@ -37,6 +42,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from src.models.rstar_qpm.estimate import load_results as load_qpm_results
 from src.models.ystar.results import load_results as load_ystar_results
 from src.models.ystar_ustar.results import load_results as load_joint_results
 from src.paths import MODEL_OUTPUTS, ROOT
@@ -96,6 +102,17 @@ def _load_joint(prefix: str) -> pd.Series:
     return load_joint_results(prefix=prefix).potential_growth_posterior().median(axis=1)
 
 
+def _load_qpm(prefix: str) -> pd.Series:
+    """Potential growth from `rstar_qpm`: its trend-growth state `g`.
+
+    Potential without shocks. The year-ended change in the model's y* path
+    also carries the level shocks to potential, which read as swings in growth
+    (0.25pp above `g` in 2022Q4) that are not changes in the trend.
+    """
+    _, _, _, states = load_qpm_results(prefix=prefix)
+    return states["paths"]["g"].median(axis=1)
+
+
 # WHY `cobb_douglas` IS NOT HERE: COVID artefacts.
 #
 # It was the one line from outside the y* state-space family, which is exactly
@@ -137,6 +154,14 @@ SOURCES: tuple[GstarSource, ...] = (
         script="run-ystar-ustar.sh",
         loader=_load_joint,
         note="y* and u* estimated together, with Okun and a Phillips curve",
+    ),
+    GstarSource(
+        label="Semi-structural open economy",
+        prefix="rstar_qpm",
+        script="run-rstar-qpm.sh",
+        loader=_load_qpm,
+        note=("y* a drifting random walk inside an IS / exchange-rate / Phillips / rule "
+              "system; its smoothness is set by the sigma_ystar prior"),
     ),
 )
 

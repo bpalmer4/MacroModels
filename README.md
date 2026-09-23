@@ -12,26 +12,26 @@ and what should not be quoted from it. The links below go there; this page is on
 ### Supply side and structural estimation
 
 - **Inflation Expectations** (`expectations`): latent inflation expectations from surveys and market data. Run it first; much of the rest reads its output. See [notes](src/models/expectations/MODEL_NOTES.md)
-- **y\* potential output** (`ystar`): potential as a slow-moving random walk, with the output gap defined by inflation's deviation from target. *Preferred for potential growth*. See [notes](src/models/ystar/MODEL_NOTES.md)
-- **u\*** (`ustar`): a NAIRU from one expectations-augmented Phillips curve, with u\* a spline. See [notes](src/models/ustar/MODEL_NOTES.md)
-- **u\* summary** (`ustar_summary`): the three specifications of `ustar` on one chart. See [notes](src/models/ustar_summary/MODEL_NOTES.md)
+- **y\* potential output** (`ystar`): potential as a slow-moving random walk, with the output gap defined by inflation's deviation from target. *Preferred for potential growth*; `--compare` charts five specifications together. See [notes](src/models/ystar/MODEL_NOTES.md)
+- **u\*** (`ustar`): a NAIRU from one expectations-augmented Phillips curve, with u\* a spline; `--compare` charts three specifications together. See [notes](src/models/ustar/MODEL_NOTES.md)
 - **Joint y\*/u\*** (`ystar_ustar`): both of the above in one likelihood, with the gap partly free and u\* a spline. *Preferred for the output gap and u\**. See [notes](src/models/ystar_ustar/MODEL_NOTES.md)
 - **NAIRU + Output Gap** (`nairu`): the original joint NAIRU and potential-output model. *Superseded for potential, the gap and the NAIRU*; kept for its wage equation, regime split and variant comparison. See [notes](src/models/nairu/MODEL_NOTES.md)
 - **Cobb-Douglas MFP** (`cobb_douglas`): deterministic growth accounting into capital, labour and MFP. See [notes](src/models/cobb_douglas/MODEL_NOTES.md)
 - **g\* summary** (`gstar_summary`): every potential-growth estimate on one chart. See [notes](src/models/gstar_summary/MODEL_NOTES.md)
-- **y\* summary** (`ystar_summary`): the five `ystar` specifications on one chart. See [notes](src/models/ystar_summary/MODEL_NOTES.md)
-- **Joint y\*/u\* summary** (`ystar_ustar_summary`): the u\* structure crossed with the gap definition, eight settings. See [notes](src/models/ystar_ustar_summary/MODEL_NOTES.md)
+- **Joint y\*/u\* summary** (`ystar_ustar_summary`): not a model; runs the joint y\*/u\* model (`ystar_ustar`) eight ways, u\* structure × gap definition, on one chart. See [notes](src/models/ystar_ustar_summary/MODEL_NOTES.md)
 
 ### The neutral rate
 
-Four routes to r\*, kept separate because they disagree, plus the tooling that compares them.
+Several routes to r\*, kept separate because they disagree, plus the tooling that compares them.
 Each set of notes says what its number is conditional on, and none should be quoted without that.
 
 - **From the bond market** (`rstar_bonds`): an Australian wedge over a market world real rate, read off the indexed 10-year yield, the real cash rate and the AOFM 5y5y forward. See [notes](src/models/rstar_bonds/MODEL_NOTES.md)
 - **From the RBA's reaction to inflation** (`rstar_rba`): splits the cash rate into a slowly moving neutral and a response to inflation away from target. Two published series, nothing else. See [notes](src/models/rstar_rba/MODEL_NOTES.md)
+- **Semi-structural open economy** (`rstar_qpm`): a small QPM-style model (IS curve, exchange rate, Phillips curve, policy rule) with the 5y5y forward setting the level and the structure shaping the path. Also a test of how much the IS curve carries. See [notes](src/models/rstar_qpm/MODEL_NOTES.md)
 - **By conditional inversion** (`rstar_invert`): asserts an IS curve and reports the r\* path that assertion forces on the observed gap and cash rate. Not an estimate, and no longer on the summary chart. See [notes](src/models/rstar_invert/MODEL_NOTES.md)
 - **From a TVP-VAR** (`rstar_tvpvar`): *retired.* A Lubik-Matthes time-varying-parameter VAR. It reads neutral off the economy's own dynamics, which needs the economy to settle; Australia's does not, anywhere in the sample. The notes are kept for that finding. See [notes](src/models/rstar_tvpvar/MODEL_NOTES.md)
 - **HLW** (`rstar_hlw`): a Bayesian Holston-Laubach-Williams build. *Not a source of r\**, and the notes explain why; its trend/cycle decomposition is a separate and working claim. See [notes](src/models/rstar_hlw/MODEL_NOTES.md)
+- **HLW by Kalman filter** (`rstar_hlw_kalman`): *a failed attempt at the original specification*, estimated the way the papers do it, by Kalman filter and maximum likelihood. It converges, to a degenerate answer. See [notes](src/models/rstar_hlw_kalman/MODEL_NOTES.md)
 - **r\* summary** (`rstar_summary`): all of the above that qualify, on one nominal scale. See [notes](src/models/rstar_summary/MODEL_NOTES.md)
 - **The IS curve, plotted rather than estimated** (`is_curve`): a test bench for the r\* models. The rate-to-output-gap link in Australian data remains unresolved. See [notes](src/models/is_curve/MODEL_NOTES.md)
 
@@ -48,6 +48,7 @@ expectations → ystar → ustar
 expectations → ystar_ustar → rstar_bonds, rstar_invert
 is_curve, rstar_summary        (last: they read completed runs)
 rstar_rba                      (independent, bar its Taylor-rule chart)
+rstar_qpm                      (independent: reads data only)
 ```
 
 ### GDP nowcasting
@@ -291,7 +292,7 @@ Needs a completed joint y\*/u\* run, which supplies the output gap as data.
 ```bash
 ./run-rstar-summary.sh    # every r* on one nominal scale; re-runs any stale trace
 ./run-gstar-summary.sh    # every potential-growth estimate on one chart
-./run-ustar-summary.sh    # three specifications of the u* model on one chart
+./run-ustar.sh --compare  # three specifications of the u* model on one chart
 ```
 
 ### The IS curve, plotted rather than estimated
@@ -377,8 +378,6 @@ src/
     ├── rstar_invert/           # r* by conditional inversion of an asserted IS curve
     ├── rstar_summary/          # every r* on one nominal scale (not a model)
     ├── gstar_summary/          # every potential-growth estimate on one chart (not a model)
-    ├── ustar_summary/          # three specifications of the u* model on one chart (not a model)
-    ├── ystar_summary/          # five specifications of the y* model on one chart (not a model)
     ├── ystar_ustar_summary/    # eight settings of the joint model on one chart (not a model)
     ├── is_curve/               # the IS curve plotted, not estimated: a test bench for the r* models
     ├── bank_costs/             # bank funding and lending costs vs the cash rate (exploratory, charts only)

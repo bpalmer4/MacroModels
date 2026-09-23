@@ -28,6 +28,7 @@ import pandas as pd
 from src.models.common import inflation_scale
 from src.models.common.timeseries import last_complete_quarter
 from src.models.rstar_bonds.results import load_results as load_bonds_results
+from src.models.rstar_qpm.estimate import load_results as load_qpm_results
 from src.models.rstar_rba.estimate import (
     load_results as load_rba_results,
 )
@@ -75,6 +76,8 @@ class RstarSource:
     loader: Callable[[str], pd.Series]
     nominal: bool
     note: str
+    script_args: tuple[str, ...] = ()
+    reads_forward: bool = True
 
     @property
     def trace_path(self) -> Path:
@@ -107,6 +110,22 @@ def _load_rba(prefix: str) -> pd.Series:
     if not isinstance(index, pd.PeriodIndex):
         index = pd.PeriodIndex(index, freq="Q")
     return posterior_median(trace, "neutral", index)
+
+
+def _load_qpm(prefix: str) -> pd.Series:
+    """Semi-structural model's TREND r*, ALREADY NOMINAL.
+
+    Trend r*, not short-run neutral. Short-run neutral is the rate that closes
+    the gap at a horizon, a different object from the long-run neutral every
+    other line here reports.
+
+    Made nominal with the model's OWN expectations series, the unanchored one
+    it deflated every rate by, so real plus expected gives back the nominal
+    level the model saw. Adding the anchored series instead would understate
+    it by the gap between the two, 0.23pp at 2026Q2.
+    """
+    _, frame, _, states = load_qpm_results(prefix=prefix)
+    return states["paths"]["rstar"].median(axis=1) + frame["pie"]
 
 
 # WHY `rstar_tvpvar` IS NOT HERE. Removed 2026-09-17, the day it was stripped
@@ -221,6 +240,16 @@ SOURCES: tuple[RstarSource, ...] = (
         note=("neutral b_t, NOT prescribed; the level is pinned by the AOFM 5y5y "
               "forward as a second window, with a free but tightly priored bias"),
     ),
+    RstarSource(
+        label="Semi-structural open economy",
+        prefix="rstar_qpm",
+        script="run-rstar-qpm.sh",
+        loader=_load_qpm,
+        nominal=True,
+        note=("trend r* = world real rate + AU wedge inside an IS / exchange-rate / "
+              "Phillips / rule system; the wedge's innovation sd is imposed at 0.10, so the "
+              "5y5y forward sets the level on average but not the quarter-to-quarter path"),
+    ),
 )
 
 
@@ -235,7 +264,7 @@ def refresh(source: RstarSource, *, timeout: int = 3600) -> None:
     # it is running, and the log reads out of order.
     sys.stdout.flush()
     subprocess.run(  # noqa: S603 — our own script, path built from the registry
-        [str(script)], cwd=str(ROOT), check=True, timeout=timeout,
+        [str(script), *source.script_args], cwd=str(ROOT), check=True, timeout=timeout,
     )
     sys.stdout.flush()
 

@@ -21,6 +21,13 @@ import numpy as np
 import pymc as pm
 
 from src.models.nairu.base import set_model_coefficients
+from src.models.rstar_hlw.equations.states import walk_or_level
+
+# Prior on z's opening level, annualised %. Centred on zero because z is
+# defined as r*'s departure from trend growth, so it has no reason to open
+# away from it.
+_INIT_Z_MU = 0.0
+_INIT_Z_SIGMA = 1.5
 
 
 def z_star_equation(
@@ -59,12 +66,17 @@ def z_star_equation(
         mc = set_model_coefficients(model, settings, constant)
 
         z_star = (
-            pm.GaussianRandomWalk(
+            walk_or_level(
+                model,
                 "z_star",
-                mu=0,
                 sigma=mc["sigma_z"],
-                init_dist=pm.Normal.dist(mu=0.0, sigma=1.5),
+                init_mu=_INIT_Z_MU,
+                init_sigma=_INIT_Z_SIGMA,
                 steps=len(obs["log_gdp"]) - 1,
+                # Nothing in this model observes z, so its states are pinned
+                # only by their own scale. That is the funnel in its sharpest
+                # form, and the case non-centring is for.
+                non_centred=True,
             )
             if "z_star" not in constant
             else constant["z_star"]

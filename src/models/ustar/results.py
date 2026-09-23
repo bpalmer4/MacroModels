@@ -107,7 +107,7 @@ class UStarResults(PosteriorResults):
         above 0.9 the Okun channel is not identifying u*'s level, which is the
         whole reason the equation is here.
         """
-        if "beta_okun" not in self.trace.posterior.data_vars:
+        if "beta_okun" not in self.posterior.data_vars:
             return float("nan")  # no Okun equation in this run
         return float((self._scalar("beta_okun") > 0).mean())
 
@@ -232,7 +232,7 @@ class UStarResults(PosteriorResults):
         if var_names is None:
             # Named rather than discovered, so the table keeps its order. The
             # Okun block is absent when that equation is off.
-            present = set(self.trace.posterior.data_vars)
+            present = set(self.posterior.data_vars)
             var_names = [v for v in ("beta_okun", "sigma_okun") if v in present]
             if self.free_sigma_ustar:
                 var_names.insert(0, "sigma_ustar")

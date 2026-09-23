@@ -275,7 +275,8 @@ def _inflation_regime_spans(index: pd.PeriodIndex) -> list[dict[str, Any]]:
 
     spans: list[dict[str, Any]] = []
     step = 1  # one quarter, so each span covers the quarter it belongs to
-    for period, value in zip(index, inflation.to_numpy(), strict=True):
+    for period, raw in zip(index, inflation.to_numpy(), strict=True):
+        value = float(raw)
         if pd.isna(value) or _INFLATION_LOW <= value <= _INFLATION_HIGH:
             continue
         high = value > _INFLATION_HIGH

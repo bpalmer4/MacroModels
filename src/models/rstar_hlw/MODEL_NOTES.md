@@ -173,6 +173,26 @@ of the Phillips curve is positive", calling them "minimal priors" that "facilita
 convergence of the numerical optimization". The sign of the IS slope is therefore not a result
 in the reference implementation.
 
+**Nor is it a result here, and the two sign constraints do opposite amounts of work.** Both
+are hard truncations (`set_model_coefficients` routes any prior carrying a bound to a
+`TruncatedNormal`), so the inequality matches HLW. What differs is that ours also carry a
+location.
+
+| | prior | prior median | posterior median |
+|---|---|---|---|
+| `a_r` | TruncNormal(−0.15, 0.08, ≤ 0) | −0.153 | −0.042 [−0.098, −0.008] |
+| `b_y` | TruncNormal(0.10, 0.05, ≥ 0.02) | 0.103 | 0.277 [0.221, 0.336] |
+
+`b_y` is inert: it sits nearly three times its prior median and more than ten times its floor,
+with zero draws below 0.025. Drop the constraint and nothing moves. `a_r` binds: 7.4% of draws
+lie within 0.01 of the zero bound, and the posterior median sits in the top 6.8% of its own
+prior's mass. The likelihood is pulling `a_r` toward zero and the truncation is what stops it
+crossing. Since `a_r` is the loading of r* on the only observable that sees it, the one
+constraint that carries the answer is the one that binds, and it was imposed rather than
+found. The prior is also informative in a direction the data reject: centring at −0.15 with an
+sd of 0.08 asserts a magnitude roughly four times what comes back, so part of what remains of
+the negative slope is prior. `--canonical` replaces both with sign-only forms.
+
 With the coefficient on trend growth fixed at one and `lambda_z` small, r* is trend growth
 plus a driftless random walk of imposed amplitude. That is the specification behaving as
 written, and it is what `corr(r*, g)` = 0.998 records.
@@ -192,6 +212,131 @@ applied to one variance. `sigma_z_sweep.py` and `sigma_z_prior_sweep.py` are the
 counterpart of the median-unbiased step: rather than taking a ratio from a break test and
 conditioning on it, they vary the prior and report how much of the answer follows it. Most of
 it does. LW2001's own sensitivity check reports the same fact by a different route.
+
+### The full inventory, against Resolution A
+
+Which of the papers' restrictions Resolution A carries. The exact form of HLW's inflation lag
+polynomial and import-price term is **ASSUMPTION, carried from memory and not checked against
+the paper**; everything in the first column is verified against this repo's own code.
+
+| Restriction | Resolution A |
+|---|---|
+| c = 1 on trend growth, r\* = g + z | **In** (`equations/z_star.py`) |
+| a_r < 0 | **In**, as a truncation. HLW use a strict −0.0025 bound (UNVERIFIED) |
+| b_y > 0 | **In**, floor at 0.02 |
+| Output-gap stationarity, a_y1 + a_y2 < 1 | **In**, but implied by the priors rather than enforced: a_y1 is truncated to (0, 1) and a_y2 to ≤ 0 |
+| Vertical long-run Phillips curve | **In, and harder than HLW's.** The coefficient on `pi_exp` is literally 1, not a sum-to-one restriction on estimated lag weights |
+| y\*\_t = y\*\_{t−1} + g\_{t−1} + ε | **In** (annualised, so g/4) |
+| `lambda_z` = a_r·σ_z/σ_ygap | **Out entirely.** `sigma_z` is free under HalfNormal(0.10) |
+| `lambda_g` = σ_g/σ_ystar | **Off by default,** and HLW's form of it is untested: the sweep that dismissed it held σ_y\* imposed, so it constrained both variances rather than their ratio |
+| Stock-Watson median-unbiased estimation | **Out entirely.** No exponential Wald test, no lookup tables |
+| σ_y\* estimated in stage 3 | **Out.** Imposed at 0.078, which is a substitute for λ_g rather than an HLW device |
+| IS rate gap averaged over t−1, t−2 | **Out by default.** A single t−6 lag; `--rate-lag 0` restores HLW's shape |
+| Phillips lag polynomial on past inflation | **Out.** Annual trimmed mean on a model expectations series |
+| Import-price and oil relative-price terms | **Out** |
+| π^e as a 4-quarter MA of past inflation | **Out.** The same model expectations series serves the Phillips anchor and the IS real rate, where HLW use different objects in those two places |
+| Lockdown exclusion | **Added here.** Not an HLW device |
+| Pre-sample OLS state initialisation | **Out.** Priors instead, and with no anchor on g the `N(3.5, 1.5)` init carries real weight at the sample start |
+
+`--canonical` moves the four rows it can reach without restructuring: HLW's averaged rate gap,
+sign-only priors, `sigma_ystar` estimated, and the exclusion off. The next subsection is what
+happened when it was run.
+
+### The canonical bundle does not sample, and that is the finding
+
+`--canonical` on Resolution A returns R-hat 1.290, ESS 13, MCSE/sd 0.296, 2,939 divergences in
+50,000 draws, tree depth at maximum in 93.5% of transitions and BFMI 0.01. **No number from
+that run is quotable.** What is readable is the direction of travel before the sampler gave
+up: `sigma_ystar` reached 0.845 against a prior median of 0.081, and potential's quarterly sd
+reached 0.992 against GDP's own 0.972. That is the unconstrained-trend pile-up described in
+`equations/potential.py`, arrived at from the other side.
+
+The reason matters more than the failure. **Canonical HLW never has `sigma_ystar` free and
+`sigma_g` free at the same time: `lambda_g` is what ties them.** Freeing the first without
+imposing the ratio builds a specification neither the papers nor this repo estimates, and the
+funnel between the two variances is the Bayesian face of exactly what LW2001 report as a
+corner solution at zero. They get a pile-up, this gets a funnel, and in both cases the data
+cannot pin both variances.
+
+So `lambda_g` is not a refinement of canonical HLW that can be added later. It is what makes
+canonical HLW estimable, and a canonical run has to carry it. Two routes remain: hoist the
+scalar priors out of the equation functions so `sigma_g = 4·lambda_g·sigma_ystar` can be
+formed with `sigma_ystar` free, which is the genuinely canonical object; or accept
+`--canonical --sigma-ystar 0.078 --lambda-g 0.039`, which ties the two by LW2001's ratio but
+fixes rather than estimates σ_y\*, and which would at least isolate what the rest of the
+bundle does. `lambda_z` needs the same hoist and more, because it needs `sigma_IS` and `a_r`,
+which are built in an observation equation that runs after z.
+
+## Estimated their way, by Kalman filter: the same conclusion, harder
+
+Everything above is MCMC. The model was also estimated the way the papers estimate it, with
+the states integrated out by a Kalman filter and the parameters by constrained maximum
+likelihood. That package is separate and disposable; what follows is the part that is about
+CANONICAL HLW rather than about either implementation, and so belongs here.
+
+**The state space is validated by simulation recovery**, so none of this is an implementation
+fault. And the validation carries its own finding: on 4,000 quarters generated from the model
+itself, the slopes recover to a hundredth while `sigma_ystar` comes back 0.24 against a true
+0.30 and `sigma_z` 0.063 against 0.10, both biased DOWN. **LW2001's pile-up reproduces on
+synthetic data thirty times the length of the real sample.** It is not a fact about Australia.
+
+**`lambda_g` = 0.0447** from HLW's own stage 1 break test, against LW2001's published 0.039
+and 0.0497 from a Bayesian analogue of the same idea. Three routes agree.
+
+**The fitted model is degenerate, and it is the global optimum.** Four starting points,
+including one seeded at the MCMC posterior, reach the same answer: `a_r` on its lower bound at
+−0.0025, `sigma_ystar` = 0.963 giving potential a quarterly sd of 0.975 against GDP's 0.972,
+`a_y1` = 1.49 and `b_y` = 1.45. **The MCMC priors were not regularising this model, they were
+the only thing keeping it out of that corner.**
+
+### Imposing sigma_ystar = 0.078 costs 139.7 log-likelihood points
+
+A profile over `sigma_ystar` with everything else re-optimised:
+
+| `sigma_ystar` | 0.078 | 0.25 | 0.40 | 0.60 | 0.80 | 0.963 |
+|---|---|---|---|---|---|---|
+| log-likelihood | −343.7 | −318.9 | −299.7 | −244.7 | −209.1 | −204.0 |
+| cost vs optimum | **139.7** | 115.0 | 95.7 | 40.7 | 5.1 | 0 |
+
+A likelihood ratio statistic near 279 on one restriction. The prior-versus-posterior charts
+could only show the two were disjoint. **This says what the restriction costs, and the data
+reject it overwhelmingly.** `a_r` sits on its bound at every point of the profile, so the dead
+rate channel and the pile-up are independent failures.
+
+### lambda_z divides by a_r, and a_r is on its bound
+
+HLW set `sigma_z = lambda_z x sigma_IS / |a_r|`, which presumes an identified IS slope. Theirs
+is "reasonably large and precisely estimated"; ours is 0.0025, so the expression returns
+`sigma_z` = 3.90 and an r\* running from −7.3 to +22.0. **It also fits worse**: −207.17 against
+−203.98 for a small imposed `sigma_z`. Their parameterisation is not merely unusable here, it
+is beaten on their own criterion.
+
+### z's shape is identified and its scale is not
+
+Imposing `sigma_z` directly, a twenty-fold change in z's amplitude costs **0.06** log-likelihood
+points while the path keeps a correlation above 0.996. The curve is the right shape and
+arbitrarily stretched on the y axis. `a_r` stays pinned throughout, so this is not a trade-off
+that conserves `a_r·z`: it is that `a_r` is small enough that z barely enters the likelihood.
+
+### Whatever you observe z with, r\* becomes it
+
+The AOFM 5y5y risk-neutral forward was added as a third observable loading on r\*, then
+removed. With the bias free, pinned at zero, and pinned at −0.109, the log-likelihood is
+identical to three decimals and **corr(r\*, the market forward) is 1.000 in all three**. At a
+pinned bias of zero, r\* reproduces the market series to two decimals. The forward's
+observation sd came back at 0.063, estimated rather than imposed: the likelihood CHOSE to
+track it almost exactly.
+
+This is stronger than "z is unidentified". **With `a_r` near zero the model has no view about
+r\* that it can defend against any observable, so whatever equation is attached to z, r\*
+becomes that equation's right-hand side.** It is the `rstar_tvpvar` failure in another costume,
+where r\* came back as the real cash rate at corr 0.95.
+
+### What survives
+
+**g agrees across estimators**: 3.75 to 2.21 by Kalman and maximum likelihood, 3.79 to 2.20 by
+MCMC. The trend and cycle decomposition is robust to how the model is estimated. It is
+specifically r\* that fails, and it fails the same way whichever estimator is pointed at it.
 
 ## One of three routes, all flawed
 
@@ -528,6 +673,30 @@ Note that **λ_g moves r\* by a full percentage point** (3.25 against 2.25). A v
 nobody can measure decides the headline number, before any of the r* priors Resolutions C
 through H argue over.
 
+**THE SWEEP DOES NOT TEST HLW'S DEVICE, AND THE CONCLUSION ABOVE IS NARROWER THAN IT READS.**
+`lambda_g_sweep.py` calls `build_model` with `lambda_g` and nothing else, so `sigma_ystar`
+stays at its imposed default of 0.078 in every column. Each run therefore has **both**
+variances nailed down, σ_y\* at 0.078 and σ_g at 4·λ_g·0.078. HLW impose the ratio and
+estimate the level. Those are different specifications, and the doubly-constrained one is the
+harder of the two on the model: it asks the data to accept a trend whose level and whose
+drift are both dictated.
+
+So "λ_g at HLW's own US value is rejected by Australian data" is established for a
+specification HLW do not estimate. It may well hold for the one they do. **It has not been
+tested here**, and the reason is mechanical rather than considered: `_sigma_g_from_lambda`
+raised whenever `sigma_ystar` was free, because the state equations built trend growth before
+potential and a ratio to a parameter that does not yet exist cannot be formed. Hoisting the
+scalar priors ahead of the state equations removes that obstacle, and re-running this sweep
+with σ_y\* free is the outstanding test.
+
+That matters beyond canonicity, because **the ratio is the only device that disciplines both
+variances without nailing either**, and the default still needs one. Imposing σ_y\* alone
+repaired potential and moved the variance into g: `sigma_g` comes back at 0.124 against a
+prior scale of 0.04, and g carries a pandemic-shaped trough, 1.26 at 2020Q1 recovering 0.94pp
+to 2.20. Since r\* = g + z at corr 0.998, r\* inherits that trough whole. Freeing σ_y\*
+instead does not sample at all. The ratio with a free level is the one configuration nobody
+has run.
+
 ## 3. The empirical confirmation that r* is not identified
 
 The counting argument at the top settles this before any sampling. What follows is the
@@ -613,7 +782,8 @@ All resolutions share the same potential output, Phillips curve, and (where wire
 2. **Phillips curve** (annual trimmed mean, anchor-augmented):
    `π_4_t = π_exp_t + b_y · y_gap_{t-1} + ε_π`
 3. **Soft anchor on g** (C, D, E, F, G, H only):
-   `linear_trend_t = g_t + ε_trend`,  `ε_trend ~ N(0, 2.0)` (σ fixed; a free σ collapses to ~0.02 and turns the soft anchor into a hard constraint).
+   `anchor_t = g_t + ε_trend`,  `ε_trend ~ N(0, 2.0)` (σ fixed; a free σ collapses to ~0.02 and turns the soft anchor into a hard constraint).
+   `--g-anchor` picks the series. `linear` (default) is a regression of year-on-year growth on time across the sample: unmoved by a single shock, but monotone by construction and fitted on quarters later than each date it describes. `cagr40` is the 40-quarter trailing compound annual growth rate, computed on the whole GDP series so the window is already full at the sample start: one-sided, and free to flatten out. **The choice changes nothing** (see Blind alleys), because at σ = 2.0 the anchor is close to inert. A non-default anchor writes to its own prefix and chart directory.
 
 The differences between resolutions are entirely in the **r\* identity** and in whether the open-economy IS-curve regressors are wired in.
 
@@ -726,6 +896,67 @@ r* latest 2.20%.
 era-specific signal about which anchor matters when. A framing in which r* "has shifted upward"
 recently, which would need α_t drifting toward 0, is not supported inside this model.
 
+### S: staged estimation (not an r\* identity)
+
+`--resolution S`, or `uv run python -m src.models.rstar_hlw.stepwise`.
+
+**S is not one model.** It is three, in serial, each holding still whatever the next one
+measures and handing its answer forward as an imposed setting. The r\* identity is A's,
+`r* = g + z`, unchanged. What differs is the estimator, and the letter is out of sequence to
+say so.
+
+| stage | held still | estimated | locked and carried |
+|---|---|---|---|
+| 1 | g, z, and the rate gap (`a_r` = 0) | `sigma_ystar` | σ_y\* |
+| 2 | z | `sigma_g`, against a fixed σ_y\* | λ_g = σ_g / 4σ_y\* |
+| 3 | nothing | everything else | reports the result |
+
+"Held still" means the state does not MOVE; its level is still estimated. A zero-scale random
+walk is not a distribution PyMC will build, so `equations/states.py` returns a constant path
+at a free level instead.
+
+**Why stage it.** No single estimation can pin `sigma_ystar` and `sigma_g` together. Free both
+and the posterior funnels (`--canonical`: ESS 13, 2,939 divergences). Impose σ_y\* alone and
+the variance reappears in g. Staging never asks the data to pin two at once, which is the
+whole content of the papers' median-unbiased procedure.
+
+**AN ANALOGUE, NOT A REPLICATION.** The papers stage because maximum likelihood returns
+exactly zero for these variances, so they recover each ratio from an Andrews-Ploberger break
+test through Stock-Watson's tables. MCMC does not pile up at zero, so each stage here reads
+its quantity off a posterior instead. The sequencing is HLW's; the estimator is not.
+
+**Result.** σ_y\* = 0.6243 against the 0.078 the default imposes, and λ_g = 0.0247, below
+LW2001's 0.039. Stage 3 fixes what the default gets wrong about g and breaks what it gets
+right about potential:
+
+| | S (stage 3) | A (default) |
+|---|---|---|
+| g range over the sample | 1.11 | 2.53 |
+| g at 2019Q4 | 2.39 | **1.28** |
+| potential, sd of quarterly change | **0.615** | 0.187 |
+| gap, level sd | 1.92 | 2.01 |
+| gap 2026Q2 | 1.47 | 2.63 |
+| `b_y` | 0.453 | 0.277 |
+| `a_r` | −0.042 | −0.042 |
+
+g loses the pandemic trough that the default carries and that r\* inherits whole. Potential
+then moves at 63% of GDP's quarterly volatility, which is the pile-up. **The staging does not
+rescue the decomposition; it relocates the defect and shows that only the imposed 0.078 was
+holding it together.** The cycle survives better than that suggests: the gap's level sd barely
+changes and corr(A gap, S gap) is 0.84, though only 0.70 over 1998-2019. `a_r` does not move
+at all, so none of this touches the rate channel.
+
+**TWO REASONS NOT TO QUOTE IT YET.**
+
+Sampling fails on every stage: 1,950, 113 and 51 divergences against a limit of 15, worst in
+the stage that sets the σ_y\* lock. Stage 1's funnel is between `sigma_ystar` and
+`potential_innovations` and is a centred-parameterisation problem, so it is probably fixable.
+
+And **S's bands are not comparable with A through H's.** Stage 3's intervals are conditional
+on σ_y\* = 0.6243 and λ_g = 0.0247 being exactly right, when both were estimated with error
+and estimated badly. Serial conditioning understates uncertainty by an amount nothing here
+measures. HLW carry the same defect and say so.
+
 ## Cross-resolution summary
 
 | | A | B | C | D | E | F | G | H |
@@ -744,6 +975,11 @@ are not comparable with this row. The picture the table paints is unchanged: σ_
 `a_r` are flat across all eight, and r* tracks whichever observable the structural identity
 admits: g (A, D), the bond yield (B), or the blend (C, E, F, G, H). The IS curve does not
 adjudicate.
+
+**S is deliberately absent from this table.** It is a current-settings run, so it would not
+belong in a pre-repair comparison whatever else were true, and its bands are conditional on
+two locks treated as known, so its uncertainty is not on the same footing as these columns
+even once the settings match. Its own section above carries its numbers against the default.
 
 ---
 
@@ -813,7 +1049,7 @@ a joint model or a Monte Carlo loop over r* draws; not implemented.
 
 # undoing the 2026-09-12 repair
 ./run-rstar-hlw.sh -v --sigma-ystar free --exclude-window none   # pre-repair behaviour
-./run-rstar-hlw.sh -v --lambda-g 0.053                           # HLW's US ratio (rejected)
+./run-rstar-hlw.sh -v --lambda-g 0.053                           # HLW's US ratio (rejected, but only with sigma_ystar imposed too)
 ./run-rstar-hlw.sh -v --rate-lag 0                               # HLW's averaged t-1, t-2 gap
 
 # the two sweeps that decided the defaults
@@ -841,6 +1077,8 @@ Each of these was built and abandoned. One line is the right amount of space.
 | Non-centring `trend_growth` | 5,976 divergences. y* already cumulates g, so the doubly-cumulated structure breaks NUTS gradients |
 | Loose σ_g without an anchor on g | Divergences blow up, ESS collapses: σ_g and σ_y* funnel |
 | HMA(13) of YoY growth as the g anchor, free σ | σ collapsed to 0.022; the COVID dip bled into g. Free measurement σ over-fits when it is the only constraint |
+| 40q trailing CAGR as the g anchor, fixed σ = 2.0 | **The anchor series is not a lever.** The two anchors differ by up to 1.05pp and average 0.34pp apart at the endpoint; posterior g differs by at most 0.15pp, a pass-through of 0.124. Resolution C returns the same answer either way (persistence 0.946 vs 0.944, `a_r` −0.040 vs −0.041, `b_y` 0.281 vs 0.276), and the COVID-shaped dip in g survives both. The σ is the lever, not the series, and 2.0 is the opposite extreme to the HMA's collapsed 0.022 |
+| Prescribing g as data (`given_g_test.py`) | **Nothing survives.** `ystar`'s g collapses persistence 0.945 → 0.655 and nearly closes the gap (2.63 → 0.47), which would overturn the claim that slow gap decay is structural. It does not replicate: on the 40q CAGR, a g nothing smoothed deliberately, persistence goes the other way to 0.966 and the 2026Q2 gap to −2.98 with unemployment at 4.35%. A trailing window dates a trend change half its length late, so cumulating it overshoots when growth slows. A flat 2.0 fails outright, +23.5: y\*'s level is the cumulated sum of g, so a wrong g destroys the decomposition rather than reparameterising it. r\* is untouched in all four, zero quarters of positive rate gap since 2022 |
 | Regime-switching α (GFC split; then 2011Q3–2021Q4) | α posteriors overlap wherever the break is placed. Too little identifying power to support time-variation |
 | Time-varying k, slope-based on the term spread | 10,655 divergences, ESS 17, r* path barely moved. Flexibility without identifying information |
 | Intercept c replacing, then alongside, k | Level shift without releasing g; then c and (1−α)·k near-collinear |
@@ -878,7 +1116,7 @@ list because the pattern matters: twice the conclusion outlived the reason given
 
 ```
 src/models/rstar_hlw/
-├── observations.py           # Data loading (incl. indexed_10y, linear-trend g anchor, SOE regressors)
+├── observations.py           # Data loading (incl. indexed_10y, the g anchors, SOE regressors)
 ├── equations/
 │   ├── trend_growth.py       # g state equation (centred RW) + soft observation on g; sigma_g imposable via lambda_g
 │   ├── potential.py          # y* state equation; sigma_ystar IMPOSED at 0.078 by default
@@ -893,7 +1131,13 @@ src/models/rstar_hlw/
 ├── estimate.py               # Model assembly, NUTS sampling, save/load; resolution dispatch
 ├── results.py                # RStarResults dataclass
 ├── analyse.py                # Fan charts: r*, output gap, g, decomposition, alpha posterior
-├── run.py                    # CLI: --resolution, --rate-lag, --sigma-ystar, --lambda-g, --exclude-window, --seed
+├── run.py                    # CLI: --resolution (A-H, S), --rate-lag, --sigma-ystar,
+│                             #      --lambda-g, --exclude-window, --g-anchor,
+│                             #      --canonical, --seed
+├── stepwise.py               # Resolution S: three models in serial, each locking a variance
+├── equations/states.py       # a random walk, or a constant at a free level when sigma is 0
+├── given_rstar_test.py       # r* supplied as data: does the gap close? (moves it 0.18pp)
+├── given_g_test.py           # g supplied as data, against a like-for-like baseline
 ├── lambda_g_sweep.py         # sigma_g/sigma_ystar ratio sweep; why lambda_g defaults off
 ├── sigma_z_prior_sweep.py    # sigma_z prior-scale sweep; the r* non-identification test
 ├── sigma_z_sweep.py          # fixed-sigma_z sweep on Resolution E (pre-repair)

@@ -14,8 +14,14 @@ from src.models.rstar_hlw.analyse import run_analyse
 from src.models.rstar_hlw.estimate import (
     DEFAULT_EXCLUDE_WINDOW,
     DEFAULT_LAMBDA_G,
+    DEFAULT_RATE_LAG,
+    DEFAULT_SIGMA_YSTAR_FIXED,
     run_estimate,
 )
+from src.models.rstar_hlw.observations import DEFAULT_G_ANCHOR, GAnchor
+from src.models.rstar_hlw.results import DEFAULT_CHART_BASE
+from src.models.rstar_hlw.stepwise import RESOLUTION as STEPWISE_RESOLUTION
+from src.models.rstar_hlw.stepwise import main as run_stepwise
 
 # Estimation defaults live in `estimate.py`. This sentinel means "whatever that
 # module defaults to", which None cannot say: None is a real setting here,
@@ -26,6 +32,8 @@ USE_ESTIMATE_DEFAULT: Final = "default"
 # or the sentinel above for "whatever estimate.py defaults to".
 ExcludeWindow = tuple[str, str] | Literal["default"] | None
 LambdaG = float | Literal["default"] | None
+RateLag = int | Literal["default"] | None
+SigmaYstar = float | Literal["default"] | None
 
 # --exclude-window is START:END, so two pieces once split.
 WINDOW_PARTS = 2
@@ -39,48 +47,93 @@ def main(
     start: str = "1993Q1",
     end: str | None = None,
     resolution: str = "A",
-    rate_lag: int | None = 6,
+    rate_lag: RateLag = USE_ESTIMATE_DEFAULT,
     sigma_ystar_prior: float = 0.12,
-    sigma_ystar_fixed: float | None = 0.078,
+    sigma_ystar_fixed: SigmaYstar = USE_ESTIMATE_DEFAULT,
     lambda_g: LambdaG = USE_ESTIMATE_DEFAULT,
     exclude_window: ExcludeWindow = USE_ESTIMATE_DEFAULT,
+    g_anchor: GAnchor = DEFAULT_G_ANCHOR,
+    canonical: bool = False,
     seed: int | None = None,
 ) -> None:
     """Run estimation and/or analysis stages."""
-    prefix = f"rstar_hlw_{resolution}"
+    if resolution == STEPWISE_RESOLUTION:
+        # S is not one model, so it cannot go through `build_model`: it is
+        # three models in serial, each locking a variance for the next. It
+        # runs its own pipeline and writes its own prefixes and charts.
+        if not estimate:
+            raise ValueError(
+                f"resolution {STEPWISE_RESOLUTION} estimates three models in "
+                f"sequence, each conditioned on the one before, so there is "
+                f"nothing to analyse without re-estimating. Drop "
+                f"--skip-estimate",
+            )
+        run_stepwise()
+        return
+
+    # Anything that is not the production specification gets its own prefix
+    # and chart directory, so one variant never overwrites another's trace or
+    # charts.
+    parts = [
+        name for name, on in
+        (("canonical", canonical), (g_anchor, g_anchor != DEFAULT_G_ANCHOR))
+        if on
+    ]
+    prefix = "_".join(["rstar_hlw", resolution, *parts])
+    chart_dir = (
+        None if not parts
+        else DEFAULT_CHART_BASE / "-".join(["rstar-hlw", resolution, *parts])
+    )
+
+    # `--canonical` supplies a value only where the CLI left the sentinel, so
+    # an explicit flag always beats the bundle. Every canonical value here is
+    # None, because each is a device this repo added that LW/HLW do not have:
+    # they average the rate gap over t-1 and t-2 rather than take a single
+    # lag, they estimate potential's innovation sd rather than impose one, and
+    # they have no lockdown exclusion. isinstance rather than a comparison
+    # with the sentinel, so the types narrow here as well as at runtime.
+    lag: int | None = (
+        (None if canonical else DEFAULT_RATE_LAG)
+        if isinstance(rate_lag, str) else rate_lag
+    )
+    sigma_ystar: float | None = (
+        (None if canonical else DEFAULT_SIGMA_YSTAR_FIXED)
+        if isinstance(sigma_ystar_fixed, str) else sigma_ystar_fixed
+    )
+    window: tuple[str, str] | None = (
+        (None if canonical else DEFAULT_EXCLUDE_WINDOW)
+        if isinstance(exclude_window, str) else exclude_window
+    )
+    ratio: float | None = (
+        DEFAULT_LAMBDA_G if isinstance(lambda_g, str) else lambda_g
+    )
 
     if estimate:
-        # isinstance rather than a comparison with the sentinel, so the types
-        # narrow here as well as at runtime.
-        window: tuple[str, str] | None = (
-            DEFAULT_EXCLUDE_WINDOW if isinstance(exclude_window, str) else exclude_window
-        )
-        ratio: float | None = (
-            DEFAULT_LAMBDA_G if isinstance(lambda_g, str) else lambda_g
-        )
-
-        lag_desc = "t-1,t-2 averaged" if rate_lag is None else f"t-{rate_lag}"
-        window_desc = (
-            "none" if window is None else f"{window[0]}-{window[1]}"
-        )
+        lag_desc = "t-1,t-2 averaged" if lag is None else f"t-{lag}"
+        window_desc = "none" if window is None else f"{window[0]}-{window[1]}"
         sigma_desc = (
-            f"HalfNormal({sigma_ystar_prior})" if sigma_ystar_fixed is None
-            else f"{sigma_ystar_fixed} imposed"
+            f"HalfNormal({sigma_ystar_prior})" if sigma_ystar is None
+            else f"{sigma_ystar} imposed"
         )
         ratio_desc = "free sigma_g" if ratio is None else f"lambda_g {ratio}"
+        priors_desc = "HLW sign-only" if canonical else "repo informative"
         print("=" * 60)
         print(f"ESTIMATE [HLW r-star, Resolution {resolution}, start={start}, "
               f"rate lag {lag_desc}]")
         print(f"         [sigma_ystar {sigma_desc}, {ratio_desc}, "
-              f"excluded {window_desc}]")
+              f"excluded {window_desc}, g-anchor {g_anchor}]")
+        print(f"         [a_r/b_y priors {priors_desc}"
+              f"{', CANONICAL' if canonical else ''}]")
         print("=" * 60)
         run_estimate(
             start=start, end=end, verbose=verbose,
-            prefix=prefix, resolution=resolution, rate_lag=rate_lag,
+            prefix=prefix, resolution=resolution, rate_lag=lag,
             sigma_ystar_prior=sigma_ystar_prior,
-            sigma_ystar_fixed=sigma_ystar_fixed,
+            sigma_ystar_fixed=sigma_ystar,
             lambda_g=ratio,
             exclude_window=window,
+            sign_prior_only=canonical,
+            g_anchor=g_anchor,
             seed=seed,
         )
         print()
@@ -89,7 +142,9 @@ def main(
         print("=" * 60)
         print(f"ANALYSE [HLW r-star, Resolution {resolution}]")
         print("=" * 60)
-        run_analyse(prefix=prefix, resolution=resolution, verbose=verbose)
+        run_analyse(
+            prefix=prefix, chart_dir=chart_dir, resolution=resolution, verbose=verbose,
+        )
         print()
 
 
@@ -127,12 +182,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--rate-lag",
-        type=int,
-        default=6,
+        type=str,
+        default=USE_ESTIMATE_DEFAULT,
         help=(
             "single lag on the IS curve's rate gap (default 6, matching the is_curve "
-            "bench and rstar_invert; pass 0 for HLW's own averaged t-1, t-2 shape). "
-            "A longer lag carries less of the RBA's reaction to the economy"
+            "bench and rstar_invert; pass 0 for HLW's own averaged t-1, t-2 shape, "
+            "which is what --canonical selects). A longer lag carries less of the "
+            "RBA's reaction to the economy"
         ),
     )
     parser.add_argument(
@@ -149,7 +205,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sigma-ystar",
         type=str,
-        default="0.078",
+        default=USE_ESTIMATE_DEFAULT,
         help=(
             "potential output's innovation sd, IMPOSED (default 0.078, matching ystar's "
             "ratio_ystar x sigma_c). This is HLW's own lambda_g device. Pass 'free' to "
@@ -185,7 +241,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--resolution",
         type=str,
-        choices=["A", "B", "C", "D", "E", "F", "G", "H"],
+        choices=["A", "B", "C", "D", "E", "F", "G", "H", "S"],
         default="A",
         help=(
             "r* identity: A (default; canonical HLW, r* = g + z), "
@@ -195,7 +251,40 @@ if __name__ == "__main__":
             "E (blend + AR(1) z: r* = alpha*g + (1-alpha)*(indexed-k) + z), "
             "F (E's r* identity + open-economy IS curve), "
             "G (C with hierarchical Beta(a, b) on alpha; a, b ~ Uniform(0.25, 2)), "
-            "H (blend with time-varying alpha_t via logit-RW)"
+            "H (blend with time-varying alpha_t via logit-RW), "
+            "S (NOT an identity: A's r* estimated in three serial stages after "
+            "HLW, each locking a variance for the next. Its bands treat those "
+            "locks as known, so they are not comparable with A-H's)"
+        ),
+    )
+    parser.add_argument(
+        "--g-anchor",
+        type=str,
+        choices=["linear", "cagr40"],
+        default=DEFAULT_G_ANCHOR,
+        help=(
+            "soft anchor on trend growth, for the resolutions that carry one "
+            "(C through H; A and B drop it). 'linear' (default) regresses "
+            "year-on-year growth on time across the sample: unmoved by a single "
+            "shock, but monotone by construction and fitted on quarters later "
+            "than each date it describes. 'cagr40' is the 40-quarter trailing "
+            "compound annual growth rate: one-sided and free to flatten out, at "
+            "the cost of dating a change in trend about five years late. A "
+            "non-default anchor writes to its own prefix and chart directory"
+        ),
+    )
+    parser.add_argument(
+        "--canonical",
+        action="store_true",
+        help=(
+            "run the LW/HLW reference specification rather than this repo's repaired "
+            "one: HLW's averaged t-1, t-2 rate gap, sign-only priors on a_r and b_y "
+            "(the papers impose the sign and no magnitude), sigma_ystar estimated, and "
+            "no lockdown exclusion. Each of those is a device this repo added, so the "
+            "canonical run is expected to decompose WORSE, and it exists to show by "
+            "how much. Writes to its own prefix and chart directory. Any explicit flag "
+            "beats this bundle. Does NOT yet include HLW's two Stock-Watson ratios, "
+            "lambda_g and lambda_z"
         ),
     )
     parser.add_argument(
@@ -212,6 +301,19 @@ if __name__ == "__main__":
         cli_lambda_g = None
     else:
         cli_lambda_g = float(args.lambda_g)
+
+    if args.rate_lag == USE_ESTIMATE_DEFAULT:
+        cli_rate_lag: RateLag = USE_ESTIMATE_DEFAULT
+    else:
+        # 0 means HLW's own averaged (t-1, t-2) shape rather than a single lag.
+        cli_rate_lag = None if int(args.rate_lag) == 0 else int(args.rate_lag)
+
+    if args.sigma_ystar == USE_ESTIMATE_DEFAULT:
+        cli_sigma_ystar: SigmaYstar = USE_ESTIMATE_DEFAULT
+    elif args.sigma_ystar.lower() == "free":
+        cli_sigma_ystar = None
+    else:
+        cli_sigma_ystar = float(args.sigma_ystar)
 
     if args.exclude_window == USE_ESTIMATE_DEFAULT:
         cli_window: ExcludeWindow = USE_ESTIMATE_DEFAULT
@@ -232,13 +334,12 @@ if __name__ == "__main__":
         start=args.start,
         end=args.end,
         resolution=args.resolution,
-        # 0 means HLW's own averaged (t-1, t-2) shape rather than a single lag.
-        rate_lag=None if args.rate_lag == 0 else args.rate_lag,
+        rate_lag=cli_rate_lag,
         sigma_ystar_prior=args.sigma_ystar_prior,
-        sigma_ystar_fixed=(
-            None if args.sigma_ystar.lower() == "free" else float(args.sigma_ystar)
-        ),
+        sigma_ystar_fixed=cli_sigma_ystar,
         lambda_g=cli_lambda_g,
         exclude_window=cli_window,
+        g_anchor=args.g_anchor,
+        canonical=args.canonical,
         seed=args.seed,
     )

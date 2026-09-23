@@ -59,6 +59,23 @@ _OPTIONAL_REGRESSORS: tuple[tuple[str, str, dict[str, float]], ...] = (
 )
 
 
+# The two priors on the IS slope, side by side so the difference between
+# them is visible in one place.
+#
+# HLW2017 impose only that a_r is negative, calling it a "minimal prior" that
+# facilitates convergence of the numerical optimisation. This repo's default
+# also asserts a magnitude, centring the slope at -0.15 with an sd of 0.08,
+# against a posterior that comes back near -0.04. That is an informative
+# prior pulling in a direction the data do not support, so a run claiming to
+# be canonical must not carry it.
+#
+# The sign-only sd of 0.5 is not an estimate of anything. It is wide enough
+# that the truncated normal is close to flat across the range the slope could
+# plausibly occupy, which is what "sign only" has to mean in a prior.
+_A_R_PRIOR = {"mu": -0.15, "sigma": 0.08, "upper": 0.0}
+_A_R_PRIOR_SIGN_ONLY = {"mu": 0.0, "sigma": 0.5, "upper": 0.0}
+
+
 def is_curve_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
@@ -67,6 +84,7 @@ def is_curve_equation(
     constant: dict[str, Any] | None = None,
     rate_lag: int | None = None,
     keep: np.ndarray | None = None,
+    sign_prior_only: bool = False,
 ) -> str:
     """HLW (2017) IS curve in level form, with fiscal impulse.
 
@@ -113,7 +131,7 @@ def is_curve_equation(
         settings = {
             "a_y1": {"mu": 0.90, "sigma": 0.10, "lower": 0.0, "upper": 1.0},
             "a_y2": {"mu": -0.10, "sigma": 0.10, "upper": 0.0},
-            "a_r": {"mu": -0.15, "sigma": 0.08, "upper": 0.0},
+            "a_r": dict(_A_R_PRIOR_SIGN_ONLY if sign_prior_only else _A_R_PRIOR),
             "sigma_IS": {"sigma": 0.4},
         }
         present = [entry for entry in _OPTIONAL_REGRESSORS if entry[0] in obs]

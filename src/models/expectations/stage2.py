@@ -16,6 +16,7 @@ import arviz as az
 import mgplot as mg
 import pandas as pd
 
+from src.data.cash_rate import get_cash_rate_monthly
 from src.data.inflation import get_trimmed_mean_annual
 from src.data.rba_loader import get_inflation_expectations
 from src.models.common.diagnostics import check_model_diagnostics
@@ -229,6 +230,52 @@ def _plot_model(
     )
 
 
+def plot_real_cash_rate(results: ExpectationsResults) -> None:
+    """Chart the cash rate, and the cash rate less two measures of inflation.
+
+    The argument over whether policy is tight is largely an argument over which
+    inflation it should be deflated by: what inflation IS (trimmed mean) or what
+    people EXPECT (this model's median). The two real rates part company
+    whenever inflation runs away from expectations.
+
+    Monthly: the cash rate and this model are monthly; trimmed mean is
+    quarterly and held across its quarter's three months. All three are drawn
+    as steps, since the cash rate moves only at decisions.
+    """
+    expectations = results.expectations_posterior().median(axis=1)
+    months = expectations.index
+    if not isinstance(months, pd.PeriodIndex):
+        return
+    months = months[months <= pd.Period(pd.Timestamp.today(), freq="M") - 1]
+
+    cash = get_cash_rate_monthly().data.astype(float)
+    if not isinstance(cash.index, pd.PeriodIndex):
+        cash.index = pd.PeriodIndex(cash.index, freq="M")
+    cash = cash.reindex(months).rename("Cash rate")
+    trimmed = get_trimmed_mean_annual().data.astype(float)
+    if not isinstance(trimmed.index, pd.PeriodIndex):
+        trimmed.index = pd.PeriodIndex(trimmed.index, freq="Q")
+    trimmed_held = pd.Series(trimmed.reindex(months.asfreq("Q")).to_numpy(), index=months)
+
+    real = pd.DataFrame({
+        "Cash rate less trimmed mean inflation": cash - trimmed_held,
+        "Cash rate less inflation expectations": cash - expectations.reindex(months),
+    })
+    ax = mg.line_plot(cash, color="darkgrey", style="--", width=1.5, drawstyle="steps-post",
+                      annotate=True, rounding=2)
+    mg.line_plot(real, ax=ax, width=2.0, drawstyle="steps-post", annotate=True, rounding=2)
+    mg.finalise_plot(
+        ax,
+        title="The cash rate, nominal and real",
+        ylabel="Per cent",
+        y0=True,
+        legend={"loc": "best", "fontsize": "x-small"},
+        lfooter="Australia. Monthly; trimmed mean is quarterly, held across its months. ",
+        rfooter="RBA F1; ABS 6401.0; expectations model",
+        show=False,
+    )
+
+
 def generate_plots(
     all_results: dict[str, ExpectationsResults],
     chart_dir: Path | None = None,
@@ -244,7 +291,9 @@ def generate_plots(
 
     # Prepare overlay data — reindex quarterly series onto the monthly grid
     # so mgplot sees a contiguous PeriodIndex (NaN at non-quarter months).
-    trimmed = get_trimmed_mean_annual().data
+    # A copy: the loader's result is cached, and re-indexing it in place would
+    # hand every later caller in this run a monthly index.
+    trimmed = get_trimmed_mean_annual().data.copy()
     if monthly:
         trimmed.index = trimmed.index.asfreq("M", how="end")
         trimmed = trimmed.reindex(first_result.index)
@@ -339,6 +388,9 @@ def generate_plots(
             rfooter=f"Sample: {all_results['unanchored'].index[0]} to {all_results['unanchored'].index[-1]}",
             **PLOT_KWARGS,
         )
+
+    if "unanchored" in all_results:
+        plot_real_cash_rate(all_results["unanchored"])
 
     print(f"\nCharts saved to: {chart_dir}")
 
