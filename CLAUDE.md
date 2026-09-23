@@ -33,7 +33,7 @@ uv sync                            # Install dependencies
 ./run-rstar-hlw.sh                 # Run HLW: trend/cycle decomposition. NOT a source of r*
 ./run-ystar.sh                     # Run y* potential output model (inflation-defined output gap)
 ./run-ustar.sh                     # Run u* model (ONE Phillips curve, u* a spline; Okun is OFF)
-./run-rstar-bonds.sh               # Run r* from the bond market (needs ystar_ustar for the Taylor rule)
+./run-rstar-bonds.sh               # Run r* from the bond market (needs expectations; ystar_ustar for Taylor charts)
 ./run-rstar-rba.sh                 # Run neutral revealed by the RBA's reaction to inflation (two series;
                                    #   also runs the sigma_r ensemble and the injection test, ~38s)
 ./run-rstar-qpm.sh                 # Semi-structural open-economy model: trend r* and short-run
@@ -51,7 +51,7 @@ uv run python -m src.models.rstar_hlw_kalman.run   # canonical HLW by Kalman fil
                                    #   is OFF by default (--refresh would overwrite ystar's
                                    #   production spec with the inflation spec)
 ./run-bank-costs.sh                # Bank funding and lending costs vs the cash rate (charts only)
-uv run python -m src.models.is_curve.run   # IS-curve scatter: a test bench for the r* models
+uv run python -m src.models.is_curve.run   # IS-curve scatter (retired: the search found no IS curve)
 uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EVERY saved trace,
                                    #   PRINTED, not written: nothing is re-sampled and no file is
                                    #   produced. --only <str> or --dir narrows it.
@@ -63,13 +63,17 @@ uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EV
 ./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free, u* a spline;
                                    #   needs expectations)
 ./run-ystar.sh --compare           # five specifications of the y* model on one chart
-./run-ystar-ustar-summary.sh       # the u* structure crossed with the gap definition, eight
+./run-ystar-ustar.sh --compare     # eight specifications (u* structure x gap definition)
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
 uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
 uv run python -m src.models.dsge.nk_twostar_model    # Run NK two-star linear probe
 uv run python -m src.models.dsge.fa_nk_bayes         # Bayesian re-estimation (Taylor-block priors); --smoke for quick check, --extract-only for posterior r*/EFP bands
 uv run python -m src.models.gdp_nowcast_bridge.backtest  # Run nowcast backtest
 ```
+
+Don't run the GDP nowcasts until about a month before the release: earlier, almost no
+indicators for the target quarter are out, the BVAR declines to nowcast and the bridge/DFM
+intervals are mostly prior.
 
 ## Project Structure
 
@@ -94,29 +98,30 @@ src/
 │   └── ...                        # Individual data series modules (inflation, gdp, etc.)
 │
 ├── models/                        # Every model has a MODEL_NOTES.md: read it before quoting.
+│   │   # LIVE
 │   ├── expectations/              # Inflation expectations (target-anchored, unanchored, short, market)
 │   ├── ystar/                     # Potential output; preferred source for POTENTIAL GROWTH; --compare
 │   ├── ustar/                     # u* from one Phillips curve, spline; don't quote before 2000; --compare
-│   ├── ystar_ustar/               # Joint y*/u*: PREFERRED for the output gap and u*
-│   ├── nairu/                     # SUPERSEDED for potential, gap and NAIRU; kept for wages, LOO/WAIC
+│   ├── ystar_ustar/               # Joint y*/u*: PREFERRED for the output gap and u*; --compare
 │   ├── cobb_douglas/              # Growth accounting only; not COVID-robust, don't quote post-2019 g*
+│   ├── gstar_summary/             # NOT A MODEL: potential growth estimates on one chart
 │   ├── rstar_bonds/               # r* from the bond market; quote the last complete quarter
 │   ├── rstar_rba/                 # Neutral from the RBA's reaction function; neutral != prescribed
 │   ├── rstar_qpm/                 # QPM-style semi-structural r*; wedge clipped by default; IS weak
-│   ├── rstar_hlw/                 # NOT a source of r*; its trend/cycle split does work
-│   ├── rstar_hlw_kalman/          # Failed attempt at canonical HLW (Kalman + ML); degenerate
-│   ├── rstar_invert/              # r* from an ASSERTED IS curve; not an estimate
-│   ├── rstar_tvpvar/              # RETIRED: r* comes back as the real cash rate
 │   ├── rstar_summary/             # NOT A MODEL: r* lines on one nominal scale; all share the 5y5y
-│   ├── gstar_summary/             # NOT A MODEL: potential growth estimates on one chart
-│   ├── ystar_ustar_summary/       # NOT A MODEL: ystar_ustar run 8 ways (u* structure x gap def)
-│   ├── is_curve/                  # Test bench: the IS curve plotted, not estimated
 │   ├── gdp_nowcast_bridge/        # GDP nowcast, bridge equations
 │   ├── gdp_nowcast_dfm/           # GDP nowcast, dynamic factor model
 │   ├── gdp_nowcast_bvar/          # GDP nowcast, Bayesian VAR (T-0 only)
 │   ├── gdp_nowcast_components/    # GDP nowcast, expenditure components (T-0 only)
-│   ├── dsge/                      # Experimental DSGE family; not usable (see MODELS_EXPLAINED.md)
 │   ├── bank_costs/                # Exploratory charts only
+│   │   # RETIRED, SUPERSEDED OR NOT WORKING (kept for their notes; don't quote)
+│   ├── nairu/                     # SUPERSEDED for potential, gap and NAIRU; still runs, kept for wages, LOO/WAIC
+│   ├── rstar_hlw/                 # NOT a source of r*; still runs, its trend/cycle split does work
+│   ├── rstar_hlw_kalman/          # Failed attempt at canonical HLW (Kalman + ML); degenerate
+│   ├── rstar_tvpvar/              # RETIRED: r* comes back as the real cash rate
+│   ├── rstar_invert/              # r* from an ASSERTED IS curve; not an estimate
+│   ├── is_curve/                  # The IS curve plotted, not estimated; the search found none
+│   ├── dsge/                      # Experimental DSGE family; not usable (see MODELS_EXPLAINED.md)
 │   └── common/                    # Shared machinery, no economics (results, cli, diagnostics, charts)
 │
 └── utilities/                     # General utilities (rate_conversion)

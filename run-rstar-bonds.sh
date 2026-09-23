@@ -7,9 +7,11 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 # indexed 10-year, the real cash rate, and a medium maturity in between. No
 # IS curve.
 #
-# The Taylor rule and the output-gap term read a completed ystar_ustar run; r*
-# itself does not, so the model still runs without one.
-# Run order: ./run-expectations.sh -> ./run-ystar-ustar.sh -> ./run-rstar-bonds.sh
+# Reads saved output from the expectations model (the default deflator). The
+# Taylor-rule charts also read a completed ystar_ustar run; r* itself does not,
+# so the model still runs without one.
+# Run order: ./run-expectations.sh -> ./run-rstar-bonds.sh
+#            (./run-ystar-ustar.sh first as well, for the Taylor-rule charts)
 cd "$ROOT"
 source "$ROOT/ssl-env.sh"
 uv run python -m src.models.rstar_bonds.run "$@"

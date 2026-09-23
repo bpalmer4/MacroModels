@@ -3,6 +3,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 # Run HLW Bayesian r-star estimation model
+#
+# Reads saved output from the expectations model.
+# Run order: ./run-expectations.sh -> ./run-rstar-hlw.sh
 cd "$ROOT"
 source "$ROOT/ssl-env.sh"
 uv run python -m src.models.rstar_hlw.run "$@"

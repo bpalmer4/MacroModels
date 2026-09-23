@@ -7,6 +7,9 @@ cd "$ROOT"
 source "$ROOT/ssl-env.sh"
 uv run python -m src.models.rstar_summary.run "$@"
 
+# Reads saved output from the expectations model (the nominal scale) and from
+# rstar_bonds, rstar_rba and rstar_qpm. The demand-gap chart also reads a
+# completed ystar_ustar run, and is skipped without one.
 # Any model whose saved trace was not written TODAY is re-run first, which
 # takes minutes and overwrites that model's own outputs and charts.
 #

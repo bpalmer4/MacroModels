@@ -925,6 +925,89 @@ what made this section necessary.
 
 ---
 
+## Comparing specifications (`--compare`)
+
+`--compare` runs this model eight ways and charts the results together. It is not a different
+model: each specification is a set of this model's own flags, re-estimated if its saved run is not
+from today, into its own `yus_sum_*` prefix so the default run and `charts/YStarUStar/` are never
+touched. The eight cross the two choices the model actually has to make:
+
+| | inflation-defined gap | gap = y - y\* |
+|---|---|---|
+| u\* decays to a level | x | x |
+| **u\* is a spline, 1 knot** | **x** (the default) | x |
+| u\* is a spline, 2 knots | x | x |
+| u\* is a spline, 3 knots | x | x |
+
+Down a column is how much the structure imposed on u\* matters; across a row, how much the
+definition of the gap matters. **Crossed rather than laddered** so the two cannot be confounded:
+with a cell missing, a difference between columns could always be the structure that was only
+tried on one side. The second knot sits at 1996Q1, giving the early sample a shape of its own,
+which is where the specifications disagree most. The default's cell is the headline specification
+estimated into a separate prefix.
+
+All eight share a sample, an expectations series and an inflation measure, so agreement within a
+column is close to arithmetic and only disagreement informs. **Nothing here is a
+recommendation**: settings argued against elsewhere in these notes, decay above all, are in it
+because it is the set tested before settling.
+
+**The identity gap needs a bound on the Okun slope.** With the gap defined as y - y\*, the Okun
+equation sees only `beta x gap`, so `(beta, y*)` and `(-beta, y*` reflected through `y)` fit it
+identically, and the Phillips curve, which runs on the unemployment gap, cannot break the tie.
+Every identity-gap specification therefore runs `--one-sided-beta`, an assertion that Okun's law
+has the expected sign. The cost: with no GDP residual, national accounts noise lands in the gap
+and from there in the Okun residual, so `beta_okun` is attenuated and the gap is several times
+wider than under the inflation-defined definition. The identity gap with a two-sided beta is
+deliberately absent: at the default trend prior it matches the one-sided run, and its only
+distinctive behaviour is the mirror mode.
+
+**How the fit column is scored.** Under the identity gap the GDP equation is a definition and
+carries no likelihood, so a model-wide criterion would compare models fitted to different data.
+The score is leave-one-out over the two equations all eight observe, unemployment and inflation,
+concatenated so a point is one quarter of one equation. It ranks predictive accuracy on those
+targets and settles nothing about which model is true.
+
+**What it found.**
+
+- **The fit column does not separate them.** The spread of elpd is within its standard errors;
+  no specification should be chosen on it.
+- **Pareto k is the real signal.** Every inflation-defined run has a large share of unreliable
+  observations; the identity runs have almost none. That is the circularity showing as a
+  diagnostic: when the gap is `c x (pi - 2.5)`, inflation sits on both sides of the Phillips
+  curve, so dropping one quarter moves the fit a lot. The inflation-defined elpd figures should
+  not be read at face value.
+- **For the endpoint, the gap definition matters and the u\* structure barely does.** Potential
+  growth is untouched by either choice.
+- **Every specification reads u\* above what the Phillips curve alone implies in 1993-99.** The
+  bias is shared, so it discriminates nothing and points at the sample start; the identity runs
+  are the less biased half.
+- **None of them fixes 1993Q1.** On the same data the eight place u\* and the gap there over a
+  wide range: the inflation-defined gap puts output barely below potential with unemployment near
+  11 per cent, which cannot be right, and the identity gap gets the order right but swings by a
+  factor of two across settings the fit cannot tell apart. The 1990-91 recession and the
+  disinflation are outside the sample, so the model opens mid-recovery with no information about
+  what it is recovering from. Nothing before 2000 should be treated as an estimate.
+
+**What it prints and charts.** A table per specification (the shared-target elpd and its standard
+error, bad Pareto k, R-hat, ESS, divergences, the Phillips-implied residual overall and for
+1993-99, u\* at the start and now, its post-2015 change and band width, the gap at the start and
+now and its volatility, and potential growth), and six charts in `charts/YStarUStar-compare/`:
+u\* against the unemployment rate, the output gap, potential growth, potential output, and the
+range across specifications for u\* and for the gap. Colour is the u\* structure and dashing the
+gap definition. The unidentified window is shaded only when the sample opens on it. The gap
+chart's axis is set by the identity runs, which squashes the inflation-defined gaps near zero.
+
+A saved run counts as current if its trace was written today: a proxy for current data rather
+than a check of ABS and RBA vintages, erring the right way since a stale run is always re-run. A
+full refresh is eight estimations at a few minutes each.
+
+```bash
+./run-ystar-ustar.sh --compare                 # re-estimate anything not from today, then chart
+./run-ystar-ustar.sh --compare --analyse-only  # chart the saved runs as they stand
+```
+
+---
+
 ## Files
 
 ```
@@ -934,7 +1017,10 @@ src/models/ystar_ustar/
 ├── estimate.py       # builds and samples the PyMC model, saves the trace
 ├── results.py        # JointResults: the gap decomposition and the residual covariance
 ├── analyse.py        # charts and the prior-versus-posterior check
-└── run.py            # CLI
+├── cli.py            # the command-line parser, and a run from its arguments
+├── compare.py        # the --compare specifications, refreshing and loading them
+├── compare_charts.py # the --compare table and charts
+└── run.py            # entry point: a run, or --compare
 ```
 
 Reuses `ystar`'s `scale_equation` and `potential_output_equation` unchanged rather than

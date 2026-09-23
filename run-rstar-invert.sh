@@ -7,7 +7,9 @@ cd "$ROOT"
 source "$ROOT/ssl-env.sh"
 uv run python -m src.models.rstar_invert.run "$@"
 
-# Needs a completed ystar_ustar run: it supplies the output gap, as data.
+# Reads saved output from the expectations model and a completed ystar_ustar
+# run, which supplies the output gap, as data.
+# Run order: ./run-expectations.sh -> ./run-ystar-ustar.sh -> ./run-rstar-invert.sh
 #
 # Typical usage:
 #   ./run-rstar-invert.sh                       # the deliverable: one conditional r* path

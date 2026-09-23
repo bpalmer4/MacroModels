@@ -21,6 +21,7 @@ uv run python -m src.models.ystar_ustar.run "$@"
 # Typical usage:
 #   ./run-ystar-ustar.sh --verbose
 #   ./run-ystar-ustar.sh --analyse-only        # recharts from the saved trace
+#   ./run-ystar-ustar.sh --compare             # eight specifications side by side (MODEL_NOTES)
 #   ./run-ystar-ustar.sh --no-okun             # control: sigma_v should return its prior
 #   ./run-ystar-ustar.sh --no-phillips         # sigma_v with inflation out of the LHS
 #   ./run-ystar-ustar.sh --no-free-gap         # ystar's identity, jointly estimated

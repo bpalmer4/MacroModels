@@ -6,6 +6,9 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 #   IS curve, real exchange rate, Phillips curve, policy rule and the 5y5y forward,
 #   states integrated out by Kalman filter, NUTS on the parameters.
 #   --recovery re-estimates simulated economies at known parameters.
+#
+# Reads saved output from the expectations model.
+# Run order: ./run-expectations.sh -> ./run-rstar-qpm.sh
 cd "$ROOT"
 source "$ROOT/ssl-env.sh"
 uv run python -m src.models.rstar_qpm.run "$@"

@@ -4,6 +4,9 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 # Run the unobserved-components potential output model
 # (default spec: inflation — potential output from GDP and inflation alone)
+#
+# Reads no other model's output by default. The --anchor-phase option requires
+# a completed ./run-expectations.sh.
 cd "$ROOT"
 source "$ROOT/ssl-env.sh"
 uv run python -m src.models.ystar.run "$@"

@@ -52,7 +52,7 @@ class Specification:
     def refresh(self) -> None:
         """Re-estimate this specification into its own prefix."""
         print(f"  re-running {self.label} ({' '.join(self.flags)})", flush=True)
-        run_from_args(build_parser().parse_args([*self.flags, "--prefix", self.prefix]))
+        run_from_args(build_parser().parse_args([*self.flags, "--prefix", self.prefix, "--no-analyse"]))
 
 
 # Colour carries the knot count, dashing carries Okun, so the two dimensions

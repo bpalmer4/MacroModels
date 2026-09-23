@@ -3,6 +3,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 # Run NAIRU + Output Gap joint estimation model
+#
+# Reads saved output from the expectations model, even under the default
+# target anchor.
+# Run order: ./run-expectations.sh -> ./run-nairu.sh
 cd "$ROOT"
 source "$ROOT/ssl-env.sh"
 uv run python -m src.models.nairu.run "$@"
