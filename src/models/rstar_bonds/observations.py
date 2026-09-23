@@ -51,7 +51,7 @@ from src.data.aofm_loader import (
 from src.data.bonds import get_corporate_spread, get_indexed_yield_filled
 from src.data.cash_rate import get_cash_rate_qrtly
 from src.data.dataseries import DataSeries
-from src.data.expectations_model import get_model_expectations, get_model_expectations_unanchored
+from src.data.expectations_model import get_model_expectations_unanchored
 from src.data.fred_loader import get_fred_series
 from src.data.inflation import get_trimmed_mean_annual
 from src.data.rba_loader import get_bank_bill_rate, get_cgs_yield, get_lending_rate
@@ -407,14 +407,6 @@ def _chart_extras(
         # people expect rather than what the target says.
         "pi_exp": _optional(
             "inflation expectations", get_model_expectations_unanchored, sources,
-        ),
-        # The TARGET-ANCHORED series, carried separately and used only to put
-        # r* on a nominal scale. Converting a neutral rate with the unanchored
-        # measure drags the inflation cycle into it: nominal r* would have
-        # fallen to 0.51 in 2020Q4 purely because expectations dipped. See
-        # `src/models/common/inflation_scale.py`.
-        "pi_exp_lr": _optional(
-            "long-run inflation expectations", get_model_expectations, sources,
         ),
         "cash_rate": cash,
         # The Taylor rule's three inputs. From one joint run by default, so

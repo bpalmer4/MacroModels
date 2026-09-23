@@ -178,7 +178,7 @@ def plot_rstar_nominal(results: TvpVarResults) -> None:
     real = results.rstar_median()
     mg.line_plot_finalise(
         pd.DataFrame({
-            "Nominal r* (r* + long-run expectations)": to_nominal(real),
+            "Nominal r* (r* + inflation expectations)": to_nominal(real),
             "Real r*": real,
         }),
         color=["darkblue", "darkorange"],

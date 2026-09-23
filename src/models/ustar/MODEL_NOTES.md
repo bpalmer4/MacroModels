@@ -375,13 +375,15 @@ There the specification is the whole of the answer.
 ## Comparing specifications (`--compare`)
 
 `--compare` runs this model three ways and charts the results together. It is
-not a different model and estimates nothing new: each specification is a set of
-this model's own flags, re-estimated if its saved run is not from today, into a
-prefix of its own so the default run is never touched.
+not a different model: each specification is a set of this model's own flags,
+re-estimated only if its saved run is not from today. One is the default run
+itself. Every run then writes its own charts, the default to `charts/UStar/` as
+a plain run does and the others beside it (`charts/UStar-k2/`,
+`charts/UStar-k2_okun/`), and the combined charts follow.
 
 | specification | knots | Okun |
 |---|---|---|
-| **Spline, 1 knot** (the default) | 2013Q1 | out |
+| **Default run** (spline, 1 knot) | 2013Q1 | out |
 | Spline, 2 knots | 1996Q1, 2013Q1 | out |
 | Spline, 2 knots, with gap-form Okun | 1996Q1, 2013Q1 | in |
 
@@ -416,7 +418,7 @@ arithmetic and only their disagreement informs.
   the median switches identity wherever lines cross), and it describes where
   the specifications sit; it is not an estimate.
 
-**What it prints and charts.** A table per specification (the inflation band
+**What it prints and charts.** Each run's own full set of charts, as above, then a table per specification (the inflation band
 test, the 1993-98 level, the post-2015 slope, the latest value, the average 90%
 band, bias against the inflation-implied series, and the volatility of u\*),
 the spread with and without Okun, and four charts in `charts/UStar-compare/`:
@@ -434,7 +436,7 @@ range's width over time. The poorly identified 1993-99 window is shaded.
 ./run-ustar.sh --gap-source actual               # log_gdp - y* instead of the defined gap
 ./run-ustar.sh --analyse-only                    # re-chart a saved run
 ./run-ustar.sh --prefix name                     # write somewhere other than `ustar`
-./run-ustar.sh --compare                         # three specifications on one chart
+./run-ustar.sh --compare                         # three specifications, each charted, then combined
 ./run-ustar.sh --compare --analyse-only          # the same, from the saved runs as they stand
 ```
 

@@ -928,9 +928,12 @@ what made this section necessary.
 ## Comparing specifications (`--compare`)
 
 `--compare` runs this model eight ways and charts the results together. It is not a different
-model: each specification is a set of this model's own flags, re-estimated if its saved run is not
-from today, into its own `yus_sum_*` prefix so the default run and `charts/YStarUStar/` are never
-touched. The eight cross the two choices the model actually has to make:
+model: each specification is a set of this model's own flags, re-estimated only if its saved run is
+not from today. One is the default run itself; the others save to their own `yus_sum_*` prefix.
+Every run then writes its own charts, the default to `charts/YStarUStar/` as a plain run does and
+the others beside it, named for what sets them apart (`charts/YStarUStar-k2/`,
+`charts/YStarUStar-decay_id/` and so on), and the combined charts follow. The eight cross the two
+choices the model actually has to make:
 
 | | inflation-defined gap | gap = y - y\* |
 |---|---|---|
@@ -943,8 +946,7 @@ Down a column is how much the structure imposed on u\* matters; across a row, ho
 definition of the gap matters. **Crossed rather than laddered** so the two cannot be confounded:
 with a cell missing, a difference between columns could always be the structure that was only
 tried on one side. The second knot sits at 1996Q1, giving the early sample a shape of its own,
-which is where the specifications disagree most. The default's cell is the headline specification
-estimated into a separate prefix.
+which is where the specifications disagree most. The default's cell is the default run itself.
 
 All eight share a sample, an expectations series and an inflation measure, so agreement within a
 column is close to arithmetic and only disagreement informs. **Nothing here is a
@@ -988,7 +990,7 @@ targets and settles nothing about which model is true.
   disinflation are outside the sample, so the model opens mid-recovery with no information about
   what it is recovering from. Nothing before 2000 should be treated as an estimate.
 
-**What it prints and charts.** A table per specification (the shared-target elpd and its standard
+**What it prints and charts.** Each run's own full set of charts, as above, then a table per specification (the shared-target elpd and its standard
 error, bad Pareto k, R-hat, ESS, divergences, the Phillips-implied residual overall and for
 1993-99, u\* at the start and now, its post-2015 change and band width, the gap at the start and
 now and its volatility, and potential growth), and six charts in `charts/YStarUStar-compare/`:
@@ -1002,8 +1004,8 @@ than a check of ABS and RBA vintages, erring the right way since a stale run is 
 full refresh is eight estimations at a few minutes each.
 
 ```bash
-./run-ystar-ustar.sh --compare                 # re-estimate anything not from today, then chart
-./run-ystar-ustar.sh --compare --analyse-only  # chart the saved runs as they stand
+./run-ystar-ustar.sh --compare                 # re-estimate anything not from today, chart every run, then combined
+./run-ystar-ustar.sh --compare --analyse-only  # the same from the saved runs as they stand
 ```
 
 ---

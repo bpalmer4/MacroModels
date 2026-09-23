@@ -8,9 +8,11 @@ the three and how to read them.
 
 Each specification is the command-line flags it would be run with, parsed by
 the same parser as the default run, so the list doubles as the record of what
-each one is. Each writes to its own prefix, so a refresh never touches the
-default run's outputs or charts. A saved run counts as current if its trace
-was written today.
+each one is. One is the default run itself, saving and charting exactly where
+a plain run does; the others save to their own prefix and chart to their own
+directory beside the default run's. The combined charts go to
+`COMPARE_CHART_DIR`. A saved run counts as current if its trace was written
+today.
 """
 
 import sys
@@ -20,11 +22,20 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.models.ustar.analyse import CHART_DIR, run_analysis
 from src.models.ustar.cli import build_parser, run_from_args
 from src.models.ustar.results import load_results
-from src.paths import MODEL_OUTPUTS
+from src.paths import CHARTS, MODEL_OUTPUTS
 
 OUTPUT_DIR = MODEL_OUTPUTS
+
+# The combined charts only. Each run's own charts go beside the default run's
+# directory; see `Specification.chart_dir`.
+COMPARE_CHART_DIR = CHARTS / "UStar-compare"
+
+# The comparison runs' prefixes share this stem; a run's own chart directory is
+# the default one with the rest of its prefix appended, e.g. UStar-k2.
+_PREFIX_STEM = "ustar_sum_"
 
 
 @dataclass(frozen=True)
@@ -36,11 +47,21 @@ class Specification:
     flags: list[str]
     colour: str
     style: str
+    # The default run: no flags but its prefix, so it is the same run a plain
+    # `./run-ustar.sh` makes, and it charts where a plain run does.
+    default: bool = False
 
     @property
     def trace_path(self) -> Path:
         """Where this specification's saved trace lives."""
         return OUTPUT_DIR / f"{self.prefix}_trace.nc"
+
+    @property
+    def chart_dir(self) -> Path:
+        """Where this specification's own charts go: beside the default run's."""
+        if self.default:
+            return CHART_DIR
+        return CHART_DIR.with_name(f"{CHART_DIR.name}-{self.prefix.removeprefix(_PREFIX_STEM)}")
 
     def is_current(self) -> bool:
         """Report whether the saved trace was written today."""
@@ -54,12 +75,15 @@ class Specification:
         print(f"  re-running {self.label} ({' '.join(self.flags)})", flush=True)
         run_from_args(build_parser().parse_args([*self.flags, "--prefix", self.prefix, "--no-analyse"]))
 
+    def chart(self) -> None:
+        """Write this specification's own charts from its saved run."""
+        run_analysis(prefix=self.prefix, chart_dir=self.chart_dir)
+
 
 # Colour carries the knot count, dashing carries Okun, so the two dimensions
 # read separately.
 SPECIFICATIONS: list[Specification] = [
-    Specification("Spline 1 knot", "ustar_sum_k1",
-                  ["--ustar-structure", "spline", "--knots", "2013Q1"], "darkorange", "-"),
+    Specification("Default run", "ustar", [], "darkorange", "-", default=True),
     Specification("Spline 2 knots", "ustar_sum_k2",
                   ["--ustar-structure", "spline", "--knots", "1996Q1", "2013Q1"], "tab:blue", "-"),
     Specification("Spline 2 knots, with gap-form Okun", "ustar_sum_k2_okun",

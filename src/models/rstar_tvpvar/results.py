@@ -38,7 +38,7 @@ import arviz as az
 import numpy as np
 import pandas as pd
 
-from src.models.common.inflation_scale import long_run_expectations
+from src.models.common.inflation_scale import get_unanchored_expectations
 from src.models.common.results import PosteriorResults
 from src.models.rstar_tvpvar.config import TARGET, ModelConfig
 from src.models.rstar_tvpvar.observations import ols_fit, ordering, variable_index
@@ -185,7 +185,7 @@ class TvpVarResults(PosteriorResults):
         """Return the anchor inflation is conditioned back toward, per quarter."""
         if bool(self.constants.get("anchor_is_target", 0.0)):
             return pd.Series(TARGET, index=self.projection_index, dtype=float)
-        return long_run_expectations(self.projection_index)
+        return get_unanchored_expectations(self.projection_index)
 
     def steady_state_posterior(self, max_draws: int = DEFAULT_MAX_DRAWS) -> pd.DataFrame:
         """Return the VAR's resting real rate, (I - F)^-1 d, as (time x draw).

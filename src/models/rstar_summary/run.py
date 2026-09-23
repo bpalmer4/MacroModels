@@ -8,7 +8,7 @@ is announced before it happens and `--no-refresh` turns it off.
 
 import argparse
 
-from src.models.common.inflation_scale import SCALES
+from src.models.common.inflation_scale import SCALES, TARGET
 from src.models.rstar_summary.analyse import run_analyse
 from src.models.rstar_summary.sources import DEFAULT_SCALE, gather
 
@@ -40,9 +40,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--nominal-on", default=DEFAULT_SCALE, choices=list(SCALES),
-        help="how real r* converts to nominal: 'expectations' (default) adds long-run "
-             "inflation expectations, matching the RBA and CBA; 'target' adds 2.5%%, "
-             "which is what this package did before 2026-09-16",
+        help=f"how real r* converts to nominal: 'expectations' (default) adds inflation "
+             f"expectations, matching the RBA and CBA; 'target' adds {TARGET:g}%%",
     )
     parser.add_argument("-q", "--quiet", action="store_true")
     args = parser.parse_args()

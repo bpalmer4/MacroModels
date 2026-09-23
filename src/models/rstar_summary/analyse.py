@@ -44,7 +44,7 @@ _TREND_WINDOW = 40
 
 # One label, because the line appears on two charts and a reader moving between
 # them must be able to see it is the same series.
-TREND_G_LABEL = "Trend GDP per capita growth + long-run inflation expectations"
+TREND_G_LABEL = "Trend GDP per capita growth + inflation expectations"
 
 # Named so the proxy chart can subtract one proxy from the other by name. It
 # used to difference `iloc[:, 0] - iloc[:, 1]`, which was the forward less the
@@ -152,7 +152,7 @@ def _trend_growth_nominal(index: pd.PeriodIndex) -> pd.Series:
     3.24, among them. Switching the series would not shift the line, it would
     change what the chart says.
 
-    NOMINAL ON LONG-RUN EXPECTATIONS, the same `to_nominal` every model line
+    NOMINAL ON INFLATION EXPECTATIONS, the same `to_nominal` every model line
     here goes through, so the proxy and the models are on one scale. Against a
     flat 2.5 target this lifts the line by 0.48pp on average over 1993-99 (up
     to 1.0pp, while expectations were still re-anchoring) and by under 0.1pp
@@ -171,7 +171,7 @@ def plot_proxies(start: str | None = "1993Q1") -> None:
     NO MODEL OUTPUT ON THIS CHART. Both proxies are things the world produced
     rather than things this repo estimated: the market's 5y5y forward, a price
     close to the expected average policy rate five to ten years out, and trend
-    per-capita growth plus long-run inflation expectations, which is the
+    per-capita growth plus inflation expectations, which is the
     golden-rule statement of where a neutral nominal rate should sit. Neither is r*. They are the two
     standing reference points a neutral rate gets judged against, and they
     disagree with each other as readily as the models do.
@@ -230,7 +230,7 @@ def plot_real_cash_rate(
     so the realised real rate fell from 1.15 to 0.75.
 
     TWO DEFLATORS BECAUSE THEY ANSWER DIFFERENT QUESTIONS, and over a period
-    when inflation moves they part company. Long-run expectations is the
+    when inflation moves they part company. Inflation expectations is the
     package's own convention, the one every r* here is converted with, so the
     gap between that line and a model's real r* IS that model's stance.
     Realised trimmed mean is what a borrower actually paid, and is the series

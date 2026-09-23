@@ -1,36 +1,37 @@
 """Configuration for the ustar model.
 
-One state, two observation equations, four estimated parameters and one
-imposed. The whole specification is:
+One Phillips curve, and a u* with no innovation variance. Under the defaults
+the whole specification is:
 
-    u*_t = u*_{t-1} + e_u                        e_u ~ N(0, sigma_ustar)
-    u_t  = u*_t - beta·ygap_t + e_o              e_o ~ N(0, sigma_o)
-    pi_t = pi_exp_t + gamma·ugap_t + e_p         e_p ~ N(0, sigma_p)
-    ugap_t = u_t - u*_t
+    u*_t   = sum_j c_j·B_j(t)                    natural cubic spline, one knot at 2013Q1
+    pi_t   = q(2.5) + beta_pi·[q(pi_exp_t) - q(2.5)] + gamma·ugap_t
+             + rho·d4pm_t + xi·GSCPI_t²·sign(GSCPI_t) + e_p          e_p ~ N(0, sigma_p)
+    ugap_t = (u_t - u*_t) / u_t
 
-with `ygap` read from a completed `ystar` run rather than estimated.
+with `pi` quarterly trimmed mean inflation, `pi_exp` the expectations model's
+plain (unanchored) series, `d4pm` lagged annual import price growth, GSCPI the
+lagged supply-chain pressure index, and `q()` the conversion from annual to
+quarterly rates. Eight estimated quantities: the three spline coefficients,
+gamma, beta_pi, rho, xi and sigma_p. One asserted: the 2.5% target.
 
-**Why both equations.** Okun sets u*'s level: rearranged, u* = u + beta·ygap,
-so wherever the gap says output is above potential, u* sits above measured
-unemployment. That is the identification the deleted `ustar_wage` experiment
-lacked, where the level ended up set by the smoothness prior because a nominal
-slope alone was too weak to pin it. The Phillips curve supplies what Okun
-cannot: the nominal content that makes the answer a NAIRU rather than an
-Okun-implied trend, and the place expectations enter.
+**Why a spline.** It is deterministic given its coefficients, so there is no
+innovation variance to impose, and the segment after the knot can be flat
+while the one before it is steep. One knot gives three coefficients: enough to
+decline and then level off, not enough to invent a cycle. `ustar_structure`
+and `spline_knots` give the evidence for the structure and the knot date.
 
-**Why sigma_ustar is imposed.** A quarterly wiggle in unemployment can be a
-shift in u* or a residual, and the likelihood cannot fully apportion between
-them — the Stock-Watson pile-up problem, identically to `sigma_ystar` in
-`ystar`. The `nairu` model fixes its own `nairu_innovation` at 0.15 for
-the same reason, which is where this default comes from. Sweep it rather than
-trusting it.
+**Why the target is the baseline.** Expectations enter only as a deviation
+from 2.5, so `beta_pi` is the pass-through of de-anchoring: 0 means the target
+holds, 1 means the baseline is `q(pi_exp)` and expectations are what bind.
+`anchor` has the argument.
 
-**What `beta` is not.** It will come out well above a textbook Okun coefficient
-of 0.3-0.5. `ystar`'s gap is a shrunk regressor — `c` is a conditional
-mean on a signal explaining about a fifth of output's variation — so the slope
-compensates and the *level* of the unemployment gap comes out roughly right.
-Reading `beta` as an Okun coefficient comparable to the literature is a
-mistake; it is a scaling onto this particular gap series.
+**Why no Okun equation.** `include_okun` adds u_t = u*_t - beta·ygap_t + e_o,
+with the output gap read from the run named by `gap_prefix`. It is off because
+the default gap is a fixed multiple of inflation's deviation from target, so
+the two equations would read one signal twice; `include_okun` records what
+that does to the level and the band. The gap is loaded under the defaults all
+the same, so a completed gap run is needed even though no default equation
+uses it.
 """
 
 from dataclasses import dataclass

@@ -8,7 +8,7 @@ import arviz as az
 import numpy as np
 import pandas as pd
 
-from src.models.common.inflation_scale import long_run_expectations
+from src.models.common.inflation_scale import get_unanchored_expectations
 from src.models.common.results import PosteriorResults
 from src.paths import CHARTS, MODEL_OUTPUTS
 
@@ -106,18 +106,17 @@ class RStarResults(PosteriorResults):
 
         Three, because they answer three questions:
 
-        "expectations" (default) — TARGET-ANCHORED long-run expectations. The
-            nominal neutral rate on the convention the RBA and CBA use, so the
-            number is comparable with a published one. See
-            `src/models/common/inflation_scale.py`.
+        "expectations" (default) — the expectations model's plain (unanchored)
+            median, loaded fresh. The nominal neutral rate on the convention the
+            RBA and CBA use, so the number is comparable with a published one.
+            See `src/models/common/inflation_scale.py`.
         "target" — the flat 2.5% anchor. This package's convention before
             2026-09-16, kept so published numbers stay reproducible. It differs
             from the above by up to a point in the 1990s and barely at all
             after 2000.
-        "actual" — the UNANCHORED expectations series, which moves with the
-            cycle. Not a scale conversion: it gives the neutral rate for the
-            inflation currently expected, and its gap to the anchored line is a
-            de-anchoring measure in its own right.
+        "actual" — the same unanchored series, read from the run's saved
+            observations rather than loaded fresh, so it matches the default
+            unless the expectations model has been re-run since this run.
         """
         if scale == "target":
             return float(self.constants.get("anchor", 2.5))
@@ -125,13 +124,9 @@ class RStarResults(PosteriorResults):
             # The model's own deflator, so it comes from the run's observations.
             return self._extra("pi_exp")
         if scale == "expectations":
-            # Loaded fresh rather than read from the saved observations. A run
-            # estimated before `pi_exp_lr` was carried would otherwise return an
-            # all-NaN column and draw a blank nominal line with a "nan to nan"
-            # header, which is worse than either erroring or being right. The
-            # series is data either way, so re-reading it changes nothing except
-            # that old traces keep working.
-            return long_run_expectations(self.obs_index)
+            # Loaded fresh, so the conversion uses the current expectations run;
+            # "actual" reads the copy saved with this run.
+            return get_unanchored_expectations(self.obs_index)
         raise ValueError(f"scale must be 'expectations', 'target' or 'actual', got {scale!r}")
 
     def nominal_rstar_hdi(self, prob: float = 0.90, *, scale: str = "expectations") -> pd.DataFrame:
@@ -433,7 +428,7 @@ class RStarResults(PosteriorResults):
     def nominal_rstar(self, *, scale: str = "expectations") -> pd.Series:
         """Return the neutral *nominal* cash rate: r* plus expected inflation.
 
-        The default, "expectations", uses TARGET-ANCHORED long-run expectations.
+        The default, "expectations", uses the plain (unanchored) expectations median.
         That is the steady-state neutral rate on the convention the RBA and CBA
         both use, so it is the number to compare with a published one, and the
         comparison with the actual cash rate is the stance: above it policy is

@@ -8,10 +8,7 @@ from pathlib import Path
 import mgplot as mg
 import pandas as pd
 
-from src.models.ystar.specs import Loaded, common_quarters
-from src.paths import CHARTS
-
-CHART_DIR = CHARTS / "YStar-compare"
+from src.models.ystar.specs import COMPARE_CHART_DIR, Loaded, common_quarters
 
 _MODEL = "Australia. y*: comparing specifications"
 _RFOOTER = "Built using: ABS 1364.0.15.003, 5206.0, 6401.0, 6457.0"
@@ -86,7 +83,8 @@ def table(loaded: list[Loaded]) -> pd.DataFrame:
             "g* latest": float(growth.iloc[-1]),
             "g* 1990": float(growth.loc["1990Q1":"1992Q4"].mean()),
             "g* 2015-19": float(growth.loc["2015Q1":"2019Q4"].mean()),
-            "gap 1992Q4": float(item.output_gap.loc[item.output_gap.index == pd.Period("1992Q4")].iloc[0]),
+            # reindex: the default run starts after this quarter, so it has no value there.
+            "gap 1992Q4": float(item.output_gap.reindex([pd.Period("1992Q4", freq="Q")]).iloc[0]),
             "gap latest": float(item.output_gap.iloc[-1]),
             "gap sd": float(item.output_gap.std()),
         }
@@ -115,7 +113,7 @@ def run_comparison(loaded: list[Loaded], chart_dir: Path | str | None = None) ->
     """Write every chart and print the table."""
     print_table(loaded)
 
-    chart_dir = Path(chart_dir) if chart_dir is not None else CHART_DIR
+    chart_dir = Path(chart_dir) if chart_dir is not None else COMPARE_CHART_DIR
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
 

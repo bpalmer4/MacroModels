@@ -80,7 +80,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--anchor-source", default=d.anchor_source, choices=list(ANCHOR_SOURCES),
-        help="What inflation is anchored to: long-run expectations (default) or a flat 2.5",
+        help="What inflation is anchored to: inflation expectations (default) or a flat 2.5",
     )
     parser.add_argument(
         "--anchor-return", type=float, default=d.anchor_return,

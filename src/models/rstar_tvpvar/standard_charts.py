@@ -107,7 +107,7 @@ def plot_policy_stance(results: TvpVarResults, footer: str, lfooter: str) -> Non
     direction = "restrictive" if stance.loc[last] > 0 else "expansionary"
     mg.line_plot_finalise(
         pd.DataFrame({
-            "Nominal r* (r* + long-run expectations)": nominal,
+            "Nominal r* (r* + inflation expectations)": nominal,
             "Cash rate": nominal_cash,
         }).dropna(how="all"),
         color=["darkblue", "black"],

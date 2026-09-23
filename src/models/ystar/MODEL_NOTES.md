@@ -746,12 +746,15 @@ the double-count.
 
 `--compare` runs this model five ways and charts the results together. It is not
 a different model: each specification is a set of this model's own flags,
-re-estimated if its saved run is not from today, into its own `yss84_*` prefix so
-the default run is never touched.
+re-estimated only if its saved run is not from today. One is the default run
+itself; the others save to their own `yss84_*` prefix. Every run then writes its
+own charts, the default to `charts/YStar/` as a plain run does and the others
+beside it, named for spec and start year (`charts/YStar-core-1984/` and so on),
+and the combined charts follow.
 
 | specification | potential's growth from | the gap identified by |
 |---|---|---|
-| `inflation` | a free drift state | defined as `c x (pi - anchor)` |
+| `inflation` (the default run) | a free drift state | defined as `c x (pi - anchor)` |
 | `production` | capital, labour and MFP | defined as `c x (pi - anchor)` |
 | `core` | a free drift state | a Phillips curve on an AR(2) cycle |
 | `labour` | trend hours x productivity | a Phillips curve on an AR(2) cycle |
@@ -761,10 +764,14 @@ the default run is never touched.
 and `labour`; `target` is `core` with the Phillips curve replaced by a sign
 restriction.
 
-**All five run from 1984Q1 with the phased anchor**: measured expectations before
-1993Q1, gliding to the target across 1993-98. A flat 2.5 over a sample opening in
-1984 would judge nine years of high inflation against a target that did not yet
-exist, and the first two specifications put the anchor directly into the gap.
+**The default run keeps its own sample and anchor**: from 1993Q1 with the flat
+target. **The other four run from 1984Q1 with the phased anchor**: measured
+expectations before 1993Q1, gliding to the target across 1993-98. A flat target
+over a sample opening in 1984 would judge nine years of high inflation against a
+target that did not yet exist, and `production` puts the anchor directly into the
+gap. Because the default starts later, the fit column is scored from 1993Q1, the
+quarters every specification covers, and the default has no value in the
+columns dated before it.
 
 **What it found, and it tells against the model it compares.** Three of the five
 reproduce an HP filter of GDP almost exactly, and inflation does very little of the
@@ -795,7 +802,7 @@ removing it. And the inflation-defined coefficient and the Phillips slope are
 reciprocals: the Phillips-curve specifications imply one implausible gap and the
 inflation-defined ones another, so no single coefficient repairs both.
 
-**What it prints and charts.** A table per specification (fit on GDP, bad Pareto
+**What it prints and charts.** Each run's own full set of charts, as above, then a table per specification (fit on GDP, bad Pareto
 k, R-hat, ESS, divergences, potential growth at three dates, the gap in 1992Q4 and
 now, and the gap's volatility), and five charts in `charts/YStar-compare/`:
 potential growth, the output gap (log GDP less potential in every case, so like is
@@ -847,7 +854,7 @@ Charts are written to `charts/YStar/`: `potential-growth`, `output-gap`, `output
 ```bash
 ./run-ystar.sh                  # the model above: estimate + chart
 ./run-ystar.sh --analyse-only   # recharts from the saved trace
-./run-ystar.sh --compare        # five specifications on one chart (see "Comparing specifications")
+./run-ystar.sh --compare        # five specifications, each charted, then combined (see "Comparing specifications")
 ./run-ystar.sh --compare --analyse-only   # the same, from the saved runs as they stand
 
 # The second live specification: potential growth from a production function,
@@ -1021,7 +1028,7 @@ They cannot transfer as they stand, because the equations point opposite ways. I
 
 It does not establish that 2022-23 inflation was demand-driven. The mechanism is that output sat 1.71% above trend while inflation ran 3.11pp above target, so removing half the inflation while leaving output where it is forces the episode's mapping to more than double. But that "1.71% above trend" is measured against a `y*` this model produced, so it cannot independently prove what drove the inflation. An earlier version of this entry said strong output with high inflation is a demand signature, which was circular. The concern in Limitation 6 is right in principle and is not addressed by this experiment either way.
 
-**Not adopted.** `beta_pi`, the third `nairu` augmentation, was not considered: importing excess expectations means a time-varying anchor, which is ruled out separately and for stronger reasons.
+**Not adopted.** An excess-expectations term was not considered: it amounts to a time-varying anchor, which is ruled out separately and for stronger reasons.
 
 Method notes. This is a projection on a fixed `y*`, so item 13's caveat applies, and that caveat bit once already (item 16's projection understated the pandemic effect by 0.09 against re-estimation). Settling it properly is one estimation run. `nairu` masks its GSCPI to 2020Q1-2023Q2 and zeroes it elsewhere; the test above used the unmasked series, since the quadratic form already concentrates the effect on extremes and the mask only removes contributions of at most 0.74pp against 2.50pp inside the window. Sign flips from purging are all at deviations of 0.7 or smaller, so they do not touch the ledger reading.
 

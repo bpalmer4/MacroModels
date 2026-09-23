@@ -205,11 +205,9 @@ class ModelConfig:
     # diagnostics, rather than a defect to be patched before publishing.
     # `--anchor-projection` restores it.
     anchor_projection: bool = False
-    # "expectations" uses the target-anchored long-run expectations series, the
-    # same one the package converts real to nominal with. "target" uses a flat
-    # 2.5. They differ mainly before 2000, where expectations were genuinely
-    # above target and a flat anchor would assert a re-anchoring that had not
-    # happened yet.
+    # "expectations" uses the expectations model's plain (unanchored) median,
+    # the same series this package deflates the cash rate with and converts
+    # real to nominal with. "target" uses a flat `TARGET`.
     anchor_source: str = "expectations"
     # The return function: pi_{t+h} = anchor + (pi_t - anchor) * phi^h.
     # 0.85 gives a half-life of about 4.3 quarters and ~90% closed in 14, which

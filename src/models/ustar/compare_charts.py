@@ -10,10 +10,7 @@ import pandas as pd
 
 from src.data.inflation import get_trimmed_mean_qrtly
 from src.models.ustar.analyse import UNIDENTIFIED_WINDOW
-from src.models.ustar.compare import Loaded, without_okun
-from src.paths import CHARTS
-
-CHART_DIR = CHARTS / "UStar-compare"
+from src.models.ustar.compare import COMPARE_CHART_DIR, Loaded, without_okun
 
 # The RBA's band, and the test built on it: over the quarters where quarterly
 # annualised trimmed mean inflation sat outside 2-3%, does the sign of the
@@ -181,7 +178,7 @@ def plot_spread(loaded: list[Loaded]) -> None:
     )
 
 
-def run_comparison(loaded: list[Loaded], chart_dir: Path = CHART_DIR) -> pd.DataFrame:
+def run_comparison(loaded: list[Loaded], chart_dir: Path = COMPARE_CHART_DIR) -> pd.DataFrame:
     """Draw the charts, print the table, and return it."""
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()

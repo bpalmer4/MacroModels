@@ -47,9 +47,8 @@ uv run python -m src.models.rstar_hlw_kalman.run   # canonical HLW by Kalman fil
 ./run-rstar-summary.sh             # every r* model on one nominal scale; re-runs any whose
                                    #   saved trace is not from today, which regenerates THEIR charts
 ./run-ustar.sh --compare           # three specifications of the u* model on one chart
-./run-gstar-summary.sh             # every g* (potential growth) estimate on one chart; refresh
-                                   #   is OFF by default (--refresh would overwrite ystar's
-                                   #   production spec with the inflation spec)
+./run-gstar-summary.sh             # every g* (potential growth) estimate on one chart; re-runs
+                                   #   any whose saved trace is not from today (--no-refresh skips)
 ./run-bank-costs.sh                # Bank funding and lending costs vs the cash rate (charts only)
 uv run python -m src.models.is_curve.run   # IS-curve scatter (retired: the search found no IS curve)
 uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EVERY saved trace,

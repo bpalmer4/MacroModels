@@ -1,14 +1,17 @@
 """The comparison specifications behind `--compare`, and how to refresh them.
 
 Five specifications of this model, differing in where potential's growth comes
-from and in what identifies the gap. All run from 1984Q1 with the phased
-anchor. MODEL_NOTES, "Comparing specifications", explains why, what they
-observe, and how to read the comparison.
+from and in what identifies the gap. One is the default run itself, on its
+default flags; the other four run from `START` with the phased anchor.
+MODEL_NOTES, "Comparing specifications", explains why, what they observe, and
+how to read the comparison.
 
 Each specification is the command-line flags it would be run with, parsed by
-the same parser as the default run. Each writes to its own `yss84_*` prefix,
-so a refresh never touches the default run's outputs or charts. A saved run
-counts as current if its trace was written today.
+the same parser as the default run. The default run saves and charts exactly
+where a plain run does; the other four save to their own `yss84_*` prefix and
+chart to their own directory beside the default run's. The combined charts go
+to `COMPARE_CHART_DIR`. A saved run counts as current if its trace was written
+today.
 
 THEY DO NOT OBSERVE THE SAME DATA. Only GDP is common, so the fit column scores
 GDP alone, over the quarters every specification actually fitted:
@@ -25,11 +28,16 @@ import arviz as az
 import numpy as np
 import pandas as pd
 
+from src.models.ystar.analyse import CHART_DIR, run_analysis
 from src.models.ystar.cli import build_parser, run_from_args
 from src.models.ystar.results import load_results
-from src.paths import MODEL_OUTPUTS
+from src.paths import CHARTS, MODEL_OUTPUTS
 
 OUTPUT_DIR = MODEL_OUTPUTS
+
+# The combined charts only. Each run's own charts go beside the default run's
+# directory; see `Specification.chart_dir`.
+COMPARE_CHART_DIR = CHARTS / "YStar-compare"
 
 START = "1984Q1"
 
@@ -47,6 +55,9 @@ class Specification:
     prefix: str
     colour: str
     style: str
+    # The default run: no flags but its prefix, so it is the same run a plain
+    # `./run-ystar.sh` makes.
+    default: bool = False
 
     @property
     def trace_path(self) -> Path:
@@ -56,8 +67,24 @@ class Specification:
     @property
     def flags(self) -> list[str]:
         """The command line this specification is run with."""
+        if self.default:
+            return ["--prefix", self.prefix, "--no-analyse"]
         return ["--spec", self.spec, "--start", START, "--anchor-phase", "glide",
                 "--prefix", self.prefix, "--no-analyse"]
+
+    @property
+    def chart_dir(self) -> Path | None:
+        """Where this specification's own charts go; None lets `run_analysis` choose.
+
+        The default run charts where a plain run does. The others go beside it,
+        named for the spec and the start year, e.g. YStar-production-1984. The
+        year keeps them apart from a standalone run of the same spec, which
+        `run_analysis` would otherwise send to the same directory.
+        """
+        if self.default:
+            return None
+        year = pd.Period(START, freq="Q").year
+        return CHART_DIR.with_name(f"{CHART_DIR.name}-{self.spec}-{year}")
 
     def is_current(self) -> bool:
         """Report whether the saved trace was written today."""
@@ -71,14 +98,17 @@ class Specification:
         print(f"  re-running {self.label}", flush=True)
         run_from_args(build_parser().parse_args(self.flags))
 
+    def chart(self) -> None:
+        """Write this specification's own charts from its saved run."""
+        run_analysis(prefix=self.prefix, chart_dir=self.chart_dir)
+
 
 # Labelled by what each one asserts, not by its internal name: "core" is the
 # base specification and has nothing to do with core inflation. Colour pairs
 # the specifications that share a gap: orange and green define it by inflation,
 # blue and purple read it off a Phillips curve. Grey does neither.
 SPECIFICATIONS: list[Specification] = [
-    Specification("Gap = c x (pi - anchor), free trend", "inflation",
-                  "yss84_inflation", "darkorange", "-"),
+    Specification("Default run", "inflation", "ystar", "darkorange", "-", default=True),
     Specification("Gap = c x (pi - anchor), production function", "production",
                   "yss84_production", "seagreen", "-"),
     Specification("Phillips curve on a cycle, free trend", "core",

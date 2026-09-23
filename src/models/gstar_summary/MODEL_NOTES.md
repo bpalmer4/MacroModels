@@ -5,8 +5,8 @@ estimates one, puts them on a single chart, and charts the spread between them. 
 is estimated.
 
 ```bash
-./run-gstar-summary.sh                 # read saved runs as they stand
-./run-gstar-summary.sh --refresh       # re-run stale models first (see the warning below)
+./run-gstar-summary.sh                 # re-run stale models first, then chart
+./run-gstar-summary.sh --no-refresh    # read saved runs as they stand
 ./run-gstar-summary.sh --start 2000Q1
 ```
 
@@ -96,13 +96,10 @@ disagreement was vintage rather than specification.
 `is_current()` reports each source's vintage in the run log for that reason, and it is worth
 reading before quoting the spread.
 
-**Refresh is OFF by default here**, unlike `rstar_summary`. `ystar`'s production spec is not
-what `run-ystar.sh` produces by default, so an automatic refresh would overwrite it with the
-inflation spec and silently merge the two y* lines into one. Refresh it deliberately:
-
-```bash
-./run-ystar.sh --spec production --prefix ystar_production
-```
+**Refresh re-runs each stale source with the arguments that reproduce it.** `ystar`'s
+production spec is not what `run-ystar.sh` produces by default, so its source carries
+`--spec production --prefix ystar_production`; without them a refresh would overwrite the
+inflation spec's run and merge the two y* lines into one.
 
 ## Why `rstar_hlw` is excluded
 
@@ -121,7 +118,7 @@ has already decided not to carry.
 src/models/gstar_summary/
 ├── sources.py       # the registry: what to load, how, and why HLW is not here
 ├── analyse.py       # the two charts
-├── run.py           # CLI: --refresh, --start
+├── run.py           # CLI: --no-refresh, --start
 └── MODEL_NOTES.md   # this file
 
 run-gstar-summary.sh

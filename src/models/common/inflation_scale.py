@@ -1,51 +1,30 @@
 """The one place the repo converts a neutral rate between real and nominal.
 
-Every r* package needs this and they used to each do it themselves, by adding
-or subtracting the 2.5% target. That was defensible, and it was also not what
-anyone else does: the RBA and CBA both convert using long-run inflation
-EXPECTATIONS, so a comparison against a published neutral rate was never quite
-like for like. Over the 1990s the two conventions differ by up to a point.
+A real neutral rate becomes nominal by adding inflation expectations, which is
+what the RBA and CBA do, so a nominal line is comparable with a published
+neutral rate. `scale="target"` adds the flat `TARGET` instead.
 
-WHICH SERIES, AND WHY IT IS THE ANCHORED ONE. `src/data/expectations_model.py`
-publishes two. The UNANCHORED median has no target prior and moves with the
-cycle: it reads 1.72 at its trough and 3.32 in 2023, and converting a neutral
-rate with it drags the inflation cycle into r* (nominal r* would have fallen to
-0.51 in 2020Q4 purely because expectations dipped). The TARGET-ANCHORED median
-is the long-run measure, and over 1993Q1 onward it runs 2.13 to 3.50 with a
-standard deviation of 0.28:
+WHICH SERIES. Inflation expectations here are the expectations model's
+unanchored median. The model also publishes a target-anchored median, built to
+resemble the RBA's PIE_RBAQ by adding an invented target observation each
+quarter. That holds expectations near the target even when they moved away
+from it, as they did in the post-pandemic inflation, so it is not used for the
+conversion. `get_anchored_expectations()` still returns it.
 
-    1993-1999   2.98        the target was new and expectations had not converged
-    2000-2007   2.50
-    2008-2015   2.60
-    2016-2021   2.32
-    2022-       2.57        barely moved through the inflation spike
+WHY NOT REALISED INFLATION. It swings with every price shock and would carry
+those swings straight into a neutral rate. Expectations move far less.
 
-That last row is the test that matters. `rstar_rba`'s notes reject deflating by
-REALISED inflation, because doing so made its real neutral hit -2.2 in 2022 for
-no reason except that inflation peaked. Anchored expectations do not do that,
-which is why they are usable here and realised inflation is not.
-
-SO THE CHANGE IS SMALL AND IN THE RIGHT PLACE: it is worth about +0.5pp through
-the 1990s re-anchoring, where expectations genuinely sat above target, and
-close to nothing after 2000.
-
-WHAT THIS IS NOT FOR. Deflating an actual borrowing rate, or the policy rate, to
-get a real rate someone faced. That wants the unanchored series or realised
-inflation, because what a borrower pays in real terms depends on what inflation
-does and not on the target. This module converts the SCALE of a neutral rate,
-which is a different operation: it answers "what nominal rate corresponds to
-this real neutral, at the inflation people expect over the long run".
-
-IT CREATES A DEPENDENCY. Any package converting scales now needs a completed
-`./run-expectations.sh`. That is deliberate and it fails loudly: a silent
-fallback to 2.5 would publish one convention under the label of another.
-`scale="target"` restores the old behaviour explicitly, which keeps every
-previously published number reproducible.
+IT CREATES A DEPENDENCY. Converting with expectations needs a completed
+`./run-expectations.sh`, and fails loudly without one rather than falling back
+to the target.
 """
+
+from collections.abc import Callable
 
 import pandas as pd
 
-from src.data.expectations_model import get_model_expectations
+from src.data.dataseries import DataSeries
+from src.data.expectations_model import get_model_expectations, get_model_expectations_unanchored
 
 # The RBA's midpoint, used when `scale="target"` and as the label elsewhere.
 TARGET = 2.5
@@ -53,29 +32,19 @@ TARGET = 2.5
 SCALES = ("expectations", "target")
 
 
-def long_run_expectations(index: pd.PeriodIndex | None = None) -> pd.Series:
-    """Return target-anchored long-run inflation expectations, quarterly.
+def _quarterly(loader: Callable[[], DataSeries], name: str, index: pd.PeriodIndex | None) -> pd.Series:
+    """Return one of the expectations model's saved medians, quarterly.
 
-    Args:
-        index: Reindex onto this if given. Quarters outside the expectations
-            sample come back as NaN rather than being filled, so a model whose
-            sample runs past the expectations run shows a gap instead of a
-            silently flat tail.
-
-    Returns:
-        Series of expectations in per cent, on a quarterly PeriodIndex.
-
-    Raises:
-        FileNotFoundError: If the expectations model has not been run.
-
+    Quarters outside the expectations sample come back as NaN rather than being
+    filled, so a model whose sample runs past the expectations run shows a gap
+    instead of a silently flat tail.
     """
     try:
-        series = get_model_expectations().data.astype(float)
+        series = loader().data.astype(float)
     except FileNotFoundError as exc:
         raise FileNotFoundError(
-            "Converting between real and nominal needs the expectations model's "
-            "target-anchored series, and it has not been run. Run ./run-expectations.sh, "
-            "or pass scale='target' to use the 2.5% target as this repo used to.",
+            f"The expectations model's {name} series has not been saved. Run "
+            f"./run-expectations.sh, or pass scale='target' to convert with the {TARGET:g}% target.",
         ) from exc
 
     if not isinstance(series.index, pd.PeriodIndex):
@@ -84,13 +53,48 @@ def long_run_expectations(index: pd.PeriodIndex | None = None) -> pd.Series:
     return series.reindex(index) if index is not None else series
 
 
+def get_anchored_expectations(index: pd.PeriodIndex | None = None) -> pd.Series:
+    """Return the target-anchored median, quarterly.
+
+    The expectations model with an invented target observation added each
+    quarter, so it sits near the target by construction.
+
+    Args:
+        index: Reindex onto this if given.
+
+    Returns:
+        Series of expectations in per cent, on a quarterly PeriodIndex.
+
+    Raises:
+        FileNotFoundError: If the expectations model has not been run.
+
+    """
+    return _quarterly(get_model_expectations, "target-anchored", index)
+
+
+def get_unanchored_expectations(index: pd.PeriodIndex | None = None) -> pd.Series:
+    """Return the plain median, quarterly: every input, no target observation.
+
+    Args:
+        index: Reindex onto this if given.
+
+    Returns:
+        Series of expectations in per cent, on a quarterly PeriodIndex.
+
+    Raises:
+        FileNotFoundError: If the expectations model has not been run.
+
+    """
+    return _quarterly(get_model_expectations_unanchored, "unanchored", index)
+
+
 def _offset(index: pd.PeriodIndex, scale: str) -> pd.Series | float:
     """Return the inflation term to add or subtract, on `index`."""
     if scale == "target":
         return TARGET
     if scale != "expectations":
         raise ValueError(f"scale must be one of {SCALES}, got {scale!r}")
-    return long_run_expectations(index)
+    return get_unanchored_expectations(index)
 
 
 def to_nominal(real: pd.Series, *, scale: str = "expectations") -> pd.Series:
@@ -98,9 +102,8 @@ def to_nominal(real: pd.Series, *, scale: str = "expectations") -> pd.Series:
 
     Args:
         real: The real rate, on a quarterly PeriodIndex.
-        scale: "expectations" (default) adds target-anchored long-run
-            expectations; "target" adds the 2.5% target, the repo's old
-            convention, kept so published numbers stay reproducible.
+        scale: "expectations" (default) adds inflation expectations;
+            "target" adds `TARGET`.
 
     Returns:
         The nominal rate on the same index.
@@ -140,4 +143,4 @@ def scale_label(scale: str = "expectations") -> str:
         return f"the {TARGET:g}% target"
     if scale != "expectations":
         raise ValueError(f"scale must be one of {SCALES}, got {scale!r}")
-    return "long-run inflation expectations"
+    return "inflation expectations"

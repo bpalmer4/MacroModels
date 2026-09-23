@@ -63,6 +63,8 @@ class GstarSource:
         script: the run script that refreshes it
         loader: returns year-ended potential growth, per cent
         note: what this g* is built from, for the run log
+        script_args: arguments the script needs to reproduce this run, when it
+            is not the script's default run
 
     """
 
@@ -71,6 +73,7 @@ class GstarSource:
     script: str
     loader: Callable[[str], pd.Series]
     note: str
+    script_args: tuple[str, ...] = ()
 
     @property
     def trace_path(self) -> Path:
@@ -147,6 +150,7 @@ SOURCES: tuple[GstarSource, ...] = (
         script="run-ystar.sh",
         loader=_load_ystar,
         note="growth from capital, hours and MFP trends; level and gap still inflation-defined",
+        script_args=("--spec", "production", "--prefix", "ystar_production"),
     ),
     GstarSource(
         label="Joint y*/u*",
@@ -174,23 +178,21 @@ def refresh(source: GstarSource, *, timeout: int = 3600) -> None:
     print(f"  refreshing {source.label} via ./{source.script} ...")
     sys.stdout.flush()
     subprocess.run(  # noqa: S603 — our own script, path built from the registry
-        [str(script)], cwd=str(ROOT), check=True, timeout=timeout,
+        [str(script), *source.script_args], cwd=str(ROOT), check=True, timeout=timeout,
     )
     sys.stdout.flush()
 
 
 def gather(
     *,
-    allow_refresh: bool = False,
+    allow_refresh: bool = True,
     verbose: bool = True,
 ) -> tuple[pd.DataFrame, dict[str, str]]:
     """Return every model's potential growth on a shared quarterly index.
 
     Args:
-        allow_refresh: re-run any model whose saved trace is not from today.
-            OFF by default, unlike `rstar_summary`: `ystar`'s production spec
-            is not what `run-ystar.sh` produces by default, so refreshing it
-            would quietly overwrite it with the inflation spec.
+        allow_refresh: re-run any model whose saved trace is not from today,
+            with that source's `script_args`, which also redraws its charts.
         verbose: print what was current, what was refreshed and what was read
 
     Returns:

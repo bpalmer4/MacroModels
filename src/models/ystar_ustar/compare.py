@@ -7,9 +7,10 @@ explains the crossing, the Okun bound the identity gap needs, and how to read
 the comparison.
 
 Each specification is the command-line flags it would be run with, parsed by
-the same parser as the default run. Each writes to its own `yus_sum_*` prefix,
-so a refresh never touches the default run's outputs or charts. A saved run
-counts as current if its trace was written today.
+the same parser as the default run. One is the default run itself, saving and
+charting exactly where a plain run does; the others save to their own
+`yus_sum_*` prefix and chart to their own directory beside the default run's.
+A saved run counts as current if its trace was written today.
 """
 
 import sys
@@ -22,11 +23,17 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from src.models.ystar_ustar.analyse import run_analysis
 from src.models.ystar_ustar.cli import build_parser, run_from_args
+from src.models.ystar_ustar.config import CHART_DIR, ModelConfig
 from src.models.ystar_ustar.results import load_results
 from src.paths import MODEL_OUTPUTS
 
 OUTPUT_DIR = MODEL_OUTPUTS
+
+# The comparison runs' prefixes share this stem; a run's own chart directory is
+# the default one with the rest of its prefix appended, e.g. YStarUStar-k2.
+_PREFIX_STEM = "yus_sum_"
 
 # Above this the importance-sampling estimate for an observation is unreliable.
 # ArviZ's own threshold.
@@ -46,11 +53,21 @@ class Specification:
     flags: list[str]
     colour: str
     style: str
+    # The default run: no flags but its prefix, so it is the same run a plain
+    # `./run-ystar-ustar.sh` makes, and it charts where a plain run does.
+    default: bool = False
 
     @property
     def trace_path(self) -> Path:
         """Where this specification's saved trace lives."""
         return OUTPUT_DIR / f"{self.prefix}_trace.nc"
+
+    @property
+    def chart_dir(self) -> Path:
+        """Where this specification's own charts go: beside the default run's."""
+        if self.default:
+            return CHART_DIR
+        return CHART_DIR.with_name(f"{CHART_DIR.name}-{self.prefix.removeprefix(_PREFIX_STEM)}")
 
     def is_current(self) -> bool:
         """Report whether the saved trace was written today."""
@@ -63,6 +80,10 @@ class Specification:
         """Re-estimate this specification into its own prefix."""
         print(f"  re-running {self.label} ({' '.join(self.flags)})", flush=True)
         run_from_args(build_parser().parse_args([*self.flags, "--prefix", self.prefix, "--no-analyse"]))
+
+    def chart(self) -> None:
+        """Write this specification's own charts from its saved run."""
+        run_analysis(prefix=self.prefix, sigma_v_prior=ModelConfig.sigma_v_prior, chart_dir=self.chart_dir)
 
 
 # Colour carries the structure imposed on u*, dashing carries the gap
@@ -78,8 +99,7 @@ _DECAY = ["--ustar-structure", "decay"]
 SPECIFICATIONS: list[Specification] = [
     Specification("Decay u*, inflation-defined gap", "yus_sum_decay",
                   [*_DECAY, *_DEFINED], "tab:blue", "-"),
-    Specification("Spline u*, 1 knot, inflation-defined gap", "yus_sum_k1",
-                  [*_K1, *_DEFINED], "darkorange", "-"),
+    Specification("Default run", "ystar_ustar", [], "darkorange", "-", default=True),
     Specification("Spline u*, 2 knots, inflation-defined gap", "yus_sum_k2",
                   [*_K2, *_DEFINED], "seagreen", "-"),
     Specification("Spline u*, 3 knots, inflation-defined gap", "yus_sum_k3",

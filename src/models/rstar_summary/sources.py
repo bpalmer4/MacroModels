@@ -42,16 +42,10 @@ if TYPE_CHECKING:
 
 OUTPUT_DIR = MODEL_OUTPUTS
 
-# Real converts to nominal by adding LONG-RUN INFLATION EXPECTATIONS, which is
-# what the RBA and CBA both do, so these lines are comparable with a published
-# neutral rate. It used to add the flat 2.5% target. The two agree closely after
-# 2000 and differ by up to a point through the 1990s re-anchoring, where
-# expectations genuinely sat above target and the old convention understated
-# every nominal path on the chart.
-#
-# `src/models/common/inflation_scale.py` holds the convention and the argument
-# for the anchored series over the unanchored one. `--nominal-on target`
-# restores the old behaviour, so previously published numbers stay reproducible.
+# Real converts to nominal by adding inflation expectations, which is what the
+# RBA and CBA both do, so these lines are comparable with a published neutral
+# rate. `src/models/common/inflation_scale.py` holds the convention.
+# `--nominal-on target` adds the flat target instead.
 TARGET = inflation_scale.TARGET
 DEFAULT_SCALE = "expectations"
 
@@ -281,7 +275,7 @@ def gather(
         allow_refresh: re-run any model whose saved trace is not from today
         verbose: print what was current, what was refreshed and what was read
         scale: how real converts to nominal. "expectations" (default) adds
-            long-run inflation expectations, matching the RBA and CBA;
+            inflation expectations, matching the RBA and CBA;
             "target" adds 2.5%, which is what this package did before
             2026-09-16 and is kept so those numbers stay reproducible.
 

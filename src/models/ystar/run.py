@@ -19,6 +19,8 @@ def main() -> None:
     if args.compare:
         loaded = load_all(refresh=not args.analyse_only)
         if loaded:
+            for item in loaded:
+                item.spec.chart()
             run_comparison(loaded)
         else:
             print("Nothing to chart.")

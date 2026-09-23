@@ -213,7 +213,7 @@ def plot_rstar_real_nominal(results: RStarResults) -> None:
     mg.fill_between_plot(real, ax=ax, color="darkorange", alpha=0.20, label="Real 90% HDI")
     mg.line_plot(
         pd.DataFrame({
-            "Nominal r* (r* + long-run expectations)": results.nominal_rstar(),
+            "Nominal r* (r* + inflation expectations)": results.nominal_rstar(),
             "Real r*": results.rstar_median(),
         }),
         ax=ax,
@@ -283,7 +283,7 @@ def plot_stance(results: RStarResults) -> None:
     ax = mg.fill_between_plot(nominal, color="darkblue", alpha=0.15, label="Nominal r* 90% HDI")
     mg.line_plot(
         pd.DataFrame({
-            "Nominal r* (r* + long-run expectations)": nominal_median,
+            "Nominal r* (r* + inflation expectations)": nominal_median,
             "Nominal r* (r* + current expectations)": results.nominal_rstar(scale="actual"),
             "Cash rate": cash,
         }),
@@ -606,7 +606,7 @@ def plot_taylor_level(results: RStarResults) -> None:
     frame = pd.DataFrame({
         "Taylor rule on this model's r*": level,
         "Cash rate": cash,
-        "Nominal r* (r* + long-run expectations)": results.nominal_rstar(),
+        "Nominal r* (r* + inflation expectations)": results.nominal_rstar(),
     }).dropna(subset=["Taylor rule on this model's r*"])
 
     mg.line_plot_finalise(

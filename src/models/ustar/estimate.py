@@ -216,12 +216,12 @@ def _phillips_equation(
 ) -> str:
     """Fit the price Phillips curve, anchored on the target.
 
-        pi = quarterly(anchor) + beta x [quarterly(pi_exp) - quarterly(anchor)]
-             + gamma x u_gap + rho x d4pm + xi x GSCPI^2 x sign(GSCPI) + e
+        pi = quarterly(anchor) + beta_pi x [quarterly(pi_exp) - quarterly(anchor)]
+             + gamma_pi x u_gap + rho_pi x d4pm + xi_gscpi x GSCPI^2 x sign(GSCPI) + e
 
     Two distinct objects on the nominal side, which is what makes the pair
     coherent: a constant target, and one expectations series entering only as
-    its deviation from that target. `beta` is then the pass-through of
+    its deviation from that target. `beta_pi` is then the pass-through of
     de-anchoring — 0 means the target holds, 1 means expectations are what
     bind. Pairing the same term with an *expectations* baseline instead would
     make it one estimate of expectations minus another.
@@ -271,8 +271,8 @@ def _phillips_equation(
             observed=obs["pi"],
         )
     return (
-        f"pi = q({anchor:g}) + beta x [q(pi_exp) - q({anchor:g})]"
-        " + gamma x u_gap + rho x d4pm + xi x GSCPI^2 + e"
+        f"pi = q({anchor:g}) + beta_pi x [q(pi_exp) - q({anchor:g})]"
+        " + gamma_pi x u_gap + rho_pi x d4pm + xi_gscpi x GSCPI^2 + e"
     )
 
 
@@ -292,7 +292,9 @@ def build_model(
     ygap = _output_gap(obs, model, config)
     ustar = _ustar_state(obs, model, config, obs_index)
     state = "u*_t = u*_{t-1} + e   (sigma imposed)"
-    if config.ustar_structure == "decay":
+    if config.ustar_structure == "spline":
+        state = f"u*_t = sum_j c_j x B_j(t)   (natural cubic spline, knots at {', '.join(config.spline_knots)})"
+    elif config.ustar_structure == "decay":
         state = "u*_t = u*_{t-1} + phi x (u*_eq - u*_{t-1}) + e   (sigma imposed)"
     elif config.ustar_drift:
         state = (
