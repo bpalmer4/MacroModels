@@ -6,16 +6,14 @@ whether the data moved it at all.
 """
 
 import math
-from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
 import pandas as pd
 
-from src.models.common import prior_posterior
+from src.models.common import chart_annotations, prior_posterior
 from src.models.common.charts import excluded_span_style, ustar_structure_note
 from src.models.common.diagnostics import save_diagnostics
 from src.models.ustar import analyse as ustar_analyse
@@ -25,9 +23,6 @@ from src.models.ystar.decompose import decompose_potential_growth, print_decompo
 from src.models.ystar.results import PotentialResults
 from src.models.ystar_ustar.config import CHART_DIR
 from src.models.ystar_ustar.results import JointResults, load_results
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
 
 # Reference values from the separately estimated parents, for the comparison
 # table. Both are 2026Q2 vintage and both are recorded in their MODEL_NOTES.
@@ -409,7 +404,7 @@ def _chart_implied_ustar(results: JointResults) -> None:
         title="What inflation alone says u* is, quarter by quarter",
         ylabel="Per cent",
         legend={"loc": "best", "fontsize": "small"},
-        axvspan=[*ustar_analyse._unidentified_span(), *_excluded_span(results)],
+        axvspan=[*ustar_analyse.unidentified_span(UNIDENTIFIED_WINDOW), *_excluded_span(results)],
         lheader=(
             f"Implied series moves {ratio:.0f}x as much quarter to quarter; "
             f"correlation with u* {implied.corr(fitted):.2f}"
@@ -510,80 +505,54 @@ def _chart_parameter_posteriors(results: JointResults) -> int:
     )
 
 
-@contextmanager
-def _parent_chart_settings(results: JointResults) -> Iterator[None]:
-    """Point `ystar`'s and `ustar`'s chart modules at this model, then restore them.
+def _annotate_views(results: JointResults, ystar_view: PotentialResults, ustar_view: UStarResults) -> None:
+    """Label the parents' charts, drawn from this run's views, as this model's.
 
     Their charts carry their own footers, and one of them is actively wrong
     here: `ustar`'s says "u* from a given output gap", but in this model the gap
-    is estimated rather than given. Both are overridden so every chart in this
+    is estimated rather than given. Both are replaced so every chart in this
     directory names the model that drew it.
 
-    The right footers need no override for a current run: the parents read the
+    The right footers need no replacing for a current run: the parents read the
     source records off the results they are handed, which are this model's.
-    Their fallback constants do need one, for a run saved before those records
-    existed, or every chart here would name its parent's inputs instead.
+    Their fallbacks do, for a run saved before those records existed, or every
+    chart here would name its parent's inputs instead.
 
-    Restored on the way out, so a session that analyses this model and then one
-    of its parents does not mislabel the parent's charts.
+    Attached to the views, which are this model's own objects, so nothing
+    carries over to a later run of either parent.
     """
-    ystar_footer, ustar_footer = ystar_analyse._LFOOTER, ustar_analyse._LFOOTER
-    ustar_band_footer = ustar_analyse._LFOOTER_BAND
-    ystar_fallbacks = (
-        ystar_analyse._RFOOTER, ystar_analyse._RFOOTER_CORE, ystar_analyse._RFOOTER_PRODUCTION,
+    chart_annotations.attach(
+        ystar_view,
+        lfooter=_lfooter(results),
+        rfooter_fallback=_SOURCE,
+        # Shades the quarters that carry no likelihood.
+        excluded_window=results.excluded_window,
     )
-    ustar_fallback = ustar_analyse._RFOOTER
-    ustar_excluded = ustar_analyse._EXCLUDED_WINDOW
-    ustar_unidentified = ustar_analyse._UNIDENTIFIED_WINDOW
-
-    ystar_analyse._LFOOTER = _lfooter(results)
-    ustar_analyse._LFOOTER = _lfooter(results)
-    ustar_analyse._LFOOTER_BAND = _lfooter(results, "Band x2; see notes. ")
-    ystar_analyse._RFOOTER = _SOURCE
-    ystar_analyse._RFOOTER_CORE = _SOURCE
-    ystar_analyse._RFOOTER_PRODUCTION = _SOURCE
-    ustar_analyse._RFOOTER = _SOURCE
-
-    # `ystar`'s chart module keeps the excluded window in a module-level global,
-    # set inside its own run_analysis, which we are bypassing. Setting it here
-    # is what makes its charts shade the quarters that carry no likelihood.
-    ystar_analyse._EXCLUDED_WINDOW = results.excluded_window
-    # Same for `ustar`'s charts. Its own runs exclude nothing, so this is dead
-    # for `ustar` itself, but here the window is dropped from all three
-    # equations and u* inside it is a prior extrapolation.
-    ustar_analyse._EXCLUDED_WINDOW = (
-        results.excluded_window if results.constants.get("exclude_scope") == "all" else None
-    )
-    # The early window, where u*'s level is set by the state law and by Okun
-    # rather than by inflation: the 90% band runs 2.6x its mid-sample width in
-    # 1993, the Phillips residuals are systematically negative until 1999, and
-    # expectations do not reach the target until 1998. See MODEL_NOTES.
-    ustar_analyse._UNIDENTIFIED_WINDOW = UNIDENTIFIED_WINDOW
-
-    # The header names the two pieces GDP's deviation from potential splits
-    # into. Under the identity gap it does not split: the deviation is the gap,
-    # there is no residual, and nothing defines it but output.
-    gap_header = ystar_analyse._ACTUAL_GAP_HEADER
     if not results.has_defined_gap:
-        ystar_analyse._ACTUAL_GAP_HEADER = (
-            "GDP's deviation from potential, which here is the output gap itself"
+        # The header names the two pieces GDP's deviation from potential splits
+        # into. Under the identity gap it does not split: the deviation is the
+        # gap, there is no residual, and nothing defines it but output.
+        chart_annotations.attach(
+            ystar_view,
+            actual_gap_header="GDP's deviation from potential, which here is the output gap itself",
         )
 
-    try:
-        yield
-    finally:
-        ystar_analyse._LFOOTER = ystar_footer
-        ustar_analyse._LFOOTER = ustar_footer
-        ustar_analyse._LFOOTER_BAND = ustar_band_footer
-        (
-            ystar_analyse._RFOOTER,
-            ystar_analyse._RFOOTER_CORE,
-            ystar_analyse._RFOOTER_PRODUCTION,
-        ) = ystar_fallbacks
-        ustar_analyse._RFOOTER = ustar_fallback
-        ustar_analyse._EXCLUDED_WINDOW = ustar_excluded
-        ustar_analyse._UNIDENTIFIED_WINDOW = ustar_unidentified
-        ystar_analyse._ACTUAL_GAP_HEADER = gap_header
+    chart_annotations.attach(
+        ustar_view,
+        lfooter=_lfooter(results),
+        lfooter_band=_lfooter(results, "Band x2; see notes. "),
+        rfooter_fallback=_SOURCE,
+        # `ustar`'s own runs exclude nothing, but here the window is dropped from
+        # all three equations and u* inside it is a prior extrapolation.
+        excluded_window=(
+            results.excluded_window if results.constants.get("exclude_scope") == "all" else None
+        ),
+        # The early window, where u*'s level is set by the state law and by Okun
+        # rather than by inflation: the 90% band runs 2.6x its mid-sample width in
+        # 1993, the Phillips residuals are systematically negative until 1999, and
+        # expectations do not reach the target until 1998. See MODEL_NOTES.
+        unidentified_window=UNIDENTIFIED_WINDOW,
+    )
 
 
 def _draw_charts(
@@ -622,9 +591,9 @@ def _draw_charts(
     # touches ABS sources directly.
     decomposition = decompose_potential_growth(ystar_view)
     print_decomposition(decomposition)
-    ystar_analyse.plot_growth_accounting(decomposition)
-    ystar_analyse.plot_growth_wedge(decomposition)
-    ystar_analyse.plot_growth_contributions(decomposition)
+    ystar_analyse.plot_growth_accounting(decomposition, results=ystar_view)
+    ystar_analyse.plot_growth_wedge(decomposition, results=ystar_view)
+    ystar_analyse.plot_growth_contributions(decomposition, results=ystar_view)
 
     # --- The u* side, exactly what `ustar` draws ---
     ustar_analyse.plot_ustar(ustar_view)
@@ -667,8 +636,8 @@ def run_analysis(
     mg.clear_chart_dir()
     save_diagnostics(results.trace, chart_dir, prefix, model="ystar_ustar")
 
-    with _parent_chart_settings(results):
-        _draw_charts(results, ystar_view, ustar_view)
+    _annotate_views(results, ystar_view, ustar_view)
+    _draw_charts(results, ystar_view, ustar_view)
 
 
     print(f"Charts written to: {chart_dir}")

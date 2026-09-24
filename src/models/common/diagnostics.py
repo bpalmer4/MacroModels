@@ -417,19 +417,11 @@ def save_diagnostics(
 ) -> Path:
     """Write this run's diagnostics file into its chart directory, and say so.
 
-    The one line every model's analysis calls, so that a run of any model
-    leaves exactly one diagnostics file, beside that run's charts.
+    The one line every model's analysis calls, so that each trace a run
+    samples leaves a diagnostics file, named for its prefix, beside the charts.
     """
     path = diagnostics_path(chart_dir, prefix)
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    # `mg.clear_chart_dir()` removes image files only. Two prefixes charted
-    # into one directory would therefore leave the first run's diagnostics
-    # behind, describing charts that have just been deleted. Clear any other
-    # run's file so what is here always matches the charts that are here.
-    for stale in path.parent.glob(f"{DIAGNOSTICS_STEM}-*.txt"):
-        if stale != path and stale.is_file():
-            stale.unlink()
     issues = write_diagnostics_report(
         trace,
         path,

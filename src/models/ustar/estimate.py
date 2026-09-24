@@ -23,7 +23,7 @@ from src.models.ystar.base import (
 from src.utilities.rate_conversion import quarterly
 
 
-def _output_gap(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfig) -> Any:
+def _output_gap(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfig) -> np.ndarray | pt.TensorVariable:
     """Return the output gap the Okun equation sees. Not data, not estimated here.
 
     The two gap sources need different treatment, because their uncertainty has
@@ -65,7 +65,7 @@ def _ustar_spline(
     model: pm.Model,
     config: ModelConfig,
     obs_index: pd.PeriodIndex | None = None,
-) -> Any:
+) -> pt.TensorVariable:
     """u* as a natural cubic spline with knots at `config.spline_knots`.
 
         u*_t = sum_j c_j B_j(t)
@@ -95,7 +95,7 @@ def _ustar_state(
     model: pm.Model,
     config: ModelConfig,
     obs_index: pd.PeriodIndex | None = None,
-) -> Any:
+) -> pt.TensorVariable:
     """u* as a driftless Gaussian random walk with an imposed innovation sd.
 
     The initial level is given a wide prior centred on the sample's own mean
@@ -155,7 +155,9 @@ def _ustar_state(
                 init_mu = float(obs["u"][0])
             init = pm.Normal("ustar_init", mu=float(init_mu), sigma=3.0)
 
-            def step(eps: Any, prev: Any, phi: Any, eq: Any) -> Any:
+            def step(
+                eps: pt.TensorVariable, prev: pt.TensorVariable, phi: pt.TensorVariable, eq: pt.TensorVariable,
+            ) -> pt.TensorVariable:
                 return prev + phi * (eq - prev) + eps
 
             path, _ = pytensor.scan(
@@ -178,8 +180,8 @@ def _ustar_state(
 def _okun_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    ustar: Any,
-    ygap: Any,
+    ustar: pt.TensorVariable,
+    ygap: np.ndarray | pt.TensorVariable,
     config: ModelConfig,
 ) -> str:
     """Fit u = u* - beta x ygap + e, the equation that sets u*'s level.
@@ -208,7 +210,7 @@ def _okun_equation(
 def _phillips_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    ustar: Any,
+    ustar: pt.TensorVariable,
     anchor: float,
     config: ModelConfig,
 ) -> str:

@@ -30,6 +30,9 @@ class PosteriorResults:
     trace: az.InferenceData
     obs_index: pd.PeriodIndex
     constants: dict[str, Any] = field(default_factory=dict)
+    # Footers, headers and shaded windows for this run's charts. Written and read
+    # only through `common.chart_annotations`.
+    chart_annotations: dict[str, object] = field(default_factory=dict)
 
     @property
     def posterior(self) -> xr.Dataset:

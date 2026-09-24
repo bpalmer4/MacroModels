@@ -10,14 +10,12 @@ from src.models.nairu.results import NAIRUResults
 START = pd.Period("1985Q1", freq="Q")
 
 PRE_POLICY_PERIOD = {
-    "axvspan": {
-        "xmin": START.ordinal,
-        "xmax": PHASE_END.ordinal,
-        "color": "goldenrod",
-        "alpha": 0.2,
-        "label": "Pre-policy-relevant NAIRU",
-        "zorder": -2,
-    }
+    "xmin": START.ordinal,
+    "xmax": PHASE_END.ordinal,
+    "color": "goldenrod",
+    "alpha": 0.2,
+    "label": "Pre-policy-relevant NAIRU",
+    "zorder": -2,
 }
 
 
@@ -50,5 +48,5 @@ def plot_unemployment_gap(
         axisbelow=True,
         y0=True,
         show=show,
-        **PRE_POLICY_PERIOD,
+        axvspan=PRE_POLICY_PERIOD,
     )

@@ -9,6 +9,8 @@ from mgplot.finalisers import DataT, LPFKwargs
 
 from src.data.gov_spending import get_gov_consumption_qrtly
 from src.data.henderson import hma
+from src.models.common import chart_annotations
+from src.models.common.chart_annotations import Window
 from src.models.common.charts import excluded_span_style
 from src.models.common.diagnostics import save_diagnostics
 from src.models.ystar.decompose import (
@@ -71,14 +73,17 @@ _BAND_KWARGS: dict[str, Any] = {
 }
 
 
-# Set once per run by `run_analysis` and read by the two finalise wrappers
-# below. Module-level rather than a parameter because roughly twenty chart
-# functions call finalise, several of them from a `GrowthDecomposition` that has
-# no access to the run's settings, and threading a window through every one of
-# those signatures would be a worse trade than one piece of run-scoped state.
-_EXCLUDED_WINDOW: tuple[str, str] | None = None
+def _window(results: PotentialResults) -> Window | None:
+    """Return the excluded window this run's charts shade, if it attached one."""
+    return chart_annotations.window(results, chart_annotations.EXCLUDED_WINDOW)
 
-def _excluded_kwargs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
+
+def _lfooter(results: PotentialResults) -> str:
+    """Return this run's left footer, or this model's own."""
+    return chart_annotations.text(results, chart_annotations.LFOOTER, _LFOOTER)
+
+
+def _excluded_kwargs(kwargs: Mapping[str, Any], window: Window | None) -> dict[str, Any]:
     """Add the excluded-window shading and its footer note to finalise kwargs.
 
     The states run through an excluded window under their priors, so every
@@ -86,10 +91,10 @@ def _excluded_kwargs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
     trend across quarters the model was never shown. Shading says so on the
     chart rather than in a caption someone will read separately.
     """
-    if _EXCLUDED_WINDOW is None:
+    if window is None:
         return dict(kwargs)
 
-    lo, hi = _EXCLUDED_WINDOW
+    lo, hi = window
     kwargs = dict(kwargs)
     if "axvspan" in kwargs:
         raise ValueError("axvspan is set by the excluded-window shading; do not pass it too")
@@ -105,7 +110,7 @@ def _excluded_kwargs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
     return kwargs
 
 
-def _on_quarterly_axis(axes: Axes) -> bool:
+def _on_quarterly_axis(axes: Axes, window: Window | None) -> bool:
     """Whether these axes are plotted against quarters, so a span belongs on them.
 
     mgplot draws a PeriodIndex at its period ordinals, so a quarterly chart's
@@ -119,23 +124,24 @@ def _on_quarterly_axis(axes: Axes) -> bool:
     Checked rather than made a caller's flag, since a flag is something the next
     chart added here would have to remember.
     """
-    if _EXCLUDED_WINDOW is None:
+    if window is None:
         return False
-    lo, hi = _EXCLUDED_WINDOW
+    lo, hi = window
     left, right = axes.get_xlim()
     return left <= pd.Period(hi, freq="Q").ordinal and pd.Period(lo, freq="Q").ordinal <= right
 
 
-def _finalise(axes: Axes, **kwargs: Unpack[mg.FinaliseKwargs]) -> None:
-    """`mg.finalise_plot` with any excluded window shaded."""
-    if not _on_quarterly_axis(axes):
+def _finalise(axes: Axes, window: Window | None, **kwargs: Unpack[mg.FinaliseKwargs]) -> None:
+    """`mg.finalise_plot` with the run's excluded window, if any, shaded."""
+    if not _on_quarterly_axis(axes, window):
         mg.finalise_plot(axes, **kwargs)
         return
-    mg.finalise_plot(axes, **_excluded_kwargs(kwargs))
+    mg.finalise_plot(axes, **_excluded_kwargs(kwargs, window))
 
 
 def _line_plot_finalise(
     data: DataT,
+    window: Window | None,
     # LPFKwargs, not LineKwargs: the *_finalise entry points take the plot
     # kwargs and the finalise kwargs together, and `mg.LineKwargs` is only the
     # first half.
@@ -149,7 +155,7 @@ def _line_plot_finalise(
     if not isinstance(data.index, pd.PeriodIndex):
         mg.line_plot_finalise(data, **kwargs)
         return
-    mg.line_plot_finalise(data, **_excluded_kwargs(kwargs))
+    mg.line_plot_finalise(data, **_excluded_kwargs(kwargs, window))
 
 
 def _excluded_window(results: PotentialResults) -> tuple[str, str] | None:
@@ -161,10 +167,10 @@ def _excluded_window(results: PotentialResults) -> tuple[str, str] | None:
 def _fitted_mask(results: PotentialResults) -> pd.Series:
     """Boolean over the sample: True where the run carried a likelihood term.
 
-    Read from `results` rather than the module-level `_EXCLUDED_WINDOW`, since
-    `print_diagnostics` can be called on a results object directly without
+    Read from the run's recorded settings rather than its chart annotations,
+    since `print_diagnostics` can be called on a results object directly without
     going through `run_analysis`, and a statistic must not depend on whether
-    some earlier call happened to set that global.
+    anything attached a window for the charts.
     """
     index = results.obs_index
     window = _excluded_window(results)
@@ -192,22 +198,29 @@ def _rfooter(results: PotentialResults) -> str:
     return _spec_rfooter(results)
 
 
-def _decomposition_rfooter(decomposition: GrowthDecomposition) -> str:
+def _decomposition_rfooter(decomposition: GrowthDecomposition, results: PotentialResults) -> str:
     """Source line for the growth-accounting charts.
 
     The decomposition loads hours, population and participation itself, so it
     names 6202.0 whether or not the run that produced `y*` did.
     """
-    return decomposition.sources.footer() or _RFOOTER
+    return decomposition.sources.footer() or chart_annotations.text(
+        results, chart_annotations.RFOOTER_FALLBACK, _RFOOTER,
+    )
 
 
 def _spec_rfooter(results: PotentialResults) -> str:
-    """Return the pre-recording fallback: what each specification used to load."""
+    """Return the pre-recording fallback: what each specification used to load.
+
+    A run that attached its own fallback, as `ystar_ustar` does, gets that instead.
+    """
     if results.spec == "labour":
-        return _RFOOTER
-    if results.spec == "production":
-        return _RFOOTER_PRODUCTION
-    return _RFOOTER_CORE
+        default = _RFOOTER
+    elif results.spec == "production":
+        default = _RFOOTER_PRODUCTION
+    else:
+        default = _RFOOTER_CORE
+    return chart_annotations.text(results, chart_annotations.RFOOTER_FALLBACK, default)
 
 
 def print_diagnostics(results: PotentialResults) -> None:
@@ -315,12 +328,13 @@ def plot_potential(
     )
     _finalise(
         ax,
+        _window(results),
         tag=tag,
         title="GDP and potential output",
         ylabel="log level x 100",
         legend={"loc": "best", "fontsize": "small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER,
+        lfooter=_lfooter(results),
         show=False,
     )
 
@@ -375,15 +389,16 @@ def plot_actual_output_gap(
     )
     _finalise(
         ax,
+        _window(results),
         tag=tag,
         title="Output gap",
         ylabel="Per cent of potential",
         ylim=ylim,
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        lheader=_ACTUAL_GAP_HEADER,
+        lheader=chart_annotations.text(results, chart_annotations.ACTUAL_GAP_HEADER, _ACTUAL_GAP_HEADER),
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER + (f"{note}. " if note else ""),
+        lfooter=_lfooter(results) + (f"{note}. " if note else ""),
         show=False,
     )
 
@@ -414,13 +429,14 @@ def plot_inflation_defined_gap(results: PotentialResults) -> None:
     )
     _finalise(
         ax,
+        _window(results),
         title="Inflation-defined output gap",
         ylabel="Per cent of potential",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         lheader=_GAP_HEADER,
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER,
+        lfooter=_lfooter(results),
         show=False,
     )
 
@@ -467,13 +483,14 @@ def plot_gap_composition(results: PotentialResults) -> None:
     ax = _plot_gap_composition_axes(components, deviation)
     _finalise(
         ax,
+        _window(results),
         title="Output gap composition",
         ylabel="Per cent of potential",
         ylim=_scale_excluding(components, deviation, off_scale),
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER + "Bars sum to the line by construction. ",
+        lfooter=_lfooter(results) + "Bars sum to the line by construction. ",
         lheader=_off_scale_note(deviation, off_scale),
         show=False,
     )
@@ -629,12 +646,13 @@ def plot_growth_vs_potential(
 
     _finalise(
         ax,
+        _window(results),
         title="Actual growth versus potential",
         ylabel="Year-ended per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER + "Actual smoothed, 7-term Henderson MA. ",
+        lfooter=_lfooter(results) + "Actual smoothed, 7-term Henderson MA. ",
         tag=tag,
         show=False,
     )
@@ -681,12 +699,13 @@ def _growth_against_potential(
     )
     _finalise(
         ax,
+        _window(results),
         title=title,
         ylabel="Year-ended per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER + lfooter,
+        lfooter=_lfooter(results) + lfooter,
         tag=tag,
         show=False,
     )
@@ -791,12 +810,13 @@ def plot_trend_growth(results: PotentialResults) -> None:
     )
     _finalise(
         ax,
+        _window(results),
         title="Potential growth from the production function" if production else "Potential growth",
         ylabel="Year-ended per cent" if residual_potential else "Per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER + provenance,
+        lfooter=_lfooter(results) + provenance,
         show=False,
     )
 
@@ -816,12 +836,13 @@ def plot_trend_productivity_growth(results: PotentialResults) -> None:
     )
     _finalise(
         ax,
+        _window(results),
         title="Trend labour productivity growth",
         ylabel="Annualised per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER + "GDP per LFS hour worked. ",
+        lfooter=_lfooter(results) + "GDP per LFS hour worked. ",
         show=False,
     )
 
@@ -848,17 +869,18 @@ def plot_potential_growth(results: PotentialResults) -> None:
     )
     _finalise(
         ax,
+        _window(results),
         title="Potential output growth and its components",
         ylabel="Year-ended per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER + "Components add to potential growth exactly. ",
+        lfooter=_lfooter(results) + "Components add to potential growth exactly. ",
         show=False,
     )
 
 
-def plot_growth_accounting(decomposition: GrowthDecomposition) -> None:
+def plot_growth_accounting(decomposition: GrowthDecomposition, *, results: PotentialResults) -> None:
     """Potential growth split into trend hours and trend productivity.
 
     A post-modelling accounting split, not a re-estimation: `y*` is exactly the
@@ -886,17 +908,18 @@ def plot_growth_accounting(decomposition: GrowthDecomposition) -> None:
     )
     _finalise(
         ax,
+        _window(results),
         title="Potential growth: hours and productivity",
         ylabel="Year-ended per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_decomposition_rfooter(decomposition),
+        rfooter=_decomposition_rfooter(decomposition, results),
         lfooter="Australia. Accounting split. Productivity is the residual. ",
         show=False,
     )
 
 
-def plot_growth_wedge(decomposition: GrowthDecomposition) -> None:
+def plot_growth_wedge(decomposition: GrowthDecomposition, *, results: PotentialResults) -> None:
     """Potential growth against trend hours, with productivity as the wedge.
 
     The same decomposition as `plot_growth_accounting`, presented so that the
@@ -952,17 +975,18 @@ def plot_growth_wedge(decomposition: GrowthDecomposition) -> None:
 
     _finalise(
         ax,
+        _window(results),
         title="Potential growth and labour input",
         ylabel="Year-ended per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_decomposition_rfooter(decomposition),
+        rfooter=_decomposition_rfooter(decomposition, results),
         lfooter="Australia. The wedge is trend productivity, the residual. ",
         show=False,
     )
 
 
-def plot_growth_contributions(decomposition: GrowthDecomposition) -> None:
+def plot_growth_contributions(decomposition: GrowthDecomposition, *, results: PotentialResults) -> None:
     """Period-average contributions to potential growth, stacked.
 
     The four components add to potential growth exactly, so the composition is
@@ -997,11 +1021,12 @@ def plot_growth_contributions(decomposition: GrowthDecomposition) -> None:
     )
     _finalise(
         ax,
+        _window(results),
         title="Contributions to potential growth",
         ylabel="Year-ended per cent, period average",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
-        rfooter=_decomposition_rfooter(decomposition),
+        rfooter=_decomposition_rfooter(decomposition, results),
         lfooter="Australia. Components add to potential growth exactly. ",
         show=False,
     )
@@ -1016,6 +1041,7 @@ def plot_trend_hours_components(results: PotentialResults) -> None:
 
     _line_plot_finalise(
         data,
+        _window(results),
         color=["darkorange", "black"],
         width=[2, 1],
         style=["-", "-"],
@@ -1025,7 +1051,7 @@ def plot_trend_hours_components(results: PotentialResults) -> None:
         ylabel="log x 100",
         legend={"loc": "best", "fontsize": "small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER + "Cycle removed via the estimated gap loading. ",
+        lfooter=_lfooter(results) + "Cycle removed via the estimated gap loading. ",
         show=False,
     )
 
@@ -1040,6 +1066,7 @@ def plot_gap_attribution(results: PotentialResults) -> None:
 
     _line_plot_finalise(
         data,
+        _window(results),
         color=["black", "darkorange", "seagreen"],
         width=[2, 1.5, 1.5],
         style=["-", "-", "-"],
@@ -1050,7 +1077,7 @@ def plot_gap_attribution(results: PotentialResults) -> None:
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER + "Split by the estimated hours loading. ",
+        lfooter=_lfooter(results) + "Split by the estimated hours loading. ",
         show=False,
     )
 
@@ -1071,6 +1098,7 @@ def plot_factor_trends(results: PotentialResults) -> None:
 
     _line_plot_finalise(
         trends,
+        _window(results),
         title="Trend growth of the factors of production",
         ylabel="Year-ended growth (%)",
         color=["darkorange", "navy", "seagreen"],
@@ -1079,7 +1107,7 @@ def plot_factor_trends(results: PotentialResults) -> None:
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER,
+        lfooter=_lfooter(results),
         show=False,
     )
 
@@ -1118,6 +1146,7 @@ def plot_capital_share(results: PotentialResults) -> None:
     )
     _finalise(
         ax,
+        _window(results),
         title="Capital share used in the production function",
         ylabel="Share of income",
         legend={"loc": "best", "fontsize": "small"},
@@ -1152,12 +1181,13 @@ def plot_trend_mfp(results: PotentialResults) -> None:
     )
     _finalise(
         ax,
+        _window(results),
         title="Trend multifactor productivity growth",
         ylabel="Year-ended growth (%)",
         y0=True,
         legend={"loc": "best", "fontsize": "small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER,
+        lfooter=_lfooter(results),
         show=False,
     )
 
@@ -1188,12 +1218,13 @@ def plot_factor_contributions(results: PotentialResults) -> None:
     )
     _finalise(
         ax,
+        _window(results),
         title="Contributions to potential growth",
         ylabel="Percentage points, year-ended",
         y0=True,
         legend={"loc": "best", "fontsize": "x-small"},
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER + "Capital share is observed and smoothed, not estimated. ",
+        lfooter=_lfooter(results) + "Capital share is observed and smoothed, not estimated. ",
         show=False,
     )
 
@@ -1215,11 +1246,8 @@ def run_analysis(
     results = load_results(output_dir=output_dir, prefix=prefix)
 
     # Read from the run's own recorded settings rather than passed in, so a
-    # chart can never disagree with the trace it was drawn from. Reset each
-    # call: a session that analyses an excluded-window run and then a normal one
-    # would otherwise carry the shading over to the second.
-    global _EXCLUDED_WINDOW
-    _EXCLUDED_WINDOW = _excluded_window(results)
+    # chart can never disagree with the trace it was drawn from.
+    chart_annotations.attach(results, excluded_window=_excluded_window(results))
 
     print_diagnostics(results)
 
@@ -1268,9 +1296,9 @@ def run_analysis(
         if decompose and results.spec != "production":
             decomposition = decompose_potential_growth(results)
             print_decomposition(decomposition)
-            plot_growth_accounting(decomposition)
-            plot_growth_wedge(decomposition)
-            plot_growth_contributions(decomposition)
+            plot_growth_accounting(decomposition, results=results)
+            plot_growth_wedge(decomposition, results=results)
+            plot_growth_contributions(decomposition, results=results)
     else:
         plot_trend_productivity_growth(results)
         plot_potential_growth(results)

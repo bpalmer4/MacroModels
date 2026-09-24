@@ -16,9 +16,11 @@ from src.data.dataseries import DataSeries
 from src.data.series_specs import (
     CPI_ALL_GROUPS,
     CPI_HEADLINE_ANNUAL,
+    CPI_HEADLINE_QUARTERLY,
     CPI_TRIMMED_MEAN_ANNUAL,
     CPI_TRIMMED_MEAN_QUARTERLY,
     CPI_WEIGHTED_MEDIAN,
+    CPI_WEIGHTED_MEDIAN_QUARTERLY,
 )
 
 # Monthly CPI All Groups SA index from table 640106 (available from Apr 2024)
@@ -98,6 +100,31 @@ def get_weighted_median_annual() -> DataSeries:
 
     """
     return load_series(CPI_WEIGHTED_MEDIAN)
+
+
+def get_weighted_median_qrtly() -> DataSeries:
+    """Get quarterly weighted median inflation.
+
+    Returns percentage change from previous period.
+
+    Returns:
+        DataSeries with quarterly weighted median inflation (%)
+
+    """
+    return load_series(CPI_WEIGHTED_MEDIAN_QUARTERLY)
+
+
+def get_headline_qrtly() -> DataSeries:
+    """Get quarterly headline CPI inflation, seasonally adjusted.
+
+    Returns percentage change from previous period. Available from 1987Q1,
+    since the seasonally adjusted series begins in 1986Q4.
+
+    Returns:
+        DataSeries with quarterly headline inflation (%)
+
+    """
+    return load_series(CPI_HEADLINE_QUARTERLY)
 
 
 def get_headline_annual() -> DataSeries:

@@ -10,34 +10,28 @@ from src.models.nairu.results import NAIRUResults
 START = pd.Period("1985Q1", freq="Q")
 
 PRE_POLICY_PERIOD = {
-    "axvspan": {
-        "xmin": START.ordinal,
-        "xmax": PHASE_END.ordinal,
-        "color": "goldenrod",
-        "alpha": 0.2,
-        "label": "Pre-policy-relevant NAIRU",
-        "zorder": -2,
-    }
+    "xmin": START.ordinal,
+    "xmax": PHASE_END.ordinal,
+    "color": "goldenrod",
+    "alpha": 0.2,
+    "label": "Pre-policy-relevant NAIRU",
+    "zorder": -2,
 }
 
 ANNUAL_RANGE = {
-    "axhspan": {
-        "ymin": 2,
-        "ymax": 3,
-        "color": "#dddddd",
-        "label": "2-3% annual inflation target range",
-        "zorder": -1,
-    }
+    "ymin": 2,
+    "ymax": 3,
+    "color": "#dddddd",
+    "label": "2-3% annual inflation target range",
+    "zorder": -1,
 }
 
 ANNUAL_TARGET = {
-    "axhline": {
-        "y": 2.5,
-        "linestyle": "dashed",
-        "linewidth": 0.75,
-        "color": "darkred",
-        "label": "2.5% annual inflation target",
-    }
+    "y": 2.5,
+    "linestyle": "dashed",
+    "linewidth": 0.75,
+    "color": "darkred",
+    "label": "2.5% annual inflation target",
 }
 
 
@@ -80,8 +74,8 @@ def plot_nairu(
             lfooter=lfooter,
             rfooter=rfooter,
             axisbelow=True,
-            **PRE_POLICY_PERIOD,
-            **ANNUAL_RANGE,
-            **ANNUAL_TARGET,
+            axvspan=PRE_POLICY_PERIOD,
+            axhspan=ANNUAL_RANGE,
+            axhline=ANNUAL_TARGET,
             show=show,
         )

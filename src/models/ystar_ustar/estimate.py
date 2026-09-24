@@ -59,8 +59,8 @@ def _keep_mask(config: ModelConfig, obs_index: pd.PeriodIndex) -> np.ndarray | N
 
 def _observe(
     name: str,
-    mu: Any,
-    sigma: Any,
+    mu: pt.TensorVariable,
+    sigma: float | pt.TensorVariable,
     observed: np.ndarray,
     keep: np.ndarray | None,
 ) -> None:
@@ -81,7 +81,7 @@ def _observe(
     pm.Normal(name, mu=mu[rows], sigma=sigma, observed=observed[rows])
 
 
-def _ustar_spline(model: pm.Model, config: ModelConfig, obs_index: pd.PeriodIndex) -> Any:
+def _ustar_spline(model: pm.Model, config: ModelConfig, obs_index: pd.PeriodIndex) -> pt.TensorVariable:
     """u* as a natural cubic spline with knots at `config.spline_knots`.
 
         u*_t = sum_j c_j B_j(t)
@@ -110,7 +110,7 @@ def _ustar_state(
     model: pm.Model,
     config: ModelConfig,
     obs_index: pd.PeriodIndex,
-) -> Any:
+) -> pt.TensorVariable:
     """u* under the law `config.ustar_structure` names: a spline, or a walk.
 
     The walk's initial level carries a wide prior centred on the sample's own
@@ -161,7 +161,9 @@ def _ustar_state(
             z = pm.Normal("z_ustar", mu=0.0, sigma=1.0, shape=n)
             init = pm.Normal("ustar_init", mu=float(obs["u"][0]), sigma=3.0)
 
-            def step(eps: Any, prev: Any, phi: Any, eq: Any) -> Any:
+            def step(
+                eps: pt.TensorVariable, prev: pt.TensorVariable, phi: pt.TensorVariable, eq: pt.TensorVariable,
+            ) -> pt.TensorVariable:
                 return prev + phi * (eq - prev) + eps
 
             path, _ = pytensor.scan(
@@ -208,7 +210,7 @@ def _cycle_gap(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfig)
         z = pm.Normal("z_gap", mu=0.0, sigma=1.0, shape=n)
         innovations = z * config.sigma_c * pt.sqrt(1.0 - rho**2)
 
-        def step(eps: Any, prev: Any, rho_: Any) -> Any:
+        def step(eps: pt.TensorVariable, prev: pt.TensorVariable, rho_: pt.TensorVariable) -> pt.TensorVariable:
             return rho_ * prev + eps
 
         # The first quarter is drawn from the stationary distribution directly,
@@ -332,7 +334,7 @@ def _gdp_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     latents: dict[str, Any],
-    gap: Any,
+    gap: pt.TensorVariable,
     keep: np.ndarray | None,
 ) -> str:
     """Fit log_gdp = y* + gap + e_c."""
@@ -351,7 +353,9 @@ def _gdp_equation(
 def _okun_error_correction(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    ustar: Any,    gap: Any,    *,
+    ustar: pt.TensorVariable,
+    gap: pt.TensorVariable,
+    *,
     config: ModelConfig,
     keep: np.ndarray | None,
 ) -> str:
@@ -435,7 +439,9 @@ def _okun_error_correction(
 def _okun_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    ustar: Any,    gap: Any,    *,
+    ustar: pt.TensorVariable,
+    gap: pt.TensorVariable,
+    *,
     config: ModelConfig,
     keep: np.ndarray | None,
 ) -> str:
@@ -486,7 +492,7 @@ def _okun_equation(
 def _phillips_on_gap(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    gap: Any,
+    gap: pt.TensorVariable,
     anchor: np.ndarray,
     keep: np.ndarray | None,
 ) -> str:
@@ -534,7 +540,7 @@ def _phillips_on_gap(
 def _phillips_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    ustar: Any,
+    ustar: pt.TensorVariable,
     anchor: np.ndarray,
     keep: np.ndarray | None,
 ) -> str:

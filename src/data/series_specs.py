@@ -104,6 +104,18 @@ CPI_HEADLINE_ANNUAL = ReqsTuple(
     zip_file="",
 )
 
+# Quarterly headline (seasonally adjusted) - percentage change from previous period
+CPI_HEADLINE_QUARTERLY = ReqsTuple(
+    cat="6401.0",
+    table="64010Appendix1a",
+    did="Percentage Change from Previous Period ;  All groups CPI, seasonally adjusted ;  Australia ;",
+    stype="S",
+    unit="",
+    seek_yr_growth=False,
+    calc_growth=False,
+    zip_file="",
+)
+
 # Quarterly trimmed mean - percentage change from previous period
 CPI_TRIMMED_MEAN_QUARTERLY = ReqsTuple(
     cat="6401.0",
@@ -147,6 +159,18 @@ CPI_WEIGHTED_MEDIAN = ReqsTuple(
     stype="SA",
     unit="",
     seek_yr_growth=True,
+    calc_growth=False,
+    zip_file="",
+)
+
+# Quarterly weighted median - percentage change from previous period
+CPI_WEIGHTED_MEDIAN_QUARTERLY = ReqsTuple(
+    cat="6401.0",
+    table="64010Appendix1a",
+    did="Percentage Change from Previous Period ;  Weighted Median ;  Australia ;",
+    stype="S",
+    unit="",
+    seek_yr_growth=False,
     calc_growth=False,
     zip_file="",
 )

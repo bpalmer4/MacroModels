@@ -11,8 +11,6 @@ Types:
 Functions:
     load_series: Load a single ABS series based on selection requirements.
     get_abs_data: Load multiple ABS series into a dictionary.
-    get_gdp: Fetch GDP series (current prices or chain volume measures).
-    get_population: Fetch population series by state.
 
 Example:
     >>> from src.data.abs_loader import ReqsTuple, load_series, get_abs_data
@@ -24,7 +22,7 @@ Example:
 """
 
 from functools import cache
-from typing import Any, NamedTuple, cast
+from typing import NamedTuple, cast
 
 import readabs as ra
 from pandas import DataFrame, PeriodIndex
@@ -182,73 +180,6 @@ def get_abs_data(wanted: ReqsDict, verbose: bool = False) -> dict[str, DataSerie
 
 
 # --- Convenience functions for common series ---
-
-
-def get_population(
-    state: str = "Australia",
-    project: bool = True,
-    **kwargs: Any,
-) -> DataSeries:
-    """Fetch ABS population Series for a given state.
-
-    Args:
-        state: State name (default "Australia" for national population)
-        project: Whether to project population forward by 2 quarters
-        **kwargs: Additional arguments passed to ra.find_abs_id
-
-    Returns:
-        DataSeries containing population data and metadata
-
-    """
-    cat = "3101.0"
-    table = "310104"
-    pop_data, pop_meta = ra.read_abs_cat(cat, single_excel_only=table, verbose=False)
-    selector = {
-        f";  {state} ;": mc.did,
-        "Estimated Resident Population ;  Persons ;  ": mc.did,
-    }
-    _table, series_id, units = ra.find_abs_id(pop_meta, selector, **kwargs)
-    pop = pop_data[table][series_id]
-
-    if project:
-        # Simple projection for short periods (6 months)
-        rate = pop.iloc[-1] / pop.iloc[-2]
-        base_period = pop.index[-1]
-        for i in range(1, 3):
-            pop[base_period + i] = pop[base_period + i - 1] * rate
-
-    return DataSeries(
-        data=pop,
-        source="ABS",
-        units=units,
-        description=f"Estimated Resident Population - {state}",
-        series_id=series_id,
-        table=table,
-        cat=cat,
-        metadata={"projected": project, "state": state},
-    )
-
-
-def get_abs_catalogue_data(
-    cat: str,
-    **kwargs: Any,
-) -> tuple[dict[str, DataFrame], DataFrame, str, str]:
-    """Get ABS data for a specific catalogue number.
-
-    This is a general-purpose loader that returns all tables in a catalogue.
-
-    Args:
-        cat: ABS catalogue number (e.g., "6401.0")
-        **kwargs: Additional arguments to pass to read_abs_cat
-
-    Returns:
-        Tuple of (data dictionary, metadata DataFrame, source string, recent date string)
-
-    """
-    abs_dict, meta = ra.read_abs_cat(cat, **kwargs)
-    source = f"ABS: {cat}"
-    recent = "2020-12-01"
-    return abs_dict, meta, source, recent
 
 
 def collate_summary_data(

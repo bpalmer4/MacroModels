@@ -23,14 +23,18 @@ from src.data.bonds import get_breakeven_inflation, get_nominal_10y
 from src.data.capital import get_capital_growth_qrtly
 from src.data.expectations import get_expectations_surveys
 from src.data.hourly_coe import get_hourly_coe_growth_annual, get_hourly_coe_growth_qrtly
-from src.data.inflation import get_headline_annual, get_trimmed_mean_annual, get_weighted_median_annual
+from src.data.inflation import (
+    get_headline_qrtly,
+    get_trimmed_mean_annual,
+    get_trimmed_mean_qrtly,
+    get_weighted_median_annual,
+    get_weighted_median_qrtly,
+)
 from src.data.labour_force import get_hours_growth_qrtly
 from src.data.productivity import compute_mfp_trend_floored
 from src.data.ulc import get_ulc_growth_qrtly
 from src.models.common.diagnostics import check_model_diagnostics, save_diagnostics
 from src.models.expectations.common import (
-    ANCHOR_SIGMA,
-    ANCHOR_TARGET,
     CHART_DIR,
     DEFAULT_CHAINS,
     DEFAULT_DRAWS,
@@ -41,6 +45,20 @@ from src.models.expectations.common import (
 )
 from src.utilities.rate_conversion import annualize
 
+# --- Inflation Gap ---
+
+# Inflation is observed as a quarterly annualised rate, and its deviation from
+# expectations (the gap) follows an AR(1) across quarters, after Chan, Clark
+# and Koop (2018). Beta(2, 2) on the persistence b: centred on 0.5, weight off
+# both bounds, so the gap is always stationary and never a random walk.
+GAP_PERSISTENCE_ALPHA = 2.0
+GAP_PERSISTENCE_BETA = 2.0
+
+MONTHS_PER_QUARTER = 3
+
+# An AR(1) gap needs a previous quarter to condition on.
+MIN_GAP_OBSERVATIONS = 2
+
 # --- Model Configurations ---
 
 
@@ -48,7 +66,6 @@ class ModelConfigDict(TypedDict, total=False):
     """Configuration options for expectation model variants."""
 
     survey_series: list[str]
-    use_anchor: bool
     use_headline: bool
     use_nominal: bool
     nominal_cutoff: str
@@ -67,9 +84,8 @@ class ModelConfigDict(TypedDict, total=False):
 
 
 MODEL_CONFIGS: dict[str, ModelConfigDict] = {
-    "target": {
+    "unanchored": {
         "survey_series": ["market_1y", "breakeven", "business", "market_yoy"],
-        "use_anchor": True,
         "use_headline": True,
         "use_nominal": True,
         "nominal_cutoff": "1993Q3",  # 7yr overlap with breakeven for r* identification
@@ -77,20 +93,21 @@ MODEL_CONFIGS: dict[str, ModelConfigDict] = {
         "use_inflation": True,
         "use_survey_bias": True,
         "inflation_sigma_prior": 1.5,
-        "tie_inflation_sigma": False,
-        "estimate_innovation": True,
-        "sigma_early": 0.12,  # Prior center (estimated)
-        "sigma_late": 0.075,  # Prior center (estimated)
+        # Fixed innovation variance, to avoid funnel geometry in the posterior
+        "estimate_innovation": False,
+        "sigma_early": 0.30,
+        "sigma_late": 0.07,
     },
     "short": {
         "survey_series": ["market_1y"],
-        "use_anchor": False,
         "use_headline": True,
         "use_nominal": False,
         "use_hcoe": False,
         "use_inflation": True,
         "use_survey_bias": False,
         "inflation_sigma_prior": 1.5,
+        # One survey and a free sigma_obs lets the survey noise collapse and the
+        # walk pin to it; sharing sigma with the inflation gap holds it apart.
         "tie_inflation_sigma": True,
         "estimate_innovation": True,
         "sigma_early": 0.12,
@@ -98,28 +115,17 @@ MODEL_CONFIGS: dict[str, ModelConfigDict] = {
     },
     "market": {
         "survey_series": ["breakeven"],
-        "use_anchor": False,
         "use_headline": False,
         "use_nominal": True,
         "use_hcoe": False,
         "use_inflation": False,
         "use_survey_bias": False,
         "inflation_sigma_prior": 2.0,
-        "tie_inflation_sigma": False,
         "estimate_innovation": False,
         "sigma_early": 0.12,
         "sigma_late": 0.075,
         "quarterly": True,  # Run quarterly — too sparse for monthly identification
     },
-}
-
-# Unanchored is target without the anchor (fixed innovation to avoid funnel geometry)
-MODEL_CONFIGS["unanchored"] = {
-    **MODEL_CONFIGS["target"],
-    "use_anchor": False,
-    "estimate_innovation": False,
-    "sigma_early": 0.30,
-    "sigma_late": 0.07,
 }
 
 
@@ -159,7 +165,7 @@ def _quarter_end_mask(index: pd.PeriodIndex) -> np.ndarray:
 def load_data(
     start: str = "1983Q1",
     *,
-    monthly: bool = True,
+    monthly: bool = False,
 ) -> tuple[pd.DataFrame, pd.Series, pd.PeriodIndex]:
     """Load and align expectations measures and inflation.
 
@@ -173,15 +179,14 @@ def load_data(
     freq = "M" if monthly else "Q"
     start_period = pd.Period(start, freq="Q").asfreq(freq, how="start") if monthly else pd.Period(start)
 
-    # Load survey expectations
+    # Surveys and the breakeven in one frame, built together so its index is
+    # every date any of them has. Assigning the breakeven as a later column
+    # would align it to the surveys' dates and drop it before they start.
     surveys = get_expectations_surveys(monthly=monthly)
-    measures = pd.DataFrame(
-        {name: surveys[name].data for name in ["market_1y", "business", "market_yoy"] if name in surveys}
-    )
-
-    # Add breakeven from bonds
-    breakeven = get_breakeven_inflation(monthly=monthly)
-    measures["breakeven"] = breakeven.data
+    measures = pd.DataFrame({
+        **{name: surveys[name].data for name in ["market_1y", "business", "market_yoy"] if name in surveys},
+        "breakeven": get_breakeven_inflation(monthly=monthly).data,
+    })
 
     # Interpolate through GST-distorted observations
     for col in ("market_1y", "market_yoy"):
@@ -267,45 +272,75 @@ def _add_survey_obs(
             pm.Normal(f"obs_{col}", mu=pi_exp[mask], sigma=sigma_obs[i], observed=obs_data[mask])
 
 
-def _add_inflation_obs(
-    pi_exp: pt.TensorVariable, inflation_mask: np.ndarray, inflation_lagged: np.ndarray, config: ModelConfigDict,
+def _lagged_on_index(quarterly: pd.Series, index: pd.PeriodIndex) -> np.ndarray:
+    """Place a quarterly series on the model's grid, lagged one period.
+
+    On a monthly grid the quarter sits at its last month. Works on a copy: the
+    loaders cache their results, and re-indexing in place would hand every
+    later caller a monthly index.
+    """
+    series = quarterly.copy()
+    if index.freqstr.startswith("M"):
+        series.index = series.index.asfreq("M", how="end")
+    return series.reindex(index).shift(1).to_numpy()
+
+
+def _add_ar1_gap_obs(
+    name: str, pi_exp: pt.TensorVariable, observed: np.ndarray, mask: np.ndarray, *, index: pd.PeriodIndex,
+    sigma_prior: float, sigma: pt.TensorVariable | None = None,
 ) -> None:
-    """Add actual inflation observation."""
+    """Observe inflation as expectations plus a gap that is AR(1) across quarters.
+
+    gap_k = y_k - pi_exp_k,  gap_k = b * gap_{k-1} + e_k,  e_k ~ N(0, sigma).
+    Conditioning on the previous observed gap gives the exact likelihood, with
+    no extra latent states; the first quarter takes the stationary variance.
+    A caller passing `sigma` shares an existing noise scale instead of
+    estimating one here.
+    """
+    positions = np.flatnonzero(mask)
+    step = MONTHS_PER_QUARTER if index.freqstr.startswith("M") else 1
+    if positions.size < MIN_GAP_OBSERVATIONS or not np.all(np.diff(positions) == step):
+        raise ValueError(f"{name}: the AR(1) gap needs consecutive quarterly observations with no holes")
+
+    y = observed[positions]
+    level = pi_exp[positions]
+    b = pm.Beta(f"b_{name}", alpha=GAP_PERSISTENCE_ALPHA, beta=GAP_PERSISTENCE_BETA)
+    if sigma is None:
+        sigma = pm.HalfNormal(f"sigma_{name}", sigma=sigma_prior)
+
+    pm.Normal(f"obs_{name}_first", mu=level[0], sigma=sigma / pt.sqrt(1 - b**2), observed=y[0])
+    pm.Normal(f"obs_{name}", mu=level[1:] + b * (y[:-1] - level[:-1]), sigma=sigma, observed=y[1:])
+
+
+def _add_inflation_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: ModelConfigDict) -> None:
+    """Add underlying inflation, quarterly annualised, with an AR(1) gap."""
     if not config.get("use_inflation", False):
         return
 
-    if config.get("tie_inflation_sigma", False):
-        # Use sigma_obs[0] from survey - must be called after _add_survey_obs
-        sigma = pm.modelcontext(None)["sigma_obs"][0]
-    else:
-        sigma = pm.HalfNormal("sigma_inflation", sigma=config.get("inflation_sigma_prior", 1.5))
-
-    pm.Normal("obs_inflation", mu=pi_exp[inflation_mask], sigma=sigma, observed=inflation_lagged[inflation_mask])
+    underlying = annualize((get_trimmed_mean_qrtly().data + get_weighted_median_qrtly().data) / 2)
+    observed = _lagged_on_index(underlying, index)
+    # The survey's sigma_obs exists because survey observations are added first.
+    shared = pm.modelcontext(None)["sigma_obs"][0] if config.get("tie_inflation_sigma", False) else None
+    _add_ar1_gap_obs("inflation", pi_exp, observed, ~np.isnan(observed), index=index,
+                     sigma_prior=config.get("inflation_sigma_prior", 1.5), sigma=shared)
 
 
 def _add_headline_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: ModelConfigDict) -> None:
-    """Add pre-1993 headline CPI observation."""
+    """Add pre-1993 headline CPI, quarterly annualised, with its own AR(1) gap."""
     if not config.get("use_headline", False):
         return
 
-    headline_raw = get_headline_annual().data
-    monthly = index.freqstr.startswith("M")
-    if monthly:
-        headline_raw.index = headline_raw.index.asfreq("M", how="end")
-    headline = headline_raw.reindex(index).shift(1)
-    pre_targeting = index < _to_period("1993Q1", monthly)
-    mask = ~np.isnan(headline.to_numpy()) & pre_targeting
-
-    if mask.sum() > 0:
-        sigma = pm.HalfNormal("sigma_headline", sigma=2.0)
-        pm.Normal("obs_headline", mu=pi_exp[mask], sigma=sigma, observed=headline.to_numpy()[mask])
+    observed = _lagged_on_index(annualize(get_headline_qrtly().data), index)
+    pre_targeting = index < _to_period("1993Q1", index.freqstr.startswith("M"))
+    _add_ar1_gap_obs("headline", pi_exp, observed, ~np.isnan(observed) & pre_targeting, index=index,
+                     sigma_prior=2.0)
 
 
 def _add_nominal_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: ModelConfigDict) -> None:
     """Add nominal bond observation.
 
     Two modes:
-    - Default: pre-breakeven only (cutoff period), used by target/unanchored
+    - Default: pre-breakeven only (cutoff period), used by unanchored
     - Full sample: all available observations with an inflation risk premium,
       used by the market model to improve identification.
     """
@@ -381,18 +416,6 @@ def _add_hcoe_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: Mode
                   observed=hcoe.to_numpy()[mask])
 
 
-def _add_target_anchor(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: ModelConfigDict) -> None:
-    """Add target anchor observation post-1998."""
-    if not config.get("use_anchor", False):
-        return
-
-    monthly = index.freqstr.startswith("M")
-    post_anchored = index >= _to_period("1998Q4", monthly)
-    if post_anchored.sum() > 0:
-        pm.Normal("obs_target", mu=pi_exp[post_anchored], sigma=ANCHOR_SIGMA,
-                  observed=np.full(post_anchored.sum(), ANCHOR_TARGET))
-
-
 # --- Model Building ---
 
 
@@ -405,8 +428,6 @@ def _build_pymc_model(
     # Prepare data — for monthly, inflation is NaN at non-quarter months;
     # forward-fill the lag so survey months still have an inflation_lag value.
     inflation_lag = inflation.shift(1).ffill().bfill().to_numpy()
-    inflation_lagged = inflation.shift(1).to_numpy()
-    inflation_mask = ~np.isnan(inflation_lagged)
 
     # Regime break for innovation variance
     regime_break = _to_period("1994Q1", monthly)
@@ -450,7 +471,10 @@ def _build_pymc_model(
         # strong level correlations that hurt mixing. Non-centering helps
         # regardless of whether sigma is estimated or fixed.
         if estimate_innovation:
-            sigma_late = pm.HalfNormal("sigma_late", sigma=0.1 * scale)
+            # The config value becomes the prior scale. Large sigma_late lets
+            # the walk chase inflation surges into a ridge against the survey
+            # noise, so the prior keeps weight off that tail.
+            sigma_late = pm.HalfNormal("sigma_late", sigma=sigma_late)
 
         raw_late = pm.StudentT("raw_late", mu=0, sigma=1, nu=4, shape=n_late - 1)
         pi_exp_late = pm.Deterministic(
@@ -462,11 +486,10 @@ def _build_pymc_model(
 
         # --- Observation Equations ---
         _add_survey_obs(pi_exp, measures, inflation_lag, index, config)
-        _add_inflation_obs(pi_exp, inflation_mask, inflation_lagged, config)
+        _add_inflation_obs(pi_exp, index, config)
         _add_headline_obs(pi_exp, index, config)
         _add_nominal_obs(pi_exp, index, config)
         _add_hcoe_obs(pi_exp, index, config)
-        _add_target_anchor(pi_exp, index, config)
 
     return model
 
@@ -475,11 +498,11 @@ def build_model(
     measures: pd.DataFrame,
     inflation: pd.Series,
     index: pd.PeriodIndex,
-    model_type: str = "target",
+    model_type: str = "unanchored",
 ) -> pm.Model:
     """Build signal extraction model for a specific expectation type."""
     match model_type:
-        case "target" | "unanchored" | "short" | "market":
+        case "unanchored" | "short" | "market":
             config = MODEL_CONFIGS[model_type]
         case _:
             raise ValueError(f"Unknown model type: {model_type}")
@@ -491,18 +514,17 @@ def build_model(
 
 
 def run_model(
-    model_type: str = "target",
+    model_type: str = "unanchored",
+    *,
     start: str = "1983Q1",
     draws: int = DEFAULT_DRAWS,
     tune: int = DEFAULT_TUNE,
     chains: int = DEFAULT_CHAINS,
     verbose: bool = True,
-    *,
-    monthly: bool = True,
+    monthly: bool = False,
 ) -> tuple[az.InferenceData, pd.DataFrame, pd.Series, pd.PeriodIndex]:
     """Run model and return trace + data."""
     model_desc = {
-        "target": "Target-anchored (all surveys + anchor)",
         "unanchored": "Expectations (all surveys, no anchor)",
         "short": "Short-run (market_1y, no anchor)",
         "market": "Market (breakeven only, no anchor)",
@@ -529,9 +551,7 @@ def run_model(
 
     if verbose:
         print("Sampling posterior...")
-    # Target model needs higher target_accept for remaining divergences
-    # from the hybrid parameterisation (estimated sigma_late + non-centered walk)
-    target_accept = {"target": 0.95, "market": 0.9}.get(model_type, 0.8)
+    target_accept = {"market": 0.9}.get(model_type, 0.8)
 
     with model:
         trace = pm.sample(
@@ -554,6 +574,7 @@ def save_results(
     measures: pd.DataFrame,
     inflation: pd.Series,
     index: pd.PeriodIndex,
+    *,
     output_dir: Path | None = None,
 ) -> None:
     """Save trace and metadata to disk."""
@@ -594,13 +615,16 @@ def save_results(
     hdi.to_parquet(output_dir / f"expectations_{model_type}_hdi.parquet")
     hdi.to_csv(output_dir / f"expectations_{model_type}_hdi.csv")
 
-    # For monthly models, also save quarterly extracts (Mar/Jun/Sep/Dec)
+    # The quarterly file downstream models read. Written at either frequency:
+    # the loader prefers it, so a run that skipped it would leave an older
+    # run's file to be read in its place.
     if monthly:
-        qtr_mask = _quarter_end_mask(index)
-        hdi_q = hdi.loc[qtr_mask].copy()
+        hdi_q = hdi.loc[_quarter_end_mask(index)].copy()
         hdi_q.index = hdi_q.index.to_timestamp().to_period("Q")
-        hdi_q.to_parquet(output_dir / f"expectations_{model_type}_hdi_quarterly.parquet")
-        hdi_q.to_csv(output_dir / f"expectations_{model_type}_hdi_quarterly.csv")
+    else:
+        hdi_q = hdi
+    hdi_q.to_parquet(output_dir / f"expectations_{model_type}_hdi_quarterly.parquet")
+    hdi_q.to_csv(output_dir / f"expectations_{model_type}_hdi_quarterly.csv")
 
 
 # --- CLI ---
@@ -611,7 +635,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Expectations Stage 1: Sampling")
     parser.add_argument("--start", default="1983Q1", help="Start period (quarterly format, e.g. 1983Q1)")
     parser.add_argument("--model", choices=MODEL_TYPES, help="Run single model (default: all)")
-    parser.add_argument("--quarterly", action="store_true", help="Run at quarterly frequency (default is monthly)")
+    parser.add_argument("--monthly", action="store_true", help="Run at monthly frequency (default is quarterly)")
     parser.add_argument("--draws", type=int, default=DEFAULT_DRAWS)
     parser.add_argument("--tune", type=int, default=DEFAULT_TUNE)
     parser.add_argument("--chains", type=int, default=DEFAULT_CHAINS)
@@ -621,7 +645,7 @@ if __name__ == "__main__":
 
     models_to_run = [args.model] if args.model else MODEL_TYPES
 
-    monthly = not args.quarterly
+    monthly = args.monthly
     freq_label = "MONTHLY" if monthly else "QUARTERLY"
     print("=" * 60)
     print(f"EXPECTATIONS STAGE 1: SAMPLING ({freq_label})")

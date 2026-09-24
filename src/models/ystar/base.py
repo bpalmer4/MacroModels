@@ -25,24 +25,19 @@ class SamplerConfig:
     cores: int = 4
     sampler: str = "numpyro"
     target_accept: float = 0.95
-    # NumPyro's own default, stated here rather than inherited so that the
+    # Stated here rather than inherited from NumPyro's default of 10, so that the
     # diagnostics can compare against the CONFIGURED cap: see `sample_model`,
     # which records it in the trace, and `_tree_depth_check`, which without it
     # can only compare against the deepest trajectory observed.
     #
-    # RAISING IT TO 12 WAS TRIED AND DOES NOTHING. The argument was that 10 is
-    # the wrong cap to pair with `target_accept` at 0.95, since high acceptance
-    # is bought with a small step size and small steps need more leapfrog steps
-    # to cover the same ground. rstar_bonds with the forward window showed 8.4%
-    # of transitions at depth 10, which looked like truncation.
-    #
-    # It was not. At a cap of 12 the deepest trajectory is still 10 and mean
-    # depth moves 9.08 to 9.10, so nothing was being truncated: these
-    # trajectories U-turn at 10 of their own accord and 10 is simply what this
-    # posterior costs. The 8.4% was the diagnostic reporting the share of draws
-    # at the observed maximum, which only coincided with saturation because the
-    # observed maximum happened to equal the cap.
-    max_tree_depth: int = 10
+    # 12, ABOVE WHERE THESE POSTERIORS NATURALLY STOP, so the check can see
+    # truncation. The trajectories here U-turn at depth 10 of their own accord:
+    # rstar_bonds at a cap of 12 still peaks at 10, and so do ystar and
+    # ystar_ustar. At a cap of 10 a tree that ends naturally at 10 is
+    # indistinguishable from one cut off there, and the check reported 100% at
+    # the cap for ystar and ystar_ustar when nothing was truncated. With the
+    # cap two levels higher, a draw that reaches it really was cut short.
+    max_tree_depth: int = 12
     random_seed: int = 42
     # Store pointwise log likelihood in the trace, so variants can be ranked
     # with LOO/WAIC instead of by eyeballing coefficients. Only compare runs

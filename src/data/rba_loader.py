@@ -198,8 +198,7 @@ def get_inflation_expectations() -> DataSeries:
     in trend inflation, observed through the surveys and the 10-year bond
     yield. Fitted as adaptive learning it has a half-life of 23 quarters over
     1970-1982, so it moves slowly against a fast climb, which is what a trend
-    anchor does. See `src/data/expectations_spliced.py` for why that makes it
-    the wrong input to a Phillips curve written for near-term expectations.
+    anchor does.
 
     From the MacroDave database (`github.com/MacroDave/MARTIN`). The data run
     from 1970Q1 to 2019Q1. UNVERIFIED: how the pre-1983 values were produced.

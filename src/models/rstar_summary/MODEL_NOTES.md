@@ -82,7 +82,7 @@ saying plainly because it weakens the independence the chart trades on. `rstar_b
 ### The nominal conversion
 
 `rstar_rba` records `neutral` in nominal terms already. The other two are real and have
-**target-anchored long-run inflation expectations** added.
+**unanchored long-run inflation expectations** added.
 
 **This changed on 2026-09-16.** It used to add the flat 2.5% target, on the ground that a
 neutral rate is defined at target inflation. The reason for changing is comparability: the

@@ -145,7 +145,7 @@ def _lag_weights(config: ModelConfig) -> list[Any]:
     return [weights[position] for position in range(count)]
 
 
-def _rstar_path(config: ModelConfig, n: int) -> Any:
+def _rstar_path(config: ModelConfig, n: int) -> pt.TensorVariable:
     """Return the r* path, in percentage points.
 
     The form is the answer to "how slow is r*", which is the one genuinely open

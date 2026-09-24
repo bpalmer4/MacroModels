@@ -44,7 +44,7 @@ _TREND_WINDOW = 40
 
 # One label, because the line appears on two charts and a reader moving between
 # them must be able to see it is the same series.
-TREND_G_LABEL = "Trend GDP per capita growth + inflation expectations"
+TREND_G_LABEL = f"{_TREND_WINDOW}Q trend GDP per capita growth + inflation expectations"
 
 # Named so the proxy chart can subtract one proxy from the other by name. It
 # used to difference `iloc[:, 0] - iloc[:, 1]`, which was the forward less the

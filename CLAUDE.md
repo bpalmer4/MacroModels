@@ -56,9 +56,8 @@ uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EV
                                    #   produced. --only <str> or --dir narrows it.
                                    # The only diagnostics FILE is per run: each model's analysis
                                    #   writes run-diagnostics-<prefix>.txt into that run's chart
-                                   #   directory, beside the charts it describes. Any other run's
-                                   #   file there is cleared, so one directory = one run's charts
-                                   #   plus its diagnostics.
+                                   #   directory, beside the charts it describes (one file per
+                                   #   trace: expectations writes three).
 ./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free, u* a spline;
                                    #   needs expectations)
 ./run-ystar.sh --compare           # five specifications of the y* model on one chart
@@ -98,7 +97,7 @@ src/
 │
 ├── models/                        # Every model has a MODEL_NOTES.md: read it before quoting.
 │   │   # LIVE
-│   ├── expectations/              # Inflation expectations (target-anchored, unanchored, short, market)
+│   ├── expectations/              # Inflation expectations (unanchored, short, market)
 │   ├── ystar/                     # Potential output; preferred source for POTENTIAL GROWTH; --compare
 │   ├── ustar/                     # u* from one Phillips curve, spline; don't quote before 2000; --compare
 │   ├── ystar_ustar/               # Joint y*/u*: PREFERRED for the output gap and u*; --compare

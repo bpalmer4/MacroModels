@@ -23,6 +23,13 @@ from src.models.common.diagnostics import check_model_diagnostics
 from src.models.common.timeseries import plot_posterior_timeseries
 from src.models.expectations.common import CHART_DIR, MODEL_NAMES, MODEL_TYPES, OUTPUT_DIR
 
+# The unanchored model's lineage. Only on charts where it is the sole model
+# drawn: on the comparison charts it would be read as covering the short and
+# market lines too, which share the random walk but not the biased survey panel.
+UNANCHORED_LFOOTER = (
+    "Australia. Trend inflation after Chan, Clark & Koop (2018); "
+    "biased surveys, bonds, inflation, wages; no target anchor."
+)
 # --- Results Container ---
 
 
@@ -139,8 +146,8 @@ def run_diagnostics(results: ExpectationsResults, verbose: bool = True) -> None:
         # Parameter estimates
         trace_vars = list(results.trace.posterior.data_vars)
         summary_vars = [
-            var for var in ["alpha", "lambda_bias", "sigma_obs", "sigma_inflation", "sigma_headline",
-                            "sigma_early", "sigma_late"]
+            var for var in ["alpha", "lambda_bias", "sigma_obs", "sigma_inflation", "b_inflation",
+                            "sigma_headline", "b_headline", "sigma_early", "sigma_late"]
             if var in trace_vars
         ]
 
@@ -160,14 +167,15 @@ def run_diagnostics(results: ExpectationsResults, verbose: bool = True) -> None:
         print(hdi.tail(4))
 
 
-def _to_monthly_index(df: pd.DataFrame, target_index: pd.PeriodIndex) -> pd.DataFrame:
-    """Convert a quarterly-indexed DataFrame to a monthly PeriodIndex.
+def _to_index_freq(df: pd.DataFrame, target_index: pd.PeriodIndex) -> pd.DataFrame:
+    """Put a DataFrame on the frequency of `target_index` for comparison plots.
 
-    Places quarterly values at quarter-end months and interpolates
-    between them for smooth curves in comparison plots.
+    Unchanged when the frequencies already match. A quarterly frame going onto
+    a monthly index is placed at quarter-end months and interpolated between
+    them, for smooth curves.
     """
-    if df.index.freqstr.startswith("M"):
-        return df  # Already monthly
+    if df.index.freqstr[0] == target_index.freqstr[0]:
+        return df
     df = df.copy()
     df.index = df.index.asfreq("M", how="end")
     return df.reindex(target_index).interpolate(method="linear")
@@ -208,6 +216,7 @@ def _plot_model(
     title: str,
     lfooter: str,
     legend_stem: str,
+    *,
     overlays: list[tuple[pd.Series, str]] | None = None,
     axvspan: dict | None = None,  # Empty dict if no span needed
 ) -> None:
@@ -238,14 +247,19 @@ def plot_real_cash_rate(results: ExpectationsResults) -> None:
     people EXPECT (this model's median). The two real rates part company
     whenever inflation runs away from expectations.
 
-    Monthly: the cash rate and this model are monthly; trimmed mean is
-    quarterly and held across its quarter's three months. All three are drawn
-    as steps, since the cash rate moves only at decisions.
+    Monthly, because the cash rate is: a quarterly model and trimmed mean are
+    each held across their quarter's three months. All three are drawn as
+    steps, since the cash rate moves only at decisions.
     """
     expectations = results.expectations_posterior().median(axis=1)
-    months = expectations.index
-    if not isinstance(months, pd.PeriodIndex):
+    if not isinstance(expectations.index, pd.PeriodIndex):
         return
+    if expectations.index.freqstr.startswith("M"):
+        months = expectations.index
+    else:
+        months = pd.period_range(expectations.index[0].asfreq("M", how="start"),
+                                 expectations.index[-1].asfreq("M", how="end"), freq="M")
+        expectations = pd.Series(expectations.reindex(months.asfreq("Q")).to_numpy(), index=months)
     months = months[months <= pd.Period(pd.Timestamp.today(), freq="M") - 1]
 
     cash = get_cash_rate_monthly().data.astype(float)
@@ -270,7 +284,7 @@ def plot_real_cash_rate(results: ExpectationsResults) -> None:
         ylabel="Per cent",
         y0=True,
         legend={"loc": "best", "fontsize": "x-small"},
-        lfooter="Australia. Monthly; trimmed mean is quarterly, held across its months. ",
+        lfooter="Australia. Monthly; quarterly series held across their months. ",
         rfooter="RBA F1; ABS 6401.0; expectations model",
         show=False,
     )
@@ -314,17 +328,11 @@ def generate_plots(
 
     # Single-model plot specs: (model_type, title, lfooter, legend_stem, overlays, axvspan_fn)
     plot_specs = [
-        ("target", "Target Anchored Inflation Expectations",
-         "Australia. Bayesian signal extraction from surveys, bonds, inflation, wages. 2.5% target anchor post-1998.",
-         "Target Anchored", [(trimmed, "darkorange")], None),
-        ("target", "Target Anchored Inflation Expectations vs RBA PIE_RBAQ",
-         "Australia. Bayesian signal extraction from surveys, bonds, inflation, wages. 2.5% target anchor post-1998.",
-         "Target Anchored", [(pie_rbaq, "darkorange")], None),
         ("unanchored", "Inflation Expectations",
-         "Australia. Bayesian signal extraction from surveys, bonds, inflation, wages (no target anchor).",
+         UNANCHORED_LFOOTER,
          "Expectations", [(trimmed, "darkorange")], None),
         ("unanchored", "Inflation Expectations vs RBA PIE_RBAQ",
-         "Australia. Bayesian signal extraction from surveys, bonds, inflation, wages (no target anchor).",
+         UNANCHORED_LFOOTER,
          "Expectations", [(pie_rbaq, "darkorange")], None),
         ("short", "Short Run Inflation Expectations (1 Year)",
          "Australia. Bayesian signal extraction from market economist 1-year expectations.",
@@ -344,16 +352,16 @@ def generate_plots(
         if model_type in all_results:
             results = all_results[model_type]
             axvspan = axvspan_fn(results) if axvspan_fn else None
-            _plot_model(results, title, lfooter, legend_stem, overlays, axvspan)
+            _plot_model(results, title, lfooter, legend_stem, overlays=overlays, axvspan=axvspan)
 
     # Comparison plots (require all three: unanchored, short, market)
     if all(k in all_results for k in ("unanchored", "short", "market")):
-        monthly_index = all_results["unanchored"].index
+        shared_index = all_results["unanchored"].index
         posterior_unanchored = all_results["unanchored"].expectations_posterior()
         posterior_short = all_results["short"].expectations_posterior()
-        # Market may be quarterly — convert to monthly index for shared axis
-        posterior_market = _to_monthly_index(
-            all_results["market"].expectations_posterior(), monthly_index,
+        # Market always runs quarterly; match the others' frequency for a shared axis
+        posterior_market = _to_index_freq(
+            all_results["market"].expectations_posterior(), shared_index,
         )
 
         # Three distributions

@@ -325,8 +325,8 @@ instead of the residual.
 | `--anchor` | Pre-1993 | 1993→1998 | Post-1998 |
 |------------|----------|-----------|-----------|
 | `rba` | RBA PIE_RBAQ | phased | **2.5% target** |
-| `target` *(default)* | model expectations (target-anchored series) | phased | **2.5% target** |
-| `expectations` | model expectations (target-anchored series) — full series, no phasing | | |
+| `target` *(default)* | unanchored model median | phased | **2.5% target** |
+| `expectations` | unanchored model median, full series, no phasing (same as `unanchored_raw`) | | |
 | `unanchored` | RBA PIE_RBAQ | phased | **unanchored model median** |
 | `unanchored_raw` | unanchored model median — full series, no phasing | | |
 
@@ -361,7 +361,7 @@ The difference is consistent with the price Phillips slope γ_π ≈ −0.82: a 
 `src/models/nairu/observations.py` dispatches on `anchor_mode`:
 
 - `rba` → `get_rba_expectations()`: RBA PIE_RBAQ, phased to 2.5%
-- `target` / `expectations` → `get_model_expectations()` + optional `apply_anchor_mode()`
+- `target` / `expectations` → `get_model_expectations_unanchored()` + optional `apply_anchor_mode()`
 - `unanchored` → `_build_rba_to_unanchored()`: RBA pre-1993, phased to unanchored post-1998
 - `unanchored_raw` → `get_model_expectations_unanchored()`: unanchored series unmodified
 

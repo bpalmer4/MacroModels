@@ -1,12 +1,13 @@
 """Posterior time series plotting with credible intervals."""
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Unpack
 
 import arviz as az
 import mgplot as mg
 import pandas as pd
 from matplotlib.axes import Axes
+from mgplot import FinaliseKwargs
 
 from src.models.common.extraction import get_vector_var
 
@@ -40,7 +41,7 @@ def plot_posterior_timeseries(
     alphas: Sequence[float] = (0.1, 0.2, 0.3),
     ax: Axes | None = None,
     finalise: bool = True,
-    **finalise_kwargs: Any,
+    **finalise_kwargs: Unpack[FinaliseKwargs],
 ) -> Axes | None:
     """Plot posterior time series with credible intervals.
 

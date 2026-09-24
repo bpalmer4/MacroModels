@@ -5,11 +5,8 @@ what the RBA and CBA do, so a nominal line is comparable with a published
 neutral rate. `scale="target"` adds the flat `TARGET` instead.
 
 WHICH SERIES. Inflation expectations here are the expectations model's
-unanchored median. The model also publishes a target-anchored median, built to
-resemble the RBA's PIE_RBAQ by adding an invented target observation each
-quarter. That holds expectations near the target even when they moved away
-from it, as they did in the post-pandemic inflation, so it is not used for the
-conversion. `get_anchored_expectations()` still returns it.
+unanchored median: no target observation, so expectations are free to move
+away from the target, as they did in the post-pandemic inflation.
 
 WHY NOT REALISED INFLATION. It swings with every price shock and would carry
 those swings straight into a neutral rate. Expectations move far less.
@@ -24,7 +21,7 @@ from collections.abc import Callable
 import pandas as pd
 
 from src.data.dataseries import DataSeries
-from src.data.expectations_model import get_model_expectations, get_model_expectations_unanchored
+from src.data.expectations_model import get_model_expectations_unanchored
 
 # The RBA's midpoint, used when `scale="target"` and as the label elsewhere.
 TARGET = 2.5
@@ -51,25 +48,6 @@ def _quarterly(loader: Callable[[], DataSeries], name: str, index: pd.PeriodInde
         series.index = pd.PeriodIndex(series.index, freq="Q")
     series = series.dropna()
     return series.reindex(index) if index is not None else series
-
-
-def get_anchored_expectations(index: pd.PeriodIndex | None = None) -> pd.Series:
-    """Return the target-anchored median, quarterly.
-
-    The expectations model with an invented target observation added each
-    quarter, so it sits near the target by construction.
-
-    Args:
-        index: Reindex onto this if given.
-
-    Returns:
-        Series of expectations in per cent, on a quarterly PeriodIndex.
-
-    Raises:
-        FileNotFoundError: If the expectations model has not been run.
-
-    """
-    return _quarterly(get_model_expectations, "target-anchored", index)
 
 
 def get_unanchored_expectations(index: pd.PeriodIndex | None = None) -> pd.Series:

@@ -13,7 +13,8 @@ import mgplot as mg
 import pandas as pd
 
 from src.data.inflation import get_trimmed_mean_qrtly
-from src.models.common import prior_posterior
+from src.models.common import chart_annotations, prior_posterior
+from src.models.common.chart_annotations import Window
 from src.models.common.charts import excluded_span_style, ustar_structure_note
 from src.models.common.diagnostics import save_diagnostics
 from src.models.ustar.results import DEFAULT_CHART_BASE, UStarResults, load_results
@@ -27,33 +28,27 @@ CHART_DIR = DEFAULT_CHART_BASE / "UStar"
 # that model's sources rather than this one's. The GSCPI is a Phillips curve
 # input here and was missing from this line entirely.
 _RFOOTER = "Built using: ABS 1364.0.15.003, 5206.0, 6401.0, 6457.0; NY Fed"
-# The fixed part of the left footer. `_LFOOTER` below is derived from it per
-# run and carries the structure imposed on u* as well, so a repeated call
-# rebuilds from here rather than appending to what a previous run left behind.
+# The fixed part of the left footer. `run_analysis` attaches the full footer per
+# run, carrying the structure imposed on u* as well.
 _MODEL = "Australia. ustar model. "
 # Short because the structure it refers to is now named immediately before it
 # in the same footer, and the long form ran into the source line on the right.
-_BAND_NOTE = "Band x2; see notes. "
-_LFOOTER = _MODEL
 # Only for charts that actually draw a band. The decomposition chart is bars
 # and a line built from median parameters, with no interval on it to widen.
-_LFOOTER_BAND = _LFOOTER + _BAND_NOTE
+_BAND_NOTE = "Band x2; see notes. "
 
-# Quarters that carried no likelihood, as ("2020Q2", "2021Q3"), or None.
+# Two windows a run may attach (see `common.chart_annotations`):
 #
-# `ustar` never excludes anything, so this is None for its own runs. It exists
-# because the joint y*/u* model reuses these plotting functions and *does*
-# exclude the pandemic quarters from all three of its equations, which makes u*
-# there a prior extrapolation rather than an estimate. Set by the caller before
-# plotting, the same pattern `ystar.analyse` uses for the same reason. Without
-# it the u* chart draws a confident line through six quarters nothing was
-# fitted to.
-_EXCLUDED_WINDOW: tuple[str, str] | None = None
-
-# The early quarters where u* is placed by the state law rather than by
-# inflation, shaded so the chart does not read as a confident estimate there.
-# Set by whichever model has the evidence for a window; None draws nothing.
-_UNIDENTIFIED_WINDOW: tuple[str, str] | None = None
+# The EXCLUDED window, quarters that carried no likelihood. `ustar` never
+# excludes anything, so its own runs attach none. It exists because the joint
+# y*/u* model reuses these plotting functions and *does* exclude the pandemic
+# quarters from all three of its equations, which makes u* there a prior
+# extrapolation rather than an estimate. Without it the u* chart draws a
+# confident line through six quarters nothing was fitted to.
+#
+# The UNIDENTIFIED window, the early quarters where u* is placed by the state
+# law rather than by inflation, shaded so the chart does not read as a
+# confident estimate there. Attached by whichever model has the evidence for it.
 
 # The window this model's own diagnostics support, applied in `run_analysis`.
 # The joint model sets its own, to the same dates and on its own evidence.
@@ -79,16 +74,16 @@ _UNIDENTIFIED_SPAN: dict[str, Any] = {
 }
 
 
-def _unidentified_span() -> list[dict[str, Any]]:
+def unidentified_span(window: Window | None) -> list[dict[str, Any]]:
     """Return an axvspan dict for the weakly identified early window, or nothing.
 
     It carries its own legend label and no footer note, for the reason
     `_excluded_span` gives: a footer would be a quieter second statement of what
     the legend already says.
     """
-    if _UNIDENTIFIED_WINDOW is None:
+    if window is None:
         return []
-    lo, hi = _UNIDENTIFIED_WINDOW
+    lo, hi = window
     return [{
         "xmin": pd.Period(lo, freq="Q"),
         "xmax": pd.Period(hi, freq="Q"),
@@ -97,7 +92,7 @@ def _unidentified_span() -> list[dict[str, Any]]:
     }]
 
 
-def _excluded_span() -> list[dict[str, Any]]:
+def _excluded_span(window: Window | None) -> list[dict[str, Any]]:
     """Return an axvspan dict marking the unfitted window, or nothing.
 
     Styled from `common.charts.excluded_span_style` rather than restyled here,
@@ -109,9 +104,9 @@ def _excluded_span() -> list[dict[str, Any]]:
     inflation-shaded chart the reader has to tell this span apart from the
     band-breach spans by looking at it.
     """
-    if _EXCLUDED_WINDOW is None:
+    if window is None:
         return []
-    lo, hi = _EXCLUDED_WINDOW
+    lo, hi = window
     style = excluded_span_style()
     return [{
         "xmin": pd.Period(lo, freq="Q"),
@@ -121,15 +116,19 @@ def _excluded_span() -> list[dict[str, Any]]:
     }]
 
 
-def _with_excluded(kwargs: dict[str, Any], *, unidentified: bool = True) -> dict[str, Any]:
-    """Add the unfitted-window and weakly-identified markers to finalise kwargs.
+def _with_excluded(
+    kwargs: dict[str, Any], results: UStarResults, *, unidentified: bool = True,
+) -> dict[str, Any]:
+    """Add the run's unfitted-window and weakly-identified markers to finalise kwargs.
 
     `unidentified` is off for the inflation-shaded chart, where a third block
     of colour over the first seven years sits on top of the red and blue
     band-breach shading and makes both unreadable. The window is still marked
     on the plain u* chart beside it.
     """
-    spans = (_unidentified_span() if unidentified else []) + _excluded_span()
+    unidentified_window = chart_annotations.window(results, chart_annotations.UNIDENTIFIED_WINDOW)
+    excluded_window = chart_annotations.window(results, chart_annotations.EXCLUDED_WINDOW)
+    spans = (unidentified_span(unidentified_window) if unidentified else []) + _excluded_span(excluded_window)
     if not spans:
         return kwargs
     existing = kwargs.get("axvspan") or []
@@ -296,7 +295,17 @@ def _inflation_regime_spans(index: pd.PeriodIndex) -> list[dict[str, Any]]:
 
 def _rfooter(results: UStarResults) -> str:
     """Return the source line this run recorded, falling back for older runs."""
-    return results.source_footer or _RFOOTER
+    return results.source_footer or chart_annotations.text(results, chart_annotations.RFOOTER_FALLBACK, _RFOOTER)
+
+
+def _lfooter(results: UStarResults) -> str:
+    """Return this run's left footer, or the bare model name."""
+    return chart_annotations.text(results, chart_annotations.LFOOTER, _MODEL)
+
+
+def _lfooter_band(results: UStarResults) -> str:
+    """Return this run's left footer for a banded chart."""
+    return chart_annotations.text(results, chart_annotations.LFOOTER_BAND, _MODEL + _BAND_NOTE)
 
 
 def plot_ustar(results: UStarResults, shade_inflation: bool = False, tag: str = "") -> None:
@@ -331,7 +340,7 @@ def plot_ustar(results: UStarResults, shade_inflation: bool = False, tag: str = 
         "legend": {"loc": "best", "fontsize": "small"},
         "lheader": "u* is the unemployment rate consistent with output at potential",
         "rfooter": _rfooter(results),
-        "lfooter": _LFOOTER_BAND,
+        "lfooter": _lfooter_band(results),
         "show": False,
     }
     if tag:
@@ -342,7 +351,7 @@ def plot_ustar(results: UStarResults, shade_inflation: bool = False, tag: str = 
             f"Shaded where quarterly annualised trimmed mean inflation sat outside "
             f"{_INFLATION_LOW:g}-{_INFLATION_HIGH:g}%: red above, blue below"
         )
-    mg.finalise_plot(ax, **_with_excluded(finalise_kwargs, unidentified=not shade_inflation))
+    mg.finalise_plot(ax, **_with_excluded(finalise_kwargs, results, unidentified=not shade_inflation))
 
 
 def plot_ugap(results: UStarResults) -> None:
@@ -365,9 +374,9 @@ def plot_ugap(results: UStarResults) -> None:
         "legend": {"loc": "best", "fontsize": "small"},
         "lheader": "Below zero is a tight labour market",
         "rfooter": _rfooter(results),
-        "lfooter": _LFOOTER_BAND,
+        "lfooter": _lfooter_band(results),
         "show": False,
-    }))
+    }, results))
 
 
 def plot_inflation_decomposition(results: UStarResults) -> None:
@@ -421,7 +430,7 @@ def plot_inflation_decomposition(results: UStarResults) -> None:
         y0=True,
         lheader="pi = target + expectations above target + demand + supply + noise",
         rfooter=_rfooter(results),
-        lfooter=_LFOOTER,
+        lfooter=_lfooter(results),
         show=False,
     )
 
@@ -465,10 +474,10 @@ def plot_implied_ustar(results: UStarResults) -> None:
             f"Implied series moves {ratio:.0f}x as much quarter to quarter; "
             f"correlation with u* {implied.corr(fitted):.2f}"
         ),
-        "lfooter": _LFOOTER + "Phillips inverted at posterior medians. ",
+        "lfooter": _lfooter(results) + "Phillips inverted at posterior medians. ",
         "rfooter": _rfooter(results),
         "show": False,
-    }))
+    }, results))
 
 
 def plot_ustar_components(results: UStarResults) -> None:
@@ -507,9 +516,9 @@ def plot_ustar_components(results: UStarResults) -> None:
         "lheader": f"Of u*'s total fall of {abs(total):.2f}pp, "
                    f"{abs(det):.2f}pp is the decay mechanism alone",
         "rfooter": _rfooter(results),
-        "lfooter": _LFOOTER,
+        "lfooter": _lfooter(results),
         "show": False,
-    }))
+    }, results))
 
 
 
@@ -555,7 +564,7 @@ def plot_prior_posterior(results: UStarResults) -> int:
     return prior_posterior.plot_all(
         results.posterior,
         lambda name: _prior_for(results, name),
-        footers={"lfooter": _LFOOTER, "rfooter": _rfooter(results)},
+        footers={"lfooter": _lfooter(results), "rfooter": _rfooter(results)},
     )
 
 
@@ -574,20 +583,17 @@ def run_analysis(
     # 3.2:1 per point of u* even with sigma_okun free at 0.485. Guarded on the
     # sample actually starting there, so a run over a different span is not
     # given a window that was never checked for it. See MODEL_NOTES.
-    # The charts read the footers as module globals, which is also how
-    # `ystar_ustar` retitles them when it draws this model's charts for its
-    # own run. Setting them here rather than computing them inside each chart
-    # keeps that override working: whoever sets the global last wins, and there
-    # is one place to look.
-    global _LFOOTER, _LFOOTER_BAND
-    _LFOOTER = _MODEL + ustar_structure_note(results.constants)
-    _LFOOTER_BAND = _LFOOTER + _BAND_NOTE
-
-    global _UNIDENTIFIED_WINDOW
-    _UNIDENTIFIED_WINDOW = (
-        UNIDENTIFIED_WINDOW
-        if results.obs_index[0] == pd.Period(UNIDENTIFIED_WINDOW[0], freq="Q")
-        else None
+    # The footers name the structure imposed on u*, so they are attached per run.
+    lfooter = _MODEL + ustar_structure_note(results.constants)
+    chart_annotations.attach(
+        results,
+        lfooter=lfooter,
+        lfooter_band=lfooter + _BAND_NOTE,
+        unidentified_window=(
+            UNIDENTIFIED_WINDOW
+            if results.obs_index[0] == pd.Period(UNIDENTIFIED_WINDOW[0], freq="Q")
+            else None
+        ),
     )
 
     print_diagnostics(results)

@@ -68,7 +68,7 @@ from src.data import (
     hma,
 )
 from src.data.bonds import get_indexed_yield_filled
-from src.data.expectations_model import get_model_expectations, get_model_expectations_unanchored
+from src.data.expectations_model import get_model_expectations_unanchored
 from src.data.expectations_rba import get_rba_expectations
 from src.data.rba_loader import get_inflation_expectations as get_rba_raw_expectations
 from src.models.nairu.config import DEFAULT_RSTAR_ALPHA, REGIME_COVID_START, REGIME_GFC_START
@@ -259,7 +259,7 @@ def build_observations(
         end: End period
         hma_term: Henderson MA smoothing term (default 13)
         anchor_mode: How to anchor expectations
-            - "expectations": Use full estimated (target-anchored) expectations series
+            - "expectations": Use the full unanchored model series (same series as "unanchored_raw")
             - "target" (default): Phase from expectations to 2.5% target (1993-1998)
             - "rba": RBA PIE_RBAQ, phased to 2.5% target (policy-counterfactual)
             - "unanchored": RBA PIE_RBAQ phased to unanchored model post-1998
@@ -316,7 +316,7 @@ def build_observations(
     elif anchor_mode == "unanchored_raw":
         π_exp = _load("π_exp", get_model_expectations_unanchored())
     else:
-        π_exp_raw = _load("π_exp", get_model_expectations())
+        π_exp_raw = _load("π_exp", get_model_expectations_unanchored())
         π_exp = apply_anchor_mode(π_exp_raw, anchor_mode)
 
     # Excess expectations (unanchored model less the anchor in use, zero pre-1993).
