@@ -53,6 +53,9 @@ _LFOOTER = "Australia. TVP-VAR, canonical spec, varying the sample only. "
 # resting point, which is the line between an estimate and a nowcast.
 _NOWCAST_RADIUS = 0.97
 
+# A comparison of one run is not a comparison.
+_MIN_RUNS = 2
+
 
 def _collect(specs: tuple[tuple[str, str], ...]) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
     """Return r* paths, median spectral-radius paths, and the labels that loaded.
@@ -135,8 +138,8 @@ def run(specs: tuple[tuple[str, str], ...] = DEFAULT_SPECS, chart_dir: Path | No
     """Load the saved runs and draw the two comparison charts."""
     print("Loading saved runs:")
     rstar, radius, found = _collect(specs)
-    if len(found) < 2:  # noqa: PLR2004 — a comparison of one is not a comparison
-        print("\nFewer than two runs available; nothing to compare.")
+    if len(found) < _MIN_RUNS:
+        print(f"\nFewer than {_MIN_RUNS} runs available; nothing to compare.")
         return
 
     mg.set_chart_dir(str(chart_dir or CHART_DIR))

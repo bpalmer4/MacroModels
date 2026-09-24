@@ -95,7 +95,7 @@ def plot_validation(
     title: str = "Inflation Expectations: Model vs RBA",
     lfooter: str = "Cusbert (2017) signal extraction",
     rfooter: str | None = None,
-    **kwargs: Any,  # noqa: ANN401 — pass-through to mg.finalise_plot
+    **kwargs: Any,
 ) -> Axes | None:
     """Plot model estimates against RBA PIE_RBAQ series.
 

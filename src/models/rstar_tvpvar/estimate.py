@@ -24,9 +24,10 @@ import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 
+from src.models.common.model_constants import attach, get_dictionary
 from src.models.rstar_tvpvar.config import DEFAULT_OUTPUT_DIR, ModelConfig
 from src.models.rstar_tvpvar.observations import build_observations, design_matrix, ols_fit, ordering
-from src.models.ystar.base import SamplerConfig, get_fixed_constants, sample_model
+from src.models.ystar.base import SamplerConfig, sample_model
 
 
 def _drift_scale(config: ModelConfig, n_coef: int) -> tuple[Any, str]:
@@ -67,7 +68,7 @@ def build_model(
 
     model = pm.Model()
     with model:
-        model._fixed_constants = dict(config.constants)  # noqa: SLF001 — our own metadata, as ystar.base does
+        attach(model, config.constants)
 
         # --- Coefficients: a non-centred random walk per coefficient ---
         theta_0 = pm.Normal("theta_0", mu=ols, sigma=1.0, shape=(n_coef, n_vars))
@@ -207,7 +208,7 @@ def run_estimate(
 
     save_results(
         trace, data, obs_index,
-        constants={**get_fixed_constants(model), "sources": sources.to_records()},
+        constants={**get_dictionary(model), "sources": sources.to_records()},
         frame=frame,
         output_dir=config.output_dir,
         prefix=prefix,

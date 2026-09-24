@@ -137,7 +137,7 @@ def _paths(config: ModelConfig, sampler_config: SamplerConfig) -> dict[str, pd.S
     for name in _QUANTITIES:
         # The package idiom: xarray's `stack`, not pandas', so PD013 is a
         # false positive. See `results.RStarResults._vector`.
-        stacked = posterior[name].stack(sample=("chain", "draw"))  # noqa: PD013
+        stacked = posterior[name].stack(sample=("chain", "draw"))
         draws = np.asarray(stacked.values)
         out[name] = pd.Series(np.median(draws, axis=1), index=obs_index)
     return out
@@ -319,7 +319,7 @@ def load_paths(output_dir: Path, prefix: str) -> dict[str, pd.DataFrame]:
     """Load previously saved vintage paths."""
     file_path = output_dir / f"{prefix}_realtime.pkl"
     with file_path.open("rb") as f:
-        return pickle.load(f)  # noqa: S301 — our own model outputs, not untrusted data
+        return pickle.load(f)
 
 
 def report(paths: dict[str, pd.DataFrame], spec: str) -> None:

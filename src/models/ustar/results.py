@@ -256,7 +256,7 @@ def load_results(
 
     trace = az.from_netcdf(str(trace_path))
     with obs_path.open("rb") as f:
-        saved = pickle.load(f)  # noqa: S301 — our own output, written by save_results
+        saved = pickle.load(f)
 
     return UStarResults(
         trace=trace,

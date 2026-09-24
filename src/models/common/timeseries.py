@@ -40,7 +40,7 @@ def plot_posterior_timeseries(
     alphas: Sequence[float] = (0.1, 0.2, 0.3),
     ax: Axes | None = None,
     finalise: bool = True,
-    **finalise_kwargs: Any,  # noqa: ANN401 — pass-through to mg.finalise_plot
+    **finalise_kwargs: Any,
 ) -> Axes | None:
     """Plot posterior time series with credible intervals.
 

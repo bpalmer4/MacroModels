@@ -6,6 +6,7 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 
+from src.models.common.model_constants import record_constant
 from src.models.nairu.base import set_model_coefficients
 
 
@@ -60,8 +61,7 @@ def is_equation(
                 )
             if rstar_blend_alpha_fixed is not None:
                 alpha_rstar = float(rstar_blend_alpha_fixed)
-                model._fixed_constants = getattr(model, "_fixed_constants", {})  # noqa: SLF001
-                model._fixed_constants["alpha_rstar"] = alpha_rstar  # noqa: SLF001
+                record_constant(model, "alpha_rstar", alpha_rstar)
             else:
                 a_param, b_param = rstar_blend_alpha_prior
                 alpha_rstar = pm.Beta("alpha_rstar", alpha=float(a_param), beta=float(b_param))

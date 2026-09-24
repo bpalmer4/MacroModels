@@ -173,7 +173,7 @@ def load_injection(
     if not target.exists():
         return None
     with target.open("rb") as handle:
-        saved = pickle.load(handle)  # noqa: S301 — our own file
+        saved = pickle.load(handle)
     if not isinstance(saved, dict):
         raise TypeError(f"{target} does not hold an injection test")
     return saved

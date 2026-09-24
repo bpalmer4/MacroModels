@@ -133,7 +133,7 @@ class TvpVarResults(PosteriorResults):
 
     def _theta_draws(self, max_draws: int = DEFAULT_MAX_DRAWS) -> np.ndarray:
         """Return coefficient draws as (draw, time, coefficient, equation)."""
-        stacked = self.posterior["theta"].stack(sample=("chain", "draw"))  # noqa: PD013 — xarray, not pandas
+        stacked = self.posterior["theta"].stack(sample=("chain", "draw"))
         values = np.asarray(stacked.values)
         # xarray puts the stacked dimension last; move it to the front.
         theta = np.moveaxis(values, -1, 0)
@@ -510,7 +510,7 @@ def load_results(
     directory = Path(output_dir) if output_dir is not None else DEFAULT_OUTPUT_DIR
     trace = az.from_netcdf(str(directory / f"{prefix}_trace.nc"))
     with (directory / f"{prefix}_obs.pkl").open("rb") as f:
-        saved = pickle.load(f)  # noqa: S301 — our own file, written by save_results
+        saved = pickle.load(f)
     return TvpVarResults(
         trace=trace,
         data=saved["data"],

@@ -200,11 +200,11 @@ def _mode_conditional_r_star(
     # xarray's stack/.values throughout this function, not pandas': the PD
     # rules cannot tell the two apart, and `.melt` / `.to_numpy` are not
     # xarray methods.
-    r_star_stacked = posterior["r_star"].stack(sample=("chain", "draw"))  # noqa: PD013
+    r_star_stacked = posterior["r_star"].stack(sample=("chain", "draw"))
     # PyMC time dim is auto-named (e.g. 'r_star_dim_0'); pick whichever is not 'sample'.
     time_dim = next(d for d in r_star_stacked.dims if d != "sample")
-    r_star_arr = r_star_stacked.transpose(time_dim, "sample").values  # noqa: PD011
-    alpha_arr = posterior["alpha_rstar"].stack(sample=("chain", "draw")).values  # noqa: PD011, PD013
+    r_star_arr = r_star_stacked.transpose(time_dim, "sample").to_numpy()
+    alpha_arr = posterior["alpha_rstar"].stack(sample=("chain", "draw")).to_numpy()
 
     low_mask = alpha_arr < low_thresh
     high_mask = alpha_arr > high_thresh
@@ -250,10 +250,10 @@ def plot_r_star_bimodal_decomposition(
     # xarray's stack/.values throughout this function, not pandas': the PD
     # rules cannot tell the two apart, and `.melt` / `.to_numpy` are not
     # xarray methods.
-    r_star_stacked = posterior["r_star"].stack(sample=("chain", "draw"))  # noqa: PD013
+    r_star_stacked = posterior["r_star"].stack(sample=("chain", "draw"))
     # PyMC time dim is auto-named (e.g. 'r_star_dim_0'); pick whichever is not 'sample'.
     time_dim = next(d for d in r_star_stacked.dims if d != "sample")
-    r_star_arr = r_star_stacked.transpose(time_dim, "sample").values  # noqa: PD011  # (T, n_samples)
+    r_star_arr = r_star_stacked.transpose(time_dim, "sample").to_numpy()  # (T, n_samples)
     n_samples = r_star_arr.shape[1]
 
     rng = np.random.default_rng(seed)
@@ -440,9 +440,9 @@ def plot_alpha_path(results: RStarResults, show: bool = False) -> None:
     """
     # xarray stack/.values again, not pandas: see the note in
     # `_mode_conditional_r_star`.
-    posterior = results.trace["posterior"]["alpha_rstar"].stack(sample=("chain", "draw"))  # noqa: PD013
+    posterior = results.trace["posterior"]["alpha_rstar"].stack(sample=("chain", "draw"))
     time_dim = next(d for d in posterior.dims if d != "sample")
-    alpha = posterior.transpose(time_dim, "sample").values  # noqa: PD011  # (T, n_samples)
+    alpha = posterior.transpose(time_dim, "sample").to_numpy()  # (T, n_samples)
     dates = results.obs_index
 
     df = pd.DataFrame(alpha, index=dates)
@@ -553,7 +553,7 @@ def _density(draws: np.ndarray, edges: np.ndarray) -> np.ndarray:
     return counts / (len(draws) * np.diff(edges))
 
 
-def plot_prior_posterior(results: RStarResults, show: bool = False) -> int:  # noqa: ARG001
+def plot_prior_posterior(results: RStarResults, show: bool = False) -> int:
     """One chart per free scalar parameter: its posterior against its own prior.
 
     The question these answer is how much of each number is data. A posterior
@@ -676,7 +676,7 @@ def _print_blend_summary(results: RStarResults, flags: _ResolutionFlags) -> None
 
     if flags.has_blended_z:
         rho_med = float(get_scalar_var("rho_z", results.trace).median())
-        z = results.trace["posterior"]["z_star"].stack(s=("chain", "draw")).values  # noqa: PD011, PD013
+        z = results.trace["posterior"]["z_star"].stack(s=("chain", "draw")).to_numpy()
         z_median_path = pd.DataFrame(z).median(axis=1)
         print(f"  rho_z median:  {rho_med:.3f}")
         print(f"  |z| mean:      {abs(z_median_path).mean():.3f} pp"

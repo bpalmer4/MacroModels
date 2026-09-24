@@ -1218,7 +1218,7 @@ def run_analysis(
     # chart can never disagree with the trace it was drawn from. Reset each
     # call: a session that analyses an excluded-window run and then a normal one
     # would otherwise carry the shading over to the second.
-    global _EXCLUDED_WINDOW  # noqa: PLW0603 — run-scoped state, see the definition
+    global _EXCLUDED_WINDOW
     _EXCLUDED_WINDOW = _excluded_window(results)
 
     print_diagnostics(results)

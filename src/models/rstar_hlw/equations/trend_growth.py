@@ -27,6 +27,7 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 
+from src.models.common.model_constants import record_constant
 from src.models.nairu.base import set_model_coefficients
 from src.models.rstar_hlw.equations.states import walk_or_level
 
@@ -69,7 +70,7 @@ def trend_growth_equation(
         constant = {}
 
     # A float goes through the `constant` channel so it lands in
-    # model._fixed_constants and shows up wherever imposed settings are
+    # the model's recorded constants and shows up wherever imposed settings are
     # reported. A tensor cannot: it is an expression in another parameter, so
     # it is registered below as a Deterministic instead, which is also how it
     # reaches the trace.
@@ -110,9 +111,7 @@ def trend_growth_equation(
         # Soft observation: linear-regression trend of YoY growth ~ N(g, fixed sigma)
         soft_anchor_active = "trend_growth_obs" in obs
         if soft_anchor_active:
-            if not hasattr(model, "_fixed_constants"):
-                model._fixed_constants = {}  # noqa: SLF001
-            model._fixed_constants["sigma_trend_obs"] = SIGMA_TREND_OBS  # noqa: SLF001
+            record_constant(model, "sigma_trend_obs", SIGMA_TREND_OBS)
             pm.Normal(
                 "observed_trend_growth",
                 mu=trend_growth,

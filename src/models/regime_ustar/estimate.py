@@ -12,12 +12,13 @@ import pytensor
 import pytensor.tensor as pt
 import xarray as xr
 
+from src.models.common.model_constants import attach
 from src.models.common.spline import basis
 from src.models.regime_ustar.config import ModelConfig
 from src.models.ystar.base import SamplerConfig, sample_model
 
 
-def _ustar_spline(frame: pd.DataFrame, config: ModelConfig) -> Any:  # noqa: ANN401
+def _ustar_spline(frame: pd.DataFrame, config: ModelConfig) -> Any:
     """u* as a natural cubic spline with knots at the regime dates.
 
         ustar_t = sum_j c_j B_j(t)
@@ -49,7 +50,7 @@ def _ustar_spline(frame: pd.DataFrame, config: ModelConfig) -> Any:  # noqa: ANN
     return pm.Deterministic("ustar", pt.dot(pt.as_tensor_variable(design), coef))
 
 
-def _ustar_state(frame: pd.DataFrame, regimes: np.ndarray, config: ModelConfig) -> Any:  # noqa: ANN401
+def _ustar_state(frame: pd.DataFrame, regimes: np.ndarray, config: ModelConfig) -> Any:
     """u* as ONE continuous state whose law of motion changes at each regime.
 
         u*_t = u*_{t-1} + phi_k x (eq_k - u*_{t-1}) + e_t,   k = regime(t)
@@ -101,7 +102,7 @@ def _ustar_state(frame: pd.DataFrame, regimes: np.ndarray, config: ModelConfig) 
     eq_t = eq[regimes]
     phi_t = phi[regimes] if config.free_phi_per_regime else pt.repeat(phi, n)
 
-    def step(target: Any, speed: Any, eps: Any, prev: Any) -> Any:  # noqa: ANN401
+    def step(target: Any, speed: Any, eps: Any, prev: Any) -> Any:
         return prev + speed * (target - prev) + eps
 
     path, _ = pytensor.scan(
@@ -112,7 +113,7 @@ def _ustar_state(frame: pd.DataFrame, regimes: np.ndarray, config: ModelConfig) 
     return pm.Deterministic("ustar", pt.concatenate([[init], path]))
 
 
-def _wage_equation(frame: pd.DataFrame, ustar: Any, u_obs: np.ndarray, config: ModelConfig) -> None:  # noqa: ANN401
+def _wage_equation(frame: pd.DataFrame, ustar: Any, u_obs: np.ndarray, config: ModelConfig) -> None:
     """Add the second observation equation, on unit labour costs.
 
         ulc_yoy - pi_e = alpha + gamma x (u - ustar)/u + lambda x dU/U + v
@@ -155,7 +156,7 @@ def _wage_equation(frame: pd.DataFrame, ustar: Any, u_obs: np.ndarray, config: M
     )
 
 
-def _controls(frame: pd.DataFrame, config: ModelConfig) -> Any:  # noqa: ANN401
+def _controls(frame: pd.DataFrame, config: ModelConfig) -> Any:
     """Return the supply and terms-of-trade terms added to the Phillips curve.
 
     The GSCPI term is squared and sign-preserving, so pressure matters more
@@ -174,7 +175,7 @@ def _controls(frame: pd.DataFrame, config: ModelConfig) -> Any:  # noqa: ANN401
     return total
 
 
-def _okun_equation(frame: pd.DataFrame, ustar: Any, config: ModelConfig) -> None:  # noqa: ANN401
+def _okun_equation(frame: pd.DataFrame, ustar: Any, config: ModelConfig) -> None:
     """Add the output observation on u*, as error correction.
 
         du_t = a + b x dy_t + lambda x (u_{t-1} - u*_{t-1}) + e
@@ -326,7 +327,7 @@ def build_model(frame: pd.DataFrame, regimes: np.ndarray, config: ModelConfig) -
         else:
             pm.Normal("dpi_obs", mu=mu, sigma=sigma, observed=observed)
 
-    model._fixed_constants = dict(config.constants)  # noqa: SLF001 — our own metadata, as base.py does
+    attach(model, config.constants)
     return model
 
 
@@ -366,5 +367,5 @@ def load_trace(
     """
     trace = az.from_netcdf(str(config.output_dir / f"{config.prefix}_trace.nc"))
     with (config.output_dir / f"{config.prefix}_data.pkl").open("rb") as handle:
-        saved = pickle.load(handle)  # noqa: S301 — our own file
+        saved = pickle.load(handle)
     return trace, saved["frame"], saved["labels"], saved.get("constants", {})

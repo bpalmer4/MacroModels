@@ -30,7 +30,7 @@ from src.models.ystar.base import set_model_coefficients
 
 
 def scale_equation(
-    obs: dict[str, np.ndarray],  # noqa: ARG001 — common equation interface
+    obs: dict[str, np.ndarray],
     model: pm.Model,
     latents: dict[str, Any],
     constant: dict[str, Any] | None = None,

@@ -858,7 +858,7 @@ def plot_sensitivity(result: DecompositionResult, show: bool = True) -> None:
     )
 
 
-def plot_phillips_crosscheck(result: DecompositionResult, show: bool = True) -> None:  # noqa: PLR0915 — multi-panel plot
+def plot_phillips_crosscheck(result: DecompositionResult, show: bool = True) -> None:
     """Plot Phillips curve cross-check (4 panels)."""
     if result.phillips is None:
         return

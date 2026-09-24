@@ -15,10 +15,10 @@ import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 
+from src.models.common.model_constants import attach, get_dictionary, record_constant
 from src.models.common.spline import basis
 from src.models.ystar.base import (
     SamplerConfig,
-    get_fixed_constants,
     sample_model,
     set_model_coefficients,
 )
@@ -59,8 +59,8 @@ def _keep_mask(config: ModelConfig, obs_index: pd.PeriodIndex) -> np.ndarray | N
 
 def _observe(
     name: str,
-    mu: Any,  # noqa: ANN401 — a pytensor expression or an ndarray
-    sigma: Any,  # noqa: ANN401
+    mu: Any,
+    sigma: Any,
     observed: np.ndarray,
     keep: np.ndarray | None,
 ) -> None:
@@ -81,7 +81,7 @@ def _observe(
     pm.Normal(name, mu=mu[rows], sigma=sigma, observed=observed[rows])
 
 
-def _ustar_spline(model: pm.Model, config: ModelConfig, obs_index: pd.PeriodIndex) -> Any:  # noqa: ANN401
+def _ustar_spline(model: pm.Model, config: ModelConfig, obs_index: pd.PeriodIndex) -> Any:
     """u* as a natural cubic spline with knots at `config.spline_knots`.
 
         u*_t = sum_j c_j B_j(t)
@@ -110,20 +110,18 @@ def _ustar_state(
     model: pm.Model,
     config: ModelConfig,
     obs_index: pd.PeriodIndex,
-) -> Any:  # noqa: ANN401
+) -> Any:
     """u* under the law `config.ustar_structure` names: a spline, or a walk.
 
     The walk's initial level carries a wide prior centred on the sample's own
     mean unemployment rate.
     """
     with model:
-        if not hasattr(model, "_fixed_constants"):
-            model._fixed_constants = {}  # noqa: SLF001 — our own metadata, as base.py does
-        model._fixed_constants.update(config.constants)  # noqa: SLF001
+        attach(model, config.constants)
         # The prior settings that vary by run, recorded so `analyse.py` can draw
         # each posterior against the prior it was actually sampled under rather
         # than against a hard-coded guess.
-        model._fixed_constants.update({  # noqa: SLF001
+        attach(model, {
             "sigma_v_prior": config.sigma_v_prior,
             "beta_okun_prior_sd": config.beta_okun_prior_sd,
             "two_sided_c": config.two_sided_c,
@@ -163,7 +161,7 @@ def _ustar_state(
             z = pm.Normal("z_ustar", mu=0.0, sigma=1.0, shape=n)
             init = pm.Normal("ustar_init", mu=float(obs["u"][0]), sigma=3.0)
 
-            def step(eps: Any, prev: Any, phi: Any, eq: Any) -> Any:  # noqa: ANN401
+            def step(eps: Any, prev: Any, phi: Any, eq: Any) -> Any:
                 return prev + phi * (eq - prev) + eps
 
             path, _ = pytensor.scan(
@@ -210,7 +208,7 @@ def _cycle_gap(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfig)
         z = pm.Normal("z_gap", mu=0.0, sigma=1.0, shape=n)
         innovations = z * config.sigma_c * pt.sqrt(1.0 - rho**2)
 
-        def step(eps: Any, prev: Any, rho_: Any) -> Any:  # noqa: ANN401
+        def step(eps: Any, prev: Any, rho_: Any) -> Any:
             return rho_ * prev + eps
 
         # The first quarter is drawn from the stationary distribution directly,
@@ -334,7 +332,7 @@ def _gdp_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
     latents: dict[str, Any],
-    gap: Any,  # noqa: ANN401
+    gap: Any,
     keep: np.ndarray | None,
 ) -> str:
     """Fit log_gdp = y* + gap + e_c."""
@@ -353,9 +351,7 @@ def _gdp_equation(
 def _okun_error_correction(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    ustar: Any,  # noqa: ANN401
-    gap: Any,  # noqa: ANN401
-    *,
+    ustar: Any,    gap: Any,    *,
     config: ModelConfig,
     keep: np.ndarray | None,
 ) -> str:
@@ -439,9 +435,7 @@ def _okun_error_correction(
 def _okun_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    ustar: Any,  # noqa: ANN401
-    gap: Any,  # noqa: ANN401
-    *,
+    ustar: Any,    gap: Any,    *,
     config: ModelConfig,
     keep: np.ndarray | None,
 ) -> str:
@@ -492,7 +486,7 @@ def _okun_equation(
 def _phillips_on_gap(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    gap: Any,  # noqa: ANN401
+    gap: Any,
     anchor: np.ndarray,
     keep: np.ndarray | None,
 ) -> str:
@@ -540,7 +534,7 @@ def _phillips_on_gap(
 def _phillips_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    ustar: Any,  # noqa: ANN401
+    ustar: Any,
     anchor: np.ndarray,
     keep: np.ndarray | None,
 ) -> str:
@@ -624,17 +618,16 @@ def build_model(
     desc = scale_equation(obs, model, latents, constant=config.scale_constants)
     descriptions.append(f"Scale:        {desc}")
     if config.exclude_window is not None:
-        get_fixed_constants(model)["exclude_window"] = config.exclude_window
-        get_fixed_constants(model)["exclude_scope"] = config.exclude_scope
+        record_constant(model, "exclude_window", config.exclude_window)
+        record_constant(model, "exclude_scope", config.exclude_scope)
 
     desc = potential_output_equation(obs, model, latents)
     descriptions.append(f"Potential:    {desc}")
 
     ustar = _ustar_state(obs, model, config, obs_index)
-    # After the state, which is where `_fixed_constants` is created. Saved as a
-    # list so the pickle stays plain, and read back by `results.py` for the
-    # inflation decomposition, which otherwise assumes a scalar anchor.
-    get_fixed_constants(model)["anchor_series"] = anchor.tolist()
+    # Saved as a list so the pickle stays plain, and read back by `results.py`
+    # for the inflation decomposition, which otherwise assumes a scalar anchor.
+    record_constant(model, "anchor_series", anchor.tolist())
     nairu_state = {
         "spline": (
             f"u*_t = sum_j c_j B_j(t)   (natural cubic, knots "
@@ -786,7 +779,7 @@ def run_estimate(
 
     # The providers behind the observations travel with the run, so the charts
     # name what was actually loaded rather than a separately maintained string.
-    constants = {**get_fixed_constants(model), "sources": sources.to_records()}
+    constants = {**get_dictionary(model), "sources": sources.to_records()}
     save_results(
         trace, obs, obs_index,
         constants=constants,

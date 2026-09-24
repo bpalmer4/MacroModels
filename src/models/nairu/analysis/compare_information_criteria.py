@@ -119,7 +119,7 @@ def _pareto_k_table(loos: dict[str, az.ELPDData]) -> pd.DataFrame:
     """
     rows = {}
     for name, e in loos.items():
-        k = e.pareto_k.values.ravel()
+        k = e.pareto_k.to_numpy().ravel()
         n = len(k)
         rows[name] = {
             "n": n,
@@ -143,7 +143,7 @@ def _ic_table(idatas: dict[str, az.ELPDData], ic: str) -> pd.DataFrame:
             elpd_attr: float(getattr(e, elpd_attr)),
             f"p_{ic}": float(getattr(e, f"p_{ic}")),
             "se": float(e.se),
-            "_pw": getattr(e, pointwise_attr).values.ravel(),
+            "_pw": getattr(e, pointwise_attr).to_numpy().ravel(),
         }
     df = pd.DataFrame(rows).T.sort_values(elpd_attr, ascending=False)
     best = df.index[0]
@@ -191,7 +191,7 @@ def main() -> None:
     print("#" * 72)
     all_loo = {n: _loo(_pool(ll[n], [PRICE_LL])) for n in PRICE_REFERENCE}
     for n, e in all_loo.items():
-        nn = len(e.loo_i.values.ravel())
+        nn = len(e.loo_i.to_numpy().ravel())
         print(f"  {n:36s} elpd_loo={e.elpd_loo:8.1f}  per-obs={e.elpd_loo / nn:7.4f}  n={nn}")
     print("\n--- Pareto-k reliability (price-eq LOO, all variants) ---")
     print(_pareto_k_table(all_loo).to_string())

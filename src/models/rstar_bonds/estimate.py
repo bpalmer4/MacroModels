@@ -10,11 +10,11 @@ import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 
+from src.models.common.model_constants import attach, get_dictionary, record_constant
 from src.models.rstar_bonds.config import DEFAULT_OUTPUT_DIR, ModelConfig
 from src.models.rstar_bonds.observations import build_observations
 from src.models.ystar.base import (
     SamplerConfig,
-    get_fixed_constants,
     sample_model,
     set_model_coefficients,
 )
@@ -56,9 +56,7 @@ def _wedge_nu(model: pm.Model, config: ModelConfig) -> tuple[Any, str]:
     if config.nu_walk <= 0:
         raise ValueError(f"nu_walk must be positive, got {config.nu_walk}")
 
-    fixed = getattr(model, "_fixed_constants", {})
-    fixed["nu_walk"] = config.nu_walk
-    model._fixed_constants = fixed  # noqa: SLF001 — our own metadata, as elsewhere in the package
+    record_constant(model, "nu_walk", config.nu_walk)
     return config.nu_walk, f"nu={config.nu_walk:g} imposed"
 
 
@@ -197,7 +195,7 @@ def _wedge(
     if config.wedge_drift > 0:
         eps = pm.Normal("eps_wedge", mu=0.0, sigma=1.0, shape=n)
         wedge = wedge + config.wedge_drift * pt.concatenate([pt.zeros(1), pt.cumsum(eps[1:])])
-    model._fixed_constants["break_labels"] = kept  # noqa: SLF001 — names the jumps in results
+    record_constant(model, "break_labels", kept)  # names the jumps in results
     breaks_desc = ", ".join(kept) if kept else "none in sample"
     flat = "" if config.wedge_drift else "   (flat in between)"
     return wedge, [f"Wedge:      steps at {breaks_desc}{flat}"]
@@ -451,9 +449,7 @@ def build_model(
     descriptions: list[str] = []
 
     with model:
-        if not hasattr(model, "_fixed_constants"):
-            model._fixed_constants = {}  # noqa: SLF001 — our own metadata, as ystar.base does
-        model._fixed_constants.update(config.constants)  # noqa: SLF001
+        attach(model, config.constants)
 
         # `mu_tp` is the level. With one observable it was the *only* thing
         # speaking to it, since `tp = y - r*` makes a prior on the premium a
@@ -715,7 +711,7 @@ def run_estimate(
     # name what was actually loaded rather than a separately maintained string.
     save_results(
         trace, obs, obs_index,
-        constants={**get_fixed_constants(model), "sources": sources.to_records()},
+        constants={**get_dictionary(model), "sources": sources.to_records()},
         chart_obs=chart_obs,
         output_dir=config.output_dir,
         prefix=prefix,

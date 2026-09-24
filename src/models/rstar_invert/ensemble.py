@@ -256,7 +256,7 @@ def load_lag_sweep(
     """Load a completed lag sweep: (paths, table)."""
     directory = Path(output_dir) if output_dir else DEFAULT_OUTPUT_DIR
     with (directory / f"{prefix}_lagsweep.pkl").open("rb") as handle:
-        saved = pickle.load(handle)  # noqa: S301 — our own file
+        saved = pickle.load(handle)
     return saved["paths"], saved["table"]
 
 
@@ -267,7 +267,7 @@ def load_ensemble(
     """Load a completed ensemble: (paths, table)."""
     directory = Path(output_dir) if output_dir else DEFAULT_OUTPUT_DIR
     with (directory / f"{prefix}_ensemble.pkl").open("rb") as handle:
-        saved = pickle.load(handle)  # noqa: S301 — our own file
+        saved = pickle.load(handle)
     return saved["paths"], saved["table"]
 
 

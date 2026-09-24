@@ -36,12 +36,12 @@ smoothing assumption common to all four were wrong, nothing here would catch it.
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from src.models.common.staleness import is_current
 from src.models.rstar_qpm.estimate import load_results as load_qpm_results
 from src.models.ystar.results import load_results as load_ystar_results
 from src.models.ystar_ustar.results import load_results as load_joint_results
@@ -82,17 +82,13 @@ class GstarSource:
             return OUTPUT_DIR / "__computed__"
         return OUTPUT_DIR / f"{self.prefix}_trace.nc"
 
-    def is_current(self, *, today: datetime | None = None) -> bool:
+    def is_current(self) -> bool:
         """Return True if the saved trace was written today.
 
         A computed source has no trace, so it is never current and never
         refreshed: it reads live data every time it is loaded.
         """
-        if not self.prefix or not self.trace_path.exists():
-            return False
-        stamp = datetime.fromtimestamp(self.trace_path.stat().st_mtime)  # noqa: DTZ006 — local, matches the file system
-        now = today or datetime.now()  # noqa: DTZ005 — local, as above
-        return stamp.date() == now.date()
+        return bool(self.prefix) and is_current(self.trace_path)
 
 
 def _load_ystar(prefix: str) -> pd.Series:
@@ -177,7 +173,7 @@ def refresh(source: GstarSource, *, timeout: int = 3600) -> None:
         raise FileNotFoundError(f"no run script for {source.label}: {script}")
     print(f"  refreshing {source.label} via ./{source.script} ...")
     sys.stdout.flush()
-    subprocess.run(  # noqa: S603 — our own script, path built from the registry
+    subprocess.run(
         [str(script), *source.script_args], cwd=str(ROOT), check=True, timeout=timeout,
     )
     sys.stdout.flush()

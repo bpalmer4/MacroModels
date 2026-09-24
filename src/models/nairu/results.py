@@ -87,7 +87,7 @@ def load_results(
     # Load observations and config
     obs_path = output_dir / f"{prefix}_obs.pkl"
     with obs_path.open("rb") as f:
-        data = pickle.load(f)  # noqa: S301 — loading our own model outputs, not untrusted data
+        data = pickle.load(f)
 
     obs = data["obs"]
     obs_index = data["obs_index"]

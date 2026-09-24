@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
+from src.models.common.model_constants import attach, get_dictionary, record_constant, remove_constant
 from src.models.ystar.base import (
     SamplerConfig,
-    get_fixed_constants,
     sample_model,
 )
 from src.models.ystar.config import (
@@ -62,7 +62,7 @@ def _free_sigma_ystar(
     # scale_equation recorded ratio_ystar as a fixed constant a moment ago, and
     # it is no longer one. Left in place it would show up in the run log and on
     # the charts as an imposed setting that the model is not in fact using.
-    get_fixed_constants(model).pop("ratio_ystar", None)
+    remove_constant(model, "ratio_ystar")
 
     return ["Scale:        sigma_ystar estimated, not imposed"]
 
@@ -108,11 +108,10 @@ def _record_exclusion(model: pm.Model, config: ModelConfig) -> None:
     """Record the excluded window with the run's imposed settings.
 
     It travels in the obs pickle to `analyse.py`, which shades the window rather
-    than drawing states through it as though they had been fitted. Call after
-    `scale_equation`, which creates the dict this writes into.
+    than drawing states through it as though they had been fitted.
     """
     if config.exclude_window is not None:
-        get_fixed_constants(model)["exclude_window"] = config.exclude_window
+        record_constant(model, "exclude_window", config.exclude_window)
 
 
 def _break_quarters(config: ModelConfig) -> tuple[str, ...]:
@@ -300,14 +299,11 @@ def _record_anchor(
 
     The series is recorded as well as the scalar so a chart can draw what the
     run actually judged inflation against rather than assuming the target.
-    Call after `scale_equation`, which creates the dict this writes into.
     """
     anchor = anchor_series(obs, obs_index, config)
-    constants = get_fixed_constants(model)
-    constants["anchor"] = config.anchor
-    constants["anchor_phase"] = config.anchor_phase
+    attach(model, {"anchor": config.anchor, "anchor_phase": config.anchor_phase})
     if not np.isscalar(anchor):
-        constants["anchor_series"] = np.asarray(anchor, dtype=float).tolist()
+        record_constant(model, "anchor_series", np.asarray(anchor, dtype=float).tolist())
     return anchor
 
 
@@ -342,9 +338,8 @@ def build_model(
 
     _record_exclusion(model, config)
 
-    # After `scale_equation`, which creates the constants dict. The series is
-    # recorded as well as the scalar so a chart can draw what the run actually
-    # judged inflation against, rather than assuming the target.
+    # The series is recorded as well as the scalar so a chart can draw what the
+    # run actually judged inflation against, rather than assuming the target.
     anchor = _record_anchor(model, obs, obs_index, config)
 
     descriptions.extend(_free_sigma_ystar(model, latents, config=config))
@@ -516,7 +511,7 @@ def run_estimate(
 
     # The providers behind the observations travel with the run, so the charts
     # name what was actually loaded rather than a separately maintained string.
-    constants = {**get_fixed_constants(model), "sources": sources.to_records()}
+    constants = {**get_dictionary(model), "sources": sources.to_records()}
     save_results(
         trace, obs, obs_index,
         constants=constants,

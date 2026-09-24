@@ -21,13 +21,13 @@ lining up the wrong quarters under one column would be invisible.
 
 import sys
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 import arviz as az
 import numpy as np
 import pandas as pd
 
+from src.models.common.staleness import is_current
 from src.models.ystar.analyse import CHART_DIR, run_analysis
 from src.models.ystar.cli import build_parser, run_from_args
 from src.models.ystar.results import load_results
@@ -88,10 +88,7 @@ class Specification:
 
     def is_current(self) -> bool:
         """Report whether the saved trace was written today."""
-        if not self.trace_path.exists():
-            return False
-        written = datetime.fromtimestamp(self.trace_path.stat().st_mtime).astimezone()
-        return written.date() == datetime.now().astimezone().date()
+        return is_current(self.trace_path)
 
     def refresh(self) -> None:
         """Re-estimate this specification into its own prefix."""

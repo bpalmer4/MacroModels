@@ -41,17 +41,21 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from src.models.common.model_constants import get_dictionary
 from src.models.rstar_tvpvar.config import DEFAULT_OUTPUT_DIR, ModelConfig
 from src.models.rstar_tvpvar.estimate import build_model
 from src.models.rstar_tvpvar.observations import build_observations
 from src.models.rstar_tvpvar.results import TvpVarResults
-from src.models.ystar.base import SamplerConfig, get_fixed_constants, sample_model
+from src.models.ystar.base import SamplerConfig, sample_model
 
 DEFAULT_SIGMA_Q_VALUES = (0.0, 0.002, 0.005, 0.01, 0.02, 0.05)
 
 # The era every other r* model in this repo is judged on, so the comparison is
 # like for like: `rstar_bonds` and `rstar_invert` disagree about its sign.
 _WATCH_ERA = ("2016Q1", "2019Q4")
+
+# Correlation with the real cash rate above which r* is just that rate smoothed.
+_CASH_RATE_CORR = 0.9
 
 
 def _summarise(results: TvpVarResults, sigma_q: float, real_rate: pd.Series) -> dict[str, Any]:
@@ -123,7 +127,7 @@ def run_sigma_q_ensemble(
             trace=trace,
             data=data,
             obs_index=obs_index,
-            constants=get_fixed_constants(model),
+            constants=get_dictionary(model),
             frame=frame,
         )
         paths[f"{value:g}"] = results.rstar_median()
@@ -162,7 +166,7 @@ def load_ensemble(
     if not target.exists():
         return None
     with target.open("rb") as handle:
-        saved = pickle.load(handle)  # noqa: S301 — our own file
+        saved = pickle.load(handle)
     if not isinstance(saved, dict):
         raise TypeError(f"{target} does not hold a sigma_q ensemble")
     return saved
@@ -179,5 +183,5 @@ def print_ensemble(table: pd.DataFrame) -> None:
         worst = table["corr_cash"].max()
         best = table["corr_cash"].min()
         print(f"\n  corr with the real cash rate runs {best:.2f} to {worst:.2f} across the sweep.")
-        if best > 0.9:  # noqa: PLR2004 — the threshold is the point, and it is stated in the line above
-            print("  *** It is above 0.9 at EVERY value, so no choice of drift rescues it.")
+        if best > _CASH_RATE_CORR:
+            print(f"  *** It is above {_CASH_RATE_CORR} at EVERY value, so no choice of drift rescues it.")

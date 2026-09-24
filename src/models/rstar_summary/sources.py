@@ -19,13 +19,13 @@ without saying so first, and `--no-refresh` skips it entirely.
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from src.models.common import inflation_scale
+from src.models.common.staleness import is_current
 from src.models.common.timeseries import last_complete_quarter
 from src.models.rstar_bonds.results import load_results as load_bonds_results
 from src.models.rstar_qpm.estimate import load_results as load_qpm_results
@@ -78,13 +78,9 @@ class RstarSource:
         """Where the saved trace lives."""
         return OUTPUT_DIR / f"{self.prefix}_trace.nc"
 
-    def is_current(self, *, today: datetime | None = None) -> bool:
+    def is_current(self) -> bool:
         """Return True if the saved trace was written today."""
-        if not self.trace_path.exists():
-            return False
-        stamp = datetime.fromtimestamp(self.trace_path.stat().st_mtime)  # noqa: DTZ006 — local, matches the file system
-        now = today or datetime.now()  # noqa: DTZ005 — local, as above
-        return stamp.date() == now.date()
+        return is_current(self.trace_path)
 
 
 def _load_bonds(prefix: str) -> pd.Series:
@@ -257,7 +253,7 @@ def refresh(source: RstarSource, *, timeout: int = 3600) -> None:
     # without this the child's output appears BEFORE the header explaining why
     # it is running, and the log reads out of order.
     sys.stdout.flush()
-    subprocess.run(  # noqa: S603 — our own script, path built from the registry
+    subprocess.run(
         [str(script), *source.script_args], cwd=str(ROOT), check=True, timeout=timeout,
     )
     sys.stdout.flush()

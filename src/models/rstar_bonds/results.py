@@ -29,7 +29,7 @@ class RStarResults(PosteriorResults):
     obs: dict[str, np.ndarray]
     chart_obs: pd.DataFrame | None = None
 
-    def through(self, last: pd.Period) -> "RStarResults":  # noqa: UP037 — dataclass self-reference
+    def through(self, last: pd.Period) -> "RStarResults":
         """Return a copy of this run truncated at `last`, for CHARTING only.
 
         The model estimates a state for the quarter in progress, because the
@@ -472,7 +472,7 @@ class RStarResults(PosteriorResults):
         """Return the estimated jump at each break, with its 90% interval."""
         if "jumps" not in self.posterior:
             return pd.DataFrame(columns=["mean", "5%", "95%"])
-        draws = np.asarray(self.posterior["jumps"].stack(sample=("chain", "draw")).values)  # noqa: PD013
+        draws = np.asarray(self.posterior["jumps"].stack(sample=("chain", "draw")).values)
         labels = [str(b) for b in self.constants.get("break_labels", range(draws.shape[0]))]
         return pd.DataFrame(
             {
@@ -625,7 +625,7 @@ def load_results(
 
     trace = az.from_netcdf(str(output_dir / f"{prefix}_trace.nc"))
     with (output_dir / f"{prefix}_obs.pkl").open("rb") as f:
-        saved = pickle.load(f)  # noqa: S301 — our own output, written by save_results
+        saved = pickle.load(f)
 
     return RStarResults(
         trace=trace,

@@ -40,6 +40,9 @@ import statsmodels.api as sm
 # line is too flat for -a/b to mean anything. 2.0 is the conventional cut.
 MIN_ABS_T = 2.0
 
+# Two parameters (intercept and slope) need a third point to leave any residuals.
+_MIN_QUARTERS = 3
+
 # Lags swept by `lag_sweep`. The IS curve's rate term is lagged because policy
 # is not thought to move output within the quarter: `nairu` uses t-2 and HLW
 # averages t-1 and t-2.
@@ -125,7 +128,7 @@ def fit(
     frame = pd.DataFrame({"x": x.shift(lag), "y": y}).dropna()
     if drop is not None:
         frame = frame.drop(index=drop, errors="ignore")
-    if len(frame) < 3:  # noqa: PLR2004 — two parameters need a third point to have residuals
+    if len(frame) < _MIN_QUARTERS:
         raise ValueError(f"{variant}: only {len(frame)} usable quarters at lag {lag}")
 
     model = sm.OLS(frame["y"], sm.add_constant(frame["x"])).fit()

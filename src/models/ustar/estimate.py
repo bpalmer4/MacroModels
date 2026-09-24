@@ -11,19 +11,19 @@ import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 
+from src.models.common.model_constants import attach, get_dictionary
 from src.models.common.spline import basis
 from src.models.ustar.config import DEFAULT_OUTPUT_DIR, ModelConfig
 from src.models.ustar.observations import build_observations
 from src.models.ystar.base import (
     SamplerConfig,
-    get_fixed_constants,
     sample_model,
     set_model_coefficients,
 )
 from src.utilities.rate_conversion import quarterly
 
 
-def _output_gap(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfig) -> Any:  # noqa: ANN401
+def _output_gap(obs: dict[str, np.ndarray], model: pm.Model, config: ModelConfig) -> Any:
     """Return the output gap the Okun equation sees. Not data, not estimated here.
 
     The two gap sources need different treatment, because their uncertainty has
@@ -65,7 +65,7 @@ def _ustar_spline(
     model: pm.Model,
     config: ModelConfig,
     obs_index: pd.PeriodIndex | None = None,
-) -> Any:  # noqa: ANN401
+) -> Any:
     """u* as a natural cubic spline with knots at `config.spline_knots`.
 
         u*_t = sum_j c_j B_j(t)
@@ -95,7 +95,7 @@ def _ustar_state(
     model: pm.Model,
     config: ModelConfig,
     obs_index: pd.PeriodIndex | None = None,
-) -> Any:  # noqa: ANN401
+) -> Any:
     """u* as a driftless Gaussian random walk with an imposed innovation sd.
 
     The initial level is given a wide prior centred on the sample's own mean
@@ -109,9 +109,7 @@ def _ustar_state(
     # settings dict, and sigma_ustar has no prior to be a setting for. Without
     # this they never reach the run log, the diagnostics or `results`, which
     # reads `anchor` from here to draw the inflation decomposition.
-    if not hasattr(model, "_fixed_constants"):
-        model._fixed_constants = {}  # noqa: SLF001 — our own metadata, as base.py does
-    model._fixed_constants.update(config.constants)  # noqa: SLF001
+    attach(model, config.constants)
 
     if config.ustar_structure == "spline":
         return _ustar_spline(model, config, obs_index)
@@ -157,7 +155,7 @@ def _ustar_state(
                 init_mu = float(obs["u"][0])
             init = pm.Normal("ustar_init", mu=float(init_mu), sigma=3.0)
 
-            def step(eps: Any, prev: Any, phi: Any, eq: Any) -> Any:  # noqa: ANN401
+            def step(eps: Any, prev: Any, phi: Any, eq: Any) -> Any:
                 return prev + phi * (eq - prev) + eps
 
             path, _ = pytensor.scan(
@@ -180,8 +178,8 @@ def _ustar_state(
 def _okun_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    ustar: Any,  # noqa: ANN401
-    ygap: Any,  # noqa: ANN401
+    ustar: Any,
+    ygap: Any,
     config: ModelConfig,
 ) -> str:
     """Fit u = u* - beta x ygap + e, the equation that sets u*'s level.
@@ -210,7 +208,7 @@ def _okun_equation(
 def _phillips_equation(
     obs: dict[str, np.ndarray],
     model: pm.Model,
-    ustar: Any,  # noqa: ANN401
+    ustar: Any,
     anchor: float,
     config: ModelConfig,
 ) -> str:
@@ -404,7 +402,7 @@ def run_estimate(
 
     # The providers behind the observations travel with the run, so the charts
     # name what was actually loaded rather than a separately maintained string.
-    constants = {**get_fixed_constants(model), "sources": sources.to_records()}
+    constants = {**get_dictionary(model), "sources": sources.to_records()}
     save_results(
         trace, obs, obs_index,
         constants=constants,

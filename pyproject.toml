@@ -89,6 +89,8 @@ lint.ignore = [
                #   `from __future__ import annotations` everywhere, since the
                #   annotations it targets are dataclass fields evaluated at runtime
     "CPY001",  # missing copyright notice - not used in this project
+    "S301",    # pickle.load - unsafe on untrusted input, but every load here reads
+               #   this project's own saved model outputs
 
     # --- specifically for Jupyter notebooks.
     "B018",    # Found useless attribute access (often at cell end for output) 

@@ -15,7 +15,8 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
-from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
+from src.models.common.model_constants import get_dictionary
+from src.models.nairu.base import SamplerConfig, sample_model
 from src.models.nairu.config import ModelConfig
 from src.models.nairu.equations.employment import employment_equation
 from src.models.nairu.equations.exchange_rate import exchange_rate_equation
@@ -48,7 +49,7 @@ from src.paths import MODEL_OUTPUTS
 DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
 
 
-def build_model(obs: dict[str, np.ndarray], config: ModelConfig) -> pm.Model:  # noqa: C901, PLR0912, PLR0915
+def build_model(obs: dict[str, np.ndarray], config: ModelConfig) -> pm.Model:
     """Build the joint NAIRU + Output Gap model from a ModelConfig.
 
     Args:
@@ -185,15 +186,15 @@ def build_model(obs: dict[str, np.ndarray], config: ModelConfig) -> pm.Model:  #
     for d in descriptions:
         print(f"  {d}")
 
-    constants = getattr(model, "_fixed_constants", {})
+    constants = get_dictionary(model)
     if constants:
         print("\nFixed constants:")
         for name, value in constants.items():
             print(f"  {name} = {value}")
 
     # Store metadata on model
-    model._descriptions = descriptions  # noqa: SLF001 — our own metadata on PyMC model
-    model._config = config  # noqa: SLF001
+    model._descriptions = descriptions
+    model._config = config
 
     return model
 
@@ -319,7 +320,7 @@ def run_estimate(
     print("\n")
 
     # Save results
-    constants = get_fixed_constants(model)
+    constants = get_dictionary(model)
     save_results(
         trace, obs, obs_index, config,
         constants=constants,

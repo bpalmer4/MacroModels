@@ -68,5 +68,5 @@ class PosteriorResults:
 def vector_draws(values: xr.DataArray, index: pd.Index | None = None) -> pd.DataFrame:
     """Flatten a (chain, draw, time) latent into a time x draw DataFrame."""
     # xarray's .stack, not pandas' — PD013 does not apply.
-    stacked = values.stack(sample=("chain", "draw"))  # noqa: PD013
+    stacked = values.stack(sample=("chain", "draw"))
     return pd.DataFrame(np.asarray(stacked.values), index=index)

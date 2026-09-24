@@ -7,6 +7,8 @@ from typing import Any
 import arviz as az
 import pymc as pm
 
+from src.models.common.model_constants import record_constant
+
 
 @dataclass
 class SamplerConfig:
@@ -75,7 +77,7 @@ def set_model_coefficients(
       - lower or upper specified: TruncatedNormal
       - otherwise: Normal
 
-    Fixed constants are accumulated on model._fixed_constants for later retrieval.
+    Fixed constants are recorded on the model (see `common.model_constants`).
 
     Args:
         model: PyMC model context
@@ -89,16 +91,13 @@ def set_model_coefficients(
     if constant is None:
         constant = {}
 
-    if not hasattr(model, "_fixed_constants"):
-        model._fixed_constants = {}  # noqa: SLF001 — our own metadata on PyMC model
-
     coefficients = {}
 
     with model:
         for name, params in settings.items():
             if name in constant:
                 coefficients[name] = constant[name]
-                model._fixed_constants[name] = constant[name]  # noqa: SLF001
+                record_constant(model, name, constant[name])
             elif "sigma" in params and "mu" not in params:
                 coefficients[name] = pm.HalfNormal(name, sigma=params["sigma"])
             elif "lower" in params or "upper" in params:
@@ -117,11 +116,6 @@ def set_model_coefficients(
                 )
 
     return coefficients
-
-
-def get_fixed_constants(model: pm.Model) -> dict[str, Any]:
-    """Get all fixed constants from a model."""
-    return getattr(model, "_fixed_constants", {})
 
 
 def add_scalar_priors(

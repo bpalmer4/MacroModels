@@ -41,7 +41,7 @@ def run_analyse(
     output_dir: Path | str | None = None,
     prefix: str = "nairu_output_gap",
     chart_dir: Path | str | None = None,
-    verbose: bool = False,  # noqa: ARG001 — reserved for future use
+    verbose: bool = False,
     show_plots: bool = False,
 ) -> NAIRUResults:
     """Generate all output analysis charts."""

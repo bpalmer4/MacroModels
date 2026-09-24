@@ -429,7 +429,7 @@ def plot_two_gaps(trace: az.InferenceData, frame: pd.DataFrame, constants: dict)
 
 def posterior_draws(trace: az.InferenceData, name: str, index: pd.PeriodIndex) -> pd.DataFrame:
     """Return every draw of a vector quantity, quarters down, draws across."""
-    stacked = _group(trace, "posterior")[name].stack(sample=("chain", "draw"))  # noqa: PD013
+    stacked = _group(trace, "posterior")[name].stack(sample=("chain", "draw"))
     return pd.DataFrame(np.asarray(stacked.values), index=index)
 
 
@@ -732,7 +732,7 @@ def _taylor_inputs(prefix: str = "rstar_bonds") -> tuple[pd.Series, pd.Series]:
         print(f"  note: Taylor inputs unavailable ({type(exc).__name__}); "
               "the Taylor chart will be skipped")
         return pd.Series(dtype=float), pd.Series(dtype=float)
-    return bonds.rule_inflation(), bonds._extra("ygap")  # noqa: SLF001 — same repo
+    return bonds.rule_inflation(), bonds._extra("ygap")
 
 
 def plot_taylor(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> None:

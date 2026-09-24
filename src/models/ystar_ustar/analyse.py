@@ -409,7 +409,7 @@ def _chart_implied_ustar(results: JointResults) -> None:
         title="What inflation alone says u* is, quarter by quarter",
         ylabel="Per cent",
         legend={"loc": "best", "fontsize": "small"},
-        axvspan=[*ustar_analyse._unidentified_span(), *_excluded_span(results)],  # noqa: SLF001
+        axvspan=[*ustar_analyse._unidentified_span(), *_excluded_span(results)],
         lheader=(
             f"Implied series moves {ratio:.0f}x as much quarter to quarter; "
             f"correlation with u* {implied.corr(fitted):.2f}"
@@ -527,63 +527,63 @@ def _parent_chart_settings(results: JointResults) -> Iterator[None]:
     Restored on the way out, so a session that analyses this model and then one
     of its parents does not mislabel the parent's charts.
     """
-    ystar_footer, ustar_footer = ystar_analyse._LFOOTER, ustar_analyse._LFOOTER  # noqa: SLF001
-    ustar_band_footer = ustar_analyse._LFOOTER_BAND  # noqa: SLF001
+    ystar_footer, ustar_footer = ystar_analyse._LFOOTER, ustar_analyse._LFOOTER
+    ustar_band_footer = ustar_analyse._LFOOTER_BAND
     ystar_fallbacks = (
-        ystar_analyse._RFOOTER, ystar_analyse._RFOOTER_CORE, ystar_analyse._RFOOTER_PRODUCTION,  # noqa: SLF001
+        ystar_analyse._RFOOTER, ystar_analyse._RFOOTER_CORE, ystar_analyse._RFOOTER_PRODUCTION,
     )
-    ustar_fallback = ustar_analyse._RFOOTER  # noqa: SLF001
-    ustar_excluded = ustar_analyse._EXCLUDED_WINDOW  # noqa: SLF001
-    ustar_unidentified = ustar_analyse._UNIDENTIFIED_WINDOW  # noqa: SLF001
+    ustar_fallback = ustar_analyse._RFOOTER
+    ustar_excluded = ustar_analyse._EXCLUDED_WINDOW
+    ustar_unidentified = ustar_analyse._UNIDENTIFIED_WINDOW
 
-    ystar_analyse._LFOOTER = _lfooter(results)  # noqa: SLF001
-    ustar_analyse._LFOOTER = _lfooter(results)  # noqa: SLF001
-    ustar_analyse._LFOOTER_BAND = _lfooter(results, "Band x2; see notes. ")  # noqa: SLF001
-    ystar_analyse._RFOOTER = _SOURCE  # noqa: SLF001
-    ystar_analyse._RFOOTER_CORE = _SOURCE  # noqa: SLF001
-    ystar_analyse._RFOOTER_PRODUCTION = _SOURCE  # noqa: SLF001
-    ustar_analyse._RFOOTER = _SOURCE  # noqa: SLF001
+    ystar_analyse._LFOOTER = _lfooter(results)
+    ustar_analyse._LFOOTER = _lfooter(results)
+    ustar_analyse._LFOOTER_BAND = _lfooter(results, "Band x2; see notes. ")
+    ystar_analyse._RFOOTER = _SOURCE
+    ystar_analyse._RFOOTER_CORE = _SOURCE
+    ystar_analyse._RFOOTER_PRODUCTION = _SOURCE
+    ustar_analyse._RFOOTER = _SOURCE
 
     # `ystar`'s chart module keeps the excluded window in a module-level global,
     # set inside its own run_analysis, which we are bypassing. Setting it here
     # is what makes its charts shade the quarters that carry no likelihood.
-    ystar_analyse._EXCLUDED_WINDOW = results.excluded_window  # noqa: SLF001
+    ystar_analyse._EXCLUDED_WINDOW = results.excluded_window
     # Same for `ustar`'s charts. Its own runs exclude nothing, so this is dead
     # for `ustar` itself, but here the window is dropped from all three
     # equations and u* inside it is a prior extrapolation.
-    ustar_analyse._EXCLUDED_WINDOW = (  # noqa: SLF001
+    ustar_analyse._EXCLUDED_WINDOW = (
         results.excluded_window if results.constants.get("exclude_scope") == "all" else None
     )
     # The early window, where u*'s level is set by the state law and by Okun
     # rather than by inflation: the 90% band runs 2.6x its mid-sample width in
     # 1993, the Phillips residuals are systematically negative until 1999, and
     # expectations do not reach the target until 1998. See MODEL_NOTES.
-    ustar_analyse._UNIDENTIFIED_WINDOW = UNIDENTIFIED_WINDOW  # noqa: SLF001
+    ustar_analyse._UNIDENTIFIED_WINDOW = UNIDENTIFIED_WINDOW
 
     # The header names the two pieces GDP's deviation from potential splits
     # into. Under the identity gap it does not split: the deviation is the gap,
     # there is no residual, and nothing defines it but output.
-    gap_header = ystar_analyse._ACTUAL_GAP_HEADER  # noqa: SLF001
+    gap_header = ystar_analyse._ACTUAL_GAP_HEADER
     if not results.has_defined_gap:
-        ystar_analyse._ACTUAL_GAP_HEADER = (  # noqa: SLF001
+        ystar_analyse._ACTUAL_GAP_HEADER = (
             "GDP's deviation from potential, which here is the output gap itself"
         )
 
     try:
         yield
     finally:
-        ystar_analyse._LFOOTER = ystar_footer  # noqa: SLF001
-        ustar_analyse._LFOOTER = ustar_footer  # noqa: SLF001
-        ustar_analyse._LFOOTER_BAND = ustar_band_footer  # noqa: SLF001
+        ystar_analyse._LFOOTER = ystar_footer
+        ustar_analyse._LFOOTER = ustar_footer
+        ustar_analyse._LFOOTER_BAND = ustar_band_footer
         (
-            ystar_analyse._RFOOTER,  # noqa: SLF001
-            ystar_analyse._RFOOTER_CORE,  # noqa: SLF001
-            ystar_analyse._RFOOTER_PRODUCTION,  # noqa: SLF001
+            ystar_analyse._RFOOTER,
+            ystar_analyse._RFOOTER_CORE,
+            ystar_analyse._RFOOTER_PRODUCTION,
         ) = ystar_fallbacks
-        ustar_analyse._RFOOTER = ustar_fallback  # noqa: SLF001
-        ustar_analyse._EXCLUDED_WINDOW = ustar_excluded  # noqa: SLF001
-        ustar_analyse._UNIDENTIFIED_WINDOW = ustar_unidentified  # noqa: SLF001
-        ystar_analyse._ACTUAL_GAP_HEADER = gap_header  # noqa: SLF001
+        ustar_analyse._RFOOTER = ustar_fallback
+        ustar_analyse._EXCLUDED_WINDOW = ustar_excluded
+        ustar_analyse._UNIDENTIFIED_WINDOW = ustar_unidentified
+        ystar_analyse._ACTUAL_GAP_HEADER = gap_header
 
 
 def _draw_charts(

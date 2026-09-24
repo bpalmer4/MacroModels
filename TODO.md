@@ -12,31 +12,30 @@ grep -rc "# noqa" src --include="*.py" | grep -v ":0"   # suppressions by file
 
 ---
 
-## 1. Remove the `# noqa` suppressions
+## 1. Fix what the `# noqa` suppressions hid
 
-**190 directives, 178 of them outside DSGE.** The rule is in CLAUDE.md: agree a
-rule-level ignore in `pyproject.toml` or fix the code, never suppress a line.
-These predate that rule.
+**No directives remain, so ruff reports everything: 329 errors, 169 of them
+outside DSGE.** The rule is in CLAUDE.md: agree a rule-level ignore in
+`pyproject.toml` or fix the code, never suppress a line.
 
 The reason this is first: a suppression carries a justification nobody
 rechecks. Three in this repo asserted a circular import that did not exist, and
 one of them hid a real defect for as long as it had been there.
 
-Five rules are 86% of the total. Each is one decision, not N:
+Four rules are 60% of the 169 outside DSGE. Each is one decision, not N:
 
 | rule | n | what it is | likely answer |
 | --- | --- | --- | --- |
-| `SLF001` | 77 | private access, mostly `ystar_ustar/analyse.py` setting `ystar_analyse._LFOOTER` and friends | the footer-override pattern is the real problem; fix the pattern, not the lint |
-| `ANN401` | 31 | `Any` on pytensor expressions that have no useful type | rule-level ignore, or a `PyTensorLike` alias |
-| `S301` | 18 | `pickle.load` of our own saved traces, 17 files | rule-level ignore: it is never untrusted input here |
-| `PD013` | 13 | `.stack()` flagged as pandas when it is xarray | rule-level ignore: the rule cannot tell them apart |
-| `PLR2004` | 6 | magic values, missed in the pass that named the rest | name them |
+| `SLF001` | 38 | private access, mostly `ystar_ustar/analyse.py` setting `ystar_analyse._LFOOTER` and friends | the footer-override pattern is the real problem; fix the pattern, not the lint |
+| `ANN401` | 46 | `Any` on pytensor expressions that have no useful type | rule-level ignore, or a `PyTensorLike` alias |
+| `PD013` | 14 | `.stack()` flagged as pandas when it is xarray | rule-level ignore: the rule cannot tell them apart |
+| `PLR2004` | 4 | magic values, missed in the pass that named the rest | name them |
 
-`SLF001` is the one with substance. 29 of the 77 are `ystar_ustar/analyse.py`
+`SLF001` is the one with substance. 32 of the 38 are `ystar_ustar/analyse.py`
 reaching into `ystar.analyse` and `ustar.analyse` to swap module-level footer
 globals before drawing their charts, then putting them back. That works, but it
 is why those modules cannot be read in isolation. Passing the footers as
-arguments would remove the suppressions and the coupling together.
+arguments would remove the errors and the coupling together.
 
 **Do not** run `ruff check --select <RULE> --fix`. Narrowing `--select`
 deselects every other rule, so `RUF100` judges nearly every remaining directive
@@ -44,9 +43,9 @@ unused and strips them all: 283 across 111 files, in one command.
 
 ## 2. Decide what DSGE is
 
-**146 of the 190 ruff errors are in `src/models/dsge/`,** a package that is
-experimental, partly broken, and not scheduled. So `ruff check src` is 77% noise
-about code nobody is working on, which buries the 44 findings in code that runs.
+**160 of the 329 ruff errors are in `src/models/dsge/`,** a package that is
+experimental, partly broken, and not scheduled. So `ruff check src` is 49% noise
+about code nobody is working on, which buries the 169 findings in code that runs.
 
 Two ways to stop that:
 
@@ -63,8 +62,9 @@ Recommendations for the detail, including why adopting it is not a drop-in.
 
 Two findings already sitting there, both DSGE-only:
 
-- **`F841`, 8 sites** (`cy`, `iy` in `fa_nk_model`, `r_t` in
-  `hlw_nairu_phillips_model`, `M` and `n_shocks` in `solver`/`kalman`). An
+- **`F841`, 9 sites** (`cy`, `iy` in `fa_nk_model`, `r_t` in
+  `hlw_nairu_phillips_model`, `M` and `n_shocks` in `solver`/`kalman`, `model`
+  in `fa_nk_bayes`). An
   assigned-but-unused local in model code is often a term that was meant to
   enter an equation. Worth an eye before dismissing as dead code.
 - **`NPY002`, 4 sites.** `np.random.seed` / `randn` use one global RNG shared
@@ -88,7 +88,7 @@ data rather than a numerical artefact.
 
 ## 3. Loose ends in maintained code
 
-- **`PLR0917`, 38 sites, 23 maintained.** More than five positional arguments;
+- **`PLR0917`, 39 sites, 24 maintained.** More than five positional arguments;
   the worst take 11. Reviewed and deliberately left: the one-character `*` fix
   needs every caller checked, and the tempting alternative (bundle into a config
   object) trades this for too-many-locals. Revisit only if an argument-order bug

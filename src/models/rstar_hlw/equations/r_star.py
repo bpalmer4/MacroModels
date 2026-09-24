@@ -41,6 +41,7 @@ from typing import Any
 import numpy as np
 import pymc as pm
 
+from src.models.common.model_constants import attach, record_constant
 from src.models.nairu.base import set_model_coefficients
 
 
@@ -84,24 +85,16 @@ def r_star_equation(
         # mildly favour U-shapes a priori — see MODEL_NOTES iteration 24.
         if "alpha_rstar" in constant:
             alpha = constant["alpha_rstar"]
-            if not hasattr(model, "_fixed_constants"):
-                model._fixed_constants = {}  # noqa: SLF001
-            model._fixed_constants["alpha_rstar"] = alpha  # noqa: SLF001
+            record_constant(model, "alpha_rstar", alpha)
         elif constant.get("alpha_hierarchical", False):
             alpha_a_hyper = pm.Uniform("alpha_a_hyper", lower=0.25, upper=2.0)
             alpha_b_hyper = pm.Uniform("alpha_b_hyper", lower=0.25, upper=2.0)
             alpha = pm.Beta("alpha_rstar", alpha=alpha_a_hyper, beta=alpha_b_hyper)
-            if not hasattr(model, "_fixed_constants"):
-                model._fixed_constants = {}  # noqa: SLF001
-            model._fixed_constants["alpha_hierarchical"] = True  # noqa: SLF001
-            model._fixed_constants["alpha_hyperprior"] = "Uniform(0.25, 2)"  # noqa: SLF001
+            attach(model, {"alpha_hierarchical": True, "alpha_hyperprior": "Uniform(0.25, 2)"})
         else:
             a_param, b_param = constant.get("alpha_prior", (1.0, 1.0))
             alpha = pm.Beta("alpha_rstar", alpha=float(a_param), beta=float(b_param))
-            if not hasattr(model, "_fixed_constants"):
-                model._fixed_constants = {}  # noqa: SLF001
-            model._fixed_constants["alpha_prior_a"] = float(a_param)  # noqa: SLF001
-            model._fixed_constants["alpha_prior_b"] = float(b_param)  # noqa: SLF001
+            attach(model, {"alpha_prior_a": float(a_param), "alpha_prior_b": float(b_param)})
 
         settings = {
             "k": {"mu": 0.5, "sigma": 0.5, "lower": 0.0},

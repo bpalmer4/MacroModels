@@ -21,9 +21,10 @@ import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
+from src.models.common.model_constants import attach, get_dictionary
 from src.models.rstar_invert.config import DEFAULT_OUTPUT_DIR, PAIR_LAGS, ModelConfig
 from src.models.rstar_invert.observations import InversionData, build_observations
-from src.models.ystar.base import SamplerConfig, get_fixed_constants, sample_model
+from src.models.ystar.base import SamplerConfig, sample_model
 
 
 def _stance_description(config: ModelConfig) -> tuple[str, str]:
@@ -144,7 +145,7 @@ def _lag_weights(config: ModelConfig) -> list[Any]:
     return [weights[position] for position in range(count)]
 
 
-def _rstar_path(config: ModelConfig, n: int) -> Any:  # noqa: ANN401 — a pytensor expression
+def _rstar_path(config: ModelConfig, n: int) -> Any:
     """Return the r* path, in percentage points.
 
     The form is the answer to "how slow is r*", which is the one genuinely open
@@ -195,9 +196,7 @@ def build_model(
 
     model = pm.Model()
     with model:
-        if not hasattr(model, "_fixed_constants"):
-            model._fixed_constants = {}  # noqa: SLF001 — our own metadata, as elsewhere
-        model._fixed_constants.update(config.constants)  # noqa: SLF001
+        attach(model, config.constants)
 
         # THE ASSERTION. Truncated above at zero because a positive slope is
         # not a weak IS curve, it is no IS curve. A posterior piled against the
@@ -295,7 +294,7 @@ def run_estimate(
 
     save_results(
         trace, data,
-        constants={**get_fixed_constants(model), "sources": data.sources.to_records()},
+        constants={**get_dictionary(model), "sources": data.sources.to_records()},
         output_dir=config.output_dir, prefix=prefix,
     )
     return trace, data
@@ -309,7 +308,7 @@ def load_results(
     directory = Path(output_dir) if output_dir else DEFAULT_OUTPUT_DIR
     trace = az.from_netcdf(str(directory / f"{prefix}_trace.nc"))
     with (directory / f"{prefix}_obs.pkl").open("rb") as handle:
-        saved = pickle.load(handle)  # noqa: S301 — our own file
+        saved = pickle.load(handle)
     return trace, saved["frame"], saved["constants"]
 
 
@@ -328,7 +327,7 @@ def scalar_draws(trace: az.InferenceData, name: str) -> np.ndarray:
 
 def posterior_median(trace: az.InferenceData, name: str, index: pd.PeriodIndex) -> pd.Series:
     """Return the posterior median of a vector latent as a series."""
-    stacked = _posterior(trace)[name].stack(sample=("chain", "draw"))  # noqa: PD013
+    stacked = _posterior(trace)[name].stack(sample=("chain", "draw"))
     return pd.Series(np.asarray(stacked.median("sample").values), index=index)
 
 
@@ -345,7 +344,7 @@ def posterior_band(
     asserted slope prior and the asserted speed of r*, not the uncertainty
     about r*.
     """
-    stacked = _posterior(trace)[name].stack(sample=("chain", "draw"))  # noqa: PD013
+    stacked = _posterior(trace)[name].stack(sample=("chain", "draw"))
     values = np.asarray(stacked.values)
     return pd.DataFrame(
         {

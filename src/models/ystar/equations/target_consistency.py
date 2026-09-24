@@ -61,6 +61,8 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 
+from src.models.common.model_constants import attach
+
 # Width of the sigmoid switches, in the units of the quantity being switched on.
 # Small enough to act as a sign, large enough to keep the gradient smooth.
 _SWITCH_GAP = 0.25  # gap, in log x 100
@@ -118,9 +120,7 @@ def target_consistency_equation(
     lagged = np.column_stack([deviation_all[j : j + n_used] for j in range(lag_max + 1)])
 
     with model:
-        if not hasattr(model, "_fixed_constants"):
-            model._fixed_constants = {}  # noqa: SLF001 — our own metadata on the PyMC model
-        model._fixed_constants.update({  # noqa: SLF001 — matching set_model_coefficients
+        attach(model, {
             # The scalar where there is one; the series is recorded by
             # `estimate._record_anchor`, which is the only place that has it
             # alongside the sample index.

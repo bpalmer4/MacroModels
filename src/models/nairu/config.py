@@ -179,7 +179,7 @@ class ModelConfig:
         """Reconstruct from saved dict."""
         return cls(**d)
 
-    def _observation_equations(self) -> list[str]:  # noqa: C901 — flat feature-flag list, not genuinely complex
+    def _observation_equations(self) -> list[str]:
         """List active observation equations."""
         regime = " [regime-switching]" if self.regime_switching else ""
         eqs = []

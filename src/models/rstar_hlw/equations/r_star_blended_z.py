@@ -51,6 +51,7 @@ import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 
+from src.models.common.model_constants import attach, record_constant
 from src.models.nairu.base import set_model_coefficients
 
 SIGMA_Z_DEFAULT = 0.15  # AR(1) innovation scale, pp/quarter (Buncic-tested via sweep)
@@ -92,18 +93,13 @@ def r_star_blended_z_equation(
         # constant['alpha_prior'] = (a, b) for prior-sensitivity sweeps.
         if "alpha_rstar" in constant:
             alpha = constant["alpha_rstar"]
-            if not hasattr(model, "_fixed_constants"):
-                model._fixed_constants = {}  # noqa: SLF001
-            model._fixed_constants["alpha_rstar"] = alpha  # noqa: SLF001
+            record_constant(model, "alpha_rstar", alpha)
         else:
             a_param, b_param = constant.get("alpha_prior", (1.0, 1.0))
             alpha = pm.Beta(
                 "alpha_rstar", alpha=float(a_param), beta=float(b_param),
             )
-            if not hasattr(model, "_fixed_constants"):
-                model._fixed_constants = {}  # noqa: SLF001
-            model._fixed_constants["alpha_prior_a"] = float(a_param)  # noqa: SLF001
-            model._fixed_constants["alpha_prior_b"] = float(b_param)  # noqa: SLF001
+            attach(model, {"alpha_prior_a": float(a_param), "alpha_prior_b": float(b_param)})
 
         # k (term-premium offset) and rho_z (z's AR persistence)
         settings = {
@@ -113,9 +109,7 @@ def r_star_blended_z_equation(
         mc = set_model_coefficients(model, settings, constant)
 
         # Track sigma_z as a fixed constant (not estimated).
-        if not hasattr(model, "_fixed_constants"):
-            model._fixed_constants = {}  # noqa: SLF001
-        model._fixed_constants["sigma_z"] = sigma_z_value  # noqa: SLF001
+        record_constant(model, "sigma_z", sigma_z_value)
 
         rho_z = mc["rho_z"]
         sigma_z = pt.constant(sigma_z_value)

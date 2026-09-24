@@ -252,7 +252,7 @@ def load_paths(output_dir: Path, prefix: str) -> dict[str, pd.DataFrame]:
     """Load previously saved vintage paths."""
     file_path = output_dir / f"{prefix}_realtime.pkl"
     with file_path.open("rb") as f:
-        return pickle.load(f)  # noqa: S301 — our own model outputs, not untrusted data
+        return pickle.load(f)
 
 
 def report(paths: dict[str, pd.DataFrame]) -> None:

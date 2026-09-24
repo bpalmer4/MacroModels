@@ -27,9 +27,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from src.models.common.model_constants import get_dictionary
 from src.models.rstar_rba.config import DEFAULT_OUTPUT_DIR, ModelConfig
 from src.models.rstar_rba.estimate import build_model, build_observations, posterior_median
-from src.models.ystar.base import SamplerConfig, get_fixed_constants, sample_model
+from src.models.ystar.base import SamplerConfig, sample_model
 
 # 0.05 to 0.15 are values a reasonable person could defend, which is what makes
 # the spread between them structural uncertainty rather than a demonstration
@@ -108,7 +109,7 @@ def run_sigma_r_ensemble(
         member = replace(config, sigma_r=value, walk=True)
         model = build_model(frame, member, verbose=False)
         trace = sample_model(model, sampler_config)
-        band = float(get_fixed_constants(model).get("band", 1.0))
+        band = float(get_dictionary(model).get("band", 1.0))
         # `paths` is neutral in real terms and `bases` in nominal, so the two
         # charts differ only in units and in what they are drawn against.
         # Neither is `prescribed`, which carries the inflation response.
@@ -154,7 +155,7 @@ def load_ensemble(
     if not target.exists():
         return None
     with target.open("rb") as handle:
-        saved = pickle.load(handle)  # noqa: S301 — our own file
+        saved = pickle.load(handle)
     if not isinstance(saved, dict):
         raise TypeError(f"{target} does not hold a sigma_r ensemble")
     return saved

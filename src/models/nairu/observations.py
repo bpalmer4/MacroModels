@@ -239,12 +239,12 @@ def _prepare_hours_growth() -> pd.Series:
 # --- Main Function ---
 
 
-def build_observations(  # noqa: PLR0915 — flat data-loading sequence, not genuinely complex
+def build_observations(
     start: str | None = None,
     end: str | None = None,
     hma_term: int = HMA_TERM,
     anchor_mode: AnchorMode = "target",
-    verbose: bool = False,  # noqa: ARG001 — reserved for future use
+    verbose: bool = False,
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, str, pd.DataFrame]:
     """Build observation dictionary for model.
 

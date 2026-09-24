@@ -17,7 +17,8 @@ Run:
     uv run python -m src.models.rstar_hlw.refresh_canonical
 """
 
-from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
+from src.models.common.model_constants import get_dictionary
+from src.models.nairu.base import SamplerConfig, sample_model
 from src.models.rstar_hlw.analyse import run_analyse
 from src.models.rstar_hlw.estimate import build_model, save_results
 from src.models.rstar_hlw.observations import build_observations
@@ -63,7 +64,7 @@ def main() -> None:
 
         trace = sample_model(model, sampler_config)
 
-        constants = get_fixed_constants(model)
+        constants = get_dictionary(model)
         save_results(
             trace, obs, obs_index,
             constants=constants, chart_obs=chart_obs,

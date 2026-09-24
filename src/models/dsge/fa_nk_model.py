@@ -363,7 +363,7 @@ def _observation_matrix(model: "FANKModel", solution: FANKSolution) -> np.ndarra
     a1 = 1.0 - p.beta * (1.0 - p.delta)
     bd = p.beta * (1.0 - p.delta)
     cy, iy, psi = p.c_y, p.i_y, p.psi
-    sc = model._static_coeffs()  # noqa: SLF001 — same class family
+    sc = model._static_coeffs()
     Y_C, Y_K, Y_Q = sc["Y"]
     MPK_C, MPK_K, MPK_Q = sc["mpk"]
     Rp = solution.R  # 3×7 : rows c, q, pi

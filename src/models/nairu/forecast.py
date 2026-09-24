@@ -129,7 +129,7 @@ def _compute_demand_multiplier(
 # --- Forecasting ---
 
 
-def forecast(  # noqa: C901, PLR0912, PLR0915
+def forecast(
     results: NAIRUResults,
     cash_rate_override: float | None = None,
     scenario_name: str = "baseline",
@@ -469,7 +469,7 @@ def run_forecast(
     prefix: str = "nairu_output_gap",
     n_samples: int = N_SAMPLES,
     chart_dir: Path | str | None = None,
-    verbose: bool = False,  # noqa: ARG001 — reserved for future use
+    verbose: bool = False,
     show_plots: bool = False,
 ) -> dict[str, ForecastResults] | None:
     """Run forecast scenarios and generate charts.

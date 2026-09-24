@@ -101,7 +101,7 @@ def load_results(model_type: str, output_dir: Path | None = None) -> Expectation
     # Load metadata
     meta_path = output_dir / f"expectations_{model_type}_metadata.pkl"
     with meta_path.open("rb") as f:
-        metadata = pickle.load(f)  # noqa: S301 — loading our own model outputs
+        metadata = pickle.load(f)
 
     return ExpectationsResults(
         trace=trace,

@@ -69,10 +69,10 @@ import mgplot as mg
 import numpy as np
 import pandas as pd
 
+from src.models.common.model_constants import get_dictionary
 from src.models.nairu.base import (
     SamplerConfig,
     add_scalar_priors,
-    get_fixed_constants,
     sample_model,
 )
 from src.models.rstar_hlw.analyse import run_analyse
@@ -225,7 +225,7 @@ def _run(
 
     save_results(
         trace, obs, obs_index,
-        constants=get_fixed_constants(model),
+        constants=get_dictionary(model),
         chart_obs=chart_obs,
         prefix=prefix,
     )

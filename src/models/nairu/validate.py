@@ -254,7 +254,7 @@ def _build_obs_vars(
 # --- Critical parameters for zero-coefficient check ---
 
 
-def _build_critical_params(config: ModelConfig) -> list[str]:  # noqa: PLR0912 — flat feature-flag list
+def _build_critical_params(config: ModelConfig) -> list[str]:
     """Build critical parameter list from config (no trace sniffing)."""
     params: list[str] = []
 

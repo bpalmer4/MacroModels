@@ -310,7 +310,7 @@ def plot_levels(table: pd.DataFrame, footers: dict[str, str]) -> None:
     )
 
 
-def analyse(  # noqa: PLR0917 — one call site, and naming six arguments reads better than a bundle
+def analyse(
     trace: az.InferenceData,
     frame: pd.DataFrame,
     regimes: np.ndarray,

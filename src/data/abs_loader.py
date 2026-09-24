@@ -187,7 +187,7 @@ def get_abs_data(wanted: ReqsDict, verbose: bool = False) -> dict[str, DataSerie
 def get_population(
     state: str = "Australia",
     project: bool = True,
-    **kwargs: Any,  # noqa: ANN401 — pass-through to readabs
+    **kwargs: Any,
 ) -> DataSeries:
     """Fetch ABS population Series for a given state.
 
@@ -231,7 +231,7 @@ def get_population(
 
 def get_abs_catalogue_data(
     cat: str,
-    **kwargs: Any,  # noqa: ANN401 — pass-through to readabs
+    **kwargs: Any,
 ) -> tuple[dict[str, DataFrame], DataFrame, str, str]:
     """Get ABS data for a specific catalogue number.
 

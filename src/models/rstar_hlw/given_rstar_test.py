@@ -46,7 +46,8 @@ Run:
 import numpy as np
 import pandas as pd
 
-from src.models.nairu.base import SamplerConfig, get_fixed_constants, sample_model
+from src.models.common.model_constants import get_dictionary
+from src.models.nairu.base import SamplerConfig, sample_model
 from src.models.rstar_bonds.results import load_results as load_bonds
 from src.models.rstar_hlw.estimate import build_model, save_results
 from src.models.rstar_hlw.observations import build_observations
@@ -143,7 +144,7 @@ def main() -> None:
         trace = sample_model(model, sampler_config)
         save_results(
             trace, obs, obs_index,
-            constants=get_fixed_constants(model),
+            constants=get_dictionary(model),
             chart_obs=chart_obs,
             prefix=prefix,
         )

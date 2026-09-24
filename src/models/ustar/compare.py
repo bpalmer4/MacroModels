@@ -17,11 +17,11 @@ today.
 
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
+from src.models.common.staleness import is_current
 from src.models.ustar.analyse import CHART_DIR, run_analysis
 from src.models.ustar.cli import build_parser, run_from_args
 from src.models.ustar.results import load_results
@@ -65,10 +65,7 @@ class Specification:
 
     def is_current(self) -> bool:
         """Report whether the saved trace was written today."""
-        if not self.trace_path.exists():
-            return False
-        written = datetime.fromtimestamp(self.trace_path.stat().st_mtime).astimezone()
-        return written.date() == datetime.now().astimezone().date()
+        return is_current(self.trace_path)
 
     def refresh(self) -> None:
         """Re-estimate this specification into its own prefix."""

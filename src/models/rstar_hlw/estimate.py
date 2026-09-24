@@ -10,10 +10,10 @@ import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 
+from src.models.common.model_constants import attach, get_dictionary, record_constant
 from src.models.nairu.base import (
     SamplerConfig,
     add_scalar_priors,
-    get_fixed_constants,
     sample_model,
     set_model_coefficients,
 )
@@ -424,12 +424,12 @@ def build_model(
     if sign_prior_only:
         # Recorded so a run that carries HLW's minimal priors rather than this
         # repo's informative ones says so wherever imposed settings are shown.
-        get_fixed_constants(model)["sign_prior_only"] = True
+        attach(model, {"sign_prior_only": True})
 
     if exclude_window is not None:
         # Travels with the run's imposed settings so `analyse.py` can shade the
         # window rather than draw states through it as though they were fitted.
-        get_fixed_constants(model)["exclude_window"] = exclude_window
+        record_constant(model, "exclude_window", exclude_window)
 
     if resolution == "B":
         desc = indexed_bond_equation(obs, model, latents, constant=constants.get("indexed_bond"))
@@ -439,13 +439,13 @@ def build_model(
     for d in descriptions:
         print(f"  {d}")
 
-    fixed = getattr(model, "_fixed_constants", {})
+    fixed = get_dictionary(model)
     if fixed:
         print("\nFixed constants:")
         for name, value in fixed.items():
             print(f"  {name} = {value}")
 
-    model._descriptions = descriptions  # noqa: SLF001
+    model._descriptions = descriptions
     return model
 
 
@@ -543,7 +543,7 @@ def run_estimate(
     sampled = add_scalar_priors(model, trace, random_seed=sampler_config.random_seed)
     print(f"Sampled priors for {len(sampled)} free scalar parameters\n")
 
-    constants = get_fixed_constants(model)
+    constants = get_dictionary(model)
     if "sigma_trend_obs" in constants:
         # Travels with the run so the anchor diagnostic can name the series it
         # is plotting. Keyed off the measurement sd that `trend_growth_equation`

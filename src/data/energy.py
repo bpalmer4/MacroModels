@@ -59,7 +59,7 @@ def _resolve_pink_sheet_url() -> str:
         req = urllib.request.Request(
             PINK_SHEET_LANDING_PAGE, headers={"User-Agent": "Mozilla/5.0"},
         )
-        with urllib.request.urlopen(req) as response:  # noqa: S310
+        with urllib.request.urlopen(req) as response:
             html = response.read().decode("utf-8")
         match = re.search(pattern, html)
         if match:

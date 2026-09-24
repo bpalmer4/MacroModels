@@ -80,12 +80,12 @@ class DSGELogLike(Op):
         base.update(spec.fixed_params)
         self.base = base
 
-    def make_node(self, theta) -> Apply:  # noqa: ANN001
+    def make_node(self, theta) -> Apply:
         """Declare the graph node: a parameter vector in, a scalar out."""
         theta = pt.as_tensor_variable(theta)
         return Apply(self, [theta], [pt.scalar(dtype="float64")])
 
-    def perform(self, node, inputs, outputs) -> None:  # noqa: ANN001
+    def perform(self, node, inputs, outputs) -> None:
         """Evaluate the log-likelihood at `theta`, writing it to `outputs`."""
         (theta,) = inputs
         pdict = dict(self.base)
@@ -128,7 +128,7 @@ PRIOR_SPECS: dict[str, tuple[str, dict]] = {
 }
 
 
-def _build_prior(name: str):  # noqa: ANN202 -- returns a pymc RV
+def _build_prior(name: str):
     if name not in PRIOR_SPECS:
         raise KeyError(f"No prior defined for estimated parameter '{name}'")
     dist_name, kwargs = PRIOR_SPECS[name]
@@ -165,7 +165,7 @@ def run_bayes(
 
     loglike = DSGELogLike(spec, data)
 
-    with pm.Model() as model:  # noqa: F841
+    with pm.Model() as model:
         rvs = [_build_prior(n) for n in names]
         theta = pt.stack(rvs)
         pm.Potential("loglike", loglike(theta))
@@ -251,7 +251,7 @@ def produce_bayes_outputs(idata, spec: ModelSpec, tag: str) -> None:
 
     try:
         idata.to_netcdf(str(out_dir / f"fa_nk_bayes_{tag}.nc"), engine="h5netcdf")
-    except Exception as exc:  # noqa: BLE001 -- saving idata is optional
+    except Exception as exc:
         print(f"  (idata netCDF not saved: {exc})")
 
     # DEMetropolis-Z is gradient-free: no tree depth and no energy, so those
@@ -318,7 +318,7 @@ def produce_bayes_outputs(idata, spec: ModelSpec, tag: str) -> None:
 # =============================================================================
 
 
-def run_fa_nk_bayes(smoke: bool = False, **kw):  # noqa: ANN201
+def run_fa_nk_bayes(smoke: bool = False, **kw):
 
     data = load_fa_nk_data()
     cfg = {"draws": 500, "tune": 500, "chains": 2} if smoke else {}
@@ -327,7 +327,7 @@ def run_fa_nk_bayes(smoke: bool = False, **kw):  # noqa: ANN201
     return idata
 
 
-def run_fa_nk_wage_bayes(smoke: bool = False, observe_u: bool = False, **kw):  # noqa: ANN201
+def run_fa_nk_wage_bayes(smoke: bool = False, observe_u: bool = False, **kw):
 
     data = load_wage_data(observe_u=observe_u)
     cfg = {"draws": 500, "tune": 500, "chains": 2} if smoke else {}
@@ -371,7 +371,7 @@ def _fa_nk_states_for_params(params, data) -> pd.DataFrame:
     )
 
 
-def extract_states_posterior(spec, data, idata, n_draws: int = 400, seed: int = 7):  # noqa: ANN201
+def extract_states_posterior(spec, data, idata, n_draws: int = 400, seed: int = 7):
     """Run the Kalman smoother over `n_draws` posterior parameter draws.
 
     Returns a dict: series name -> DataFrame with columns [median, lo, hi, mean]
@@ -400,7 +400,7 @@ def extract_states_posterior(spec, data, idata, n_draws: int = 400, seed: int = 
         params = spec.param_class(**pdict)
         try:
             df = _fa_nk_states_for_params(params, data)
-        except Exception:  # noqa: BLE001 -- skip indeterminate / failed draws
+        except Exception:
             continue
         n_ok += 1
         for col in df.columns:
@@ -422,7 +422,7 @@ def extract_states_posterior(spec, data, idata, n_draws: int = 400, seed: int = 
     return out
 
 
-def produce_fa_nk_extractions(idata=None, n_draws: int = 400) -> None:  # noqa: ANN001
+def produce_fa_nk_extractions(idata=None, n_draws: int = 400) -> None:
     """Charts of smoothed r*, the two rates and the EFP wedge WITH the posterior
     parameter-uncertainty band. Loads the saved FA-NK InferenceData if not given.
     Bands are layered with mgplot (`fill_between_plot` + `line_plot`) and closed

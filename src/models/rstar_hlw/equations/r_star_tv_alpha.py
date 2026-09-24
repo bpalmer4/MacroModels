@@ -49,6 +49,7 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 
+from src.models.common.model_constants import record_constant
 from src.models.nairu.base import set_model_coefficients
 
 SIGMA_A_DEFAULT = 0.05  # logit-RW innovation scale, default
@@ -88,9 +89,7 @@ def r_star_tv_alpha_equation(
         }
         mc = set_model_coefficients(model, settings, constant)
 
-        if not hasattr(model, "_fixed_constants"):
-            model._fixed_constants = {}  # noqa: SLF001
-        model._fixed_constants["sigma_a"] = sigma_a_value  # noqa: SLF001
+        record_constant(model, "sigma_a", sigma_a_value)
 
         sigma_a = pt.constant(sigma_a_value)
 

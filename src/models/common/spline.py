@@ -43,6 +43,9 @@ from scipy.interpolate import BSpline
 
 DEGREE = 3
 
+# A segment shorter than this has no shape to describe: a single quarter is a point.
+_MIN_SEGMENT_QUARTERS = 2
+
 
 def _augmented_knots(interior: np.ndarray, lo: float, hi: float, degree: int) -> np.ndarray:
     """Return the full knot vector: the interior knots with clamped boundaries."""
@@ -125,7 +128,7 @@ def segment_shapes(index: pd.PeriodIndex, ustar: pd.Series, breaks: tuple[str, .
     rows = []
     for lo, hi in pairwise(cuts):
         seg = ustar.loc[lo:hi]
-        if len(seg) < 2:  # noqa: PLR2004 — a single quarter has no shape
+        if len(seg) < _MIN_SEGMENT_QUARTERS:
             continue
         slope = seg.diff()
         turns = int((np.sign(slope).diff().fillna(0) != 0).sum() - 1)

@@ -78,7 +78,7 @@ def _reachable(url: str) -> bool:
     """Return whether the workbook can be fetched (or served from cache) at `url`."""
     try:
         get_file(url, cache_prefix="aofm")
-    except Exception as exc:  # noqa: BLE001 — any fetch failure is a reason to go looking
+    except Exception as exc:
         print(f"  note: AOFM workbook not available at {url} ({type(exc).__name__}: {exc})")
         return False
     return True

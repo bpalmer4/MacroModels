@@ -277,7 +277,7 @@ def load_results(
 
     trace = az.from_netcdf(str(output_dir / f"{prefix}_trace.nc"))
     with (output_dir / f"{prefix}_obs.pkl").open("rb") as f:
-        saved = pickle.load(f)  # noqa: S301 — loading our own model outputs, not untrusted data
+        saved = pickle.load(f)
 
     return PotentialResults(
         trace=trace,

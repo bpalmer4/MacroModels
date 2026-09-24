@@ -31,7 +31,7 @@ def _fred(sid: str) -> pd.Series | None:
         s = pd.to_numeric(df.set_index("date")[sid], errors="coerce").resample("QE").mean()
         s.index = pd.PeriodIndex(s.index, freq="Q")
         return s.dropna()
-    except Exception as e:  # noqa: BLE001 — network/format failures are reported, not fatal
+    except Exception as e:
         print(f"  ({sid} fetch failed: {e})")
         return None
 

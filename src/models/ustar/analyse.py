@@ -579,11 +579,11 @@ def run_analysis(
     # own run. Setting them here rather than computing them inside each chart
     # keeps that override working: whoever sets the global last wins, and there
     # is one place to look.
-    global _LFOOTER, _LFOOTER_BAND  # noqa: PLW0603 — the footers these charts read
+    global _LFOOTER, _LFOOTER_BAND
     _LFOOTER = _MODEL + ustar_structure_note(results.constants)
     _LFOOTER_BAND = _LFOOTER + _BAND_NOTE
 
-    global _UNIDENTIFIED_WINDOW  # noqa: PLW0603 — the module-level marker these charts read
+    global _UNIDENTIFIED_WINDOW
     _UNIDENTIFIED_WINDOW = (
         UNIDENTIFIED_WINDOW
         if results.obs_index[0] == pd.Period(UNIDENTIFIED_WINDOW[0], freq="Q")
