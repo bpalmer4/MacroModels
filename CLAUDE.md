@@ -49,6 +49,8 @@ uv run python -m src.models.rstar_hlw_kalman.run   # canonical HLW by Kalman fil
 ./run-ustar.sh --compare           # three specifications of the u* model on one chart
 ./run-gstar-summary.sh             # every g* (potential growth) estimate on one chart; re-runs
                                    #   any whose saved trace is not from today (--no-refresh skips)
+./run-ustar-summary.sh             # six u* specifications (three ustar, three ystar_ustar) on one
+                                   #   chart; re-runs stale ones (--no-refresh skips)
 ./run-bank-costs.sh                # Bank funding and lending costs vs the cash rate (charts only)
 uv run python -m src.models.is_curve.run   # IS-curve scatter (retired: the search found no IS curve)
 uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EVERY saved trace,
@@ -103,6 +105,7 @@ src/
 │   ├── ystar_ustar/               # Joint y*/u*: PREFERRED for the output gap and u*; --compare
 │   ├── cobb_douglas/              # Growth accounting only; not COVID-robust, don't quote post-2019 g*
 │   ├── gstar_summary/             # NOT A MODEL: potential growth estimates on one chart
+│   ├── ustar_summary/             # NOT A MODEL: six u* specifications from two models on one chart
 │   ├── rstar_bonds/               # r* from the bond market; quote the last complete quarter
 │   ├── rstar_rba/                 # Neutral from the RBA's reaction function; neutral != prescribed
 │   ├── rstar_qpm/                 # QPM-style semi-structural r*; wedge clipped by default; IS weak

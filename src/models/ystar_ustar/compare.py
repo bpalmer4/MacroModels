@@ -96,7 +96,8 @@ _DECAY = ["--ustar-structure", "decay"]
 SPECIFICATIONS: list[Specification] = [
     Specification("Decay u*, inflation-defined gap", "yus_sum_decay",
                   [*_DECAY, *_DEFINED], "tab:blue", "-"),
-    Specification("Default run", "ystar_ustar", [], "darkorange", "-", default=True),
+    Specification("Spline u*, 1 knot, inflation-defined gap", "ystar_ustar", [], "darkorange", "-",
+                  default=True),
     Specification("Spline u*, 2 knots, inflation-defined gap", "yus_sum_k2",
                   [*_K2, *_DEFINED], "seagreen", "-"),
     Specification("Spline u*, 3 knots, inflation-defined gap", "yus_sum_k3",

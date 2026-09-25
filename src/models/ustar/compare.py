@@ -80,7 +80,7 @@ class Specification:
 # Colour carries the knot count, dashing carries Okun, so the two dimensions
 # read separately.
 SPECIFICATIONS: list[Specification] = [
-    Specification("Default run", "ustar", [], "darkorange", "-", default=True),
+    Specification("Spline 1 knot", "ustar", [], "darkorange", "-", default=True),
     Specification("Spline 2 knots", "ustar_sum_k2",
                   ["--ustar-structure", "spline", "--knots", "1996Q1", "2013Q1"], "tab:blue", "-"),
     Specification("Spline 2 knots, with gap-form Okun", "ustar_sum_k2_okun",
