@@ -12,11 +12,11 @@ and what should not be quoted from it. The links below go there; this page is on
 
 - **Inflation Expectations** (`expectations`): latent inflation expectations from surveys and market data. See [notes](src/models/expectations/MODEL_NOTES.md)
 - **y\* potential output** (`ystar`): potential as a slow-moving random walk, with the output gap defined by inflation's deviation from target. See [notes](src/models/ystar/MODEL_NOTES.md)
-- **u\*** (`ustar`): a NAIRU from one expectations-augmented Phillips curve, with u\* a spline. See [notes](src/models/ustar/MODEL_NOTES.md)
+- **u\*** (`ustar`): a NAIRU from one expectations-augmented Phillips curve, with u\* a random walk. See [notes](src/models/ustar/MODEL_NOTES.md)
 - **Joint y\*/u\*** (`ystar_ustar`): both of the above in one likelihood, with the gap partly free and u\* a spline. See [notes](src/models/ystar_ustar/MODEL_NOTES.md)
 - **Cobb-Douglas MFP** (`cobb_douglas`): deterministic growth accounting into capital, labour and MFP. See [notes](src/models/cobb_douglas/MODEL_NOTES.md)
 - **g\* summary** (`gstar_summary`): every potential-growth estimate on one chart. See [notes](src/models/gstar_summary/MODEL_NOTES.md)
-- **u\* summary** (`ustar_summary`): six u\* specifications from `ustar` and `ystar_ustar` on one chart. See [notes](src/models/ustar_summary/MODEL_NOTES.md)
+- **u\* summary** (`ustar_summary`): four u\* specifications from `ustar` and `ystar_ustar` on one chart. See [notes](src/models/ustar_summary/MODEL_NOTES.md)
 
 ### The neutral rate
 
@@ -98,7 +98,7 @@ src/
     ├── cobb_douglas/           # Cobb-Douglas MFP decomposition
     ├── ystar/                  # y* potential output, inflation-defined output gap
     │                           #   (self-contained: imports only src/data)
-    ├── ustar/                  # u* from a given output gap: Okun + Phillips, one state
+    ├── ustar/                  # u* from one Phillips curve, u* a random walk
     │                           #   (reads expectations and ystar output)
     ├── ystar_ustar/            # y* and u* estimated jointly, gap partly free, u* a spline
     │                           #   (preferred for the output gap and u*)
@@ -109,7 +109,7 @@ src/
     ├── rstar_invert/           # r* by conditional inversion of an asserted IS curve
     ├── rstar_summary/          # every r* on one nominal scale (not a model)
     ├── gstar_summary/          # every potential-growth estimate on one chart (not a model)
-    ├── ustar_summary/          # six u* specifications from two models on one chart (not a model)
+    ├── ustar_summary/          # four u* specifications from two models on one chart (not a model)
     ├── is_curve/               # the IS curve plotted, not estimated: a test bench for the r* models
     ├── bank_costs/             # bank funding and lending costs vs the cash rate (exploratory, charts only)
     ├── gdp_nowcast_bridge/     # GDP nowcast: bridge equations

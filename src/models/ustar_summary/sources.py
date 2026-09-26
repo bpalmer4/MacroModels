@@ -1,18 +1,19 @@
 """Where each estimate of u* comes from, and how to load it.
 
 NOT A MODEL. This gathers u* from the two models in the repo that estimate
-one and puts six of their specifications on a single chart. Nothing here is
-estimated.
+one and puts several of their specifications on a single chart. Nothing here
+is estimated.
 
-SIX LINES, AND NOT SIX INDEPENDENT VOTES. Two packages, three settings each,
-and every one is fitted to the same unemployment rate, the same trimmed mean
-inflation and the same expectations series.
+SEVERAL LINES, AND NOT INDEPENDENT VOTES. Every one is fitted to the same
+unemployment rate, the same trimmed mean inflation and the same expectations
+series.
 
 - `ustar` reads u* from one Phillips curve. Its three settings differ in the
-  number of spline knots and in whether the gap-form Okun equation is in.
-- `ystar_ustar` estimates y* and u* in one likelihood. Its three settings
-  differ in the structure imposed on u*; all three use the inflation-defined
-  output gap. Its 3-knot and y - y* settings are left out.
+  structure imposed on u*: a tapered random walk, or a spline with one or two
+  knots.
+- `ystar_ustar` estimates y* and u* in one likelihood. Only its tapered
+  random walk, on the inflation-defined output gap, is charted here, beside
+  the `ustar` walk it can be read against.
 
 Each source is a specification from its package's `--compare`, found by
 prefix, so the flags that reproduce it, its refresh and its chart directory
@@ -26,8 +27,10 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from src.models.ustar import compare as ustar_compare
+from src.models.ustar.config import ModelConfig
 from src.models.ustar.results import load_results as load_ustar_results
 from src.models.ystar_ustar import compare as joint_compare
+from src.models.ystar_ustar.config import ModelConfig as JointConfig
 from src.models.ystar_ustar.results import load_results as load_joint_results
 
 if TYPE_CHECKING:
@@ -44,6 +47,8 @@ class UstarSource:
 
     Attributes:
         model: the model's short name, prefixed to the chart label
+        name: the u* structure, worded the same for every model so that one
+            structure reads as one thing on the shared legend
         spec: the `--compare` specification that reproduces this run
         loader: returns the posterior median of u*, per cent
         note: what this u* is built from, for the run log
@@ -51,14 +56,19 @@ class UstarSource:
     """
 
     model: str
+    name: str
     spec: Specification
     loader: Callable[[str], pd.Series]
     note: str
 
     @property
     def label(self) -> str:
-        """How the chart names this line: the model, then its specification."""
-        return f"{self.model}: {self.spec.label}"
+        """How the chart names this line: the model, then its u* structure.
+
+        Not the `--compare` label, which each package words for its own
+        comparison and which would name one structure two ways here.
+        """
+        return f"{self.model}: {self.name}"
 
     @property
     def prefix(self) -> str:
@@ -96,6 +106,12 @@ def _load_joint(prefix: str) -> pd.Series:
 _USTAR = "u*"
 _JOINT = "y*/u*"
 
+# u* structure names, set once so the legend cannot word one structure two
+# ways when both models chart it.
+_WALK = "Random walk"
+_SPLINE_1 = "Spline 1 knot"
+_SPLINE_2 = "Spline 2 knots"
+
 # `ustar`'s default run, which is also where the unemployment rate is read.
 _USTAR_DEFAULT = _find(ustar_compare.SPECIFICATIONS, "ustar")
 
@@ -109,39 +125,33 @@ def load_unemployment() -> pd.Series:
 SOURCES: tuple[UstarSource, ...] = (
     UstarSource(
         model=_USTAR,
+        name=_WALK,
         spec=_USTAR_DEFAULT,
         loader=_load_ustar,
-        note="one Phillips curve, u* a spline with one knot; the default run",
+        note=f"one Phillips curve, u* a random walk whose step size tapers to {ModelConfig.taper_end}; "
+             "the default run",
     ),
     UstarSource(
         model=_USTAR,
+        name=_SPLINE_1,
+        spec=_find(ustar_compare.SPECIFICATIONS, "ustar_sum_k1"),
+        loader=_load_ustar,
+        note="one Phillips curve, u* a spline with one knot",
+    ),
+    UstarSource(
+        model=_USTAR,
+        name=_SPLINE_2,
         spec=_find(ustar_compare.SPECIFICATIONS, "ustar_sum_k2"),
         loader=_load_ustar,
         note="one Phillips curve, u* a spline with two knots",
     ),
     UstarSource(
-        model=_USTAR,
-        spec=_find(ustar_compare.SPECIFICATIONS, "ustar_sum_k2_okun"),
-        loader=_load_ustar,
-        note="two knots, plus the gap-form Okun equation the default leaves out",
-    ),
-    UstarSource(
         model=_JOINT,
-        spec=_find(joint_compare.SPECIFICATIONS, "ystar_ustar"),
+        name=_WALK,
+        spec=_find(joint_compare.SPECIFICATIONS, "yus_sum_taper"),
         loader=_load_joint,
-        note="y* and u* in one likelihood, u* a spline with one knot; the default run",
-    ),
-    UstarSource(
-        model=_JOINT,
-        spec=_find(joint_compare.SPECIFICATIONS, "yus_sum_k2"),
-        loader=_load_joint,
-        note="y* and u* in one likelihood, u* a spline with two knots",
-    ),
-    UstarSource(
-        model=_JOINT,
-        spec=_find(joint_compare.SPECIFICATIONS, "yus_sum_decay"),
-        loader=_load_joint,
-        note="y* and u* in one likelihood, u* decaying towards an estimated equilibrium",
+        note="y* and u* in one likelihood, u* a random walk whose step size tapers to "
+             f"{JointConfig.taper_end}",
     ),
 )
 

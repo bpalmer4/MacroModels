@@ -2,9 +2,9 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
-# Six u* specifications from two models on one chart
+# u* specifications from two models on one chart
 #
-# Three from ustar and three from ystar_ustar, each a specification from that
+# Three from ustar and one from ystar_ustar, each a specification from that
 # model's --compare. Any whose saved trace was not written TODAY is re-run
 # first, which redraws that specification's own charts; the ystar_ustar runs
 # take a few minutes each.

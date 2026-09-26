@@ -4,12 +4,18 @@ from pathlib import Path
 
 import mgplot as mg
 import pandas as pd
+from mgplot.utilities import get_color_list
 
 from src.models.ustar.analyse import UNIDENTIFIED_WINDOW as USTAR_WINDOW
 from src.models.ystar_ustar.analyse import UNIDENTIFIED_WINDOW as JOINT_WINDOW
 from src.paths import CHARTS
 
 CHART_DIR = CHARTS / "ustar-summary"
+
+# mgplot's palette, with its gold swapped out: too faint as a line on this
+# background. Dark cyan rather than a dark gold, which would sit beside the
+# palette's darkorange.
+_DARK_FOR_GOLD = "darkcyan"
 
 # A range needs at least two specifications on the same quarters.
 MIN_MODELS_FOR_RANGE = 2
@@ -43,13 +49,16 @@ def plot_summary(
 ) -> None:
     """Plot every specification's u* on one axis, against the unemployment rate.
 
-    mgplot chooses the colours and line styles for the u* lines. The
+    mgplot chooses the colours and line styles for the u* lines, except
+    that its gold is swapped for `_DARK_FOR_GOLD`. The
     unemployment rate is drawn thin and black behind them, because every line
     is answering how far u* may depart from it.
     """
     data = _from(frame, start)
+    colours = [_DARK_FOR_GOLD if c == "gold" else c for c in get_color_list(len(data.columns))]
     ax = mg.line_plot(
         data,
+        color=colours,
         width=2.0,
         annotate=True,
         rounding=2,
@@ -67,7 +76,7 @@ def plot_summary(
     )
     mg.finalise_plot(
         ax,
-        title="Australian u*: two models, six specifications",
+        title=f"Australian u*: two models, {len(data.columns)} specifications",
         ylabel="Per cent",
         axvspan=_UNIDENTIFIED,
         legend={"loc": "best", "fontsize": "x-small"},

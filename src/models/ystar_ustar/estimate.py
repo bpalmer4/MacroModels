@@ -17,6 +17,7 @@ import pytensor.tensor as pt
 
 from src.models.common.model_constants import attach, get_dictionary, record_constant
 from src.models.common.spline import basis
+from src.models.common.taper import tapered_walk
 from src.models.ystar.base import (
     SamplerConfig,
     sample_model,
@@ -132,6 +133,12 @@ def _ustar_state(
     # and `results` reads `anchor` from here to draw the inflation decomposition.
     if config.ustar_structure == "spline":
         return _ustar_spline(model, config, obs_index)
+    if config.ustar_structure == "taper":
+        return tapered_walk(
+            model, obs_index, name="ustar",
+            early=config.taper_sigma_early, late=config.taper_sigma_late, end=config.taper_end,
+            init_mu=config.taper_init_mu, init_sd=config.taper_init_sd,
+        )
 
     with model:
         drift: Any = 0.0
@@ -641,6 +648,10 @@ def build_model(
         ),
         "decay": "u*_t = u*_{t-1} + phi x (u*_eq - u*_{t-1}) + e_u   (sigma imposed)",
         "walk": "u*_t = u*_{t-1} + e_u   (sigma imposed)",
+        "taper": (
+            f"u*_t = u*_{{t-1}} + sigma_t x z_t   (sigma {config.taper_sigma_early:g} tapering to "
+            f"{config.taper_sigma_late:g} at {config.taper_end}, then flat)"
+        ),
     }[config.ustar_structure]
     descriptions.append(f"NAIRU:        {nairu_state}")
 
@@ -744,6 +755,8 @@ def run_estimate(
         + (
             "u* deterministic given its coefficients"
             if config.ustar_structure == "spline"
+            else f"sigma_ustar {config.taper_sigma_early:g} -> {config.taper_sigma_late:g} by {config.taper_end}"
+            if config.ustar_structure == "taper"
             else f"sigma_ustar={config.sigma_ustar:g}"
         ),
     )

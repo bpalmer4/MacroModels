@@ -4,30 +4,40 @@
 
 ```
 sample      1993Q1 onwards
-u* path     natural cubic spline, one interior knot at 2013Q1
+u* path     random walk, step size tapering from loose to tight by 2002Q1
+            (alternative: natural cubic spline, one interior knot at 2013Q1)
 equations   price Phillips curve only. The gap-form Okun equation is OFF
 anchor      2.5% target, flat, with expectations entering as a deviation from it
 ```
 
-Four things are asserted rather than estimated: the start date, the absence of
-Okun, the spline, and the knot date. Everything else is estimated. Each is
-argued below, but the spline deserves its reason here, because it is the
-choice that decides what the model is allowed to say about now.
+Asserted rather than estimated: the start date, the absence of Okun, the
+random walk and its step-size schedule. Everything else is estimated. Each is
+argued below, but the structure imposed on u\* deserves its reason here,
+because it is the choice that decides what the model is allowed to say about
+now.
 
-**The spline is preferred because it lets the endpoint rise if the data
-support it.** The alternative, a decay toward one equilibrium, cannot: the
+**The random walk is preferred because it imposes the least structure.** It
+fixes only how far u\* may move each quarter, and leaves the shape to the
+data, so the tail is free to move wherever inflation pushes it. The one-knot
+spline decides where u\* may bend and holds the tail nearly straight after its
+knot. This is a judgement, not a score: the spline gets a few more quarters
+right on the band test, and the fit cannot arbitrate because a looser walk
+always fits better. See "The random walk: a step size instead of a shape".
+
+**Either is preferred to the decay law, because both let the endpoint rise if
+the data support it.** A decay toward one equilibrium cannot: the
 sign of `phi x (eq - u*)` is fixed by which side of the equilibrium the state
 opened on, and from 10.75 in 1993Q1 with an equilibrium near 4.9 it approaches
 from above, never crosses, and can only ever report a fall. Every decay run
 returns -0.32 to -0.34 over 2015-2026 whatever the data say. A spline has no
 such constraint and does turn up when pushed, +0.36 in one setting tried.
 
-So the default's post-2015 slope of -0.06, which is flat, is flat because the
-data put it there. Under the decay law that reading was unavailable, and the
+So the one-knot spline's post-2015 slope of -0.05, which is flat, is flat
+because the data put it there. Under the decay law that reading was unavailable, and the
 continuing decline it reported was a property of the curve.
 
-Latest reading **4.70**, unemployment 4.35, gap **-0.35**, mean 90% posterior
-band 0.58. Do not quote anything before 2000.
+Latest reading **4.90** (2026Q2), unemployment 4.35, gap **-0.55**, mean 90%
+posterior band 0.86. Do not quote anything before 2000.
 
 ### What u\* is here
 
@@ -147,8 +157,9 @@ What it brings in exchange is everything in the table above: a band halved by
 counting one signal twice, a systematic bias against what inflation alone
 implies, and a level in 1993-98 that calls the deepest slack in the sample
 equilibrium. The default takes that trade, and the cost of taking it is the
-flat 1990s. `--compare` charts one Okun setting alongside the default so the
-choice stays visible (see "Comparing specifications").
+flat 1990s. No Okun setting is kept in `--compare`: the two-knot run with
+Okun swept through the sample in wide bends, forced to start at unemployment
+and unable to stop, and was not a credible path.
 
 `--okun` restores the equation.
 
@@ -258,17 +269,73 @@ and a band of 0.58 against 0.83.
 
 ---
 
+## The random walk: a step size instead of a shape
+
+`--ustar-structure taper`, the default. The splines are its alternatives in
+`--compare`.
+
+```
+u*_t      = u*_{t-1} + sigma_t x z_t          z_t ~ N(0, 1)
+sigma_t   = late + (early - late) x w_t
+w_t       = 1 at the sample start, falling linearly to 0 at taper_end, 0 after
+u*_1993Q1 ~ N(taper_init_mu, taper_init_sd)
+```
+
+**What it trades.** The spline fixes where u\* may bend; the walk fixes only
+how far it may move each quarter, and leaves the shape to the data. It can
+fall, level off, turn up and turn back, anywhere. Where it agrees with the
+spline, the spline's shape is not what drives the answer.
+
+**Why the step size tapers.** The sample covers two different labour markets.
+It opens in a slow transition out of high unemployment, as the economy worked
+through the move from high inflation to low and the rate fell from above 10%
+over the following decade. It then settles into a long period of low and
+fairly stable unemployment. u\* needs room to move in the first and little in
+the second, so the step size varies to match: large while the transition runs,
+small once it is done.
+
+One step size cannot do both jobs. Tight enough
+to keep u\* from echoing the cycle later, it cannot afford the 1990s decline
+and returns a nearly flat line at one level for the whole sample. Loose
+enough for the decline, it lets u\* rise with unemployment in the 2001
+slowdown, around 2008 and after 2020, which is the cycle being booked as
+structural. So the step size is loose at the start and falls to a tight value
+by `taper_end`, then stays there. Ending the taper early is what stops the
+2001 rise: by 2002 it is a plateau, by 2008 a clear hump. The late value sets
+how much the path may move after that, and so how much room the tail has.
+
+**The first quarter** carries a wide prior centred below the 1993Q1
+unemployment rate, since that quarter was deep slack. It is wide enough that
+the likelihood places the start: the posterior lands well inside it and moves
+when the step size changes.
+
+**Everything here is asserted.** The two step sizes, the taper end and the
+start prior are settings in `config.py`, not estimates, and
+`--free-sigma-ustar` is refused under this structure. They cannot be
+estimated: the fit improves every time the walk is loosened, because a u\*
+that follows unemployment more closely always fits better quarter by quarter.
+That is the same pile-up `sigma_ustar_prior` records for the decay law. The
+choice is a judgement about how slow u\* should be, and is reported as one.
+
+**Reading the diagnostic.** "sd of du\* from taper_end" is measured on the
+median path, which averages away most of each draw's wander, so it reads well
+below the imposed late step size even when the draws use all of it. A low
+reading here is not evidence that the data are holding u\* still.
+
+---
+
 ## Strengths and weaknesses of each specification
 
-`./run-ustar.sh --compare` charts the three of these kept for comparison; see
-"Comparing specifications".
+These are the older spline, decay and Okun settings, from earlier runs.
+`./run-ustar.sh --compare` charts the two Okun-free splines beside the random
+walk; see "Comparing specifications".
 
 | | band test | 1993-98 | post-2015 | latest | band | bias |
 |---|---|---|---|---|---|---|
 | Decay, with Okun | 82.8% | 8.68 | -0.32 | 4.83 | 0.25 | -0.141 |
 | Decay | 81.2% | 7.77 | -0.34 | 4.60 | 0.55 | -0.004 |
 | Spline 1 knot, with Okun | **92.2%** | 7.93 | +0.36 | 5.06 | 0.35 | -0.229 |
-| **Spline 1 knot** (default) | 84.4% | 7.14 | -0.06 | 4.70 | 0.58 | -0.000 |
+| **Spline 1 knot** | 84.4% | 7.14 | -0.06 | 4.70 | 0.58 | -0.000 |
 | Spline 2 knots, with Okun | 79.7% | 8.74 | -0.59 | 4.67 | 0.24 | -0.128 |
 | Spline 2 knots | 84.4% | 7.30 | -0.13 | 4.67 | 0.83 | -0.003 |
 
@@ -378,42 +445,43 @@ There the specification is the whole of the answer.
 not a different model: each specification is a set of this model's own flags,
 re-estimated only if its saved run is not from today. One is the default run
 itself. Every run then writes its own charts, the default to `charts/UStar/` as
-a plain run does and the others beside it (`charts/UStar-k2/`,
-`charts/UStar-k2_okun/`), and the combined charts follow.
+a plain run does and the others beside it (`charts/UStar-k1/`,
+`charts/UStar-k2/`), and the combined charts follow.
 
-| specification | knots | Okun |
-|---|---|---|
-| **Default run** (spline, 1 knot) | 2013Q1 | out |
-| Spline, 2 knots | 1996Q1, 2013Q1 | out |
-| Spline, 2 knots, with gap-form Okun | 1996Q1, 2013Q1 | in |
+| specification | u\* structure |
+|---|---|
+| **Default run** (random walk) | step size tapering from loose to tight by 2002Q1 |
+| Spline, 1 knot | knot 2013Q1 |
+| Spline, 2 knots | knots 1996Q1, 2013Q1 |
 
-**Why these three.** The knot count asks how much the flexibility allowed to u\*
-matters. The Okun setting is kept because it is the only one in which u\* comes
-down through the 1990s. That decade was a regime change, inflation moving from
-high to low and taking years to work through the labour market, and the default
-reads almost all of the fall in unemployment over those years as cyclical. The
-Okun run reads much of it as a fall in u\* itself. Neither reading is settled,
-and the comparison exists so the choice is visible rather than buried in a
-default. The same Okun run also claims the steepest recent decline in u\* of
-anything tried; its 1990s reading lends that claim no weight.
+All three leave Okun out.
+
+**Why these three.** The spline settings ask whether the answer depends on the
+structure imposed on u\*: the walk imposes a step size and no shape, the
+splines a shape and no step size, so where they agree neither assumption is
+driving the answer. The knot count asks how much the spline's flexibility
+matters. An Okun setting used to be kept as the one reading in which u\* comes
+down with unemployment through the 1990s; it was dropped because its path was
+not credible (see the Okun section).
 
 **Why no decay settings.** Under the decay law the sign of u\*'s movement is
 fixed by which side of its equilibrium it starts on, so from the high
 unemployment of 1993 it can only ever report a fall. On a chart about how much
-the specification matters, that shape would be read as evidence. Every spline
-here can turn u\* up at the end if the data warrant it.
+the specification matters, that shape would be read as evidence. Every
+specification here can turn u\* up at the end if the data warrant it.
 
 **How to read it.** The three share the sample, the Phillips curve, the
 expectations series and the inflation measure, so their agreement is close to
 arithmetic and only their disagreement informs.
 
-- The knot count barely matters once Okun is out.
+- The knot count barely matters.
 - The spread is widest in the early 1990s, where u\* is least identified, and
   has all but closed today. The choices argued above bear on the 1990s
   narrative, not on the number to quote now.
 - The spread is not an error band. The specifications differ in a structured
-  way, whether Okun is in, so the range is the distance between two readings of
-  the 1990s. Quote the range and name what sits at each end.
+  way, the structure imposed on u\*, so the range is the distance between
+  readings under different assumptions. Quote the range and name what sits at
+  each end.
 - The mean line on the range chart is a mean, not a median (with three series
   the median switches identity wherever lines cross), and it describes where
   the specifications sit; it is not an estimate.
@@ -421,9 +489,8 @@ arithmetic and only their disagreement informs.
 **What it prints and charts.** Each run's own full set of charts, as above, then a table per specification (the inflation band
 test, the 1993-98 level, the post-2015 slope, the latest value, the average 90%
 band, bias against the inflation-implied series, and the volatility of u\*),
-the spread with and without Okun, and four charts in `charts/UStar-compare/`:
-the three u\* paths against unemployment (colour for the knot count, dashes for
-Okun), the unemployment gap each implies, the range with its mean, and the
+the spread, and four charts in `charts/UStar-compare/`: the three u\* paths
+against unemployment (colour for the structure), the unemployment gap each implies, the range with its mean, and the
 range's width over time. The poorly identified 1993-99 window is shaded.
 
 ## Files and usage
@@ -432,7 +499,9 @@ range's width over time. The poorly identified 1993-99 window is shaded.
 ./run-ustar.sh                                   # the default above
 ./run-ustar.sh --okun                            # restore the Okun equation
 ./run-ustar.sh --ustar-structure decay           # the decay law
-./run-ustar.sh --knots 1996Q1 2013Q1             # a second knot
+./run-ustar.sh --taper-end 2004Q1                # --taper-* flags change the walk's schedule
+./run-ustar.sh --ustar-structure spline          # the one-knot spline instead of the walk
+./run-ustar.sh --ustar-structure spline --knots 1996Q1 2013Q1   # a second knot
 ./run-ustar.sh --gap-source actual               # log_gdp - y* instead of the defined gap
 ./run-ustar.sh --analyse-only                    # re-chart a saved run
 ./run-ustar.sh --prefix name                     # write somewhere other than `ustar`

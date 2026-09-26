@@ -45,6 +45,9 @@ def ustar_structure_note(constants: dict[str, Any]) -> str:
     law = constants.get("ustar_structure")
     if not isinstance(law, str):
         return ""
+    if law == "taper":
+        # The tapered walk is a random walk; "taper" is only its flag value.
+        return "u*: random walk. "
     if law != "spline":
         return f"u*: {law}. "
     knots = [k for k in str(constants.get("spline_knots", "")).split(",") if k]

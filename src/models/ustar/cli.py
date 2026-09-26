@@ -54,7 +54,16 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Include the Okun equation, which is off by default; see config")
     parser.add_argument("--sigma-ustar", type=float, default=0.020, help="Imposed u* innovation sd")
     parser.add_argument("--ustar-init", type=float, default=None,
-                        help="Prior mean for u* in the first quarter (default: that quarter's unemployment rate)")
+                        help="Prior mean for u* in the first quarter (default: that quarter's unemployment "
+                             f"rate under decay, {ModelConfig.taper_init_mu:g} under taper)")
+    parser.add_argument("--taper-sigma-early", type=float, default=ModelConfig.taper_sigma_early,
+                        help=f"Taper: u* innovation sd at the start (default {ModelConfig.taper_sigma_early:g})")
+    parser.add_argument("--taper-sigma-late", type=float, default=ModelConfig.taper_sigma_late,
+                        help=f"Taper: u* innovation sd from --taper-end on (default {ModelConfig.taper_sigma_late:g})")
+    parser.add_argument("--taper-end", default=ModelConfig.taper_end,
+                        help=f"Taper: quarter the sd reaches its late value (default {ModelConfig.taper_end})")
+    parser.add_argument("--taper-init-sd", type=float, default=ModelConfig.taper_init_sd,
+                        help=f"Taper: prior sd on u* in the first quarter (default {ModelConfig.taper_init_sd:g})")
     parser.add_argument(
         "--ustar-drift", action="store_true",
         help="Let u* drift down while inflation expectations sit above target, "
@@ -101,6 +110,10 @@ def config_from_args(args: argparse.Namespace) -> ModelConfig:
         two_sided_beta=not args.one_sided_beta,
         sigma_ustar=args.sigma_ustar,
         ustar_init_mu=args.ustar_init,
+        taper_sigma_early=args.taper_sigma_early,
+        taper_sigma_late=args.taper_sigma_late,
+        taper_end=args.taper_end,
+        taper_init_sd=args.taper_init_sd,
         free_sigma_ustar=args.free_sigma_ustar,
         ustar_drift=args.ustar_drift,
         ustar_drift_end=args.ustar_drift_end,

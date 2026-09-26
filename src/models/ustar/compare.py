@@ -1,7 +1,7 @@
 """The comparison specifications behind `--compare`, and how to refresh them.
 
-Three settings of this model, differing in the number of spline knots and in
-whether the gap-form Okun equation is included. Everything else is shared, so
+Settings of this model differing in the structure imposed on u*: a random
+walk whose step size tapers, or a spline with one or two knots. Everything else is shared, so
 agreement between them is close to arithmetic and only their disagreement is
 informative. MODEL_NOTES, "Comparing specifications", explains the choice of
 the three and how to read them.
@@ -77,15 +77,13 @@ class Specification:
         run_analysis(prefix=self.prefix, chart_dir=self.chart_dir)
 
 
-# Colour carries the knot count, dashing carries Okun, so the two dimensions
-# read separately.
+# Colour carries the u* structure and knot count.
 SPECIFICATIONS: list[Specification] = [
-    Specification("Spline 1 knot", "ustar", [], "darkorange", "-", default=True),
+    Specification("Random walk", "ustar", [], "brown", "-", default=True),
+    Specification("Spline 1 knot", "ustar_sum_k1",
+                  ["--ustar-structure", "spline", "--knots", "2013Q1"], "darkorange", "-"),
     Specification("Spline 2 knots", "ustar_sum_k2",
                   ["--ustar-structure", "spline", "--knots", "1996Q1", "2013Q1"], "tab:blue", "-"),
-    Specification("Spline 2 knots, with gap-form Okun", "ustar_sum_k2_okun",
-                  ["--ustar-structure", "spline", "--knots", "1996Q1", "2013Q1", "--okun"],
-                  "tab:blue", "--"),
 ]
 
 

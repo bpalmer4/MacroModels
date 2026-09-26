@@ -1,8 +1,9 @@
 """The comparison specifications behind `--compare`, and how to refresh them.
 
-Eight settings of this model, a full crossing of the structure imposed on u*
+Nine settings of this model: a full crossing of the structure imposed on u*
 (decay, or a spline with 1, 2 or 3 knots) with the definition of the output
-gap (inflation-defined, or y - y*). MODEL_NOTES, "Comparing specifications",
+gap (inflation-defined, or y - y*), plus the tapered random walk on the
+inflation-defined gap. MODEL_NOTES, "Comparing specifications",
 explains the crossing, the Okun bound the identity gap needs, and how to read
 the comparison.
 
@@ -92,6 +93,7 @@ _K1 = ["--ustar-structure", "spline", "--knots", "2013Q1"]
 _K2 = ["--ustar-structure", "spline", "--knots", "1996Q1", "2013Q1"]
 _K3 = ["--ustar-structure", "spline", "--knots", "1996Q1", "2008Q1", "2013Q1"]
 _DECAY = ["--ustar-structure", "decay"]
+_TAPER = ["--ustar-structure", "taper"]
 
 SPECIFICATIONS: list[Specification] = [
     Specification("Decay u*, inflation-defined gap", "yus_sum_decay",
@@ -102,6 +104,8 @@ SPECIFICATIONS: list[Specification] = [
                   [*_K2, *_DEFINED], "seagreen", "-"),
     Specification("Spline u*, 3 knots, inflation-defined gap", "yus_sum_k3",
                   [*_K3, *_DEFINED], "rebeccapurple", "-"),
+    Specification("Random walk u*, inflation-defined gap", "yus_sum_taper",
+                  [*_TAPER, *_DEFINED], "brown", "-"),
     Specification("Decay u*, gap = y - y*", "yus_sum_decay_id",
                   [*_DECAY, *_IDENTITY], "tab:blue", "--"),
     Specification("Spline u*, 1 knot, gap = y - y*", "yus_sum_k1_id",

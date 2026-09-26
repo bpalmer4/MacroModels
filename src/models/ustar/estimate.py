@@ -13,6 +13,7 @@ import pytensor.tensor as pt
 
 from src.models.common.model_constants import attach, get_dictionary
 from src.models.common.spline import basis
+from src.models.common.taper import tapered_walk
 from src.models.ustar.config import DEFAULT_OUTPUT_DIR, ModelConfig
 from src.models.ustar.observations import build_observations
 from src.models.ystar.base import (
@@ -90,6 +91,25 @@ def _ustar_spline(
         return pm.Deterministic("ustar", pt.dot(pt.as_tensor_variable(design), coef))
 
 
+def _ustar_taper(
+    model: pm.Model,
+    config: ModelConfig,
+    obs_index: pd.PeriodIndex | None = None,
+) -> pt.TensorVariable:
+    """u* as a driftless random walk whose innovation sd tapers to `taper_end`.
+
+    The first quarter carries a wide prior, `taper_init_mu` and
+    `taper_init_sd`, so the likelihood places it.
+    """
+    if obs_index is None:
+        raise ValueError("the tapered walk needs obs_index to date its taper")
+    return tapered_walk(
+        model, obs_index, name="ustar",
+        early=config.taper_sigma_early, late=config.taper_sigma_late, end=config.taper_end,
+        init_mu=config.taper_start_mu, init_sd=config.taper_init_sd,
+    )
+
+
 def _ustar_state(
     obs: dict[str, np.ndarray],
     model: pm.Model,
@@ -113,6 +133,8 @@ def _ustar_state(
 
     if config.ustar_structure == "spline":
         return _ustar_spline(model, config, obs_index)
+    if config.ustar_structure == "taper":
+        return _ustar_taper(model, config, obs_index)
     with model:
         if config.free_sigma_ustar:
             mu, sd, lower, upper = config.sigma_ustar_prior
@@ -296,6 +318,11 @@ def build_model(
         state = f"u*_t = sum_j c_j x B_j(t)   (natural cubic spline, knots at {', '.join(config.spline_knots)})"
     elif config.ustar_structure == "decay":
         state = "u*_t = u*_{t-1} + phi x (u*_eq - u*_{t-1}) + e   (sigma imposed)"
+    elif config.ustar_structure == "taper":
+        state = (
+            f"u*_t = u*_{{t-1}} + sigma_t x z_t   (sigma {config.taper_sigma_early:g} tapering to "
+            f"{config.taper_sigma_late:g} at {config.taper_end}, then flat)"
+        )
     elif config.ustar_drift:
         state = (
             f"u*_t = u*_{{t-1}} - lambda x max(0, pi_exp - {config.anchor:g}) + e   "
@@ -377,7 +404,10 @@ def run_estimate(
           f"measurement error {'on' if config.gap_measurement_error else 'off'}")
     on = [n for n, keep in (("Okun", config.include_okun), ("Phillips", config.include_phillips)) if keep]
     print(f"Equations:    {' + '.join(on)}")
-    if config.free_sigma_ustar:
+    if config.ustar_structure == "taper":
+        print(f"Imposed:      sigma_ustar {config.taper_sigma_early:g} -> {config.taper_sigma_late:g} "
+              f"by {config.taper_end}, start prior N({config.taper_start_mu:g}, {config.taper_init_sd:g})")
+    elif config.free_sigma_ustar:
         mu, sd, lower, upper = config.sigma_ustar_prior
         bound = f"lower={lower:g}, upper={upper:g}" if upper is not None else f"lower={lower:g}"
         print(f"Drift:        sigma_ustar estimated, TruncatedNormal({mu:g}, {sd:g}, {bound})")

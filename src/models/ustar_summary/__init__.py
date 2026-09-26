@@ -1,1 +1,1 @@
-"""u* across six specifications of the two models in the repo that estimate one."""
+"""u* across several specifications of the two models in the repo that estimate one."""

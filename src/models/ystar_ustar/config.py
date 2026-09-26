@@ -56,7 +56,8 @@ GAP_SPECS = ("defined", "cycle", "identity")
 #   "walk"     — driftless Gaussian random walk at the imposed sigma_ustar
 #   "decay" — the walk pulled toward one estimated equilibrium
 #   "spline"   — a natural cubic spline, deterministic given its coefficients
-USTAR_STRUCTURES = ("walk", "decay", "spline")
+#   "taper"    — a driftless random walk whose sd falls from loose to tight by `taper_end`
+USTAR_STRUCTURES = ("walk", "decay", "spline", "taper")
 
 # Which form the Okun relation takes. See `_okun_equation`.
 #   "gap" — u = u* - beta x gap + e_o, a level relation
@@ -390,6 +391,28 @@ class ModelConfig:
     # span the sample's own range of unemployment, 3.5 to 10.9.
     spline_coef_prior: tuple[float, float, float, float] = (6.0, 3.0, 2.0, 14.0)
 
+    # The tapered walk. The sample opens in a slow move out of high
+    # unemployment and settles into a long stretch of low, fairly stable
+    # unemployment, so the step size is loose at the start and falls linearly
+    # to a tight value by `taper_end`, flat after it. All asserted: nothing
+    # measures how fast u* may move, and the fit prefers a looser walk.
+    #
+    # Tighter here than a Phillips-curve-only model needs, because the Okun
+    # equation pulls u* towards unemployment and a walk has the freedom to
+    # follow: looser schedules put u* on top of unemployment through every
+    # cycle, collapse `sigma_v`, and erase the tightness of 2007-08 and
+    # 2022-23 while inflation ran above the band. At these values u* stays
+    # clear of the cycle after 2002, while the looser start lets it follow
+    # unemployment down through the 1990s, reading that decline as largely
+    # structural.
+    taper_sigma_early: float = 0.15
+    taper_sigma_late: float = 0.02
+    taper_end: str = "2002Q1"
+    # Prior on the first quarter: centred below the 1993Q1 unemployment rate,
+    # which was deep slack, and wide, so the likelihood places the start.
+    taper_init_mu: float = 8.0
+    taper_init_sd: float = 5.0
+
     # --- The pandemic window ---
     # `ystar` drops 2020Q2-2021Q3 from its likelihood on the ground that
     # potential output is not well defined in a lockdown. Here the same window
@@ -532,6 +555,14 @@ class ModelConfig:
             # leaving the inherited value in place would misdescribe the run.
             recorded["sigma_ustar"] = float("nan")
             recorded["spline_knots"] = ",".join(self.spline_knots)
+        if self.ustar_structure == "taper":
+            # The single sigma_ustar is unused; the schedule is what was imposed.
+            recorded["sigma_ustar"] = float("nan")
+            recorded["taper_sigma_early"] = self.taper_sigma_early
+            recorded["taper_sigma_late"] = self.taper_sigma_late
+            recorded["taper_end"] = self.taper_end
+            recorded["taper_init_mu"] = self.taper_init_mu
+            recorded["taper_init_sd"] = self.taper_init_sd
         if self.sigma_v is not None:
             recorded["sigma_v"] = self.sigma_v
         return recorded

@@ -122,6 +122,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--knots", nargs="+", default=["2013Q1"], metavar="QUARTER",
         help="Interior knot dates for the spline state (default 2013Q1)",
     )
+    parser.add_argument("--taper-sigma-early", type=float, default=ModelConfig.taper_sigma_early,
+                        help=f"Taper: u* innovation sd at the start (default {ModelConfig.taper_sigma_early:g})")
+    parser.add_argument("--taper-sigma-late", type=float, default=ModelConfig.taper_sigma_late,
+                        help=f"Taper: u* innovation sd from --taper-end on (default {ModelConfig.taper_sigma_late:g})")
+    parser.add_argument("--taper-end", default=ModelConfig.taper_end,
+                        help=f"Taper: quarter the sd reaches its late value (default {ModelConfig.taper_end})")
+    parser.add_argument("--taper-init-mu", type=float, default=ModelConfig.taper_init_mu,
+                        help=f"Taper: prior mean for u* in the first quarter (default {ModelConfig.taper_init_mu:g})")
+    parser.add_argument("--taper-init-sd", type=float, default=ModelConfig.taper_init_sd,
+                        help=f"Taper: prior sd on u* in the first quarter (default {ModelConfig.taper_init_sd:g})")
     parser.add_argument(
         "--ustar-drift", action="store_true",
         help="Let u* drift down while inflation expectations sit above target, "
@@ -156,7 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--compare", action="store_true",
-        help="Chart eight specifications side by side (u* structure x gap definition), "
+        help="Chart nine specifications side by side (u* structure x gap definition, plus the taper), "
              "re-estimating any not run today; with --analyse-only, chart the saved runs "
              "as they stand. See MODEL_NOTES, 'Comparing specifications'",
     )
@@ -194,6 +204,11 @@ def run_from_args(args: argparse.Namespace) -> None:
             ustar_drift=args.ustar_drift,
             ustar_structure=args.ustar_structure,
             spline_knots=tuple(args.knots),
+            taper_sigma_early=args.taper_sigma_early,
+            taper_sigma_late=args.taper_sigma_late,
+            taper_end=args.taper_end,
+            taper_init_mu=args.taper_init_mu,
+            taper_init_sd=args.taper_init_sd,
             exclude_window=None if args.no_exclude_window else tuple(args.exclude_window),
             exclude_scope=args.exclude_scope,
             include_phillips=not args.no_phillips,

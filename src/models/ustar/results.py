@@ -125,6 +125,16 @@ class UStarResults(PosteriorResults):
         holding it; far below means the data are binding.
         """
         ustar = self.ustar_median()
+        taper_end = self.constants.get("taper_end")
+        if isinstance(taper_end, str):
+            # The allowance changes over the sample, so compare where it is flat.
+            late = ustar[ustar.index >= pd.Period(taper_end, freq="Q")]
+            return {
+                "sd of u*": float(ustar.std()),
+                f"sd of du* from {taper_end}": float(late.diff().dropna().std()),
+                "imposed late sigma_ustar": float(self.constants["taper_sigma_late"]),
+                "range of u*": float(ustar.max() - ustar.min()),
+            }
         allowed = (
             float(np.median(self._scalar("sigma_ustar")))
             if self.free_sigma_ustar

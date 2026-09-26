@@ -19,7 +19,7 @@ from src.models.ustar.compare import COMPARE_CHART_DIR, Loaded, without_okun
 # where the in-sample fit statistics do not.
 _HIGH, _LOW = 3.0, 2.0
 
-_LFOOTER = "Australia. u*: comparing three specifications. "
+_LFOOTER = "Australia. u*: comparing specifications. "
 
 # The window the model's own charts mark, read from there so the two cannot
 # drift apart. It matters most here: the specifications differ most inside it,
@@ -73,8 +73,7 @@ def table(loaded: list[Loaded]) -> pd.DataFrame:
 def plot_ustar(loaded: list[Loaded]) -> None:
     """Every specification's u* on one axis, against the unemployment rate.
 
-    Colour is the knot count and dashing is the gap-form Okun equation, so the
-    two dimensions read separately. The unemployment rate is drawn behind them
+    Colour is the u* structure and knot count. The unemployment rate is drawn behind them
     because every line is answering how far u* may depart from it.
     """
     frame = pd.DataFrame({item.spec.label: item.ustar for item in loaded})
@@ -91,11 +90,11 @@ def plot_ustar(loaded: list[Loaded]) -> None:
     )
     mg.finalise_plot(
         ax,
-        title="u*: one model, three specifications",
+        title=f"u*: one model, {len(loaded)} specifications",
         axvspan=_UNIDENTIFIED,
         ylabel="Per cent",
         legend={"loc": "best", "fontsize": "x-small"},
-        lheader="Colour is the knot count; dashed carries the gap-form Okun equation",
+        lheader="Colour is the u* structure",
         lfooter=_LFOOTER,
         rfooter=_RFOOTER,
         show=False,
@@ -131,7 +130,7 @@ def plot_range(loaded: list[Loaded]) -> None:
     """Shade the range across the specifications, with the mean through it.
 
     The band only: the individual lines are on the levels chart. The mean, not
-    the median, because with three series the median switches identity
+    the median, because with so few series the median switches identity
     wherever the lines cross. The mean describes where the specifications sit;
     it is not an estimate.
     """
@@ -184,7 +183,7 @@ def run_comparison(loaded: list[Loaded], chart_dir: Path = COMPARE_CHART_DIR) ->
     mg.clear_chart_dir()
 
     summary = table(loaded)
-    print("\nThree specifications of one model")
+    print(f"\n{len(loaded)} specifications of one model")
     print("-" * 100)
     print(summary.to_string(float_format=lambda v: f"{v:.3f}"))
 

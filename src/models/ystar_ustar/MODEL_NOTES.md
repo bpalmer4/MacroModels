@@ -927,13 +927,13 @@ what made this section necessary.
 
 ## Comparing specifications (`--compare`)
 
-`--compare` runs this model eight ways and charts the results together. It is not a different
+`--compare` runs this model nine ways and charts the results together. It is not a different
 model: each specification is a set of this model's own flags, re-estimated only if its saved run is
 not from today. One is the default run itself; the others save to their own `yus_sum_*` prefix.
 Every run then writes its own charts, the default to `charts/YStarUStar/` as a plain run does and
 the others beside it, named for what sets them apart (`charts/YStarUStar-k2/`,
-`charts/YStarUStar-decay_id/` and so on), and the combined charts follow. The eight cross the two
-choices the model actually has to make:
+`charts/YStarUStar-decay_id/` and so on), and the combined charts follow. Eight cross the two
+choices the model actually has to make, and the ninth adds the tapered random walk:
 
 | | inflation-defined gap | gap = y - y\* |
 |---|---|---|
@@ -941,6 +941,14 @@ choices the model actually has to make:
 | **u\* is a spline, 1 knot** | **x** (the default) | x |
 | u\* is a spline, 2 knots | x | x |
 | u\* is a spline, 3 knots | x | x |
+| u\* is a tapered random walk | x | |
+
+The tapered walk is a driftless random walk whose step size falls linearly from
+`taper_sigma_early` at the sample start to `taper_sigma_late` at `taper_end`. It imposes no shape,
+only how far u\* may move each quarter. It needs a much tighter schedule here than a model without
+Okun would: the Okun equation pulls u\* towards unemployment, and a looser walk follows it through
+every cycle, collapsing `sigma_v` and erasing the labour-market tightness of 2007-08 and 2022-23.
+It is run on the inflation-defined gap only.
 
 Down a column is how much the structure imposed on u\* matters; across a row, how much the
 definition of the gap matters. **Crossed rather than laddered** so the two cannot be confounded:
@@ -948,7 +956,7 @@ with a cell missing, a difference between columns could always be the structure 
 tried on one side. The second knot sits at 1996Q1, giving the early sample a shape of its own,
 which is where the specifications disagree most. The default's cell is the default run itself.
 
-All eight share a sample, an expectations series and an inflation measure, so agreement within a
+All nine share a sample, an expectations series and an inflation measure, so agreement within a
 column is close to arithmetic and only disagreement informs. **Nothing here is a
 recommendation**: settings argued against elsewhere in these notes, decay above all, are in it
 because it is the set tested before settling.
@@ -1001,7 +1009,7 @@ chart's axis is set by the identity runs, which squashes the inflation-defined g
 
 A saved run counts as current if its trace was written today: a proxy for current data rather
 than a check of ABS and RBA vintages, erring the right way since a stale run is always re-run. A
-full refresh is eight estimations at a few minutes each.
+full refresh is nine estimations at a few minutes each.
 
 ```bash
 ./run-ystar-ustar.sh --compare                 # re-estimate anything not from today, chart every run, then combined

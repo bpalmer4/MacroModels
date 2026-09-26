@@ -1,9 +1,9 @@
 """Configuration for the ustar model.
 
-One Phillips curve, and a u* with no innovation variance. Under the defaults
-the whole specification is:
+One Phillips curve, and a u* that is a random walk with a tapering step size.
+Under the defaults the whole specification is:
 
-    u*_t   = sum_j c_j·B_j(t)                    natural cubic spline, one knot at 2013Q1
+    u*_t   = u*_{t-1} + sigma_t·z_t              sigma_t tapering from loose to tight by `taper_end`
     pi_t   = q(2.5) + beta_pi·[q(pi_exp_t) - q(2.5)] + gamma·ugap_t
              + rho·d4pm_t + xi·GSCPI_t²·sign(GSCPI_t) + e_p          e_p ~ N(0, sigma_p)
     ugap_t = (u_t - u*_t) / u_t
@@ -11,14 +11,15 @@ the whole specification is:
 with `pi` quarterly trimmed mean inflation, `pi_exp` the expectations model's
 plain (unanchored) series, `d4pm` lagged annual import price growth, GSCPI the
 lagged supply-chain pressure index, and `q()` the conversion from annual to
-quarterly rates. Eight estimated quantities: the three spline coefficients,
-gamma, beta_pi, rho, xi and sigma_p. One asserted: the 2.5% target.
+quarterly rates. Estimated: u*'s path, gamma, beta_pi, rho, xi and sigma_p.
+Asserted: the 2.5% target and the walk's step-size schedule and start prior.
 
-**Why a spline.** It is deterministic given its coefficients, so there is no
-innovation variance to impose, and the segment after the knot can be flat
-while the one before it is steep. One knot gives three coefficients: enough to
-decline and then level off, not enough to invent a cycle. `ustar_structure`
-and `spline_knots` give the evidence for the structure and the knot date.
+**Why a random walk.** It imposes no shape on u*, only how far it may move
+each quarter, so u* can fall, level off or turn wherever the data push it. The
+step size is loose while unemployment works down from its early-1990s high and
+tight once the labour market settles, so the decline is cheap and the later
+cycle is not booked as structural. `ustar_structure` gives the argument
+against the spline; `taper_sigma_early` the argument for the schedule.
 
 **Why the target is the baseline.** Expectations enter only as a deviation
 from 2.5, so `beta_pi` is the pass-through of de-anchoring: 0 means the target
@@ -38,6 +39,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 from src.paths import MODEL_OUTPUTS
 
 DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
@@ -55,7 +58,9 @@ GAP_SOURCES = ("defined", "actual")
 # fit would draw it straight through the unemployment rate.
 #   "decay"  — a random walk pulled toward one estimated equilibrium
 #   "spline" — a natural cubic spline, deterministic given its coefficients
-USTAR_STRUCTURES = ("decay", "spline")
+#   "taper"  — a driftless random walk whose innovation sd falls linearly
+#              from the sample start to `taper_end`, then stays there
+USTAR_STRUCTURES = ("decay", "spline", "taper")
 
 
 @dataclass
@@ -138,12 +143,19 @@ class ModelConfig:
     #            deterministic given its coefficients. No innovation variance
     #            to impose, and a segment after a knot is free to be flat while
     #            the one before it is steep.
+    # "taper"    u* is a driftless random walk whose step size falls from loose
+    #            to tight by `taper_end`. No shape is imposed, only how far u*
+    #            may move each quarter.
     #
-    # "spline" by default, on the band test: scored against the sign of the
-    # unemployment gap over the 64 quarters where quarterly annualised trimmed
-    # mean inflation sat outside 2-3%, a knot at 2013Q1 gets 59 right against
-    # 53 for the decay structure, and 24 of 24 on the below-band quarters.
-    ustar_structure: str = "spline"
+    # "taper" by default, as a judgement rather than on a score. It imposes the
+    # least structure: the spline decides where u* may bend, and with one knot
+    # it holds the tail nearly straight after 2013, while the walk lets the
+    # tail move wherever the data push it. The band test does not favour it:
+    # scored against the sign of the unemployment gap over the 64 quarters
+    # where quarterly annualised trimmed mean inflation sat outside 2-3%, the
+    # one-knot spline gets a few more right. Nor does the fit settle it, since
+    # a looser walk always fits better. The spline stays in `--compare`.
+    ustar_structure: str = "taper"
 
     # Interior knot dates for the spline. One knot gives three coefficients
     # after the natural boundary reduction, which is stiff: enough to decline
@@ -161,6 +173,27 @@ class ModelConfig:
     # level u* passes through near its knot. Bounds span the sample's own
     # range, 3.5 to 10.9.
     spline_coef_prior: tuple[float, float, float, float] = (6.0, 3.0, 2.0, 14.0)
+
+    # The tapered walk. Loose while the sample works through the move from high
+    # inflation to low, tight once that is done. Linear in quarters from the
+    # sample start to `taper_end`, flat at `taper_sigma_late` after it. All
+    # three are asserted: nothing in the data measures how fast u* may move,
+    # and the fit always prefers a looser walk, so they cannot be estimated.
+    #
+    # The early sd is loose enough for the 1990s decline to be cheap. The late
+    # sd is tight enough that u* does not echo the cycle: looser settings, or a
+    # later end, let it rise with unemployment in the 2001 slowdown, around
+    # 2008 and after 2020. Ending the taper early is what stops the 2001 rise:
+    # by 2002 it is a plateau, by 2008 a clear hump.
+    taper_sigma_early: float = 0.3
+    taper_sigma_late: float = 0.075
+    taper_end: str = "2002Q1"
+    # Prior on the walk's first quarter. Centred at 8, below the 1993Q1
+    # unemployment rate because that quarter was deep slack, and wide, so the
+    # likelihood rather than the prior places the start. `ustar_init_mu`, when
+    # set, overrides the centre.
+    taper_init_mu: float = 8.0
+    taper_init_sd: float = 5.0
 
     # The inflation target, asserted flat across the sample. No phase-in: the
     # sample starts in 1993, inside the inflation-targeting era, so there is
@@ -386,8 +419,18 @@ class ModelConfig:
             )
         if self.ustar_structure == "spline" and not self.spline_knots:
             raise ValueError("the spline structure needs at least one interior knot")
+        if self.ustar_structure == "taper":
+            if self.free_sigma_ustar:
+                raise ValueError("the taper imposes its own innovation schedule; drop free_sigma_ustar")
+            if isinstance(self.start, str) and pd.Period(self.taper_end, freq="Q") <= pd.Period(self.start, freq="Q"):
+                raise ValueError(f"taper_end {self.taper_end} must fall after the sample start {self.start}")
         if self.gap_source not in GAP_SOURCES:
             raise ValueError(f"gap_source must be one of {GAP_SOURCES}, got {self.gap_source!r}")
+
+    @property
+    def taper_start_mu(self) -> float:
+        """Centre of the tapered walk's first-quarter prior: `ustar_init_mu` if set."""
+        return self.ustar_init_mu if self.ustar_init_mu is not None else self.taper_init_mu
 
     @property
     def constants(self) -> dict[str, Any]:
@@ -402,6 +445,12 @@ class ModelConfig:
             # The knot count is what a reader cannot infer from the fitted
             # curve, so the charts state it and read it from here.
             constants["spline_knots"] = ",".join(self.spline_knots)
-        if not self.free_sigma_ustar:
+        if self.ustar_structure == "taper":
+            constants["taper_sigma_early"] = self.taper_sigma_early
+            constants["taper_sigma_late"] = self.taper_sigma_late
+            constants["taper_end"] = self.taper_end
+            constants["taper_init_mu"] = self.taper_start_mu
+            constants["taper_init_sd"] = self.taper_init_sd
+        elif not self.free_sigma_ustar:
             constants["sigma_ustar"] = self.sigma_ustar
         return constants
