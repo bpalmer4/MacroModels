@@ -8,12 +8,12 @@ import pickle
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
 import pytensor
 import pytensor.tensor as pt
+import xarray as xr
 
 from src.models.common.model_constants import attach, get_dictionary, record_constant
 from src.models.common.spline import basis
@@ -817,7 +817,7 @@ def build_model(
 
 
 def save_results(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
     constants: dict[str, Any],
@@ -856,7 +856,7 @@ def run_estimate(
     prefix: str = "ystar_ustar",
     verbose: bool = False,
     seed: int | None = None,
-) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex]:
+) -> tuple[xr.DataTree, dict[str, np.ndarray], pd.PeriodIndex]:
     """Build observations, sample the posterior, save the results."""
     if config is None:
         config = ModelConfig()

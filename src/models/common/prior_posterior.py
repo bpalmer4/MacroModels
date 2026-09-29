@@ -21,7 +21,6 @@ import math
 from collections.abc import Callable
 from typing import Any
 
-import arviz as az
 import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
@@ -139,7 +138,7 @@ def plot_parameter(
 
 
 def plot_all(
-    posterior: xr.Dataset | az.InferenceData,
+    posterior: xr.Dataset | xr.DataTree,
     prior_for: PriorLookup,
     *,
     footers: dict[str, str],

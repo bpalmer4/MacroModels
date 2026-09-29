@@ -12,6 +12,7 @@ from src.data.world_rstar import get_world_rstar
 from src.models.common import prior_posterior
 from src.models.common.diagnostics import save_diagnostics
 from src.models.common.extraction import get_scalar_var, get_vector_var
+from src.models.common.results import trace_group
 from src.models.rstar_hlw.observations import DEFAULT_G_ANCHOR, G_ANCHOR_LABELS
 from src.models.rstar_hlw.results import DEFAULT_CHART_BASE, RStarResults, load_results
 
@@ -569,13 +570,13 @@ def plot_prior_posterior(results: RStarResults, show: bool = False) -> int:
     `prior` group and are skipped with a message rather than charted against a
     guess.
     """
-    if "prior" not in results.trace.groups():
+    if "prior" not in results.trace.children:
         print("  no prior group in this trace, re-estimate to get prior/posterior charts")
         return 0
 
-    prior_group = results.trace["prior"]
+    prior_group = trace_group(results.trace, "prior")
     return prior_posterior.plot_all(
-        results.trace["posterior"],
+        trace_group(results.trace, "posterior"),
         lambda name: (
             np.asarray(prior_group[name].values) if name in prior_group.data_vars else None
         ),

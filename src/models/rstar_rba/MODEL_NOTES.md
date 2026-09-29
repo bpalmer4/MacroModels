@@ -346,7 +346,7 @@ form, and the missing partial adjustment is why. And it does not discriminate wi
 ensemble, since all four members walk. What it closes off is the "just run a Taylor
 regression" alternative, which is the specification most readers would reach for.
 
-UNVERIFIED: no LOO or WAIC comparison has been run. The rejection above rests on residual
+UNVERIFIED: no LOO comparison has been run. The rejection above rests on residual
 diagnostics, which is the stronger ground here anyway, since a flexible state will always
 win a raw fit comparison.
 

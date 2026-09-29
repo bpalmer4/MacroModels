@@ -32,7 +32,7 @@ The model estimates three separate latent expectations series. None imposes the 
 ## Output Location
 
 Results are saved to `output/expectations/` with model type suffixes:
-- `expectations_{code}_trace.nc` - Full MCMC trace (ArviZ InferenceData)
+- `expectations_{code}_trace.nc` - Full MCMC trace (xarray DataTree)
 - `expectations_{code}_metadata.pkl` - Index, measures, inflation data
 - `expectations_{code}_hdi.parquet` - Point estimates with HDI bounds
 - `expectations_{code}_hdi.csv` - Same in CSV format

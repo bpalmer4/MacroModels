@@ -4,11 +4,11 @@ import pickle
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
+import xarray as xr
 
 from src.models.common.model_constants import attach, get_dictionary, record_constant
 from src.models.nairu.base import (
@@ -450,7 +450,7 @@ def build_model(
 
 
 def save_results(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
     *,
@@ -504,7 +504,7 @@ def run_estimate(
     g_anchor: GAnchor = DEFAULT_G_ANCHOR,
     verbose: bool = False,
     seed: int | None = None,
-) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex]:
+) -> tuple[xr.DataTree, dict[str, np.ndarray], pd.PeriodIndex]:
     """Build observations, sample posterior, save results."""
     if sampler_config is None:
         sampler_config = SamplerConfig(

@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from src.models.common.results import PosteriorResults
+from src.models.common.results import PosteriorResults, posterior_summary
 from src.models.ystar_ustar.config import DEFAULT_OUTPUT_DIR
 from src.utilities.rate_conversion import quarterly
 
@@ -359,14 +359,7 @@ class JointResults(PosteriorResults):
                  "epsilon_pi", "initial_trend_growth")
                 if name in self.posterior
             ]
-        # `az.summary` returns a Dataset when asked for one (`fmt="xarray"`),
-        # and a frame otherwise. This call takes the default, so the frame is
-        # the only outcome; narrowed rather than asserted because every caller
-        # prints or indexes it.
-        summary = az.summary(self.trace, var_names=var_names, hdi_prob=0.9)
-        if not isinstance(summary, pd.DataFrame):
-            raise TypeError(f"expected a summary frame, got {type(summary).__name__}")
-        return summary
+        return posterior_summary(self.trace, var_names=var_names, ci_prob=0.9)
 
 
 def load_results(

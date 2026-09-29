@@ -1,8 +1,8 @@
 """Wage inflation (ULC growth) decomposition."""
 
-import arviz as az
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from src.models.common.extraction import get_scalar_var, get_vector_var
 from src.models.nairu.analysis._decomposition_helpers import get_excess_contribution, get_regime_gamma
@@ -11,7 +11,7 @@ from src.utilities.rate_conversion import quarterly
 
 
 def decompose_wage_inflation(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
     wage_expectations: bool = False,

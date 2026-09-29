@@ -13,11 +13,11 @@ import pickle
 from pathlib import Path
 from typing import TypedDict
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
+import xarray as xr
 
 from src.data.bonds import get_breakeven_inflation, get_nominal_10y
 from src.data.capital import get_capital_growth_qrtly
@@ -522,7 +522,7 @@ def run_model(
     chains: int = DEFAULT_CHAINS,
     verbose: bool = True,
     monthly: bool = False,
-) -> tuple[az.InferenceData, pd.DataFrame, pd.Series, pd.PeriodIndex]:
+) -> tuple[xr.DataTree, pd.DataFrame, pd.Series, pd.PeriodIndex]:
     """Run model and return trace + data."""
     model_desc = {
         "unanchored": "Expectations (all surveys, no anchor)",
@@ -570,7 +570,7 @@ def run_model(
 
 def save_results(
     model_type: str,
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     measures: pd.DataFrame,
     inflation: pd.Series,
     index: pd.PeriodIndex,

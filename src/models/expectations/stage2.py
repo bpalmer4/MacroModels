@@ -15,11 +15,13 @@ from pathlib import Path
 import arviz as az
 import mgplot as mg
 import pandas as pd
+import xarray as xr
 
 from src.data.cash_rate import get_cash_rate_monthly
 from src.data.inflation import get_trimmed_mean_annual
 from src.data.rba_loader import get_inflation_expectations
 from src.models.common.diagnostics import check_model_diagnostics
+from src.models.common.results import posterior_summary
 from src.models.common.timeseries import plot_posterior_timeseries
 from src.models.expectations.common import CHART_DIR, MODEL_NAMES, MODEL_TYPES, OUTPUT_DIR
 
@@ -37,7 +39,7 @@ UNANCHORED_LFOOTER = (
 class ExpectationsResults:
     """Container for loaded results."""
 
-    trace: az.InferenceData
+    trace: xr.DataTree
     measures: pd.DataFrame
     inflation: pd.Series
     index: pd.PeriodIndex
@@ -153,7 +155,7 @@ def run_diagnostics(results: ExpectationsResults, verbose: bool = True) -> None:
 
         if summary_vars:
             print("\nParameter Estimates:")
-            print(az.summary(results.trace, var_names=summary_vars))
+            print(posterior_summary(results.trace, var_names=summary_vars))
         else:
             print("\nNo sampled parameters (all fixed).")
 

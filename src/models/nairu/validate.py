@@ -17,6 +17,7 @@ import arviz as az
 import mgplot as mg
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from src.models.common.diagnostics import check_for_zero_coeffs, check_model_diagnostics
 from src.models.common.extraction import get_scalar_var
@@ -97,7 +98,7 @@ THEORETICAL_TESTS = [
 ]
 
 
-def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
+def test_theoretical_expectations(trace: xr.DataTree) -> pd.DataFrame:
     """Test whether parameters match theoretical expectations.
 
     Tests are automatically skipped for parameters not present in the trace.
@@ -115,7 +116,7 @@ def test_theoretical_expectations(trace: az.InferenceData) -> pd.DataFrame:
             continue
 
         median = np.median(samples)
-        hdi_90 = az.hdi(samples, hdi_prob=0.90)
+        hdi_90 = az.hdi(samples, prob=0.90)
 
         if isinstance(expected, tuple):
             low, high = expected

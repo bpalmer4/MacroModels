@@ -7,9 +7,10 @@ from pathlib import Path
 import arviz as az
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from src.models.common.inflation_scale import get_unanchored_expectations
-from src.models.common.results import PosteriorResults
+from src.models.common.results import PosteriorResults, posterior_summary
 from src.paths import CHARTS, MODEL_OUTPUTS
 
 DEFAULT_OUTPUT_DIR = MODEL_OUTPUTS
@@ -58,7 +59,7 @@ class RStarResults(PosteriorResults):
         # class or its base would otherwise be silently dropped by the copy.
         return replace(
             self,
-            trace=az.InferenceData(posterior=self.posterior.isel(time_dims)),
+            trace=xr.DataTree.from_dict({"posterior": self.posterior.isel(time_dims)}),
             obs={
                 key: (value[:keep] if getattr(value, "shape", (0,))[:1] == (n_periods,) else value)
                 for key, value in self.obs.items()
@@ -90,7 +91,7 @@ class RStarResults(PosteriorResults):
         charts, this is the *narrowest* interval holding `prob` of the mass.
         The two coincide for a symmetric posterior and differ for a skewed one.
         """
-        interval = az.hdi(self.posterior[var_name], hdi_prob=prob)[var_name]
+        interval = az.hdi(self.posterior[var_name], prob=prob)
         values = np.asarray(interval.values)
         return pd.DataFrame(
             {"lower": values[:, 0], "upper": values[:, 1]},
@@ -610,10 +611,7 @@ class RStarResults(PosteriorResults):
                 var_names.append("nu_walk")
             if "jumps" in self.posterior:
                 var_names.append("jumps")
-        summary = az.summary(self.trace, var_names=var_names)
-        if not isinstance(summary, pd.DataFrame):
-            raise TypeError("az.summary returned a Dataset — expected the DataFrame form")
-        return summary
+        return posterior_summary(self.trace, var_names=var_names)
 
 
 def load_results(

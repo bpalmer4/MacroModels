@@ -9,14 +9,15 @@ import math
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from src.models.common import prior_posterior
 from src.models.common.diagnostics import save_diagnostics
+from src.models.common.results import posterior_summary
 from src.models.common.sources import footer_from_constants
 from src.models.is_curve.observations import DEFAULT_WINDOWS
 from src.models.rstar_invert.config import DEFAULT_CHART_DIR, PAIR_LAGS
@@ -60,7 +61,7 @@ def _asserted(constants: dict[str, Any]) -> str:
     return f"ASSERTED: is_slope ~ TruncNormal({mu:g}, {sd:g}), {speed}"
 
 
-def plot_rstar(trace: az.InferenceData, frame: pd.DataFrame, constants: dict[str, Any]) -> None:
+def plot_rstar(trace: xr.DataTree, frame: pd.DataFrame, constants: dict[str, Any]) -> None:
     """Plot the inverted r* against the real cash rate it should be neutral to.
 
     Both on the same axes deliberately. r* here is a smoothed version of
@@ -177,7 +178,7 @@ def _grid_for(name: str, draws: np.ndarray, constants: dict[str, Any]) -> np.nda
     return np.linspace(lo, hi + pad, 400)
 
 
-def plot_prior_posterior(trace: az.InferenceData, constants: dict[str, Any]) -> int:
+def plot_prior_posterior(trace: xr.DataTree, constants: dict[str, Any]) -> int:
     """One chart per estimated parameter: posterior against its own prior.
 
     The point is how much of each answer is data. A posterior sitting on its
@@ -207,7 +208,7 @@ def plot_prior_posterior(trace: az.InferenceData, constants: dict[str, Any]) -> 
     return drawn
 
 
-def _plot_dirichlet_weights(trace: az.InferenceData, constants: dict[str, Any]) -> None:
+def _plot_dirichlet_weights(trace: xr.DataTree, constants: dict[str, Any]) -> None:
     """One prior-posterior chart per Dirichlet stick, when a run has three lags.
 
     THE MARGINAL PRIOR of one component of a Dirichlet with k sticks and a
@@ -257,7 +258,7 @@ def _plot_dirichlet_weights(trace: az.InferenceData, constants: dict[str, Any]) 
 
 
 def plot_rstar_real_nominal(
-    trace: az.InferenceData, frame: pd.DataFrame, constants: dict[str, Any],
+    trace: xr.DataTree, frame: pd.DataFrame, constants: dict[str, Any],
 ) -> None:
     """Real and nominal r*, each with a 90% band.
 
@@ -322,7 +323,7 @@ def _longest_lag(constants: dict[str, Any]) -> int:
     return max(lags) if lags else 0
 
 
-def _lag_weights(trace: az.InferenceData, count: int) -> list[float]:
+def _lag_weights(trace: xr.DataTree, count: int) -> list[float]:
     """Return the posterior median weight on each lag, summing to one.
 
     Two lags carry the scalar `lag_weight` (the second takes 1 - w); three
@@ -343,7 +344,7 @@ def _lag_weights(trace: az.InferenceData, count: int) -> list[float]:
 
 
 def plot_raw_scatter(
-    trace: az.InferenceData, frame: pd.DataFrame, constants: dict[str, Any],
+    trace: xr.DataTree, frame: pd.DataFrame, constants: dict[str, Any],
 ) -> None:
     """Plot the gap against the RAW lagged real rate, with nothing fitted on either axis.
 
@@ -414,7 +415,7 @@ def plot_raw_scatter(
 
 
 def plot_is_scatter(
-    trace: az.InferenceData, frame: pd.DataFrame, constants: dict[str, Any],
+    trace: xr.DataTree, frame: pd.DataFrame, constants: dict[str, Any],
 ) -> None:
     """Plot the IS curve itself: the output gap against the stance, with the line.
 
@@ -469,7 +470,7 @@ def plot_is_scatter(
     plt.close(fig)
 
 
-def plot_stance(trace: az.InferenceData, frame: pd.DataFrame, constants: dict[str, Any]) -> None:
+def plot_stance(trace: xr.DataTree, frame: pd.DataFrame, constants: dict[str, Any]) -> None:
     """Plot the policy stance, the one the equation actually uses."""
     index = frame.index
     if not isinstance(index, pd.PeriodIndex):
@@ -495,7 +496,7 @@ def plot_stance(trace: az.InferenceData, frame: pd.DataFrame, constants: dict[st
     )
 
 
-def plot_gap_fit(trace: az.InferenceData, frame: pd.DataFrame, constants: dict[str, Any]) -> None:
+def plot_gap_fit(trace: xr.DataTree, frame: pd.DataFrame, constants: dict[str, Any]) -> None:
     """Plot the gap the IS curve reproduces, against the gap it was given."""
     index = frame.index
     if not isinstance(index, pd.PeriodIndex):
@@ -541,7 +542,7 @@ def plot_ensemble_paths(paths: pd.DataFrame, constants: dict[str, Any]) -> None:
 
 
 def plot_ensemble_with_band(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     frame: pd.DataFrame,
     constants: dict[str, Any],
     paths: pd.DataFrame,
@@ -577,7 +578,7 @@ def plot_ensemble_with_band(
     )
 
 
-def _print_lag_weight(trace: az.InferenceData, constants: dict[str, Any]) -> None:
+def _print_lag_weight(trace: xr.DataTree, constants: dict[str, Any]) -> None:
     """Print the lag weights against their prior, when there are any."""
     posterior = getattr(trace, "posterior", {})
     lags = _recorded_lags(constants)
@@ -653,7 +654,7 @@ def run_analyse(
     print(f"\n  sigma_e:           {np.median(sigma_e):.3f}  "
           f"(gap sd {frame['gap'].std():.3f}; rstar_hlw's equivalent is 0.70)")
     if verbose:
-        print(az.summary(trace, var_names=["is_slope", "sigma_e", "rstar_0"]))
+        print(posterior_summary(trace, var_names=["is_slope", "sigma_e", "rstar_0"]))
 
     plot_raw_scatter(trace, frame, constants)
     plot_is_scatter(trace, frame, constants)

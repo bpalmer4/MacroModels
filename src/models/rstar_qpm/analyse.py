@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import mgplot as mg
 import numpy as np
 import pandas as pd
@@ -13,6 +12,7 @@ import xarray as xr
 from src.models.common import prior_posterior
 from src.models.common.charts import excluded_span_style
 from src.models.common.diagnostics import diagnostics_header, save_diagnostics
+from src.models.common.results import trace_group
 from src.models.common.sources import footer_from_constants
 from src.models.common.timeseries import last_complete_quarter, plot_posterior_timeseries
 from src.models.rstar_qpm.config import IS_PARAMETERS, ModelConfig, Prior
@@ -36,16 +36,9 @@ PRIOR_FIELDS = 3
 PRIOR_TAIL_TRIM = 0.05
 
 
-def _posterior(trace: az.InferenceData) -> xr.Dataset:
-    group = getattr(trace, "posterior", None)
-    if not isinstance(group, xr.Dataset):
-        raise TypeError("trace has no posterior group")
-    return group
-
-
-def identification_table(trace: az.InferenceData, priors: dict[str, Prior]) -> pd.DataFrame:
+def identification_table(trace: xr.DataTree, priors: dict[str, Prior]) -> pd.DataFrame:
     """Prior against posterior for every parameter: the test of what the data decided."""
-    posterior = _posterior(trace)
+    posterior = trace_group(trace, "posterior")
     rows = {}
     for name, prior in priors.items():
         draws = np.asarray(posterior[name].values).ravel()
@@ -68,7 +61,7 @@ def _latest(paths: pd.DataFrame, at: pd.Period) -> str:
     return f"{row.median():.2f} [{row.quantile(0.05):.2f}, {row.quantile(0.95):.2f}]"
 
 
-def print_summary(trace: az.InferenceData, frame: pd.DataFrame, states: dict[str, Any],
+def print_summary(trace: xr.DataTree, frame: pd.DataFrame, states: dict[str, Any],
                   priors: dict[str, Prior]) -> list[str]:
     """Print the identification table and the headline numbers; return report notes."""
     table = identification_table(trace, priors)
@@ -341,7 +334,7 @@ def plot_multiplier(states: dict[str, Any], priors: dict[str, Prior], ctx: Chart
     )
 
 
-def plot_priors(trace: az.InferenceData, priors: dict[str, Prior], ctx: ChartContext) -> int:
+def plot_priors(trace: xr.DataTree, priors: dict[str, Prior], ctx: ChartContext) -> int:
     """One prior-against-posterior chart per parameter.
 
     No left footer: the shared chart appends its own note about the chains

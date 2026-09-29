@@ -8,7 +8,7 @@ import arviz as az
 import numpy as np
 import pandas as pd
 
-from src.models.common.results import PosteriorResults
+from src.models.common.results import PosteriorResults, posterior_summary
 from src.models.ystar.config import DEFAULT_OUTPUT_DIR
 from src.paths import CHARTS
 
@@ -262,10 +262,7 @@ class PotentialResults(PosteriorResults):
                 ]
             )
         available = [v for v in var_names if v in self.posterior]
-        summary = az.summary(self.trace, var_names=available)
-        if not isinstance(summary, pd.DataFrame):
-            raise TypeError(f"az.summary returned {type(summary).__name__}, expected a DataFrame")
-        return summary
+        return posterior_summary(self.trace, var_names=available)
 
 
 def load_results(

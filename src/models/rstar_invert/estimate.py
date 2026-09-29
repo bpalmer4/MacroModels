@@ -22,6 +22,7 @@ import pytensor.tensor as pt
 import xarray as xr
 
 from src.models.common.model_constants import attach, get_dictionary
+from src.models.common.results import trace_group
 from src.models.rstar_invert.config import DEFAULT_OUTPUT_DIR, PAIR_LAGS, ModelConfig
 from src.models.rstar_invert.observations import InversionData, build_observations
 from src.models.ystar.base import SamplerConfig, sample_model
@@ -254,7 +255,7 @@ def build_model(
 
 
 def save_results(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     data: InversionData,
     constants: dict[str, Any],
     output_dir: Path | str | None = None,
@@ -280,7 +281,7 @@ def run_estimate(
     *,
     verbose: bool = True,
     seed: int | None = None,
-) -> tuple[az.InferenceData, InversionData]:
+) -> tuple[xr.DataTree, InversionData]:
     """Build the observations, sample, and save."""
     config = config or ModelConfig()
     sampler_config = sampler_config or SamplerConfig()
@@ -303,7 +304,7 @@ def run_estimate(
 def load_results(
     output_dir: Path | str | None = None,
     prefix: str = "rstar_invert",
-) -> tuple[az.InferenceData, pd.DataFrame, dict[str, Any]]:
+) -> tuple[xr.DataTree, pd.DataFrame, dict[str, Any]]:
     """Load a completed run: trace, observations, constants."""
     directory = Path(output_dir) if output_dir else DEFAULT_OUTPUT_DIR
     trace = az.from_netcdf(str(directory / f"{prefix}_trace.nc"))
@@ -312,27 +313,19 @@ def load_results(
     return trace, saved["frame"], saved["constants"]
 
 
-def _posterior(trace: az.InferenceData) -> xr.Dataset:
-    """Return the posterior group, narrowed."""
-    posterior = getattr(trace, "posterior", None)
-    if not isinstance(posterior, xr.Dataset):
-        raise TypeError("trace has no posterior group - did sampling complete?")
-    return posterior
-
-
-def scalar_draws(trace: az.InferenceData, name: str) -> np.ndarray:
+def scalar_draws(trace: xr.DataTree, name: str) -> np.ndarray:
     """Return every draw of a scalar parameter, flattened."""
-    return np.asarray(_posterior(trace)[name].values).ravel()
+    return np.asarray(trace_group(trace, "posterior")[name].values).ravel()
 
 
-def posterior_median(trace: az.InferenceData, name: str, index: pd.PeriodIndex) -> pd.Series:
+def posterior_median(trace: xr.DataTree, name: str, index: pd.PeriodIndex) -> pd.Series:
     """Return the posterior median of a vector latent as a series."""
-    stacked = _posterior(trace)[name].stack(sample=("chain", "draw"))
+    stacked = trace_group(trace, "posterior")[name].stack(sample=("chain", "draw"))
     return pd.Series(np.asarray(stacked.median("sample").values), index=index)
 
 
 def posterior_band(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     name: str,
     index: pd.PeriodIndex,
     lower: float = 5.0,
@@ -344,7 +337,7 @@ def posterior_band(
     asserted slope prior and the asserted speed of r*, not the uncertainty
     about r*.
     """
-    stacked = _posterior(trace)[name].stack(sample=("chain", "draw"))
+    stacked = trace_group(trace, "posterior")[name].stack(sample=("chain", "draw"))
     values = np.asarray(stacked.values)
     return pd.DataFrame(
         {

@@ -1,4 +1,4 @@
-"""LOO / WAIC model comparison for NAIRU variants.
+"""LOO model comparison for NAIRU variants.
 
 The saved traces do not carry a ``log_likelihood`` group, so this module
 rebuilds each model from its saved config + observations and evaluates the
@@ -10,7 +10,7 @@ the exact traces on disk). The slim log-likelihood group is cached to
 Pooling
 -------
 Each variant has several observation equations, so the log_likelihood group
-holds several arrays (price, Okun, ΔULC, IS, HCOE, ...). For a *joint* LOO/WAIC
+holds several arrays (price, Okun, ΔULC, IS, HCOE, ...). For a *joint* LOO
 every (equation, time) contribution is stacked into one exchangeable
 observation vector and the criterion is computed over that pooled vector. The
 cached posterior is not retained, so PSIS-LOO's relative-ESS (``reff``) is
@@ -19,7 +19,7 @@ the SE of each pairwise difference, ``dse``) is assembled by hand.
 
 Comparability caveat
 --------------------
-LOO/WAIC are only comparable across models conditioned on the *same* observed
+LOO scores are only comparable across models conditioned on the *same* observed
 data. The ``simple*`` family shares the same five observation equations over the
 same 167 quarters → a pooled comparison is valid. ``complex`` adds five more
 likelihood terms (different observed data), so its pooled ELPD is NOT comparable
@@ -47,7 +47,7 @@ from src.models.nairu.results import DEFAULT_OUTPUT_DIR, load_results
 warnings.filterwarnings("ignore")
 
 # 5-observation-equation models on the target anchor, full sample (n=167):
-# joint LOO/WAIC is valid across these.
+# joint LOO is valid across these.
 JOINT_FAMILY = [
     "nairu_simple_target",
     "nairu_simple_regime_target",
@@ -67,7 +67,7 @@ PRICE_REFERENCE = [
     "nairu_complex_excess_target",
 ]
 PRICE_LL = "observed_price_inflation"
-THIN = 10  # 50k draws -> 5k; ample for stable LOO/WAIC, keeps memory sane
+THIN = 10  # 50k draws -> 5k; ample for stable LOO, keeps memory sane
 
 # PSIS-LOO Pareto-k reliability cutoffs, from Vehtari et al. Not ours to choose,
 # which is why they are named rather than tuned. The table's column labels are
@@ -90,7 +90,7 @@ def _loglik_dataset(prefix: str) -> xr.Dataset:
     return idata.log_likelihood.isel(draw=slice(None, None, THIN))
 
 
-def _pool(ll: xr.Dataset, names: list[str] | None = None) -> az.InferenceData:
+def _pool(ll: xr.Dataset, names: list[str] | None = None) -> xr.DataTree:
     """Stack chosen equations' (equation, time) contributions into one obs vector."""
     names = names or list(ll.data_vars)
     parts = []
@@ -100,13 +100,13 @@ def _pool(ll: xr.Dataset, names: list[str] | None = None) -> az.InferenceData:
         st = da.stack(__o=extra) if extra else da.expand_dims("__o")
         parts.append(st.reset_index("__o", drop=True))
     cat = xr.concat(parts, dim="__o").rename({"__o": "obs_id"})
-    return az.InferenceData(log_likelihood=xr.Dataset({"loglik": cat}))
+    return xr.DataTree.from_dict({"log_likelihood": xr.Dataset({"loglik": cat})})
 
 
-def _loo(idata: az.InferenceData) -> az.ELPDData:
+def _loo(idata: xr.DataTree) -> az.ELPDData:
     """PSIS-LOO with reff derived from the log-likelihood's own ESS."""
     reff = float(az.ess(idata.log_likelihood, var_names=["loglik"], relative=True)["loglik"].mean())
-    return az.loo(idata, pointwise=True, reff=reff, scale="log")
+    return az.loo(idata, pointwise=True, reff=reff)
 
 
 def _pareto_k_table(loos: dict[str, az.ELPDData]) -> pd.DataFrame:
@@ -133,17 +133,16 @@ def _pareto_k_table(loos: dict[str, az.ELPDData]) -> pd.DataFrame:
     return pd.DataFrame(rows).T
 
 
-def _ic_table(idatas: dict[str, az.ELPDData], ic: str) -> pd.DataFrame:
-    """Build a ranked comparison table (elpd, p, se, dse vs best) for loo or waic."""
-    elpd_attr = f"elpd_{ic}"
-    pointwise_attr = f"{ic}_i"
+def _ic_table(idatas: dict[str, az.ELPDData]) -> pd.DataFrame:
+    """Build a ranked LOO comparison table (elpd, p, se, dse vs best)."""
+    elpd_attr = "elpd_loo"
     rows = {}
     for name, e in idatas.items():
         rows[name] = {
-            elpd_attr: float(getattr(e, elpd_attr)),
-            f"p_{ic}": float(getattr(e, f"p_{ic}")),
+            elpd_attr: float(e.elpd),
+            "p_loo": float(e.p),
             "se": float(e.se),
-            "_pw": getattr(e, pointwise_attr).to_numpy().ravel(),
+            "_pw": e.elpd_i.to_numpy().ravel(),
         }
     df = pd.DataFrame(rows).T.sort_values(elpd_attr, ascending=False)
     best = df.index[0]
@@ -152,7 +151,7 @@ def _ic_table(idatas: dict[str, az.ELPDData], ic: str) -> pd.DataFrame:
     df["delta"] = df[elpd_attr] - df.loc[best, elpd_attr]
     df["dse"] = [0.0 if name == best else np.sqrt(n) * (best_pw - rows[name]["_pw"]).std()
                  for name in df.index]
-    return df[[elpd_attr, f"p_{ic}", "se", "delta", "dse"]].round(2)
+    return df[[elpd_attr, "p_loo", "se", "delta", "dse"]].round(2)
 
 
 def main() -> None:
@@ -160,28 +159,22 @@ def main() -> None:
 
     # --- 1. Joint (pooled over all equations) — 5-equation family only -----
     print("\n" + "#" * 72)
-    print("# JOINT LOO/WAIC — 5-equation family, all equations pooled (valid)")
+    print("# JOINT LOO — 5-equation family, all equations pooled (valid)")
     print("# higher elpd = better; delta vs best; dse = SE of that difference")
     print("#" * 72)
     joint_loo = {n: _loo(_pool(ll[n])) for n in JOINT_FAMILY}
     print("\n--- LOO (joint) ---")
-    print(_ic_table(joint_loo, "loo").to_string())
-    print("\n--- WAIC (joint) ---")
-    print(_ic_table({n: az.waic(_pool(ll[n]), pointwise=True, scale="log") for n in JOINT_FAMILY},
-                    "waic").to_string())
+    print(_ic_table(joint_loo).to_string())
     print("\n--- Pareto-k reliability (joint LOO) ---")
     print(_pareto_k_table(joint_loo).to_string())
 
     # --- 2. Price equation only — 5-equation family (same n) --------------
     print("\n\n" + "#" * 72)
-    print(f"# PRICE-EQUATION LOO/WAIC — 5-equation family ({PRICE_LL})")
+    print(f"# PRICE-EQUATION LOO — 5-equation family ({PRICE_LL})")
     print("#" * 72)
     price_loo = {n: _loo(_pool(ll[n], [PRICE_LL])) for n in JOINT_FAMILY}
     print("\n--- LOO (price eq) ---")
-    print(_ic_table(price_loo, "loo").to_string())
-    print("\n--- WAIC (price eq) ---")
-    print(_ic_table({n: az.waic(_pool(ll[n], [PRICE_LL]), pointwise=True, scale="log")
-                     for n in JOINT_FAMILY}, "waic").to_string())
+    print(_ic_table(price_loo).to_string())
     print("\n--- Pareto-k reliability (price-eq LOO) ---")
     print(_pareto_k_table(price_loo).to_string())
 
@@ -191,8 +184,8 @@ def main() -> None:
     print("#" * 72)
     all_loo = {n: _loo(_pool(ll[n], [PRICE_LL])) for n in PRICE_REFERENCE}
     for n, e in all_loo.items():
-        nn = len(e.loo_i.to_numpy().ravel())
-        print(f"  {n:36s} elpd_loo={e.elpd_loo:8.1f}  per-obs={e.elpd_loo / nn:7.4f}  n={nn}")
+        nn = len(e.elpd_i.to_numpy().ravel())
+        print(f"  {n:36s} elpd_loo={e.elpd:8.1f}  per-obs={e.elpd / nn:7.4f}  n={nn}")
     print("\n--- Pareto-k reliability (price-eq LOO, all variants) ---")
     print(_pareto_k_table(all_loo).to_string())
 

@@ -17,6 +17,7 @@ and what should not be quoted from it. The links below go there; this page is on
 - **Cobb-Douglas MFP** (`cobb_douglas`): deterministic growth accounting into capital, labour and MFP. See [notes](src/models/cobb_douglas/MODEL_NOTES.md)
 - **g\* summary** (`gstar_summary`): every potential-growth estimate on one chart. See [notes](src/models/gstar_summary/MODEL_NOTES.md)
 - **u\* summary** (`ustar_summary`): four u\* specifications from `ustar` and `ystar_ustar` on one chart. See [notes](src/models/ustar_summary/MODEL_NOTES.md)
+- **y\* summary** (`ystar_summary`): the output gap from `ystar`, `ystar_ustar` and `rstar_qpm` on one chart, each on its own definition. See [notes](src/models/ystar_summary/MODEL_NOTES.md)
 
 ### The neutral rate
 
@@ -110,6 +111,7 @@ src/
     ├── rstar_summary/          # every r* on one nominal scale (not a model)
     ├── gstar_summary/          # every potential-growth estimate on one chart (not a model)
     ├── ustar_summary/          # four u* specifications from two models on one chart (not a model)
+    ├── ystar_summary/          # three output gaps, each on its own definition (not a model)
     ├── is_curve/               # the IS curve plotted, not estimated: a test bench for the r* models
     ├── bank_costs/             # bank funding and lending costs vs the cash rate (exploratory, charts only)
     ├── gdp_nowcast_bridge/     # GDP nowcast: bridge equations

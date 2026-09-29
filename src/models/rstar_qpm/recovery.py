@@ -22,10 +22,10 @@ inflation, the world rate, import prices) are the real ones.
 
 from collections.abc import Mapping
 
-import arviz as az
 import mgplot as mg
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from src.models.rstar_qpm.config import ModelConfig
 from src.models.rstar_qpm.estimate import estimate, parameter_names, posterior_params
@@ -130,7 +130,7 @@ def _report(label: str, truth: Mapping[str, float], trace_means: dict[str, float
 
 
 def run_recovery(
-    real_trace: az.InferenceData,
+    real_trace: xr.DataTree,
     frame: pd.DataFrame,
     config: ModelConfig,
     sampler_config: SamplerConfig,

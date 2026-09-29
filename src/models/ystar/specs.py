@@ -27,6 +27,7 @@ import arviz as az
 import numpy as np
 import pandas as pd
 
+from src.models.common.results import posterior_summary, trace_group
 from src.models.common.staleness import is_current
 from src.models.ystar.analyse import CHART_DIR, run_analysis
 from src.models.ystar.cli import build_parser, run_from_args
@@ -163,12 +164,11 @@ def load(spec: Specification) -> Loaded:
     trace = results.trace
 
     loo = az.loo(trace, var_name="observed_gdp", pointwise=True)
-    pointwise = np.asarray(loo.loo_i).ravel()
+    pointwise = np.asarray(loo.elpd_i).ravel()
     quarters = gdp_quarters(results, len(pointwise))
 
-    summary = az.summary(trace)
-    sample_stats = getattr(trace, "sample_stats", None)
-    divergences = int(sample_stats["diverging"].to_numpy().sum()) if sample_stats is not None else 0
+    summary = posterior_summary(trace, decimals=None)
+    divergences = int(trace_group(trace, "sample_stats")["diverging"].to_numpy().sum())
     # `actual_output_gap` is log GDP less potential in every specification,
     # unlike `output_gap`, which is the inflation-defined series in two of them
     # and a latent cycle in the other three. Only the former compares.

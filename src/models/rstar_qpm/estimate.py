@@ -16,6 +16,7 @@ import pandas as pd
 import pymc as pm
 import xarray as xr
 
+from src.models.common.results import trace_group
 from src.models.rstar_qpm.config import ModelConfig, Prior
 from src.models.rstar_qpm.neutral import short_run_neutral
 from src.models.rstar_qpm.observations import build_observations
@@ -68,11 +69,9 @@ def parameter_names(priors: dict[str, Prior]) -> list[str]:
     return list(priors)
 
 
-def posterior_params(trace: az.InferenceData, names: list[str], n_draws: int) -> list[dict[str, float]]:
+def posterior_params(trace: xr.DataTree, names: list[str], n_draws: int) -> list[dict[str, float]]:
     """Return `n_draws` parameter dicts spread evenly through the posterior."""
-    posterior = getattr(trace, "posterior", None)
-    if not isinstance(posterior, xr.Dataset):
-        raise TypeError("trace has no posterior group")
+    posterior = trace_group(trace, "posterior")
     stacked = {name: np.asarray(posterior[name].values).ravel() for name in names}
     total = len(next(iter(stacked.values())))
     picks = np.linspace(0, total - 1, min(n_draws, total)).astype(int)
@@ -80,7 +79,7 @@ def posterior_params(trace: az.InferenceData, names: list[str], n_draws: int) ->
 
 
 def draw_states(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     prep: Prepared,
     config: ModelConfig,
     seed: int,
@@ -129,7 +128,7 @@ def _paths(prefix: str, directory: Path) -> dict[str, Path]:
 
 
 def save_results(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     *,
     frame: pd.DataFrame,
     constants: dict[str, Any],
@@ -165,7 +164,7 @@ def save_results(
 def load_results(
     prefix: str = "rstar_qpm",
     output_dir: Path | None = None,
-) -> tuple[az.InferenceData, pd.DataFrame, dict[str, Any], dict[str, Any]]:
+) -> tuple[xr.DataTree, pd.DataFrame, dict[str, Any], dict[str, Any]]:
     """Load a completed run: trace, observations, constants, state draws."""
     files = _paths(prefix, output_dir or ModelConfig().output_dir)
     trace = az.from_netcdf(str(files["trace"]))
@@ -193,7 +192,7 @@ def estimate(
     frame: pd.DataFrame,
     config: ModelConfig,
     sampler_config: SamplerConfig,
-) -> tuple[az.InferenceData, dict[str, Any]]:
+) -> tuple[xr.DataTree, dict[str, Any]]:
     """Sample one frame and draw its states. No saving, so tests can reuse it."""
     prep = prepare(frame, config)
     model = build_model(prep, config)
@@ -208,7 +207,7 @@ def run_estimate(
     prefix: str = "rstar_qpm",
     *,
     verbose: bool = False,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Build the observations, sample, draw the states, and save."""
     config = config or ModelConfig()
     sampler_config = sampler_config or SamplerConfig()

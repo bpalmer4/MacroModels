@@ -1,9 +1,9 @@
 """Shared helpers for inflation decomposition plots."""
 
-import arviz as az
 import mgplot as mg
 import numpy as np
 import pandas as pd
+import xarray as xr
 from matplotlib.axes import Axes
 
 from src.models.common.extraction import get_scalar_var
@@ -12,7 +12,7 @@ from src.utilities.rate_conversion import quarterly
 
 
 def get_excess_contribution(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
     beta_var: str,
@@ -31,7 +31,7 @@ def get_excess_contribution(
     return excess, True
 
 
-def get_regime_gamma(trace: az.InferenceData, obs_index: pd.PeriodIndex, prefix: str) -> pd.Series:
+def get_regime_gamma(trace: xr.DataTree, obs_index: pd.PeriodIndex, prefix: str) -> pd.Series:
     """Extract regime-switching or single gamma as a time series."""
     if f"{prefix}_pre_gfc" in trace.posterior:
         gamma = pd.Series(index=obs_index, dtype=float)

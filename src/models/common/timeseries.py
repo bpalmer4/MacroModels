@@ -3,9 +3,9 @@
 from collections.abc import Sequence
 from typing import Unpack
 
-import arviz as az
 import mgplot as mg
 import pandas as pd
+import xarray as xr
 from matplotlib.axes import Axes
 from mgplot import FinaliseKwargs
 
@@ -30,7 +30,7 @@ def last_complete_quarter(today: pd.Timestamp | None = None) -> pd.Period:
 
 
 def plot_posterior_timeseries(
-    trace: az.InferenceData | None = None,
+    trace: xr.DataTree | None = None,
     var: str | None = None,
     index: pd.PeriodIndex | None = None,
     data: pd.DataFrame | None = None,
@@ -50,7 +50,7 @@ def plot_posterior_timeseries(
     2. Pre-computed DataFrame: provide data
 
     Args:
-        trace: ArviZ InferenceData object
+        trace: DataTree from model fitting
         var: Variable name to extract from trace
         index: PeriodIndex for the time series
         data: Pre-computed DataFrame of samples (time × draws)

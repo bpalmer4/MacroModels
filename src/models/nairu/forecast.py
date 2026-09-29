@@ -15,18 +15,16 @@ Calibrations applied (RBA-based):
 - Housing wealth: -1.0% per 100bp
 """
 
-from dataclasses import dataclass
 from pathlib import Path
 
-import arviz as az
 import numpy as np
 import pandas as pd
+import xarray as xr
 from scipy import stats
 
 from src.models.common.extraction import get_scalar_var
 from src.models.nairu.forecast_plots import plot_all_scenarios
 from src.models.nairu.forecast_types import (
-    SCENARIO_COLORS,
     SCENARIO_ORDER,
     ForecastResults,
 )
@@ -416,7 +414,7 @@ def run_scenarios(
     }
 
 
-def check_transmission_channels(trace: az.InferenceData) -> set[str]:
+def check_transmission_channels(trace: xr.DataTree) -> set[str]:
     """Check which required channels are missing from the trace."""
     return {v for k, v in REQUIRED_CHANNELS.items() if k not in trace.posterior}
 

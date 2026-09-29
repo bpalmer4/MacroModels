@@ -53,7 +53,7 @@ def model_of(prefix: str) -> str:
 def find_traces(directory: Path) -> list[Path]:
     """Every NetCDF file in `directory` that could hold a posterior.
 
-    `*_loglik.nc` files are pointwise log likelihood only, saved for LOO/WAIC
+    `*_loglik.nc` files are pointwise log likelihood only, saved for LOO
     comparison, with no posterior group and nothing to diagnose.
     """
     return sorted(

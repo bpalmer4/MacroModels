@@ -2,11 +2,11 @@
 
 import math
 
-import arviz as az
 import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import mgplot as mg
 import pandas as pd
+import xarray as xr
 
 from src.models.common.extraction import get_scalar_var, get_scalar_var_names
 
@@ -21,7 +21,7 @@ def _auto_scale(samples: pd.Series, median: float) -> tuple[pd.Series, int]:
 
 
 def _check_significance(
-    scalar_vars: list[str], trace: az.InferenceData,
+    scalar_vars: list[str], trace: xr.DataTree,
 ) -> tuple[dict[str, pd.Series], dict[str, str], bool, bool]:
     """Compute scaled posteriors and check if all coefficients differ from zero."""
     posteriors = {}
@@ -56,7 +56,7 @@ def _check_significance(
 
 
 def plot_posteriors_bar(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     *,
     rfooter: str = "",
     show: bool = False,

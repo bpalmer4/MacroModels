@@ -10,10 +10,10 @@ import pickle
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
+import xarray as xr
 
 from src.models.common.model_constants import get_dictionary
 from src.models.nairu.base import SamplerConfig, sample_model
@@ -200,7 +200,7 @@ def build_model(obs: dict[str, np.ndarray], config: ModelConfig) -> pm.Model:
 
 
 def save_results(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     obs: dict[str, np.ndarray],
     obs_index: pd.PeriodIndex,
     config: ModelConfig,
@@ -216,7 +216,7 @@ def save_results(
     and forecast.py know exactly which variant produced the results.
 
     Args:
-        trace: ArviZ InferenceData from sampling
+        trace: DataTree from sampling
         obs: Observation dictionary
         obs_index: Period index for observations
         config: ModelConfig used for this run
@@ -269,7 +269,7 @@ def run_estimate(
     output_dir: Path | str | None = None,
     prefix: str = "nairu_output_gap",
     verbose: bool = False,
-) -> tuple[az.InferenceData, dict[str, np.ndarray], pd.PeriodIndex, str]:
+) -> tuple[xr.DataTree, dict[str, np.ndarray], pd.PeriodIndex, str]:
     """Run estimation: build observations, sample model, save results.
 
     Args:

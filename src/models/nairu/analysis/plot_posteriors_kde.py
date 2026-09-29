@@ -1,16 +1,16 @@
 """KDE plots for scalar posterior distributions."""
 
-import arviz as az
 import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
+import xarray as xr
 from scipy import stats
 
 from src.models.common.extraction import get_scalar_var, get_scalar_var_names
 
 
 def plot_posteriors_kde(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     *,
     rfooter: str = "",
     show: bool = False,

@@ -6,6 +6,7 @@ from typing import Any
 
 import arviz as az
 import pymc as pm
+import xarray as xr
 
 from src.models.common.model_constants import record_constant
 
@@ -37,7 +38,7 @@ class SamplerConfig:
 def sample_model(
     model: pm.Model,
     config: SamplerConfig | None = None,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Sample from a PyMC model using NUTS.
 
     Args:
@@ -45,7 +46,7 @@ def sample_model(
         config: Sampler configuration (uses defaults if None)
 
     Returns:
-        ArviZ InferenceData with posterior samples
+        DataTree with posterior samples
 
     """
     if config is None:
@@ -120,7 +121,7 @@ def set_model_coefficients(
 
 def add_scalar_priors(
     model: pm.Model,
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     *,
     draws: int = 40_000,
     random_seed: int = 42,
@@ -145,7 +146,7 @@ def add_scalar_priors(
     sampled, empty if the model has no free scalars. An existing `prior` group
     is left alone rather than overwritten.
     """
-    if "prior" in trace.groups():
+    if "prior" in trace.children:
         return []
 
     names = [rv.name for rv in model.free_RVs if rv.ndim == 0]
@@ -157,17 +158,17 @@ def add_scalar_priors(
             draws=draws, var_names=names, random_seed=random_seed,
         )
 
-    # add_groups rather than extend: `prior` carries its own observed_data,
+    # Only the `prior` group: the prior draws carry their own observed_data,
     # which would collide with the posterior's.
-    trace.add_groups(prior=prior.prior)
+    trace["prior"] = prior["prior"]
     return names
 
 
-def save_trace(trace: az.InferenceData, path: str | Path) -> None:
+def save_trace(trace: xr.DataTree, path: str | Path) -> None:
     """Save trace to NetCDF file."""
     trace.to_netcdf(str(path))
 
 
-def load_trace(path: str | Path) -> az.InferenceData:
+def load_trace(path: str | Path) -> xr.DataTree:
     """Load trace from NetCDF file."""
     return az.from_netcdf(str(path))

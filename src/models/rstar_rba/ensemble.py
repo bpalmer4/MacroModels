@@ -22,12 +22,12 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 from src.models.common.model_constants import get_dictionary
+from src.models.common.results import trace_group
 from src.models.rstar_rba.config import DEFAULT_OUTPUT_DIR, ModelConfig
 from src.models.rstar_rba.estimate import build_model, build_observations, posterior_median
 from src.models.ystar.base import SamplerConfig, sample_model
@@ -48,7 +48,7 @@ _WATCH_ERA = ("2016Q1", "2019Q4")
 
 
 def _summarise(
-    trace: az.InferenceData, frame: pd.DataFrame, sigma_r: float, band: float, anchor: float,
+    trace: xr.DataTree, frame: pd.DataFrame, sigma_r: float, band: float, anchor: float,
 ) -> dict[str, Any]:
     """Return one row of the ensemble table.
 
@@ -58,10 +58,7 @@ def _summarise(
     index = frame.index
     if not isinstance(index, pd.PeriodIndex):
         index = pd.PeriodIndex(index, freq="Q")
-    posterior = getattr(trace, "posterior", None)
-    if not isinstance(posterior, xr.Dataset):
-        raise TypeError("trace has no posterior group - did sampling complete?")
-    lam = np.asarray(posterior["lambda"].values).ravel()
+    lam = np.asarray(trace_group(trace, "posterior")["lambda"].values).ravel()
     neutral = posterior_median(trace, "neutral", index)
     residual = posterior_median(trace, "rule_residual", index)
     start, end = _WATCH_ERA

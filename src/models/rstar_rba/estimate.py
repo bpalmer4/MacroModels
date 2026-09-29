@@ -17,6 +17,7 @@ from src.data.fred_loader import get_fred_quarterly
 from src.data.gdp import get_gdp_growth
 from src.data.inflation import get_trimmed_mean_qrtly
 from src.models.common.model_constants import attach, get_dictionary
+from src.models.common.results import trace_group
 from src.models.common.sources import SourceSet
 from src.models.rstar_rba.config import DEFAULT_OUTPUT_DIR, WORLD_REAL_RATE, ModelConfig
 from src.models.ystar.base import SamplerConfig, sample_model
@@ -458,7 +459,7 @@ def build_model(frame: pd.DataFrame, config: ModelConfig, *, verbose: bool = Tru
 
 
 def save_results(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     frame: pd.DataFrame,
     constants: dict[str, Any],
     output_dir: Path | str | None = None,
@@ -481,7 +482,7 @@ def run_estimate(
     *,
     verbose: bool = False,
     seed: int | None = None,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Build the observations, sample, and save."""
     config = config or ModelConfig()
     sampler_config = sampler_config or SamplerConfig()
@@ -504,7 +505,7 @@ def run_estimate(
 def load_results(
     output_dir: Path | str | None = None,
     prefix: str = "rstar_rba",
-) -> tuple[az.InferenceData, pd.DataFrame, dict[str, Any]]:
+) -> tuple[xr.DataTree, pd.DataFrame, dict[str, Any]]:
     """Load a completed run: trace, observations, constants."""
     directory = Path(output_dir) if output_dir else DEFAULT_OUTPUT_DIR
     trace = az.from_netcdf(str(directory / f"{prefix}_trace.nc"))
@@ -513,10 +514,7 @@ def load_results(
     return trace, saved["frame"], saved["constants"]
 
 
-def posterior_median(trace: az.InferenceData, name: str, index: pd.PeriodIndex) -> pd.Series:
+def posterior_median(trace: xr.DataTree, name: str, index: pd.PeriodIndex) -> pd.Series:
     """Return the posterior median of a vector latent as a series."""
-    posterior = getattr(trace, "posterior", None)
-    if not isinstance(posterior, xr.Dataset):
-        raise TypeError("trace has no posterior group - was it loaded from a completed run?")
-    stacked = posterior[name].stack(sample=("chain", "draw"))
+    stacked = trace_group(trace, "posterior")[name].stack(sample=("chain", "draw"))
     return pd.Series(np.asarray(stacked.median("sample").values), index=index)

@@ -27,7 +27,7 @@ from src.models.common.sources import footer_from_constants
 class PosteriorResults:
     """A sampled model's trace, the data it saw, and how to read them."""
 
-    trace: az.InferenceData
+    trace: xr.DataTree
     obs_index: pd.PeriodIndex
     constants: dict[str, Any] = field(default_factory=dict)
     # Footers, headers and shaded windows for this run's charts. Written and read
@@ -36,18 +36,8 @@ class PosteriorResults:
 
     @property
     def posterior(self) -> xr.Dataset:
-        """The trace's posterior group, narrowed at runtime.
-
-        `az.InferenceData` builds its groups dynamically, so a static checker
-        cannot see `.posterior` and every access reads as an attribute error.
-        Narrowing here once means the rest of the class is checkable, and it
-        turns a missing group into a clear failure rather than an AttributeError
-        several frames deep.
-        """
-        posterior = getattr(self.trace, "posterior", None)
-        if not isinstance(posterior, xr.Dataset):
-            raise TypeError("trace has no posterior group — was it loaded from a completed run?")
-        return posterior
+        """The trace's posterior group as a Dataset."""
+        return trace_group(self.trace, "posterior")
 
     def _vector(self, var_name: str) -> pd.DataFrame:
         """Return a time x draw DataFrame for a vector-valued latent."""
@@ -66,6 +56,49 @@ class PosteriorResults:
         its own constant.
         """
         return footer_from_constants(self.constants)
+
+
+# Summary tables report a 94% highest-density interval, the interval every
+# printed table in this repo has carried, and three decimal places.
+SUMMARY_CI_PROB = 0.94
+SUMMARY_DECIMALS = 3
+# The interval's column names in the summary table, as ArviZ builds them.
+SUMMARY_HDI_LOWER = f"hdi{round(SUMMARY_CI_PROB * 100)}_lb"
+SUMMARY_HDI_UPPER = f"hdi{round(SUMMARY_CI_PROB * 100)}_ub"
+
+
+def posterior_summary(
+    trace: xr.DataTree,
+    var_names: list[str] | None = None,
+    ci_prob: float = SUMMARY_CI_PROB,
+    decimals: int | None = SUMMARY_DECIMALS,
+) -> pd.DataFrame:
+    """ArviZ's summary table: mean, sd, HDI bounds, ESS, R-hat and MCSE per parameter.
+
+    ArviZ's own default interval is an equal-tailed one, and its "auto" rounding
+    rounds each value to what its MCSE justifies, so the raw numbers are asked
+    for and rounded here, or not at all when `decimals` is None, for callers
+    that compute on the values rather than print them.
+    """
+    summary = az.summary(trace, var_names=var_names, ci_kind="hdi", ci_prob=ci_prob, round_to="none")
+    if not isinstance(summary, pd.DataFrame):
+        raise TypeError(f"az.summary returned {type(summary).__name__}, expected a DataFrame")
+    return summary if decimals is None else summary.round(decimals)
+
+
+def trace_group(trace: xr.DataTree, name: str) -> xr.Dataset:
+    """Return one group of a trace (posterior, sample_stats, ...) as a Dataset.
+
+    A trace is an xarray DataTree whose groups are child nodes. A node is not a
+    Dataset, so callers that want Dataset methods get one here; `to_dataset`
+    shares the node's arrays rather than copying the draws. Narrowing once also
+    turns a missing group into a clear failure rather than a KeyError several
+    frames deep.
+    """
+    node = trace[name] if name in trace.children else None
+    if not isinstance(node, xr.DataTree):
+        raise TypeError(f"trace has no {name} group - was it loaded from a completed run?")
+    return node.to_dataset()
 
 
 def vector_draws(values: xr.DataArray, index: pd.Index | None = None) -> pd.DataFrame:

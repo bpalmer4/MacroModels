@@ -44,6 +44,7 @@ from pytensor.graph.op import Op
 from scipy.stats import gaussian_kde
 
 from src.models.common.diagnostics import save_diagnostics
+from src.models.common.results import SUMMARY_HDI_LOWER, SUMMARY_HDI_UPPER, posterior_summary
 from src.models.dsge.estimation import ModelSpec
 from src.models.dsge.fa_nk_model import (
     FA_NK_SPEC,
@@ -151,7 +152,7 @@ def run_bayes(
 ):
     """Sample the posterior of `spec`'s estimated parameters via DEMetropolis-Z.
 
-    Returns an arviz InferenceData with `posterior` and `prior` groups.
+    Returns a DataTree with `posterior` and `prior` groups.
     """
     names = list(spec.estimate_params)
     missing = [n for n in names if n not in PRIOR_SPECS]
@@ -186,7 +187,7 @@ def run_bayes(
             compute_convergence_checks=True,
         )
 
-    idata.extend(prior)
+    idata["prior"] = prior["prior"]
     return idata
 
 
@@ -227,7 +228,7 @@ def produce_bayes_outputs(idata, spec: ModelSpec, tag: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     names = list(spec.estimate_params)
-    summary = az.summary(idata, var_names=names, hdi_prob=0.94)
+    summary = posterior_summary(idata, var_names=names, decimals=None)
     contraction = _posterior_contraction(idata, names)
 
     # Merge convergence (r_hat, ess) with contraction into one table.
@@ -293,7 +294,7 @@ def produce_bayes_outputs(idata, spec: ModelSpec, tag: str) -> None:
     # mgplot has no forest primitive, so errorbar content + mgplot finalise.
     y = np.arange(len(names))
     means = summary["mean"].to_numpy()
-    lo94, hi94 = summary["hdi_3%"].to_numpy(), summary["hdi_97%"].to_numpy()
+    lo94, hi94 = summary[SUMMARY_HDI_LOWER].to_numpy(), summary[SUMMARY_HDI_UPPER].to_numpy()
     fig, ax = plt.subplots(figsize=(8, max(4.0, 0.42 * len(names))))
     ax.errorbar(means, y, xerr=[means - lo94, hi94 - means], fmt="o", color="navy",
                 ecolor="grey", capsize=3, lw=1.5)
@@ -424,7 +425,7 @@ def extract_states_posterior(spec, data, idata, n_draws: int = 400, seed: int = 
 
 def produce_fa_nk_extractions(idata=None, n_draws: int = 400) -> None:
     """Charts of smoothed r*, the two rates and the EFP wedge WITH the posterior
-    parameter-uncertainty band. Loads the saved FA-NK InferenceData if not given.
+    parameter-uncertainty band. Loads the saved FA-NK trace if not given.
     Bands are layered with mgplot (`fill_between_plot` + `line_plot`) and closed
     out with `finalise_plot`.
     """

@@ -18,11 +18,11 @@ import pickle
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
+import xarray as xr
 
 from src.models.common.model_constants import attach, get_dictionary
 from src.models.rstar_tvpvar.config import DEFAULT_OUTPUT_DIR, ModelConfig
@@ -122,7 +122,7 @@ def build_model(
 
 
 def save_results(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     data: np.ndarray,
     obs_index: pd.PeriodIndex,
     constants: dict[str, Any],
@@ -155,7 +155,7 @@ def run_estimate(
     prefix: str = "rstar_tvpvar",
     verbose: bool = False,
     seed: int | None = None,
-) -> tuple[az.InferenceData, np.ndarray, pd.PeriodIndex]:
+) -> tuple[xr.DataTree, np.ndarray, pd.PeriodIndex]:
     """Build observations, sample the posterior, save the results."""
     if config is None:
         config = ModelConfig()
@@ -164,7 +164,7 @@ def run_estimate(
     if seed is not None:
         sampler_config.random_seed = seed
     # There is no single observed RV to attach pointwise densities to, since the
-    # likelihood is a Potential over a masked matrix, so LOO/WAIC is unavailable
+    # likelihood is a Potential over a masked matrix, so LOO is unavailable
     # here and asking for it only costs memory.
     sampler_config.log_likelihood = False
 

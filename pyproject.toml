@@ -40,7 +40,8 @@ dependencies = [
     "selenium",
     # - Bayesian
     "pymc",
-    "arviz<1.0.0",
+    "arviz>=1.1",
+    "h5netcdf[h5py]",
     "jax",
     "numpyro",
     "graphviz",
@@ -110,10 +111,10 @@ lint.ignore = [
 mypy_path = "."
 explicit_package_bases = true
 
-# statsmodels and pymc ship no py.typed marker, so every import of them is an
-# error that no amount of narrowing in our own code can fix.
+# statsmodels, pymc and arviz ship no py.typed marker, so every import of them
+# is an error that no amount of narrowing in our own code can fix.
 [[tool.mypy.overrides]]
-module = ["statsmodels.*", "pymc.*"]
+module = ["statsmodels.*", "pymc.*", "arviz.*"]
 ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]

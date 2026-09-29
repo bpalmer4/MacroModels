@@ -51,6 +51,8 @@ uv run python -m src.models.rstar_hlw_kalman.run   # canonical HLW by Kalman fil
                                    #   any whose saved trace is not from today (--no-refresh skips)
 ./run-ustar-summary.sh             # four u* specifications (two ustar, two ystar_ustar) on one
                                    #   chart; re-runs stale ones (--no-refresh skips)
+./run-ystar-summary.sh             # three output gaps (ystar, ystar_ustar, rstar_qpm), each on its
+                                   #   own definition; re-runs stale ones (--no-refresh skips)
 ./run-bank-costs.sh                # Bank funding and lending costs vs the cash rate (charts only)
 uv run python -m src.models.is_curve.run   # IS-curve scatter (retired: the search found no IS curve)
 uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EVERY saved trace,
@@ -106,6 +108,7 @@ src/
 │   ├── cobb_douglas/              # Growth accounting only; not COVID-robust, don't quote post-2019 g*
 │   ├── gstar_summary/             # NOT A MODEL: potential growth estimates on one chart
 │   ├── ustar_summary/             # NOT A MODEL: four u* specifications from two models on one chart
+│   ├── ystar_summary/             # NOT A MODEL: three output gaps, each on its own definition
 │   ├── rstar_bonds/               # r* from the bond market; quote the last complete quarter
 │   ├── rstar_rba/                 # Neutral from the RBA's reaction function; neutral != prescribed
 │   ├── rstar_qpm/                 # QPM-style semi-structural r*; wedge clipped by default; IS weak
@@ -116,7 +119,7 @@ src/
 │   ├── gdp_nowcast_components/    # GDP nowcast, expenditure components (T-0 only)
 │   ├── bank_costs/                # Exploratory charts only
 │   │   # RETIRED, SUPERSEDED OR NOT WORKING (kept for their notes; don't quote)
-│   ├── nairu/                     # SUPERSEDED for potential, gap and NAIRU; still runs, kept for wages, LOO/WAIC
+│   ├── nairu/                     # SUPERSEDED for potential, gap and NAIRU; still runs, kept for wages, LOO
 │   ├── rstar_hlw/                 # NOT a source of r*; still runs, its trend/cycle split does work
 │   ├── rstar_hlw_kalman/          # Failed attempt at canonical HLW (Kalman + ML); degenerate
 │   ├── rstar_tvpvar/              # RETIRED: r* comes back as the real cash rate

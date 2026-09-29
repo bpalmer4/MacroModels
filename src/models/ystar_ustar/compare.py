@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from src.models.common.results import posterior_summary, trace_group
 from src.models.common.staleness import is_current
 from src.models.ystar_ustar.analyse import run_analysis
 from src.models.ystar_ustar.cli import build_parser, run_from_args
@@ -151,41 +152,33 @@ class Loaded:
 SHARED_TARGETS = ("observed_u", "observed_pi")
 
 
-def _group(trace: az.InferenceData, name: str) -> xr.Dataset:
-    """Return one group of the trace, failing loudly if the run did not record it."""
-    group = getattr(trace, name, None)
-    if not isinstance(group, xr.Dataset):
-        raise TypeError(f"trace has no '{name}' group")
-    return group
-
-
-def shared_target_loo(trace: az.InferenceData) -> tuple[float, float, int]:
+def shared_target_loo(trace: xr.DataTree) -> tuple[float, float, int]:
     """Return (elpd_loo, its standard error, count of bad Pareto k) on the shared targets.
 
     The two equations' pointwise log-likelihoods are concatenated into one
     observation axis, so a point is one quarter of one equation and the score
     is leave-one-observation-out over both.
     """
-    log_likelihood = _group(trace, "log_likelihood")
+    log_likelihood = trace_group(trace, "log_likelihood")
     stacked = xr.concat(
         [log_likelihood[name].rename({f"{name}_dim_0": "shared"}) for name in SHARED_TARGETS],
         dim="shared",
     )
-    # Added to the trace's own log_likelihood group rather than wrapped in a
-    # bare InferenceData, which arviz does not accept as a scoring object.
-    log_likelihood["shared"] = stacked
+    # Added to the trace's own log_likelihood node, which is what `az.loo`
+    # scores; `log_likelihood` above is a Dataset view and not the trace.
+    trace["log_likelihood"]["shared"] = stacked
     loo = az.loo(trace, var_name="shared", pointwise=True)
     bad = int((np.asarray(loo.pareto_k) > _PARETO_LIMIT).sum())
-    return float(loo.elpd_loo), float(loo.se), bad
+    return float(loo.elpd), float(loo.se), bad
 
 
-def sampling_diagnostics(trace: az.InferenceData) -> tuple[float, int, int]:
+def sampling_diagnostics(trace: xr.DataTree) -> tuple[float, int, int]:
     """Return (max R-hat, minimum bulk ESS, divergences) for the whole trace."""
-    summary = az.summary(trace)
+    summary = posterior_summary(trace, decimals=None)
     return (
         float(summary["r_hat"].max()),
         int(summary["ess_bulk"].min()),
-        int(_group(trace, "sample_stats")["diverging"].to_numpy().sum()),
+        int(trace_group(trace, "sample_stats")["diverging"].to_numpy().sum()),
     )
 
 

@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 
 from src.models.common.inflation_scale import get_unanchored_expectations
-from src.models.common.results import PosteriorResults
+from src.models.common.results import PosteriorResults, posterior_summary
 from src.models.rstar_tvpvar.config import TARGET, ModelConfig
 from src.models.rstar_tvpvar.observations import ols_fit, ordering, variable_index
 from src.paths import CHARTS, MODEL_OUTPUTS
@@ -496,10 +496,7 @@ class TvpVarResults(PosteriorResults):
         """ArviZ summary for the scalar parameters, skipping the drifting states."""
         if var_names is None:
             var_names = [n for n in ("sigma_q", "sigma_h", "a_free", "h_0") if n in self.posterior]
-        summary = az.summary(self.trace, var_names=var_names)
-        if not isinstance(summary, pd.DataFrame):
-            raise TypeError("az.summary returned a Dataset — expected the DataFrame form")
-        return summary
+        return posterior_summary(self.trace, var_names=var_names)
 
 
 def load_results(

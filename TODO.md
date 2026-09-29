@@ -106,6 +106,11 @@ data rather than a numerical artefact.
   needs every caller checked, and the tempting alternative (bundle into a config
   object) trades this for too-many-locals. Revisit only if an argument-order bug
   actually bites.
+- **Divergences in `expectations_short`: 19 in 40,000 draws, over the 3-in-10,000
+  rule.** Seeded, so the same count every run. Accepted for now. Not known whether it
+  predates the pymc 6 / arviz 1 upgrade: the expectations traces live in
+  `output/expectations/` and none from the old stack survive. The other two
+  expectations series have none.
 - **mypy.** Around 500 findings, nearly all noise from pandas-stubs and arviz's
   dynamic attributes. Worth running after a refactor anyway: its `call-arg`
   check found a silently dropped chart label that ruff could not see.

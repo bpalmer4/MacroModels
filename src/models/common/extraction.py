@@ -2,11 +2,12 @@
 
 import arviz as az
 import pandas as pd
+import xarray as xr
 
 from src.models.common.results import vector_draws
 
 
-def get_vector_var(var_name: str, trace: az.InferenceData) -> pd.DataFrame:
+def get_vector_var(var_name: str, trace: xr.DataTree) -> pd.DataFrame:
     """Extract chains/draws for a vector variable.
 
     Returns DataFrame with rows=time periods, columns=samples.
@@ -19,7 +20,7 @@ def get_vector_var(var_name: str, trace: az.InferenceData) -> pd.DataFrame:
     return vector_draws(trace.posterior[var_name])
 
 
-def get_scalar_var(var_name: str, trace: az.InferenceData) -> pd.Series:
+def get_scalar_var(var_name: str, trace: xr.DataTree) -> pd.Series:
     """Extract chains/draws for a scalar variable.
 
     Returns Series of posterior samples.
@@ -27,7 +28,7 @@ def get_scalar_var(var_name: str, trace: az.InferenceData) -> pd.Series:
     return az.extract(trace, var_names=var_name).to_dataframe()[var_name]
 
 
-def is_scalar_var(var_name: str, trace: az.InferenceData) -> bool:
+def is_scalar_var(var_name: str, trace: xr.DataTree) -> bool:
     """Check if a variable in the trace is scalar (not a vector/time series).
 
     Returns True if the variable has only (chain, draw) dimensions,
@@ -37,7 +38,7 @@ def is_scalar_var(var_name: str, trace: az.InferenceData) -> bool:
     return set(var_data.dims) == {"chain", "draw"}
 
 
-def get_scalar_var_names(trace: az.InferenceData) -> list[str]:
+def get_scalar_var_names(trace: xr.DataTree) -> list[str]:
     """Get list of all scalar variable names in the trace.
 
     Returns list of variable names that are scalars (not vectors).

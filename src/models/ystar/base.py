@@ -11,6 +11,7 @@ from typing import Any
 
 import arviz as az
 import pymc as pm
+import xarray as xr
 
 from src.models.common.model_constants import record_constant
 
@@ -40,39 +41,36 @@ class SamplerConfig:
     max_tree_depth: int = 12
     random_seed: int = 42
     # Store pointwise log likelihood in the trace, so variants can be ranked
-    # with LOO/WAIC instead of by eyeballing coefficients. Only compare runs
+    # with LOO instead of by eyeballing coefficients. Only compare runs
     # that observe the SAME data: `--no-phillips` drops an observed variable,
     # so it is not comparable with the full model, while the sigma sweeps are.
     log_likelihood: bool = True
 
 
-def sample_model(model: pm.Model, config: SamplerConfig | None = None) -> az.InferenceData:
+def sample_model(model: pm.Model, config: SamplerConfig | None = None) -> xr.DataTree:
     """Sample from a PyMC model using NUTS."""
     if config is None:
         config = SamplerConfig()
 
     # A model whose likelihood is written entirely with `pm.Potential` has no
-    # observed RVs, so there are no pointwise contributions to store and LOO or
-    # WAIC would be meaningless on it anyway. `rstar` is that model. Asking for
-    # the log likelihood there does not degrade gracefully: PyMC's JAX path
-    # returns None where it expects a list and raises a TypeError.
+    # observed RVs, so there are no pointwise contributions to compute and LOO
+    # would be meaningless on it anyway. `rstar` is that model.
     log_likelihood = config.log_likelihood and bool(model.observed_RVs)
 
     # `pm.sample` has no `max_treedepth` parameter of its own, and the two
     # samplers reach the setting by different names AND different routes.
     #
     # PyMC's own NUTS wants `max_treedepth`, travelling in `**kwargs` to the
-    # step method. NumPyro wants `max_tree_depth`, and it is TWO levels down:
-    # `nuts_sampler_kwargs` is forwarded to `sample_jax_nuts`, which does not
-    # take the setting itself and passes only its `nuts_kwargs` on to the NUTS
-    # kernel. Putting it one level up raises TypeError, which is how this was
-    # found; putting the PyMC spelling anywhere on the NumPyro path would be
-    # swallowed by `**kwargs` and silently ignored, leaving the cap at the
-    # library default while the run looked healthy. Hence the explicit branch.
+    # step method. NumPyro wants `max_tree_depth`, passed in `nuts={...}`,
+    # which PyMC forwards to the NumPyro NUTS kernel as keyword arguments.
+    # Nesting it any deeper raises TypeError in the kernel; putting the PyMC
+    # spelling anywhere on the NumPyro path would be swallowed by `**kwargs`
+    # and silently ignored, leaving the cap at the library default while the
+    # run looked healthy. Hence the explicit branch.
     if config.sampler == "pymc":
         depth_kwargs: dict[str, Any] = {"max_treedepth": config.max_tree_depth}
     else:
-        depth_kwargs = {"nuts_sampler_kwargs": {"nuts_kwargs": {"max_tree_depth": config.max_tree_depth}}}
+        depth_kwargs = {"nuts": {"max_tree_depth": config.max_tree_depth}}
 
     with model:
         idata = pm.sample(
@@ -83,9 +81,13 @@ def sample_model(model: pm.Model, config: SamplerConfig | None = None) -> az.Inf
             nuts_sampler=config.sampler,
             target_accept=config.target_accept,
             random_seed=config.random_seed,
-            idata_kwargs={"log_likelihood": log_likelihood},
             **depth_kwargs,
         )
+
+    # Evaluated after sampling, at the posterior draws: the same values the
+    # sampler would have stored, and cheap next to the sampling itself.
+    if log_likelihood:
+        idata = pm.compute_log_likelihood(idata, model=model, progressbar=False)
 
     # Record the cap beside the tree depths it applies to. Without it
     # `_tree_depth_check` has to treat the deepest observed trajectory as the
@@ -144,11 +146,11 @@ def set_model_coefficients(
     return coefficients
 
 
-def save_trace(trace: az.InferenceData, path: str | Path) -> None:
+def save_trace(trace: xr.DataTree, path: str | Path) -> None:
     """Save a trace to NetCDF."""
     trace.to_netcdf(str(path))
 
 
-def load_trace(path: str | Path) -> az.InferenceData:
+def load_trace(path: str | Path) -> xr.DataTree:
     """Load a trace from NetCDF."""
     return az.from_netcdf(str(path))

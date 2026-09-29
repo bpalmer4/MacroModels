@@ -33,11 +33,10 @@ import pickle
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pandas as pd
-import xarray as xr
 
+from src.models.common.results import trace_group
 from src.models.rstar_rba.config import DEFAULT_OUTPUT_DIR, ModelConfig
 from src.models.rstar_rba.estimate import build_model, build_observations, posterior_median
 from src.models.ystar.base import SamplerConfig, sample_model
@@ -64,12 +63,6 @@ def _index_of(frame: pd.DataFrame) -> pd.PeriodIndex:
     return index
 
 
-def _posterior(trace: az.InferenceData) -> xr.Dataset:
-    group = getattr(trace, "posterior", None)
-    if not isinstance(group, xr.Dataset):
-        raise TypeError("trace has no posterior group - did sampling complete?")
-    return group
-
 
 def _window(index: pd.PeriodIndex, years: int, end: str) -> np.ndarray:
     """Return a boolean mask for the L-year window ending at `end`."""
@@ -85,7 +78,7 @@ def _fit(
     index = _index_of(frame)
     model = build_model(frame, config, verbose=False)
     trace = sample_model(model, sampler_config)
-    lam = float(np.asarray(_posterior(trace)["lambda"].values).mean())
+    lam = float(np.asarray(trace_group(trace, "posterior")["lambda"].values).mean())
     return posterior_median(trace, "neutral", index), posterior_median(trace, "rule_residual", index), lam
 
 

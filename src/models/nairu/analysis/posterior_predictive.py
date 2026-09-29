@@ -1,14 +1,14 @@
 """Posterior predictive checks."""
 
-import arviz as az
 import mgplot as mg
 import numpy as np
 import pandas as pd
 import pymc as pm
+import xarray as xr
 
 
 def posterior_predictive_checks(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     model: pm.Model,
     obs_vars: dict[str, np.ndarray],
     obs_index: pd.Index,
@@ -16,7 +16,7 @@ def posterior_predictive_checks(
     var_labels: dict[str, str] | None = None,
     rfooter: str = "",
     show: bool = False,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Generate and plot posterior predictive samples."""
     with model:
         ppc = pm.sample_posterior_predictive(trace, random_seed=42)

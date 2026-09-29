@@ -38,9 +38,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from src.models.rstar_invert.config import DEFAULT_OUTPUT_DIR, ModelConfig
 from src.models.rstar_invert.estimate import build_model, posterior_median, scalar_draws
@@ -74,7 +74,7 @@ BOUNDARY_TOL = 0.005
 
 
 def _summarise(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     index: pd.PeriodIndex,
     real_cash: pd.Series,
     ident: dict[str, Any],

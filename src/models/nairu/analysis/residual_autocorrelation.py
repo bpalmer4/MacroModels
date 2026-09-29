@@ -1,14 +1,14 @@
 """Residual autocorrelation analysis for model validation."""
 
-import arviz as az
 import mgplot as mg
 import numpy as np
 import pandas as pd
+import xarray as xr
 from statsmodels.stats.diagnostic import acorr_ljungbox
 
 
 def residual_autocorrelation_analysis(
-    ppc: az.InferenceData,
+    ppc: xr.DataTree,
     obs_vars: dict[str, np.ndarray],
     obs_index: pd.Index,
     *,

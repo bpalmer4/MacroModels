@@ -7,8 +7,10 @@ from pathlib import Path
 import arviz as az
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from src.models.common.extraction import get_scalar_var, get_scalar_var_names
+from src.models.common.results import posterior_summary
 
 # Diagnostic thresholds. At module level so a written report can print the
 # rule beside the value, and so callers can reason about them.
@@ -57,7 +59,7 @@ def _r_hat_check(summary: pd.DataFrame) -> Check:
     passed = statistic <= MAX_R_HAT
     return Check(
         name="R-hat",
-        detail=f"Maximum R-hat convergence diagnostic: {statistic}",
+        detail=f"Maximum R-hat convergence diagnostic: {statistic:.3f}",
         threshold=f"<= {MAX_R_HAT}",
         passed=passed,
         issue="" if passed else f"R-hat {statistic:.3f}",
@@ -88,7 +90,7 @@ def _mcse_check(summary: pd.DataFrame) -> Check:
     )
 
 
-def _divergence_check(trace: az.InferenceData) -> Check:
+def _divergence_check(trace: xr.DataTree) -> Check:
     """Divergent transitions, where the sampler records them.
 
     A sampler with no divergence concept (DEMetropolis-Z) must report n/a and
@@ -119,7 +121,7 @@ def _divergence_check(trace: az.InferenceData) -> Check:
     )
 
 
-def _tree_depth_check(trace: az.InferenceData) -> Check:
+def _tree_depth_check(trace: xr.DataTree) -> Check:
     """Tree depth saturation, against the configured max where it is recorded.
 
     Where it is not, the observed max stands in, which only means anything if
@@ -202,7 +204,7 @@ def _tree_depth_check(trace: az.InferenceData) -> Check:
     )
 
 
-def _bfmi_check(trace: az.InferenceData) -> Check:
+def _bfmi_check(trace: xr.DataTree) -> Check:
     """BFMI, which needs the energy statistic and so needs a Hamiltonian sampler."""
     try:
         energy = trace.sample_stats.energy
@@ -214,7 +216,8 @@ def _bfmi_check(trace: az.InferenceData) -> Check:
             applicable=False,
         )
     del energy
-    statistic = float(az.bfmi(trace).min())
+    # arviz returns the per-chain values as an "energy" variable in a DataTree.
+    statistic = float(az.bfmi(trace)["energy"].min())
     passed = statistic >= MIN_BFMI
     return Check(
         name="BFMI",
@@ -225,9 +228,9 @@ def _bfmi_check(trace: az.InferenceData) -> Check:
     )
 
 
-def run_checks(trace: az.InferenceData) -> list[Check]:
+def run_checks(trace: xr.DataTree) -> list[Check]:
     """Apply every diagnostic to a trace and return the results in order."""
-    summary = az.summary(trace)
+    summary = posterior_summary(trace, decimals=None)
     return [
         _r_hat_check(summary),
         _ess_check(summary),
@@ -238,7 +241,7 @@ def run_checks(trace: az.InferenceData) -> list[Check]:
     ]
 
 
-def check_model_diagnostics(trace: az.InferenceData, *, verbose: bool = True) -> list[str]:
+def check_model_diagnostics(trace: xr.DataTree, *, verbose: bool = True) -> list[str]:
     """Check the inference data for potential problems.
 
     Diagnostics applied:
@@ -256,7 +259,7 @@ def check_model_diagnostics(trace: az.InferenceData, *, verbose: bool = True) ->
       sampler explores the energy distribution. Values < 0.3 suggest poor exploration.
 
     Args:
-        trace: InferenceData from model fitting
+        trace: DataTree from model fitting
         verbose: If True, print each diagnostic as it is checked
 
     Returns:
@@ -309,7 +312,7 @@ def diagnostics_headline(issues: list[str], max_len: int = 60) -> str:
 
 
 def write_diagnostics_report(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     path: str | Path,
     *,
     title: str,
@@ -319,7 +322,7 @@ def write_diagnostics_report(
     """Write a short diagnostics file beside a saved trace.
 
     Args:
-        trace: InferenceData from model fitting
+        trace: DataTree from model fitting
         path: File to write (overwritten)
         title: What was estimated, e.g. "ystar (simple_excess)"
         notes: Extra context lines for the header, e.g. the sampler settings
@@ -332,7 +335,7 @@ def write_diagnostics_report(
     path = Path(path)
     checks = run_checks(trace)
     issues = [check.issue for check in checks if check.issue]
-    summary = az.summary(trace)
+    summary = posterior_summary(trace, decimals=None)
 
     chains = trace.posterior.sizes["chain"]
     draws = trace.posterior.sizes["draw"]
@@ -375,7 +378,7 @@ def write_diagnostics_report(
 
 DIAGNOSTICS_STEM = "run-diagnostics"
 
-def _sampled_line(trace: az.InferenceData) -> str:
+def _sampled_line(trace: xr.DataTree) -> str:
     """When the trace was sampled, and how long before this report.
 
     A report is written whenever the analysis is re-run, so its own date can
@@ -408,7 +411,7 @@ def diagnostics_path(chart_dir: str | Path, prefix: str) -> Path:
 
 
 def save_diagnostics(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     chart_dir: str | Path,
     prefix: str,
     *,
@@ -478,7 +481,7 @@ def diagnostics_header(
 
 
 def check_for_zero_coeffs(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     critical_params: list[str] | None = None,
 ) -> pd.DataFrame:
     """Check scalar parameters for coefficients indistinguishable from zero.
@@ -487,7 +490,7 @@ def check_for_zero_coeffs(
     Shows quantiles and flags parameters that may be indistinguishable from zero.
 
     Args:
-        trace: InferenceData from model fitting
+        trace: DataTree from model fitting
         critical_params: List of parameter names that are critical (warn if any
             quantile crosses zero). If None, uses default threshold of 2+ crossings.
 

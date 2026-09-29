@@ -46,7 +46,7 @@ Bayesian state-space model for jointly estimating NAIRU, potential output, and o
 > contemporary.
 >
 > **What this model is still for**, and nothing else in the package offers it: the wage equation,
-> the expectations-to-target anchor transition, the regime split, and the LOO/WAIC comparison
+> the expectations-to-target anchor transition, the regime split, and the LOO comparison
 > across variants. Those are about inflation dynamics and the re-anchoring narrative. Read the
 > Phillips-curve and model-comparison sections for that. The NAIRU and gap numbers it prints are
 > not the package's answer to those questions.
@@ -62,7 +62,7 @@ Bayesian state-space model for jointly estimating NAIRU, potential output, and o
 | Phillips Curves | Regime-switching, 3 regimes (default preset) | Single-slope variants; excess-expectations term (default preset) |
 | Identification | 2 state + N observation equations | Joint estimation with proper uncertainty |
 | Scenario Analysis | Model-consistent projection | 4-quarter horizon with policy scenarios |
-| Model Selection | LOO/WAIC + Pareto-k | `simple_excess` best full-sample fit; `simple_excess_regime` best all-rounder. Default is `simple_excess_rstar_blend` — `simple_excess` with the global 35/65 r* blend (see [Model Comparison](#model-comparison-loo--waic)) |
+| Model Selection | LOO + Pareto-k | `simple_excess` best full-sample fit; `simple_excess_regime` best all-rounder. Default is `simple_excess_rstar_blend` — `simple_excess` with the global 35/65 r* blend (see [Model Comparison](#model-comparison-loo)) |
 
 ---
 
@@ -102,7 +102,7 @@ nairu/
 │
 └── analysis/                 # Plotting and diagnostics modules
     ├── __init__.py
-    ├── compare_information_criteria.py # LOO/WAIC variant ranking + Pareto-k
+    ├── compare_information_criteria.py # LOO variant ranking + Pareto-k
     ├── decomposition_types.py          # Decomposition data structures
     ├── _decomposition_helpers.py       # Shared decomposition utilities
     ├── decompose_inflation.py          # Price inflation decomposition
@@ -405,20 +405,20 @@ excess_exp_t = unanchored model median_t − π_exp_t   (zero through 1992Q4)
 
 ---
 
-## Model Comparison (LOO / WAIC)
+## Model Comparison (LOO)
 
 `analysis/compare_information_criteria.py` ranks the variants by out-of-sample
 predictive fit. The saved traces do **not** carry a `log_likelihood` group, so
 the module rebuilds each model and evaluates the likelihood at the existing
 posterior draws via `pm.compute_log_likelihood` (no re-sampling: faithful to
 the traces on disk), caches the slim log-lik to `model_outputs/nairu_*_loglik.nc`,
-and writes `model_outputs/nairu_loo_waic_comparison.txt`.
+and prints the comparison tables.
 
 ```bash
 uv run python -m src.models.nairu.analysis.compare_information_criteria
 ```
 
-**Comparability.** LOO/WAIC are only pooled-comparable across models conditioned
+**Comparability.** LOO scores are only pooled-comparable across models conditioned
 on the *same* observed data. The `simple*` family shares the same five
 observation equations over the same 167 quarters → valid pooled comparison.
 `complex` adds five more likelihood terms (different observed data), so it is
@@ -430,7 +430,7 @@ artifact, not a property of the model.) Each variant has several observation lik
 (equation, time) contribution is stacked into one exchangeable obs vector for
 the joint criterion; `reff` is recovered from the log-likelihood's own ESS.
 
-**Full-sample ranking (joint LOO and WAIC agree):**
+**Full-sample ranking (joint LOO):**
 
 | Rank | Variant | elpd_loo | Δ vs best | dse |
 |------|---------|---------:|----------:|----:|
@@ -451,7 +451,6 @@ the joint criterion; `reff` is recovered from the log-likelihood's own ESS.
 n=167):** the joint table above is the 5-equation simple family only; `complex`
 and `complex_excess` carry 10 observation equations and cannot enter it, so all
 six are compared on the one equation they share: `observed_price_inflation`.
-LOO and WAIC give the identical ordering:
 
 | Rank | Variant | elpd_loo | Δ vs best | dse | per-obs | max-k |
 |------|---------|---------:|----------:|----:|--------:|------:|
@@ -470,8 +469,7 @@ LOO and WAIC give the identical ordering:
   trails the far simpler `simple_excess` (0.254) by ~2.3 elpd, and plain `complex`
   is the worst of all six. The five extra equations + Student-t NAIRU + gap-form
   Okun add parameters and a more unemployment-responsive NAIRU, but no inflation
-  fit. WAIC's penalty agrees: `simple_excess` has the lowest effective-parameter
-  count (`p_waic` 12.3) of the six as well as the best score.
+  fit.
 
 **Recent-surge fit (2021Q1–2026Q1, in-sample price-eq log-density: answers
 "explains the inflation we've seen", and rewards flexibility, ≠ LOO):**
@@ -497,7 +495,7 @@ all variants it cancels in the pairwise `delta`/`dse`, so the ranking holds. For
 an exact LOO term on that point, `reloo` (refit leaving 2022Q2 out); not expected
 to change the ordering.
 
-**Caveats.** The comparison thins to 5k of the 50k draws (LOO/WAIC stable to
+**Caveats.** The comparison thins to 5k of the 50k draws (LOO stable to
 this; full resolution available). Differences among the top simple variants are
 modest relative to their standard errors.
 
@@ -626,7 +624,7 @@ d(NX/Y) = beta_ygap x output_gap + beta_twi x dtwi + e
 ### Saved Results Format
 
 Each run produces two files:
-- `{prefix}_trace.nc`: ArviZ InferenceData (posterior samples)
+- `{prefix}_trace.nc`: xarray DataTree (posterior samples)
 - `{prefix}_obs.pkl`: dict containing:
   - `obs`: observation arrays
   - `obs_index`: PeriodIndex

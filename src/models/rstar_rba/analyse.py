@@ -3,7 +3,6 @@
 from math import lgamma
 from pathlib import Path
 
-import arviz as az
 import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
@@ -13,6 +12,7 @@ import xarray as xr
 from src.models.common import prior_posterior
 from src.models.common.diagnostics import save_diagnostics
 from src.models.common.inflation_scale import get_unanchored_expectations
+from src.models.common.results import SUMMARY_HDI_LOWER, SUMMARY_HDI_UPPER, posterior_summary, trace_group
 from src.models.common.sources import footer_from_constants
 from src.models.rstar_bonds.results import load_results as load_bonds
 from src.models.rstar_rba.ensemble import load_ensemble, print_ensemble
@@ -31,19 +31,6 @@ _ERAS = {
     "2020-2021": ("2020Q1", "2021Q4"),
     "2022-": ("2022Q1", None),
 }
-
-
-def _group(trace: az.InferenceData, name: str) -> xr.Dataset:
-    """Return one group of the trace, narrowed at runtime.
-
-    `InferenceData` exposes its groups dynamically, so a static checker cannot
-    see `.posterior`. Checking the type here is both the narrowing and a real
-    guard: a trace loaded from an incomplete run has no posterior.
-    """
-    group = getattr(trace, name, None)
-    if not isinstance(group, xr.Dataset):
-        raise TypeError(f"trace has no {name} group - was it loaded from a completed run?")
-    return group
 
 
 def _period_index(frame: pd.DataFrame) -> pd.PeriodIndex:
@@ -108,7 +95,7 @@ def _floor_span(frame: pd.DataFrame) -> dict | None:
     return {"xmin": pinned[0], "xmax": pinned[-1], "color": "grey", "alpha": 0.18}
 
 
-def equation(trace: az.InferenceData, constants: dict) -> str:
+def equation(trace: xr.DataTree, constants: dict) -> str:
     """Return the estimated equation as a string, for the chart headers.
 
     Read off the run rather than hardcoded: the response term and whether the
@@ -122,7 +109,7 @@ def equation(trace: az.InferenceData, constants: dict) -> str:
     anchor = float(constants.get("anchor", 2.5))
     response = (
         "lambda_1 x g_t + lambda_2 x g_t x |g_t|"
-        if "lambda_2" in _group(trace, "posterior")
+        if "lambda_2" in trace_group(trace, "posterior")
         else "lambda x g_t"
     )
     state = "b_t = b_{t-1} + sigma_r x e_t" if constants.get("walk") else "b constant"
@@ -176,7 +163,7 @@ def _prior_curve(name: str, constants: dict, xs: np.ndarray) -> np.ndarray | Non
     return None
 
 
-def plot_prior_posterior(trace: az.InferenceData, constants: dict) -> int:
+def plot_prior_posterior(trace: xr.DataTree, constants: dict) -> int:
     """One chart per estimated parameter: posterior against its own prior.
 
     The point is to see how much of each answer is data. A posterior sitting on
@@ -188,7 +175,7 @@ def plot_prior_posterior(trace: az.InferenceData, constants: dict) -> int:
     no (kind, mu, sd) triple can express, and its parameter labels.
     """
     return prior_posterior.plot_all(
-        _group(trace, "posterior"),
+        trace_group(trace, "posterior"),
         lambda name: (
             (lambda xs: _prior_curve(name, constants, xs))
             if _prior_curve(name, constants, np.zeros(1)) is not None
@@ -204,14 +191,14 @@ def plot_prior_posterior(trace: az.InferenceData, constants: dict) -> int:
 
 
 def print_diagnostics(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     frame: pd.DataFrame,
     constants: dict,
 ) -> None:
     """Print the parameters and the checks that would show the model failing."""
     scalars = [
         name for name in ("lambda", "lambda_late", "lambda_2", "phi", "rho", "sigma_eps", "base_0")
-        if name in _group(trace, "posterior")
+        if name in trace_group(trace, "posterior")
     ]
     print("\nEquation")
     print("-" * 70)
@@ -219,14 +206,14 @@ def print_diagnostics(
 
     print("\nPosterior summary")
     print("-" * 70)
-    print(az.summary(trace, var_names=scalars)[
-        ["mean", "sd", "hdi_3%", "hdi_97%", "ess_bulk", "r_hat"]
-    ].round(3).to_string())
-    diverging = _group(trace, "sample_stats").get("diverging")
+    print(posterior_summary(trace, var_names=scalars)[
+        ["mean", "sd", SUMMARY_HDI_LOWER, SUMMARY_HDI_UPPER, "ess_bulk", "r_hat"]
+    ].to_string())
+    diverging = trace_group(trace, "sample_stats").get("diverging")
     if diverging is not None:
         print(f"divergences: {int(diverging.sum())} of {int(diverging.size)}")
 
-    lam = float(_group(trace, "posterior")["lambda"].mean())
+    lam = float(trace_group(trace, "posterior")["lambda"].mean())
     neutral = posterior_median(trace, "neutral", _period_index(frame))
     prescribed = posterior_median(trace, "prescribed", _period_index(frame))
     residual = posterior_median(trace, "rule_residual", _period_index(frame))
@@ -273,7 +260,7 @@ def print_diagnostics(
         print(f"  {label:<11} residual {window.mean():6.2f}   inflation gap {infl.mean():6.2f}")
 
 
-def plot_decomposition(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> None:
+def plot_decomposition(trace: xr.DataTree, frame: pd.DataFrame, constants: dict) -> None:
     """Split the prescribed rate into neutral and the inflation response.
 
     d_t = b_t + lambda x g_t, so this is the whole model on one chart. Neutral
@@ -316,7 +303,7 @@ def plot_decomposition(trace: az.InferenceData, frame: pd.DataFrame, constants: 
     )
 
 
-def plot_rule(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> None:
+def plot_rule(trace: xr.DataTree, frame: pd.DataFrame, constants: dict) -> None:
     """Plot the cash rate against what the two-gaps rule implies."""
     rstar = posterior_median(trace, "prescribed", _period_index(frame))
     base = posterior_median(trace, "neutral", _period_index(frame))
@@ -367,7 +354,7 @@ def plot_rule(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> 
 # RBA's own behaviour. That is `rstar_bonds`.
 
 
-def plot_two_gaps(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> None:
+def plot_two_gaps(trace: xr.DataTree, frame: pd.DataFrame, constants: dict) -> None:
     """Plot the two gaps against each other, which is the whole assumption.
 
     If they are proportional the cloud has a slope. If it does not, `lambda` is
@@ -381,7 +368,7 @@ def plot_two_gaps(trace: az.InferenceData, frame: pd.DataFrame, constants: dict)
     base = posterior_median(trace, "neutral", _period_index(frame))
     gap = posterior_median(trace, "inflation_gap", _period_index(frame))
     rate_gap = frame["r"] - base
-    lam = float(_group(trace, "posterior")["lambda"].mean())
+    lam = float(trace_group(trace, "posterior")["lambda"].mean())
 
     # The bound quarters are marked rather than shaded: on a scatter there is no
     # time axis to shade, and these are the points that most distort curvature.
@@ -402,8 +389,8 @@ def plot_two_gaps(trace: az.InferenceData, frame: pd.DataFrame, constants: dict)
     xs = pd.Series(np.linspace(gap.min(), gap.max(), 100))
     fitted = lam * xs
     label = f"fitted, lambda = {lam:.2f}"
-    if "lambda_2" in _group(trace, "posterior"):
-        lam2 = float(_group(trace, "posterior")["lambda_2"].mean())
+    if "lambda_2" in trace_group(trace, "posterior"):
+        lam2 = float(trace_group(trace, "posterior")["lambda_2"].mean())
         fitted = fitted + lam2 * xs * xs.abs()
         label = f"fitted, lambda_1 = {lam:.2f}, lambda_2 = {lam2:.2f}"
     ax.plot(xs, fitted, color="darkred", lw=2, label=label)
@@ -427,9 +414,9 @@ def plot_two_gaps(trace: az.InferenceData, frame: pd.DataFrame, constants: dict)
 
 
 
-def posterior_draws(trace: az.InferenceData, name: str, index: pd.PeriodIndex) -> pd.DataFrame:
+def posterior_draws(trace: xr.DataTree, name: str, index: pd.PeriodIndex) -> pd.DataFrame:
     """Return every draw of a vector quantity, quarters down, draws across."""
-    stacked = _group(trace, "posterior")[name].stack(sample=("chain", "draw"))
+    stacked = trace_group(trace, "posterior")[name].stack(sample=("chain", "draw"))
     return pd.DataFrame(np.asarray(stacked.values), index=index)
 
 
@@ -443,13 +430,13 @@ def band_of(draws: pd.DataFrame, prob: float = 0.90) -> pd.DataFrame:
 
 
 def posterior_band(
-    trace: az.InferenceData, name: str, index: pd.PeriodIndex, prob: float = 0.90,
+    trace: xr.DataTree, name: str, index: pd.PeriodIndex, prob: float = 0.90,
 ) -> pd.DataFrame:
     """Return the equal-tailed credible interval of a vector latent."""
     return band_of(posterior_draws(trace, name, index), prob)
 
 
-def plot_rstar_real_nominal(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> None:
+def plot_rstar_real_nominal(trace: xr.DataTree, frame: pd.DataFrame, constants: dict) -> None:
     """Real and nominal neutral, each with a 90% credible interval.
 
     The same chart `rstar_bonds` draws, for this model's estimate.
@@ -533,7 +520,7 @@ def plot_rstar_real_nominal(trace: az.InferenceData, frame: pd.DataFrame, consta
 
 
 def plot_sigma_r_ensemble(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     frame: pd.DataFrame,
     constants: dict,
     paths: pd.DataFrame,
@@ -735,7 +722,7 @@ def _taylor_inputs(prefix: str = "rstar_bonds") -> tuple[pd.Series, pd.Series]:
     return bonds.rule_inflation(), bonds._extra("ygap")
 
 
-def plot_taylor(trace: az.InferenceData, frame: pd.DataFrame, constants: dict) -> None:
+def plot_taylor(trace: xr.DataTree, frame: pd.DataFrame, constants: dict) -> None:
     """Plot a Taylor rule built on this model's neutral rate.
 
         i* = real neutral + pi_core + 0.5 (pi_core - 2.5) + 0.5 ygap

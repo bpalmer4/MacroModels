@@ -8,7 +8,7 @@ import arviz as az
 import numpy as np
 import pandas as pd
 
-from src.models.common.results import PosteriorResults
+from src.models.common.results import PosteriorResults, posterior_summary
 from src.paths import CHARTS, MODEL_OUTPUTS
 from src.utilities.rate_conversion import quarterly
 
@@ -248,10 +248,7 @@ class UStarResults(PosteriorResults):
                 var_names.insert(0, "sigma_ustar")
             if self.has_phillips:
                 var_names += ["gamma_pi", "beta_pi", "rho_pi", "xi_gscpi", "epsilon_pi"]
-        summary = az.summary(self.trace, var_names=var_names)
-        if not isinstance(summary, pd.DataFrame):
-            raise TypeError("az.summary returned a Dataset — expected the DataFrame form")
-        return summary
+        return posterior_summary(self.trace, var_names=var_names)
 
 
 def load_results(
