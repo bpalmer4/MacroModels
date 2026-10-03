@@ -110,6 +110,12 @@ ANCHOR_PHASE_END = "1998Q4"
 
 PI_BASES = ("quarterly", "annual")
 
+# The specs whose Phillips curve has inflation as its dependent variable. On
+# the four-quarter rate that equation's error is MA(3), so these default to the
+# quarterly basis; every other spec defaults to annual. See
+# `ModelConfig.pi_basis`.
+PHILLIPS_SPECS = ("core", "labour")
+
 SUPPLY_CONTROLS = (None, "import_prices")
 
 # The pandemic quarters carrying no likelihood: the first lockdown through the
@@ -130,9 +136,11 @@ class ModelConfig:
             anchor are a matched pair: change one and you must change the other.
         end: Last quarter (None = latest available).
         anchor: Inflation anchor in annual %, the RBA's target midpoint.
-        pi_basis: Which trimmed mean series the Phillips curve is estimated on.
-            "quarterly" (default) uses the quarterly rate annualised; "annual"
-            uses the four-quarter rate. The four-quarter rate is *overlapping*
+        pi_basis: Which trimmed mean series inflation is observed on.
+            "quarterly" uses the quarterly rate annualised; "annual" uses the
+            four-quarter rate. None (default) takes the spec's own basis:
+            quarterly for PHILLIPS_SPECS, annual otherwise; read the resolved
+            value from `inflation_basis`. The four-quarter rate is *overlapping*
             at quarterly frequency, so its error is MA(3) by construction even
             under a correct model. Giving it iid errors, as the first version
             of this model did, treats each of the ~133 observations as
@@ -199,11 +207,10 @@ class ModelConfig:
     # smooth through 1990-92 while trend MFP falls 1.25 to 0.12 and then runs
     # to 1.65 by 1997, which is the whole of potential growth's dip and spike.
     mfp_degree: int = 0
-    # "annual" for the live `inflation` spec: there inflation is a regressor
-    # rather than a dependent variable, so overlapping observations create no
-    # overlapping-error problem, and "at target" is an annual concept. The
-    # `core` spec should be run with pi_basis "quarterly"; see the note on this
-    # field below.
+    # None resolves by spec (see PHILLIPS_SPECS). Annual for the live
+    # `inflation` spec: there inflation is a regressor rather than a dependent
+    # variable, so overlapping observations create no overlapping-error
+    # problem, and "at target" is an annual concept.
     #
     # **Quarterly was tried as the default and reverted.** The four-quarter rate
     # autocorrelates 0.948 at one lag and shares three of its four quarters with
@@ -217,7 +224,7 @@ class ModelConfig:
     # relationship" as the posterior can say — and the gap's sd falls from 0.188
     # to 0.102. Same change, opposite consequence, because the noisier regressor
     # attenuates a projection coefficient that has no other support.
-    pi_basis: str = "annual"
+    pi_basis: str | None = None
     supply_control: str | None = None
 
     sigma_c: float = 0.60
@@ -507,12 +514,19 @@ class ModelConfig:
         # must not be silently dropped.
         if self.spec not in ("inflation", "production") and self.exclude_window == DEFAULT_EXCLUDE_WINDOW:
             self.exclude_window = None
-        if self.pi_basis not in PI_BASES:
-            raise ValueError(f"pi_basis must be one of {PI_BASES}, got {self.pi_basis!r}")
+        if self.pi_basis is not None and self.pi_basis not in PI_BASES:
+            raise ValueError(f"pi_basis must be one of {PI_BASES} or None, got {self.pi_basis!r}")
         if self.supply_control not in SUPPLY_CONTROLS:
             raise ValueError(
                 f"supply_control must be one of {SUPPLY_CONTROLS}, got {self.supply_control!r}",
             )
+
+    @property
+    def inflation_basis(self) -> str:
+        """Return the trimmed mean basis this run uses: explicit, else the spec's own."""
+        if self.pi_basis is not None:
+            return self.pi_basis
+        return "quarterly" if self.spec in PHILLIPS_SPECS else "annual"
 
     @property
     def scale_constants(self) -> dict[str, float]:

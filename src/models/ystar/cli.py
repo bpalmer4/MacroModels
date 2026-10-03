@@ -13,6 +13,7 @@ from src.models.ystar.base import SamplerConfig
 from src.models.ystar.config import (
     ANCHOR_PHASES,
     DEFAULT_EXCLUDE_WINDOW,
+    PHILLIPS_SPECS,
     PI_BASES,
     SPECS,
     SUPPLY_CONTROLS,
@@ -63,9 +64,9 @@ def build_parser() -> argparse.ArgumentParser:
              "constant potential growth across the sample",
     )
     parser.add_argument(
-        "--pi-basis", default="annual", choices=PI_BASES,
-        help="Trimmed mean basis: 'annual' (four-quarter, the default) or "
-             "'quarterly' (annualised, non-overlapping; required for --spec core)",
+        "--pi-basis", default=None, choices=PI_BASES,
+        help="Trimmed mean basis: 'annual' (four-quarter) or 'quarterly' (annualised, "
+             f"non-overlapping). Default: quarterly for {', '.join(PHILLIPS_SPECS)}, annual otherwise",
     )
     parser.add_argument(
         "--supply-control", default=None, choices=[c for c in SUPPLY_CONTROLS if c],

@@ -471,7 +471,7 @@ def run_estimate(
     )
     print(f"Spec:         {config.spec}")
     print(f"Sample:       {config.start} -> {config.end or 'latest'}")
-    print(f"Anchor:       {config.anchor}%  (inflation basis: {config.pi_basis})")
+    print(f"Anchor:       {config.anchor}%  (inflation basis: {config.inflation_basis})")
     print(f"Supply ctrl:  {config.supply_control or 'none'}")
     print(f"Variances:    sigma_c={config.sigma_c:g} (fixed);  ratios {ratios}")
     print(f"Sampler seed: {sampler_config.random_seed}")
@@ -480,7 +480,7 @@ def run_estimate(
     obs, obs_index, chart_obs, sources = build_observations(
         start=config.start, end=config.end, verbose=verbose,
         smooth_pop=config.smooth_pop, spec=config.spec,
-        pi_basis=config.pi_basis, supply_control=config.supply_control,
+        pi_basis=config.inflation_basis, supply_control=config.supply_control,
         expectations=config.anchor_phase != "none",
     )
 

@@ -38,6 +38,7 @@ Four complementary approaches to nowcasting the next unpublished quarterly GDP g
 ### Exploratory
 
 - **Bank funding and lending costs** (`bank_costs`): RBA bill, deposit and lending rates against the cash rate. Charts only, no model
+- **Participation after rate rises** (`participation_rate`): event study and local projections of the participation rate around RBA decisions. See [notes](src/models/participation_rate/MODEL_NOTES.md)
 
 ## Retired, superseded or not working
 
@@ -114,6 +115,7 @@ src/
     ├── ystar_summary/          # three output gaps, each on its own definition (not a model)
     ├── is_curve/               # the IS curve plotted, not estimated: a test bench for the r* models
     ├── bank_costs/             # bank funding and lending costs vs the cash rate (exploratory, charts only)
+    ├── participation_rate/     # participation after RBA rate moves (exploratory regressions)
     ├── gdp_nowcast_bridge/     # GDP nowcast: bridge equations
     ├── gdp_nowcast_dfm/        # GDP nowcast: Dynamic Factor Model
     ├── gdp_nowcast_bvar/       # GDP nowcast: Bayesian VAR (T-0 only)

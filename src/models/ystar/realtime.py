@@ -68,7 +68,7 @@ def _paths(config: ModelConfig, sampler_config: SamplerConfig) -> dict[str, pd.S
     obs, obs_index, _, _ = build_observations(
         start=config.start, end=config.end, verbose=False,
         smooth_pop=config.smooth_pop, spec=config.spec,
-        pi_basis=config.pi_basis, supply_control=config.supply_control,
+        pi_basis=config.inflation_basis, supply_control=config.supply_control,
     )
     model = build_model(obs, config=config, verbose=False, obs_index=obs_index)
     trace = sample_model(model, sampler_config)
@@ -116,7 +116,7 @@ def run_vintages(
     _, full_index, _, _ = build_observations(
         start=base_config.start, end=base_config.end, verbose=False,
         smooth_pop=base_config.smooth_pop, spec=base_config.spec,
-        pi_basis=base_config.pi_basis, supply_control=base_config.supply_control,
+        pi_basis=base_config.inflation_basis, supply_control=base_config.supply_control,
     )
     last = full_index[-1]
 

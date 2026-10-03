@@ -43,6 +43,28 @@ PARTICIPATION_RATE = ReqsTuple(
     zip_file="",
 )
 
+PARTICIPATION_RATE_MALES = ReqsTuple(
+    cat="6202.0",
+    table="62020001",
+    did="Participation rate ;  > Males ;",
+    stype="SA",
+    unit="",
+    seek_yr_growth=False,
+    calc_growth=False,
+    zip_file="",
+)
+
+PARTICIPATION_RATE_FEMALES = ReqsTuple(
+    cat="6202.0",
+    table="62020001",
+    did="Participation rate ;  > Females ;",
+    stype="SA",
+    unit="",
+    seek_yr_growth=False,
+    calc_growth=False,
+    zip_file="",
+)
+
 # Published Original only — population carries no meaningful seasonality, and
 # ABS back-revises the whole history on Census rebasing rather than stepping it,
 # so the series has no benchmark breaks to patch.

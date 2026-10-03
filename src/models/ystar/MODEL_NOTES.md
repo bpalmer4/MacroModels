@@ -91,6 +91,7 @@ The magnitude does, entirely, and it is the weaker half. `c` = **0.188 [0.07, 0.
 | trend growth, about 1.9% | strong: the level and the decline survive every perturbation tried, and the RBA independently at ~2.0. Was 2.14 on the continuous likelihood; item 21 |
 | orientation of the gap | strong statistically: P(`c` > 0) = 99.1% with the sign free and the pandemic quarters out (item 21); 97.7% on the hardest continuous-likelihood specification (item 17) |
 | economic reading of that sign | conditional: holds when the inflation deviation is demand-driven, not under stagflation |
+| level of potential | weak: placed mostly by the smoothness assumption, with inflation moving it only a little; see below |
 | scale of the gap | weak, and weaker than it was: `c` = 0.188 [0.07, 0.32], against 0.468 when the pandemic quarters were fitted |
 | timing near turning points | weak: annual inflation is a distributed object, and the sample cannot resolve the lag |
 | the *width* of the trend growth band | prior-sensitive, even though the central estimate is not (Limitation 2) |
@@ -98,6 +99,10 @@ The magnitude does, entirely, and it is the weaker half. `c` = **0.188 [0.07, 0.
 **Trend growth: the level and the decline are solid, the precision is not.** Item 14 sweeps the smoothing prior over a sixteen-fold range and latest trend growth spans 0.19pp while the decline since the late 1990s runs 1.70 to 1.95. So "about 2.1%, down roughly two points" is in the data. But the 90% band goes from [1.93, 2.37] at the tightest setting to [0.45, 3.53] at the loosest, so the published interval is as narrow as `sigma_g` is tight. Quote the number and the decline; do not lean on the band.
 
 Neither output depends much on the other. `c` moves the *level* of potential, by 0.27% of GDP in standard deviation, but the inflation deviation is mean-reverting, so it contributes almost nothing to the growth rate. Potential growth comes in at 2.12 to 2.19 across every specification tested in items 14 to 17, including ones built to break the identification.
+
+**The level of potential is the hard part; its growth rate is not.** Growth is the slope of potential, and the slope comes from the long-run path of GDP, which every specification sees in the same way. The level is where that slope sits, and nothing in the model fixes it firmly: the smoothness assumption supplies the path, and inflation's repositioning of it is small. Two paths a steady distance apart grow at the same rate, so specifications can disagree about where potential is while agreeing about how fast it grows. Every such disagreement arrives whole in the gap, because the gap is GDP less the level. It is also why real-time revisions (item 6) show up as level shifts.
+
+**Agreement on the level is not evidence that the level is identified.** In `--compare` the `inflation` and `production` specifications place potential close together, but both reproduce the same HP trend, so they agree because they share a filter rather than because the data pin the level. Nothing here observes unemployment, which is the information that could place it independently.
 
 ---
 
