@@ -55,6 +55,7 @@ uv run python -m src.models.rstar_hlw_kalman.run   # canonical HLW by Kalman fil
                                    #   own definition; re-runs stale ones (--no-refresh skips)
 ./run-bank-costs.sh                # Bank funding and lending costs vs the cash rate (charts only)
 ./run-participation-rate.sh        # Does participation rise after RBA hikes? Event study + local projections
+./run-twi-gap.sh                   # Real TWI gap from US$ commodity prices, shaded behind the cash rate
 uv run python -m src.models.is_curve.run   # IS-curve scatter (retired: the search found no IS curve)
 uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EVERY saved trace,
                                    #   PRINTED, not written: nothing is re-sampled and no file is
@@ -120,6 +121,7 @@ src/
 │   ├── gdp_nowcast_components/    # GDP nowcast, expenditure components (T-0 only)
 │   ├── bank_costs/                # Exploratory charts only
 │   ├── participation_rate/        # Exploratory: participation after RBA hikes; a pattern, not a cause
+│   ├── twi_gap/                   # Exploratory: real TWI vs commodity prices; FX conditions, not policy stance
 │   │   # RETIRED, SUPERSEDED OR NOT WORKING (kept for their notes; don't quote)
 │   ├── nairu/                     # SUPERSEDED for potential, gap and NAIRU; still runs, kept for wages, LOO
 │   ├── rstar_hlw/                 # NOT a source of r*; still runs, its trend/cycle split does work
