@@ -4,9 +4,9 @@ Used for the world real rate series the `rstar` package needs as a market-priced
 comparator for the Holston-Laubach-Williams anchor. HLW is a model output built
 on an IS curve; these are prices. The point of having both is that they disagree.
 
-The API key lives in `fred.api` in the project root, one line, and is
+The API key lives in `KEYS/fred.api`, one line; the whole `KEYS/` folder is
 gitignored. Get one free at https://fred.stlouisfed.org/docs/api/api_key.html.
-The same file and convention are used in the ABS project.
+The same file name is used in the ABS project.
 
 The plain CSV endpoint (`fredgraph.csv`) needs no key but times out from here,
 which is why this goes through the JSON API.
@@ -27,9 +27,9 @@ import pandas as pd
 from readabs.download_cache import get_file
 
 from src.data.dataseries import DataSeries
-from src.paths import ROOT
+from src.paths import KEYS
 
-_KEY_FILE = ROOT / "fred.api"
+_KEY_FILE = KEYS / "fred.api"
 _BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
 
@@ -38,7 +38,7 @@ def _api_key() -> str:
     if not _KEY_FILE.exists():
         raise FileNotFoundError(
             f"No FRED API key at {_KEY_FILE}. Create that file containing the key on one "
-            "line (it is gitignored). Free key: https://fred.stlouisfed.org/docs/api/api_key.html",
+            f"line ({KEYS.name}/ is gitignored). Free key: https://fred.stlouisfed.org/docs/api/api_key.html",
         )
     key = _KEY_FILE.read_text(encoding="utf-8").strip()
     if not key:

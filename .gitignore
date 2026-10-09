@@ -25,5 +25,5 @@ charts/**
 model_outputs/**
 output/**
 
-# FRED API key (never commit)
-fred.api
+# API keys, one file per service (never commit)
+KEYS/

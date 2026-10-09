@@ -173,6 +173,17 @@ class ModelConfig:
     forward_bias_mu: float = 0.0
     forward_bias_sigma: float = 0.50
     sigma_f_sigma: float = 1.0
+    # Off: the forward is observed every quarter, so it sets neutral's path as
+    # well as its level. On: neutral is built so its sample mean equals the
+    # forward's exactly,
+    #
+    #     b_t = b~_t - mean(b~) + mean(f)
+    #
+    # so the forward sets neutral's average and the path comes from the cash
+    # rate and the inflation gap alone. There is no bias: a constant bias would
+    # absorb the gap between the two averages and the constraint would bind
+    # nothing. `base_0` is dropped in this mode, since mean(f) sets the level.
+    forward_average: bool = False
 
     anchor: float = 2.5
 
@@ -533,6 +544,8 @@ class ModelConfig:
             "floor": -1.0 if self.floor is None else self.floor,
             "walk": float(self.walk),
             "sigma_r": self.sigma_r,
+            "use_forward": float(self.use_forward),
+            "forward_average": float(self.forward_average),
             "jumps": float(self.jumps),
             "jump_world": float(self.jump_source == "world"),
             "jump_percentile": self.jump_percentile,

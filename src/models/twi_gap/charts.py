@@ -1,9 +1,10 @@
-"""Chart: the cash rate with the real TWI gap as a backplane."""
+"""Charts: the cash rate with the real TWI gap as a backplane, and the gap against inflation."""
 
 import mgplot as mg
 import pandas as pd
 from matplotlib.axes import Axes
 
+from src.data.rba_loader import PI_TARGET
 from src.models.twi_gap import DARK_SD, NEUTRAL_SD, START
 from src.models.twi_gap.analysis import GapFit
 
@@ -14,6 +15,7 @@ DARK_ALPHA = 0.28  # beyond DARK_SD
 SHARE_ROUNDING = -1  # quote band shares to the nearest 10 per cent
 PERCENT = 100
 RFOOTER = "RBA: A2, F15, I2"
+INFLATION_RFOOTER = "ABS: 6401.0. RBA: F15, I2"
 
 
 def _months(quarter: pd.Period) -> tuple[int, int]:
@@ -83,5 +85,27 @@ def backplane_chart(cash: pd.Series, fit: GapFit, shares: dict[float, float]) ->
         rfooter=RFOOTER,
         axvline=model_end,
         legend={"loc": "upper right", "fontsize": "xx-small", "ncol": 2},
+        show=False,
+    )
+
+
+def inflation_chart(fit: GapFit, inflation: pd.Series) -> None:
+    """Draw the real TWI gap against year-ended inflation less the target, over the gap's sample.
+
+    Both on one axis: the gap in per cent, inflation in percentage points. The
+    gap swings far more widely, so inflation reads flat outside 2008 and 2022-24.
+    """
+    deviation = f"Trimmed mean less {PI_TARGET:g}% target (pp)"
+    data = pd.concat({"Real TWI gap (%)": fit.gap, deviation: inflation - PI_TARGET}, axis=1).dropna()
+    mg.line_plot_finalise(
+        data,
+        title="Real TWI gap and inflation less target",
+        ylabel="Per cent / ppts",
+        color=["darkblue", "darkorange"],
+        width=[1.5, 2],
+        legend={"loc": "best", "fontsize": "x-small"},
+        y0=True,
+        lfooter="Australia. Trimmed mean, year-ended. ",
+        rfooter=INFLATION_RFOOTER,
         show=False,
     )

@@ -22,44 +22,50 @@ r_t    = d_t + eps_t                         window one: the cash rate
 f_t    = b_t + bias + u_t                    window two: the market's 5y5y forward
 ```
 
-## THE BIGGEST THING TO KNOW: the level is pinned by a market price
+## THE BIGGEST THING TO KNOW: the forward pins the path, not the level
 
-**Added 2026-09-16, and it changes what this model is.** Read this before any number.
+Read this before any number.
 
-With the cash rate as the ONLY observable, the level of neutral was not a choice anyone
-made. Take the sample average of `r = b + lambda·g + eps`: the residual averages to zero by
-construction, so
+Take the sample average of `r = b + lambda·g + eps`. The residual averages to zero, so
 
     mean(b) = mean(r) − lambda · mean(g)
 
-**Neutral's level WAS the historical average cash rate, adjusted for whether inflation
-averaged on target.** Measured: mean neutral 3.952 against mean cash 4.038, a gap of −0.085,
-and `lambda × mean gap` is +0.085, exact to three decimals. Nothing else pinned it, and no
-reparameterisation could, because one observable cannot identify two levels.
-
-That had a consequence the notes did not previously state: **this model was structurally
-incapable of reporting that the whole level of neutral had shifted.** It could say neutral
-was 1.6 points off its own floor; it could not say neutral is 3.9 in level terms. When CBA
-put nominal neutral at 3.85 in September 2026 and this model said 2.99, that was not an
-empirical disagreement. It was two different objects.
+**Neutral's level is the historical average cash rate, adjusted for whether inflation
+averaged on target.** That holds with the forward in the model just as it did without it: the
+two sides agree almost exactly. Nothing else pins the average, and the forward does not move
+it. So **the model cannot report that neutral's whole-sample average has shifted away from
+the cash rate's**.
 
 **The second window is the AOFM 5y5y risk-neutral forward rate**, `2·RNY10 − RNY5` from the
 term-premium decomposition in [`src/data/aofm_loader.py`](../../data/aofm_loader.py). It is a
 market price for where the cash rate settles over years five to ten, with AOFM's model
-stripping the term premium. It is the only series available that speaks to the LEVEL of
-neutral without being the cash rate's own history.
+stripping the term premium. It is the only series available that speaks to how neutral MOVES
+without being the cash rate's own history.
 
 **It leads policy and does not echo it**, which is the check that matters given the RBA also
 watches it. On quarterly changes, `corr(Δ5y5y_t, Δcash_{t+k})` peaks at **+0.340 at k = +2**
 and is NEGATIVE at k = −1 and k = −2. So it moves two to three quarters ahead of the cash
 rate and does not chase past decisions. Its sd is 0.99 against the cash rate's 1.97.
 
-**THE ASSERTION HAS MOVED, NOT VANISHED.** `bias` is what the forward carries that neutral
+**What the forward does: it sets the path.** `bias` is what the forward carries that neutral
 does not: the market's view of the cycle over years five to ten, plus whatever premium AOFM
-left in. It is free but tightly priored at N(0, 0.5), and **that prior is now what holds the
-level**. Widen it and the level is unidentified again. The posterior comes back
-**−0.109 [−0.289, +0.068]**, straddling zero, so the model is reading the forward as neutral
-very nearly one-for-one.
+left in. Split the forward equation into a level part and a deviation part:
+
+    level:       mean(f) − mean(b) = bias
+    deviations:  f_t − mean(f) = (b_t − mean(b)) + u_t
+
+`bias` is one constant, so it absorbs the level equation whole, and the deviations do not
+contain it. The forward therefore shapes neutral quarter by quarter, and `bias` comes back as
+the gap between the forward's average and the cash rate's, slightly negative and straddling
+zero. Its N(0, 0.5) prior does not hold the level, because the level was never the forward's.
+
+**So the latest quarter follows the forward, while the average is the cash rate's.** The
+headline is one quarter on the path, which is why it no longer rides on `sigma_r`.
+
+**Constraining only the forward's average does not combine the two.** With a free `bias` the
+average is absorbed exactly and the model is the one-window version. Without one, the forward
+sets the level but the path reverts to the rule's, and neutral chases the cash rate through
+episodes the inflation gap does not explain. `--forward-average` runs that second form.
 
 **And the series revises.** AOFM re-estimates the whole decomposition monthly, so every
 historical value moves when the file updates. This is not a real-time series.
@@ -259,8 +265,9 @@ new parameter.
 **The level range collapsed.** Real neutral ran **−0.05 to 1.05** across the `sigma_r` sweep
 with one window, a spread of 1.10, wider than the credible interval at any single value. It
 now runs **1.10 to 1.41**, a spread of 0.31, and is nearly flat from `sigma_r` 0.10 upward
-(3.85, 3.91, 3.91 nominal at 0.10, 0.15, 0.20). That is what pinning the level externally
-buys, and it is why `sigma_r` could be loosened.
+(3.85, 3.91, 3.91 nominal at 0.10, 0.15, 0.20). That is the forward pinning the path, whose
+latest quarter is the headline, and it is why `sigma_r` could be loosened. The whole-sample
+average still comes from the cash rate.
 
 **Neutral's speed now matches the rest of the package.** sd of its quarterly change is
 **0.151**, against **0.155** for `rstar_bonds` and **0.153** for `rstar_tvpvar`, a retired
@@ -311,6 +318,10 @@ In practice `lambda` is identified largely by the two episodes where the gap was
 
 **The level of neutral** comes from the rule residual `eps_t` having mean zero, which asserts
 that policy averaged neutral over the sample, conditional on inflation.
+
+**The path of neutral** comes from the 5y5y forward's quarter-to-quarter movements. `bias`
+absorbs the gap between the forward's average and neutral's, so the forward does not set the
+level.
 
 **The split between neutral and the response** comes from `sigma_r`, and **0.10 is an arbitrary
 choice**. Not a calibration, not an estimate, and not the value the data prefers, because the
@@ -396,7 +407,7 @@ default. **WITH the 5y5y second window**, which changes what this table says abo
 | 0.15 | 0.225 | 0.45 | 3.91 | **1.41** | −1.00 | 0.83 |
 | 0.20 | 0.223 | 0.45 | 3.91 | **1.41** | −1.01 | 0.82 |
 
-**The level has stopped riding on `sigma_r`, which is the whole point of the second window.**
+**The headline has stopped riding on `sigma_r`, because the forward now sets the path.**
 Real neutral spans **0.31** here against **1.10** on the one-window version, whose table was:
 
 | `sigma_r` | neutral real, ONE window |
@@ -407,8 +418,8 @@ Real neutral spans **0.31** here against **1.10** on the one-window version, who
 | 0.20 | 1.25 |
 
 It is also nearly FLAT from 0.10 up, at 3.85, 3.91, 3.91, where before it climbed
-monotonically with no interior answer. That is the difference between a level pinned by an external price
-and a level that was the cash rate's own average being rationed by a smoothness knob.
+monotonically with no interior answer. That is the difference between a path shaped by an
+external price and one shaped by a smoothness knob rationing the cash rate's own movements.
 
 **`corr(base, cash rate)` no longer runs away either.** It sat at 0.80, 0.88, 0.93, **0.96**
 under one window, so 0.20 had to be carried as the boundary where neutral became the cash rate

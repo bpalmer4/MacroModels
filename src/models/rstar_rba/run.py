@@ -49,6 +49,14 @@ def main() -> None:
         help="Imposed walk sd (with --walk)",
     )
     parser.add_argument(
+        "--lambda-mu", type=float, default=ModelConfig().lambda_mu,
+        help="Prior mean of lambda, per band-width (per pp of inflation is twice this)",
+    )
+    parser.add_argument(
+        "--lambda-sigma", type=float, default=ModelConfig().lambda_sigma,
+        help="Prior sd of lambda, per band-width",
+    )
+    parser.add_argument(
         "--sigma-r-ensemble", default=",".join(f"{v:g}" for v in DEFAULT_SIGMA_R_VALUES),
         metavar="VALUES",
         help="Comma-separated sigma_r values to re-estimate across (default "
@@ -117,6 +125,11 @@ def main() -> None:
              "Omitted, the config default applies, which keeps every quarter: excluding "
              "them was tried and made the concavity slightly stronger, not weaker",
     )
+    parser.add_argument(
+        "--forward-average", action="store_true",
+        help="Observe only the sample mean of the 5y5y forward, so it sets neutral's average "
+             "level and leaves the path to the cash rate and inflation gap",
+    )
     add_sampler_args(parser)
     add_run_args(parser, prefix="rstar_rba")
     args = parser.parse_args()
@@ -140,6 +153,9 @@ def main() -> None:
             jump_source=args.jump_source,
             jump_percentile=args.jump_percentile,
             jump_nu=args.jump_nu,
+            forward_average=args.forward_average,
+            lambda_mu=args.lambda_mu,
+            lambda_sigma=args.lambda_sigma,
         )
         sampler_config = SamplerConfig(draws=args.draws, tune=args.tune, chains=args.chains)
         run_estimate(

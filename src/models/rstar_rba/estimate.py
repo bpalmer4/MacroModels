@@ -332,11 +332,13 @@ def _forward_window(config: ModelConfig, frame: pd.DataFrame, neutral: pt.Tensor
 
     Must be called inside the model context, since it creates variables.
     """
-    if not config.use_forward or "f" not in frame:
+    # In average mode the forward enters only through neutral's construction,
+    # which sets its sample mean, so there is no observation to attach here.
+    if not config.use_forward or "f" not in frame or config.forward_average:
         return
     bias = pm.Normal("forward_bias", mu=config.forward_bias_mu, sigma=config.forward_bias_sigma)
-    sigma_f = pm.HalfNormal("sigma_f", sigma=config.sigma_f_sigma)
     pm.Deterministic("forward_fitted", neutral + bias)
+    sigma_f = pm.HalfNormal("sigma_f", sigma=config.sigma_f_sigma)
     pm.Normal(
         "obs_forward",
         mu=neutral + bias,
@@ -393,19 +395,21 @@ def build_model(frame: pd.DataFrame, config: ModelConfig, *, verbose: bool = Tru
             response = response + lam2 * gap * pt.abs(gap)
         pm.Deterministic("response", response)
         sigma_eps = pm.HalfNormal("sigma_eps", sigma=config.sigma_eps_sigma)
-        base_0 = pm.Normal("base_0", mu=config.base_mu, sigma=config.base_sigma)
 
         # NEUTRAL: the slow-moving piece, which is what this package calls the
         # neutral rate. The inflation response is a departure FROM it, not part
         # of it, so `neutral + response` is the rule's prescribed rate below.
         if config.walk:
             innovations = _innovations(frame, config, n)
-            neutral = pm.Deterministic(
-                "neutral",
-                base_0 + config.sigma_r * pt.concatenate([pt.zeros(1), pt.cumsum(innovations[1:])]),
-            )
+            path = config.sigma_r * pt.concatenate([pt.zeros(1), pt.cumsum(innovations[1:])])
         else:
-            neutral = pm.Deterministic("neutral", base_0 * pt.ones(n))
+            path = pt.zeros(n)
+        if config.use_forward and config.forward_average and "f" in frame:
+            # The forward's sample mean sets neutral's, exactly; the path is the walk's.
+            neutral = pm.Deterministic("neutral", path - pt.mean(path) + float(frame["f"].mean()))
+        else:
+            base_0 = pm.Normal("base_0", mu=config.base_mu, sigma=config.base_sigma)
+            neutral = pm.Deterministic("neutral", base_0 + path)
 
         # Both scales are recorded, so anything downstream reads the one it
         # wants rather than re-deriving it and guessing at the deflator. Real

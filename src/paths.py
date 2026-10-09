@@ -13,5 +13,6 @@ ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / ".readabs_cache"
 CHARTS = ROOT / "charts"
 INPUT_DATA = ROOT / "input_data"
+KEYS = ROOT / "KEYS"
 MODEL_OUTPUTS = ROOT / "model_outputs"
 OUTPUT = ROOT / "output"

@@ -5,9 +5,10 @@ import argparse
 import mgplot as mg
 
 from src.data.cash_rate import get_cash_rate_monthly
+from src.data.inflation import get_trimmed_mean_annual
 from src.models.twi_gap import CHART_DIR, DARK_SD, NEUTRAL_SD
 from src.models.twi_gap.analysis import band_shares, build_frame, fit_gap, robustness
-from src.models.twi_gap.charts import backplane_chart
+from src.models.twi_gap.charts import backplane_chart, inflation_chart
 
 DECIMALS = 3
 RECENT = 6  # quarters of the gap printed
@@ -45,6 +46,7 @@ def main() -> None:
     mg.set_chart_dir(chart_dir)
     mg.clear_chart_dir()
     backplane_chart(get_cash_rate_monthly().data, fit, shares)
+    inflation_chart(fit, get_trimmed_mean_annual().data)
     print(f"\nCharts written to: {chart_dir}")
 
 
