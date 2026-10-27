@@ -130,10 +130,10 @@ def _report_policy_rule(results: RStarResults) -> None:
     prescribed = results.policy_change()
     if prescribed.notna().any():
         both = pd.DataFrame({
-            "pi": results._extra("pi"),
+            "pi": results.chart_series("pi"),
             "supply": results.supply_contribution(),
             "core": results.rule_inflation(),
-            "gap": results._extra("ygap"),
+            "gap": results.chart_series("ygap"),
             "rule": prescribed,
             "actual": results.policy_change_delivered(),
         }).dropna(subset=["rule"]).tail(6)

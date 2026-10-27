@@ -1,5 +1,7 @@
 """Data loading and transformation utilities for ABS and RBA data."""
 
+import truststore
+
 from src.data.abs_loader import (
     ReqsDict,
     ReqsTuple,
@@ -181,6 +183,11 @@ from src.data.twi import (
     get_twi_qrtly,
 )
 from src.data.ulc import get_ulc_growth_lagged_qrtly, get_ulc_growth_qrtly
+
+# Verify HTTPS against the macOS keychain rather than Python's /etc/ssl/cert.pem,
+# which lacks the Sectigo root the RBA's site now chains to. Every loader imports
+# this package first, so one call covers every download.
+truststore.inject_into_ssl()
 
 __all__ = [
     # Core loaders

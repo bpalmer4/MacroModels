@@ -3,12 +3,14 @@
 Provides unemployment rate, labour force, and hours worked from ABS data.
 Uses Modellers Database (1364.0.15.003) for total population coverage
 including defence/non-civilian employment. Underemployment and underutilisation
-come from the Labour Force Survey (6202.0), which is civilian only.
+come from the Labour Force Survey (6202.0), which is civilian only. Job
+vacancies come from 6354.0.
 """
 
 from functools import cache
 
 import numpy as np
+import pandas as pd
 import readabs as ra
 
 from src.data.abs_loader import get_abs_data, load_series
@@ -18,6 +20,7 @@ from src.data.series_specs import (
     EMPLOYMENT_PERSONS,
     HOURS_WORKED,
     HOURS_WORKED_INDEX,
+    JOB_VACANCIES,
     LABOUR_FORCE_TOTAL,
     PARTICIPATION_RATE,
     UNEMPLOYED_TOTAL,
@@ -495,4 +498,56 @@ def get_underemployment_rate_qrtly() -> DataSeries:
     return _underutilised_qrtly(
         "Underemployment rate (proportion of labour force) ;  Persons ;",
         "Underemployment rate (quarterly average)",
+    )
+
+
+def get_job_vacancies_qrtly() -> DataSeries:
+    """Get job vacancies on calendar quarters, with the 2008-09 suspension as NaN.
+
+    The survey runs in the middle month (Feb, May, Aug, Nov), so the ABS
+    publishes on Q-NOV quarters; each is mapped to the calendar quarter holding
+    its survey month. The suspended surveys are absent rows in the source, and
+    are put back as NaN so a later window cannot silently span them.
+
+    Returns:
+        DataSeries with job vacancies ('000, seasonally adjusted)
+
+    """
+    vacancies = load_series(JOB_VACANCIES)
+    data = vacancies.data.copy()
+    data.index = data.index.to_timestamp(how="end").to_period("Q")
+    data = data.reindex(pd.period_range(data.index[0], data.index[-1], freq="Q"))
+
+    return DataSeries(
+        data=data,
+        source=vacancies.source,
+        units=vacancies.units,
+        description=f"{vacancies.description} (calendar quarters)",
+        series_id=vacancies.series_id,
+        table=vacancies.table,
+        cat=vacancies.cat,
+        stype=vacancies.stype,
+    )
+
+
+def get_log_vu_ratio_qrtly() -> DataSeries:
+    """Get the log ratio of job vacancies to unemployed persons (quarterly).
+
+    A measure of labour-market tightness that needs no trend or u*. Both series
+    are in thousands. NaN through the 2008-09 vacancy suspension.
+
+    Returns:
+        DataSeries with log(V/U)
+
+    """
+    vacancies = get_job_vacancies_qrtly().data
+    unemployed = get_unemployed_qrtly().data
+    log_vu = np.log(vacancies / unemployed.reindex(vacancies.index))
+
+    return DataSeries(
+        data=log_vu,
+        source="Derived",
+        units="log ratio",
+        description="Log of job vacancies to unemployed persons",
+        cat="Derived from ABS 6354.0 and 1364.0.15.003",
     )

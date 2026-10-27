@@ -5,6 +5,7 @@ Seven series on one aligned quarterly sample:
 - log GDP x 100                        (ABS 5206.0, chain volume, SA)
 - trimmed mean inflation, y/y %        (ABS 6401.0)  -> defines the gap
 - trimmed mean inflation, q/q %        (ABS 6401.0)  -> the Phillips curve's LHS
+  and, under `inflation_lag`, its value last quarter
 - unemployment rate, %                 (ABS 1364.0.15.003 via `labour_force`), or
   the underutilisation rate, %          (ABS 6202.0) under `--slack underutilisation`
 - underemployment rate, %               (ABS 6202.0), added under `--slack both`
@@ -23,8 +24,8 @@ quarters with its own lag.
 Here inflation is both at once, which neither parent had to face. Keeping the
 horizons apart is the only thing stopping the Phillips curve's regressor from
 containing its own left-hand side exactly. On the quarterly basis the gap is
-c·(4·pi_q - anchor), an exact multiple of the Phillips curve's dependent
-variable, so that correlation is 1.0 by construction. On the annual basis it is
+c·(ann(pi_q) - anchor), a monotone transform of the Phillips curve's dependent
+variable, so that correlation is 1.0 by construction to within rounding. On the annual basis it is
 0.828, measured on this sample.
 
 That is a reason to prefer "annual", not a reason to think the problem is
@@ -53,6 +54,7 @@ from src.data.labour_force import (
     get_unemployment_rate_qrtly,
 )
 from src.models.common.sources import SourceSet
+from src.utilities.rate_conversion import annualize
 
 _NAME_WIDTH = 34
 
@@ -100,16 +102,19 @@ def build_observations(
     *,
     gap_pi_basis: str = "annual",
     include_phillips: bool = True,
+    inflation_lag: bool = False,
     slack: str = "unemployment",
     verbose: bool = False,
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, pd.DataFrame, SourceSet]:
     """Build observation arrays for joint estimation.
 
     `gap_pi_basis` selects the series the gap is defined on. "quarterly" is the
-    quarterly rate multiplied by four, so it sits on the anchor's scale; see
+    quarterly rate compounded over four quarters, so it sits on the anchor's scale; see
     `ModelConfig.gap_pi_basis` for why this is a switch and not a settled
     choice. `slack` selects the labour-market series observed as `u`: the
-    unemployment rate or the underutilisation rate.
+    unemployment rate or the underutilisation rate. `inflation_lag` adds last
+    quarter's quarterly rate, `pi_qtr_lag`, for the Phillips curve's
+    persistence term.
 
     Returns:
         Tuple of:
@@ -122,7 +127,7 @@ def build_observations(
     sources = SourceSet()
 
     if gap_pi_basis == "quarterly":
-        gap_pi = sources.take(get_trimmed_mean_qrtly(), "trimmed mean q/q ann.", key="pi_gap") * 4.0
+        gap_pi = annualize(sources.take(get_trimmed_mean_qrtly(), "trimmed mean q/q ann.", key="pi_gap"))
     else:
         gap_pi = sources.take(get_trimmed_mean_annual(), "trimmed mean y/y", key="pi_gap")
 
@@ -140,6 +145,9 @@ def build_observations(
 
     if include_phillips:
         columns["pi_qtr"] = sources.take(get_trimmed_mean_qrtly(), "trimmed mean q/q", key="pi_qtr")
+        if inflation_lag:
+            # Shifted on the full history, so the first sample quarter still has its lag.
+            columns["pi_qtr_lag"] = columns["pi_qtr"].shift(1)
         try:
             columns["pi_exp"] = sources.take(
                 get_model_expectations_unanchored(), "expectations", key="pi_exp",

@@ -68,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--gap-pi-basis", default="quarterly", choices=list(GAP_PI_BASES),
         help="Which trimmed mean horizon defines the gap (default: quarterly). "
-             "'quarterly' makes the gap an exact multiple of the Phillips curve's "
+             "'quarterly' makes the gap a transform of the Phillips curve's "
              "dependent variable; see ModelConfig.gap_pi_basis",
     )
 
@@ -117,6 +117,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-okun", action="store_true",
         help="Drop the Okun equation. sigma_v should return its prior: this is the "
              "control that shows the covariance is what identifies it",
+    )
+    parser.add_argument(
+        "--inflation-lag", action="store_true",
+        help="Put last quarter's inflation in the Phillips curve, so inflation is persistent "
+             "and returning it to target can need u above u*. See ModelConfig.inflation_lag",
     )
     parser.add_argument(
         "--two-sided-c", action="store_true",
@@ -250,6 +255,7 @@ def run_from_args(args: argparse.Namespace) -> None:
             include_phillips=not args.no_phillips,
             include_okun=not args.no_okun,
             okun_form=args.okun_form,
+            inflation_lag=args.inflation_lag,
         )
         sampler_config = SamplerConfig(
             draws=args.draws, tune=args.tune, chains=args.chains,

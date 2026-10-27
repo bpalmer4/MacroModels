@@ -13,6 +13,17 @@ from src.models.common.results import PosteriorResults, posterior_summary
 from src.models.ystar_ustar.config import DEFAULT_OUTPUT_DIR
 from src.utilities.rate_conversion import quarterly
 
+# Bisection settings for `disinflation_unemployment`, which inverts the demand
+# term for the unemployment rate. The bracket on u - u* runs from 95% of the way
+# to a zero unemployment (or underemployment) rate up to 20pp above u*, far past
+# any Australian history; 60 halvings of a ~25pp bracket leave an error below
+# 1e-16pp.
+_BRACKET_FLOOR_SHARE = 0.95
+_BRACKET_CEILING_PP = 20.0
+_BISECTION_STEPS = 60
+# Quarters in the year-ended rate the disinflation target is set on.
+_YEAR_QUARTERS = 4
+
 
 @dataclass(kw_only=True)
 class JointResults(PosteriorResults):
@@ -55,6 +66,11 @@ class JointResults(PosteriorResults):
         if isinstance(recorded, str):
             return recorded
         return "cycle" if "rho_gap" in self.posterior else "defined"
+
+    @property
+    def has_inflation_lag(self) -> bool:
+        """Whether the Phillips curve carried last quarter's inflation."""
+        return "lambda_pi" in self.posterior
 
     @property
     def has_defined_gap(self) -> bool:
@@ -178,6 +194,10 @@ class JointResults(PosteriorResults):
 
             pi = target + excess + demand + supply + residual
 
+        Under `inflation_lag` a `persistence` column is added, `lambda x
+        [pi_{t-1} - target]`, the part of last quarter's deviation from target
+        carried into this one, and `excess` carries its `1 - lambda` weight.
+
         `demand` is the only term carrying u*, which makes this the readable
         statement of how much inflation the model attributes to the labour
         market as against anchoring and supply. Taken unchanged from `ustar` so
@@ -191,7 +211,8 @@ class JointResults(PosteriorResults):
         pi_exp = pd.Series(self.obs["pi_exp"], index=index)
 
         anchor = pd.Series(quarterly(self.anchor_annual), index=index)
-        excess = float(median["beta_pi"]) * (quarterly(pi_exp) - anchor)
+        persistence, excess_weight = self._persistence(median, anchor)
+        excess = excess_weight * float(median["beta_pi"]) * (quarterly(pi_exp) - anchor)
         # The demand term is the only thing that differs between the two specs:
         # kappa x output gap under "cycle", gamma x unemployment gap under
         # "defined". Everything else in the equation is identical, so the two
@@ -210,9 +231,9 @@ class JointResults(PosteriorResults):
             + float(median["xi_gscpi"]) * gscpi**2 * np.sign(gscpi)
         )
         observed = pd.Series(self.obs["pi_qtr"], index=index)
-        fitted = anchor + excess + demand + supply
+        fitted = anchor + persistence + excess + demand + supply
 
-        return pd.DataFrame({
+        frame = pd.DataFrame({
             "observed": observed,
             "anchor": anchor,
             "excess": excess,
@@ -220,6 +241,9 @@ class JointResults(PosteriorResults):
             "supply": supply,
             "residual": observed - fitted,
         })
+        if self.has_inflation_lag:
+            frame.insert(2, "persistence", persistence)
+        return frame
 
     def phillips_frame(self) -> pd.DataFrame:
         """Return the Phillips curve reduced to its two axes, as specified.
@@ -227,7 +251,8 @@ class JointResults(PosteriorResults):
         `demand_slack` is the equation's own regressor, `(u - u*)/u`.
         `inflation_ex_other` is quarterly inflation with every other term
         removed: the anchor, the expectations excess, import prices, GSCPI and,
-        when the run observed underemployment, its gap term.
+        when the run observed underemployment, its gap term, and under
+        `inflation_lag` the persistence term.
 
         By construction the equation says `inflation_ex_other = gamma_pi x
         demand_slack + e_p`, so a scatter of the two is the fitted relationship
@@ -252,18 +277,33 @@ class JointResults(PosteriorResults):
         gscpi = pd.Series(self.obs["gscpi"], index=index)
         d4pm = pd.Series(self.obs["d4pm"], index=index)
         ustar = self.ustar_posterior().median(axis=1)
+        persistence, excess_weight = self._persistence(median, pd.Series(anchor_q, index=index))
 
         return pd.DataFrame({
             "demand_slack": (u - ustar) / u,
             "inflation_ex_other": (
                 pi_q
                 - anchor_q
-                - float(median["beta_pi"]) * (quarterly(pi_exp) - anchor_q)
+                - persistence
+                - excess_weight * float(median["beta_pi"]) * (quarterly(pi_exp) - anchor_q)
                 - float(median["rho_pi"]) * d4pm
                 - float(median["xi_gscpi"]) * gscpi**2 * np.sign(gscpi)
                 - self._underemployment_demand(median)
             ),
         })
+
+    def _persistence(self, median: xr.Dataset, anchor: pd.Series) -> tuple[pd.Series, float]:
+        """Return the persistence term, `lambda x [pi_{t-1} - anchor]`, and the excess's weight.
+
+        Zero and one unless the run carried `inflation_lag`, so the curve reads
+        as it always did. The weight is `1 - lambda`: the lag and the anchor
+        share one unit, as in the estimated equation.
+        """
+        if not self.has_inflation_lag:
+            return pd.Series(0.0, index=self.obs_index), 1.0
+        lam = float(median["lambda_pi"])
+        lagged = pd.Series(self.obs["pi_qtr_lag"], index=self.obs_index)
+        return lam * (lagged - anchor), 1.0 - lam
 
     def _underemployment_demand(self, median: xr.Dataset) -> pd.Series:
         """Return the Phillips curve's underemployment term, `gamma_ue x (ue - ue*)/ue`.
@@ -284,6 +324,8 @@ class JointResults(PosteriorResults):
 
             R      = pi_q - q(anchor) - beta_pi x [q(pi_exp) - q(anchor)]
                      - rho x d4pm - xi x GSCPI^2 x sign(GSCPI)
+                     [- lambda x (pi_{t-1} - q(anchor)), excess weighted 1 - lambda,
+                      under `inflation_lag`]
             u*_t   = u_t x (1 - R_t / gamma_pi)
 
         This is deliberately *not* an estimator. It is the diagnostic that makes
@@ -299,6 +341,88 @@ class JointResults(PosteriorResults):
         u = pd.Series(self.obs["u"], index=self.obs_index)
         residual_free = self.phillips_frame()["inflation_ex_other"]
         return u * (1.0 - residual_free / float(median["gamma_pi"]))
+
+    def disinflation_unemployment(self, horizon: int) -> pd.DataFrame:
+        """Return the unemployment rate that puts year-ended inflation at target `horizon` quarters on.
+
+        Needs `inflation_lag`: without persistence, inflation is back at target
+        the quarter after u reaches u*, and the question has no content.
+
+        For each quarter t, start from that quarter's observed deviation from
+        target, `x_0 = pi_q,t - q(anchor)`, hold unemployment at one rate for
+        quarters t+1 to t+horizon, and choose it so the year-ended rate in
+        quarter t+horizon is at target. With the demand term held at `D` and
+        the residual at zero, the curve gives
+
+            x_k = lambda^k x_0 + (D + c)(1 - lambda^k)/(1 - lambda)
+
+        where `c = (1 - lambda) x beta x excess_t` holds the expectations
+        excess where it stands. Supply terms are set to zero: the shocks are
+        assumed to fade, which is the case for looking through them. Setting
+        the four quarters' deviations to sum to zero (year-ended on target, to
+        first order) gives `D` in closed form; `D` is then inverted for u.
+
+        Under slack "both" underemployment moves with unemployment through the
+        shared output gap, `ue - ue* = (beta_ue / beta) x (u - u*)`, so both
+        demand terms carry the slack and the inversion is by bisection. Holding
+        underemployment at ue* would hand the whole job to unemployment and
+        overstate the rate needed.
+
+        The starting point is one quarter's observed inflation, published to
+        one decimal place, so the series is as noisy as the quarterly CPI. u*
+        is held at its quarter-t value over the horizon.
+
+        Returns a time x draw frame aligned with `ustar_posterior`. Draws with
+        no root in the bracket are NaN.
+        """
+        if not self.has_inflation_lag or "gamma_pi" not in self.posterior:
+            raise ValueError("needs inflation_lag and the unemployment-gap Phillips curve (gamma_pi)")
+        if horizon < _YEAR_QUARTERS:
+            raise ValueError(f"horizon must cover a year-ended rate: at least {_YEAR_QUARTERS} quarters")
+
+        anchor_q = quarterly(self.anchor_annual)
+        x0 = np.asarray(self.obs["pi_qtr"], dtype=float) - anchor_q  # (T,)
+        excess = quarterly(np.asarray(self.obs["pi_exp"], dtype=float)) - anchor_q
+        lam = self._scalar("lambda_pi")  # (S,)
+        carried = (1.0 - lam)[None, :] * self._scalar("beta_pi")[None, :] * excess[:, None]  # (T, S)
+
+        # The four quarters of the year-ended rate at the horizon.
+        powers = lam[:, None] ** np.arange(horizon - _YEAR_QUARTERS + 1, horizon + 1)[None, :]  # (S, 4)
+        decay = powers.sum(axis=1)
+        build = ((1.0 - powers) / (1.0 - lam)[:, None]).sum(axis=1)
+        demand = -carried - x0[:, None] * (decay / build)[None, :]  # (T, S)
+
+        ustar = self.ustar_posterior().to_numpy()
+        gamma = self._scalar("gamma_pi")[None, :]
+        if "gamma_ue" not in self.posterior:
+            return pd.DataFrame(ustar / (1.0 - demand / gamma), index=self.obs_index)
+
+        uestar = self._vector("uestar").to_numpy()
+        gamma_ue = self._scalar("gamma_ue")[None, :]
+        okun = "beta_okun" if "beta_okun" in self.posterior else "beta_okun_longrun"
+        ratio = self._scalar("beta_okun_ue")[None, :] / self._scalar(okun)[None, :]
+
+        def shortfall(d: np.ndarray) -> np.ndarray:
+            """Demand terms at u = u* + d, less the demand required."""
+            ue_rise = ratio * d
+            return gamma * d / (ustar + d) + gamma_ue * ue_rise / (uestar + ue_rise) - demand
+
+        # Bracket d = u - u*: from just short of either rate reaching zero, up
+        # to a ceiling far past any history.
+        reach = np.where(ratio > 0, uestar / np.where(ratio > 0, ratio, 1.0), np.inf)
+        lo = np.broadcast_to(-_BRACKET_FLOOR_SHARE * np.minimum(ustar, reach), ustar.shape).copy()
+        hi = np.full(ustar.shape, _BRACKET_CEILING_PP)
+        f_lo = shortfall(lo)
+        bracketed = np.sign(f_lo) != np.sign(shortfall(hi))
+        for _ in range(_BISECTION_STEPS):
+            mid = 0.5 * (lo + hi)
+            f_mid = shortfall(mid)
+            same = np.sign(f_mid) == np.sign(f_lo)
+            lo = np.where(same, mid, lo)
+            f_lo = np.where(same, f_mid, f_lo)
+            hi = np.where(same, hi, mid)
+        rise = np.where(bracketed, 0.5 * (lo + hi), np.nan)
+        return pd.DataFrame(ustar + rise, index=self.obs_index)
 
     # --- Medians, matching the accessor names `rstar` reads on the parents ---
 
@@ -355,7 +479,7 @@ class JointResults(PosteriorResults):
             var_names = [
                 name for name in
                 ("c", "sigma_v", "rho_gap", "kappa_gap", "sigma_e", "beta_okun",
-                 "sigma_okun", "gamma_pi", "beta_pi", "rho_pi", "xi_gscpi",
+                 "sigma_okun", "gamma_pi", "lambda_pi", "beta_pi", "rho_pi", "xi_gscpi",
                  "epsilon_pi", "initial_trend_growth")
                 if name in self.posterior
             ]

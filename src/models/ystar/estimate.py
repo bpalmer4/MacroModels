@@ -333,7 +333,7 @@ def build_model(
     descriptions: list[str] = []
 
     # --- Variance scale (all imposed: one fixed sigma, fixed ratios) ---
-    desc = scale_equation(obs, model, latents, constant=config.scale_constants)
+    desc = scale_equation(model, latents, constant=config.scale_constants)
     descriptions.append(f"Scale:        {desc}")
 
     _record_exclusion(model, config)

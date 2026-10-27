@@ -23,14 +23,12 @@ not hidden — it is what `sigma_sweep.py` measures.
 
 from typing import Any
 
-import numpy as np
 import pymc as pm
 
 from src.models.ystar.base import set_model_coefficients
 
 
 def scale_equation(
-    obs: dict[str, np.ndarray],
     model: pm.Model,
     latents: dict[str, Any],
     constant: dict[str, Any] | None = None,
@@ -55,11 +53,9 @@ def scale_equation(
         settings: dict[str, dict[str, float]] = {key: {} for key in ("sigma_c", *ratios)}
         mc = set_model_coefficients(model, settings, constant)
 
-    # All four are fixed constants, so the derived sigmas are plain floats
-    # rather than PyMC Deterministics — there is nothing random to record.
     # Each ratio_<name> becomes sigma_<name>, so the same equation serves any
     # specification. All are fixed constants, hence plain floats rather than
-    # PyMC Deterministics — there is nothing random to record.
+    # PyMC Deterministics: there is nothing random to record.
     sigma_c = float(mc["sigma_c"])
     latents["sigma_c"] = sigma_c
     for key in ratios:

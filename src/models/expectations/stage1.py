@@ -30,9 +30,10 @@ from src.data.inflation import (
     get_weighted_median_annual,
     get_weighted_median_qrtly,
 )
-from src.data.labour_force import get_hours_growth_qrtly
-from src.data.productivity import compute_mfp_trend_floored
+from src.data.labour_force import get_hours_growth_qrtly, get_log_vu_ratio_qrtly
+from src.data.productivity import compute_mfp_trend_floored, get_gdp_per_hour_trend_growth_ex_covid
 from src.data.ulc import get_ulc_growth_qrtly
+from src.data.wpi import get_wpi_private_growth_annual
 from src.models.common.diagnostics import check_model_diagnostics, save_diagnostics
 from src.models.expectations.common import (
     CHART_DIR,
@@ -59,6 +60,37 @@ MONTHS_PER_QUARTER = 3
 # An AR(1) gap needs a previous quarter to condition on.
 MIN_GAP_OBSERVATIONS = 2
 
+# --- Wage Price Index ---
+
+# Private WPI growth, year-ended, read as expectations plus trend productivity
+# plus a constant, plus what labour-market tightness explains. The tightness
+# term is there so a tight labour market is not read as higher expectations.
+QUARTERS_PER_YEAR = 4
+
+# Trailing window, so the trend does not bend toward the latest data at the
+# sample end, as a two-sided filter would. Productivity is GDP per hour, with
+# the COVID swing flattened out of the index, which is what makes a window this
+# short usable: it responds within a few years to a change in trend.
+PRODUCTIVITY_TREND_YEARS = 5
+
+# COVID and its unwind are left out of the wage likelihood: JobKeeper and the
+# fall in participation broke the link between measured unemployment and wages,
+# and composition moved productivity up and then back. GDP per hour was back to
+# its 2019Q4 level by 2022Q4 and dipped below it until 2023Q2; the window ends
+# after the dip.
+WPI_EXCLUDE_START = "2020Q1"
+WPI_EXCLUDE_END = "2023Q2"
+
+# Tightness is log(vacancies / unemployed), centred on its own full-history
+# mean, so the constant keeps the wedge between private WPI and the CPI
+# (composition, the terms of trade). In an off-model regression, a trend in
+# unemployment explained 5% of the wage excess and log V/U 75%, slope about 1.6.
+# The slope is positive, loose about 1.
+WPI_ADJUSTMENT_SIGMA = 1.0
+WPI_TIGHTNESS_MU = 1.0
+WPI_TIGHTNESS_SIGMA = 1.0
+WPI_SIGMA_PRIOR = 1.0
+
 # --- Model Configurations ---
 
 
@@ -70,6 +102,7 @@ class ModelConfigDict(TypedDict, total=False):
     use_nominal: bool
     nominal_cutoff: str
     use_hcoe: bool
+    use_wpi: bool
     use_inflation: bool
     use_survey_bias: bool
     inflation_sigma_prior: float
@@ -90,6 +123,7 @@ MODEL_CONFIGS: dict[str, ModelConfigDict] = {
         "use_nominal": True,
         "nominal_cutoff": "1993Q3",  # 7yr overlap with breakeven for r* identification
         "use_hcoe": True,
+        "use_wpi": True,
         "use_inflation": True,
         "use_survey_bias": True,
         "inflation_sigma_prior": 1.5,
@@ -272,8 +306,8 @@ def _add_survey_obs(
             pm.Normal(f"obs_{col}", mu=pi_exp[mask], sigma=sigma_obs[i], observed=obs_data[mask])
 
 
-def _lagged_on_index(quarterly: pd.Series, index: pd.PeriodIndex) -> np.ndarray:
-    """Place a quarterly series on the model's grid, lagged one period.
+def _on_index(quarterly: pd.Series, index: pd.PeriodIndex) -> pd.Series:
+    """Place a quarterly series on the model's grid.
 
     On a monthly grid the quarter sits at its last month. Works on a copy: the
     loaders cache their results, and re-indexing in place would hand every
@@ -282,34 +316,46 @@ def _lagged_on_index(quarterly: pd.Series, index: pd.PeriodIndex) -> np.ndarray:
     series = quarterly.copy()
     if index.freqstr.startswith("M"):
         series.index = series.index.asfreq("M", how="end")
-    return series.reindex(index).shift(1).to_numpy()
+    return series.reindex(index)
+
+
+def _lagged_on_index(quarterly: pd.Series, index: pd.PeriodIndex) -> np.ndarray:
+    """Place a quarterly series on the model's grid, lagged one period."""
+    return _on_index(quarterly, index).shift(1).to_numpy()
 
 
 def _add_ar1_gap_obs(
-    name: str, pi_exp: pt.TensorVariable, observed: np.ndarray, mask: np.ndarray, *, index: pd.PeriodIndex,
-    sigma_prior: float, sigma: pt.TensorVariable | None = None,
+    name: str, level: pt.TensorVariable, observed: np.ndarray, mask: np.ndarray, *, index: pd.PeriodIndex,
+    sigma_prior: float, sigma: pt.TensorVariable | None = None, allow_breaks: bool = False,
 ) -> None:
-    """Observe inflation as expectations plus a gap that is AR(1) across quarters.
+    """Observe a series as a level plus a gap that is AR(1) across quarters.
 
-    gap_k = y_k - pi_exp_k,  gap_k = b * gap_{k-1} + e_k,  e_k ~ N(0, sigma).
+    The level is expectations for inflation, and expectations plus the wage
+    terms for WPI.
+    gap_k = y_k - level_k,  gap_k = b * gap_{k-1} + e_k,  e_k ~ N(0, sigma).
     Conditioning on the previous observed gap gives the exact likelihood, with
     no extra latent states; the first quarter takes the stationary variance.
     A caller passing `sigma` shares an existing noise scale instead of
-    estimating one here.
+    estimating one here. With `allow_breaks`, a hole in the mask (an excluded
+    window) restarts the gap at its stationary variance rather than raising;
+    each stretch shares b and sigma.
     """
     positions = np.flatnonzero(mask)
     step = MONTHS_PER_QUARTER if index.freqstr.startswith("M") else 1
-    if positions.size < MIN_GAP_OBSERVATIONS or not np.all(np.diff(positions) == step):
+    segments = np.split(positions, np.flatnonzero(np.diff(positions) != step) + 1)
+    if any(seg.size < MIN_GAP_OBSERVATIONS for seg in segments) or (len(segments) > 1 and not allow_breaks):
         raise ValueError(f"{name}: the AR(1) gap needs consecutive quarterly observations with no holes")
 
-    y = observed[positions]
-    level = pi_exp[positions]
     b = pm.Beta(f"b_{name}", alpha=GAP_PERSISTENCE_ALPHA, beta=GAP_PERSISTENCE_BETA)
     if sigma is None:
         sigma = pm.HalfNormal(f"sigma_{name}", sigma=sigma_prior)
 
-    pm.Normal(f"obs_{name}_first", mu=level[0], sigma=sigma / pt.sqrt(1 - b**2), observed=y[0])
-    pm.Normal(f"obs_{name}", mu=level[1:] + b * (y[:-1] - level[:-1]), sigma=sigma, observed=y[1:])
+    for k, seg in enumerate(segments):
+        suffix = f"_{k}" if len(segments) > 1 else ""
+        y = observed[seg]
+        lvl = level[seg]
+        pm.Normal(f"obs_{name}_first{suffix}", mu=lvl[0], sigma=sigma / pt.sqrt(1 - b**2), observed=y[0])
+        pm.Normal(f"obs_{name}{suffix}", mu=lvl[1:] + b * (y[:-1] - lvl[:-1]), sigma=sigma, observed=y[1:])
 
 
 def _add_inflation_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: ModelConfigDict) -> None:
@@ -334,6 +380,35 @@ def _add_headline_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: 
     pre_targeting = index < _to_period("1993Q1", index.freqstr.startswith("M"))
     _add_ar1_gap_obs("headline", pi_exp, observed, ~np.isnan(observed) & pre_targeting, index=index,
                      sigma_prior=2.0)
+
+
+def _add_wpi_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: ModelConfigDict) -> None:
+    """Add year-ended private WPI growth, net of tightness, with an AR(1) gap.
+
+    wpi = pi_exp + productivity + adjustment + beta * tightness + gap. Year-ended
+    readings overlap by three quarters, so the gap is AR(1), as for inflation.
+    Tightness is averaged over the same four quarters as the wage growth, so the
+    2008-09 vacancy suspension leaves a hole to 2010Q2. That and the COVID
+    window are left out, and the gap restarts after each.
+    """
+    if not config.get("use_wpi", False):
+        return
+
+    monthly = index.freqstr.startswith("M")
+    log_vu = get_log_vu_ratio_qrtly().data
+    tightness_q = (log_vu - log_vu.mean()).rolling(QUARTERS_PER_YEAR).mean()
+
+    wpi = _on_index(get_wpi_private_growth_annual().data, index).to_numpy()
+    productivity = _on_index(get_gdp_per_hour_trend_growth_ex_covid(PRODUCTIVITY_TREND_YEARS).data, index).to_numpy()
+    tightness = _on_index(tightness_q, index).to_numpy()
+    covid = (index >= _to_period(WPI_EXCLUDE_START, monthly)) & (index <= _to_period(WPI_EXCLUDE_END, monthly))
+    mask = ~np.isnan(wpi) & ~np.isnan(productivity) & ~np.isnan(tightness) & ~covid
+
+    adjustment = pm.Normal("wpi_adjustment", mu=0.0, sigma=WPI_ADJUSTMENT_SIGMA)
+    beta = pm.Normal("beta_wpi_tightness", mu=WPI_TIGHTNESS_MU, sigma=WPI_TIGHTNESS_SIGMA)
+    # Quarters outside the mask are zeroed: they never reach the likelihood.
+    level = pi_exp + np.where(mask, productivity, 0.0) + adjustment + beta * np.where(mask, tightness, 0.0)
+    _add_ar1_gap_obs("wpi", level, wpi, mask, index=index, sigma_prior=WPI_SIGMA_PRIOR, allow_breaks=True)
 
 
 def _add_nominal_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: ModelConfigDict) -> None:
@@ -490,6 +565,7 @@ def _build_pymc_model(
         _add_headline_obs(pi_exp, index, config)
         _add_nominal_obs(pi_exp, index, config)
         _add_hcoe_obs(pi_exp, index, config)
+        _add_wpi_obs(pi_exp, index, config)
 
     return model
 

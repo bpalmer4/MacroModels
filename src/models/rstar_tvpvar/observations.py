@@ -32,6 +32,7 @@ from src.data.inflation import get_trimmed_mean_annual, get_trimmed_mean_qrtly
 from src.data.twi import get_twi_change_annual, get_twi_change_qrtly
 from src.models.common.sources import SourceSet
 from src.models.rstar_tvpvar.config import ModelConfig
+from src.utilities.rate_conversion import annualize
 
 # Defaults are READ FROM ModelConfig, never restated. Restating them is how the
 # sigma_q ensemble silently swept a FIVE-variable model while the config said
@@ -101,7 +102,7 @@ def _inflation(basis: str, sources: SourceSet) -> pd.Series:
     # Annualised, so the two bases are on the same scale and `sigma_q` means the
     # same thing under both.
     quarterly = sources.take(get_trimmed_mean_qrtly()).astype(float).dropna()
-    return quarterly * 4.0
+    return annualize(quarterly)
 
 
 def _growth(basis: str, sources: SourceSet) -> pd.Series:

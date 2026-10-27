@@ -68,7 +68,7 @@ class RStarResults(PosteriorResults):
             chart_obs=None if self.chart_obs is None else self.chart_obs.iloc[:keep],
         )
 
-    def _extra(self, name: str) -> pd.Series:
+    def chart_series(self, name: str) -> pd.Series:
         """Return one of the ragged chart series, or an all-NaN series."""
         if self.chart_obs is None or name not in self.chart_obs:
             return pd.Series(np.nan, index=self.obs_index)
@@ -123,7 +123,7 @@ class RStarResults(PosteriorResults):
             return float(self.constants.get("anchor", 2.5))
         if scale == "actual":
             # The model's own deflator, so it comes from the run's observations.
-            return self._extra("pi_exp")
+            return self.chart_series("pi_exp")
         if scale == "expectations":
             # Loaded fresh, so the conversion uses the current expectations run;
             # "actual" reads the copy saved with this run.
@@ -171,7 +171,7 @@ class RStarResults(PosteriorResults):
         is NOMINAL and the model's is real, so the honest comparison is of shape
         and change rather than level.
         """
-        return self._extra("aofm_tp")
+        return self.chart_series("aofm_tp")
 
     def real_yield(self) -> pd.Series:
         """Return the observed long-end yield this run was estimated on.
@@ -195,7 +195,7 @@ class RStarResults(PosteriorResults):
         """
         if not self.window_is_nominal():
             return self.real_yield()
-        return self._extra("y_indexed")
+        return self.chart_series("y_indexed")
 
     def has_curve(self) -> bool:
         """Return whether this run used a medium maturity as a third window."""
@@ -265,7 +265,7 @@ class RStarResults(PosteriorResults):
         premium is data here, so this costs no parameters and no identification.
         NaN before 2005Q1, where the spread series begins.
         """
-        return self.rstar_median() + self._extra("spread")
+        return self.rstar_median() + self.chart_series("spread")
 
     def real_mortgage_rate(self, *, discounted: bool = True) -> pd.Series:
         """Return an owner-occupier mortgage rate, deflated.
@@ -278,8 +278,8 @@ class RStarResults(PosteriorResults):
         the discount runs 0.58 over 2004-07 and 1.40 over 2020-26, so the
         advertised rate increasingly overstates what anyone paid.
         """
-        rate = self._extra("mortgage") if discounted else self._extra("mortgage_std")
-        return rate - self._extra("pi_exp")
+        rate = self.chart_series("mortgage") if discounted else self.chart_series("mortgage_std")
+        return rate - self.chart_series("pi_exp")
 
     def borrower_stance(self, *, discounted: bool = True) -> pd.Series:
         """Return the real mortgage rate less r*: the stance households faced.
@@ -318,14 +318,14 @@ class RStarResults(PosteriorResults):
         """
         if positive_only is None:
             positive_only = bool(self.constants.get("supply_positive_only", True))
-        supply = self._extra("supply")
+        supply = self.chart_series("supply")
         return supply.clip(lower=0.0) if positive_only else supply
 
     def rule_inflation(self, *, look_through: bool | None = None, positive_only: bool | None = None) -> pd.Series:
         """Return the inflation rate the rule responds to."""
         if look_through is None:
             look_through = bool(self.constants.get("look_through_supply", True))
-        pi = self._extra("pi")
+        pi = self.chart_series("pi")
         if not look_through:
             return pi
         # Quarters with no supply estimate fall back to headline inflation
@@ -364,7 +364,7 @@ class RStarResults(PosteriorResults):
             use_ugap = bool(constants.get("taylor_use_ugap", False))
         # An unemployment gap is the negative of a demand gap: unemployment
         # below u* is excess demand, so the sign flips before it enters.
-        gap = -self._extra("ugap") if use_ugap else self._extra("ygap")
+        gap = -self.chart_series("ugap") if use_ugap else self.chart_series("ygap")
 
         pi = self.rule_inflation(look_through=look_through, positive_only=positive_only)
         return a_pi * (pi - anchor) + a_gap * gap
@@ -422,7 +422,7 @@ class RStarResults(PosteriorResults):
         anchor = float(self.constants.get("anchor", 2.5))
         if use_ugap is None:
             use_ugap = bool(self.constants.get("taylor_use_ugap", False))
-        gap = -self._extra("ugap") if use_ugap else self._extra("ygap")
+        gap = -self.chart_series("ugap") if use_ugap else self.chart_series("ygap")
         pi = self.rule_inflation(look_through=look_through, positive_only=positive_only)
         return self.rstar_median() + pi + a_pi * (pi - anchor) + a_gap * gap
 
@@ -450,7 +450,7 @@ class RStarResults(PosteriorResults):
 
     def cash_rate(self) -> pd.Series:
         """Return the observed cash rate."""
-        return self._extra("cash_rate")
+        return self.chart_series("cash_rate")
 
     # --- Diagnostics ---
 

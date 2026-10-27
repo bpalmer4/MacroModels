@@ -719,7 +719,7 @@ def _taylor_inputs(prefix: str = "rstar_bonds") -> tuple[pd.Series, pd.Series]:
         print(f"  note: Taylor inputs unavailable ({type(exc).__name__}); "
               "the Taylor chart will be skipped")
         return pd.Series(dtype=float), pd.Series(dtype=float)
-    return bonds.rule_inflation(), bonds._extra("ygap")
+    return bonds.rule_inflation(), bonds.chart_series("ygap")
 
 
 def plot_taylor(trace: xr.DataTree, frame: pd.DataFrame, constants: dict) -> None:

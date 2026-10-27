@@ -22,6 +22,7 @@ from src.models.common.sources import SourceSet
 from src.models.rstar_rba.config import DEFAULT_OUTPUT_DIR, WORLD_REAL_RATE, ModelConfig
 from src.models.ystar.base import SamplerConfig, sample_model
 from src.models.ystar_ustar.results import load_results as load_joint
+from src.utilities.rate_conversion import annualize
 
 
 def _jump_series(config: ModelConfig, sources: SourceSet) -> pd.Series:
@@ -373,8 +374,8 @@ def build_model(frame: pd.DataFrame, config: ModelConfig, *, verbose: bool = Tru
 
         weights, weights_desc = _weights(config)
         # Annualised: the weights sum to one, so this is a weighted average
-        # quarterly rate, times four.
-        pi = pm.Deterministic("pi", 4.0 * pt.dot(pt.as_tensor_variable(lags), weights))
+        # quarterly rate, compounded over four quarters.
+        pi = pm.Deterministic("pi", annualize(pt.dot(pt.as_tensor_variable(lags), weights)))
         # Scaled so |g| = 1 at the band edge; see `ModelConfig.band`.
         gap = pm.Deterministic("inflation_gap", (pi - config.anchor) / config.band)
 

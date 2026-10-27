@@ -121,6 +121,13 @@ ANCHOR_GLIDE_START = "1993Q1"
 ANCHOR_STEP_START = "1998Q1"
 ANCHOR_PHASE_END = "1998Q4"
 
+# Prior on `lambda_pi`, the weight on last quarter's inflation under
+# `inflation_lag`. Centred on half, wide enough to reach either end, and capped
+# below one: the weights on the lag and the anchor sum to one, so lambda = 1 is
+# the pure accelerationist curve with no anchor at all, and inflation then has
+# no level to return to.
+LAMBDA_PI_PRIOR = {"mu": 0.5, "sigma": 0.3, "lower": 0.0, "upper": 0.99}
+
 
 @dataclass
 class ModelConfig:
@@ -231,8 +238,8 @@ class ModelConfig:
     anchor_phase: str = "none"
 
     # Which trimmed mean series defines the gap: "annual" (four-quarter, as
-    # `ystar`) or "quarterly" (the quarterly rate x 4, so it is on the anchor's
-    # scale). The Phillips curve is always estimated on the quarterly rate,
+    # `ystar`) or "quarterly" (the quarterly rate compounded over four quarters,
+    # so it is on the anchor's scale). The Phillips curve is always estimated on the quarterly rate,
     # because there inflation is the dependent variable and four-quarter errors
     # overlap three quarters in four.
     #
@@ -517,6 +524,19 @@ class ModelConfig:
     include_okun: bool = True
     okun_form: str = "gap"
 
+    # Put last quarter's inflation in the Phillips curve:
+    #
+    #     pi_q,t = q(a) + lambda x [pi_q,t-1 - q(a)] + (1 - lambda) x beta x excess_t
+    #              + demand + supply + e
+    #
+    # Off by default, which keeps every existing run as it was. Without it the
+    # curve has no persistence: once u reaches u*, expected inflation is back
+    # at target the next quarter whatever it was before, so the model can never
+    # say unemployment must go above u* to bring inflation down. The weights on
+    # the lag and the anchor sum to one, so inflation still settles at target
+    # when slack, the excess and supply are all zero.
+    inflation_lag: bool = False
+
     output_dir: Path = field(default_factory=lambda: DEFAULT_OUTPUT_DIR)
 
     def _validate_identity_gap(self) -> None:
@@ -616,6 +636,8 @@ class ModelConfig:
             raise ValueError(f"sigma_v must be non-negative, got {self.sigma_v}")
         if self.sigma_v is not None and not self.free_gap_component:
             raise ValueError("sigma_v is meaningless with free_gap_component off")
+        if self.inflation_lag and not self.include_phillips:
+            raise ValueError("inflation_lag puts a term in the Phillips curve, so it needs the Phillips curve")
 
     @property
     def scale_constants(self) -> dict[str, float]:
@@ -654,6 +676,7 @@ class ModelConfig:
                 "share_sigma_late": self.share_sigma_late,
             } if self.slack == "both" else {}),
             "okun_form": self.okun_form,
+            "inflation_lag": self.inflation_lag,
         }
         if self.ustar_structure == "spline":
             # Under the spline there is no innovation variance to report, and

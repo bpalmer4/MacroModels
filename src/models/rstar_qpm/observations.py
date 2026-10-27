@@ -26,8 +26,9 @@ from src.models.rstar_qpm.config import (
     WORLD_REAL_SERIES,
     ModelConfig,
 )
+from src.utilities.rate_conversion import annualize
 
-# Annualising a quarterly rate.
+# Quarters in a year: the span of the year-ended difference.
 QUARTERS_PER_YEAR = 4
 
 # Series that must be present for a quarter to enter the sample. The forward
@@ -68,7 +69,7 @@ def build_observations(config: ModelConfig, *, verbose: bool = False) -> tuple[p
     frame = pd.DataFrame({
         "y": _quarterly(sources.take(get_log_gdp())),
         "q": 100.0 * np.log(_quarterly(sources.take(get_real_twi_qrtly()))),
-        "pi": QUARTERS_PER_YEAR * _quarterly(sources.take(get_trimmed_mean_qrtly())),
+        "pi": annualize(_quarterly(sources.take(get_trimmed_mean_qrtly()))),
         "pi4": _quarterly(sources.take(get_trimmed_mean_annual())),
         "pie": _quarterly(sources.take(get_model_expectations_unanchored())),
         "i": _quarterly(sources.take(get_cash_rate_qrtly())),

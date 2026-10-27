@@ -30,6 +30,7 @@ from src.models.ystar_ustar.config import (
     ANCHOR_PHASE_END,
     ANCHOR_STEP_START,
     DEFAULT_OUTPUT_DIR,
+    LAMBDA_PI_PRIOR,
     ModelConfig,
 )
 from src.models.ystar_ustar.observations import build_observations
@@ -579,6 +580,26 @@ def _okun_equation(
     return "u = u* - beta x gap + e_o"
 
 
+def _persistence(
+    obs: dict[str, np.ndarray],
+    model: pm.Model,
+    anchor_quarterly: np.ndarray,
+) -> tuple[Any, Any, str]:
+    """Return the Phillips curve's persistence term, the weight left on the excess, and a label.
+
+    Under `inflation_lag` the term is `lambda x [pi_q,t-1 - q(anchor)]` and the
+    expectations excess keeps weight `1 - lambda`, so the lag and the anchor
+    share one unit of weight and inflation still settles at target when every
+    other term is zero. Without it, nothing is added and the excess keeps its
+    full weight, which is the curve as it was. Call inside the model context.
+    """
+    if "pi_qtr_lag" not in obs:
+        return 0.0, 1.0, ""
+    lam = set_model_coefficients(model, {"lambda_pi": dict(LAMBDA_PI_PRIOR)})["lambda_pi"]
+    lagged = np.asarray(obs["pi_qtr_lag"], dtype=float) - anchor_quarterly
+    return lam * lagged, 1.0 - lam, " + lambda x [pi_q,t-1 - q(a)]"
+
+
 def _phillips_on_gap(
     obs: dict[str, np.ndarray],
     model: pm.Model,
@@ -612,17 +633,19 @@ def _phillips_on_gap(
         )
         anchor_quarterly = quarterly(anchor)
         excess_quarterly = quarterly(obs["pi_exp"]) - anchor_quarterly
+        persistence, excess_weight, lag_term = _persistence(obs, model, anchor_quarterly)
         mu = (
             anchor_quarterly
+            + persistence
             + mc["kappa_gap"] * gap
-            + mc["beta_pi"] * excess_quarterly
+            + excess_weight * mc["beta_pi"] * excess_quarterly
             + mc["rho_pi"] * obs["d4pm"]
             + mc["xi_gscpi"] * obs["gscpi"] ** 2 * np.sign(obs["gscpi"])
         )
         _observe("observed_pi", mu, mc["epsilon_pi"], np.asarray(obs["pi_qtr"], dtype=float), keep)
     label = _anchor_label(anchor)
     return (
-        f"pi_q = q({label}) + beta x [q(pi_exp) - q({label})]"
+        f"pi_q = q({label}){lag_term} + beta x [q(pi_exp) - q({label})]"
         " + kappa x gap + rho x d4pm + xi x GSCPI^2 + e_p"
     )
 
@@ -669,11 +692,13 @@ def _phillips_equation(
 
         anchor_quarterly = quarterly(anchor)
         excess_quarterly = quarterly(obs["pi_exp"]) - anchor_quarterly
+        persistence, excess_weight, lag_term = _persistence(obs, model, anchor_quarterly)
 
         mu = (
             anchor_quarterly
+            + persistence
             + mc["gamma_pi"] * ugap
-            + mc["beta_pi"] * excess_quarterly
+            + excess_weight * mc["beta_pi"] * excess_quarterly
             + mc["rho_pi"] * obs["d4pm"]
             + mc["xi_gscpi"] * obs["gscpi"] ** 2 * np.sign(obs["gscpi"])
         )
@@ -692,7 +717,7 @@ def _phillips_equation(
         )
     label = _anchor_label(anchor)
     return (
-        f"pi_q = q({label}) + beta x [q(pi_exp) - q({label})]"
+        f"pi_q = q({label}){lag_term} + beta x [q(pi_exp) - q({label})]"
         f" + gamma x u_gap{ue_term} + rho x d4pm + xi x GSCPI^2 + e_p"
     )
 
@@ -765,7 +790,7 @@ def build_model(
     anchor = _anchor_series(obs, obs_index, config)
     obs = {**obs, "anchor": anchor}
 
-    desc = scale_equation(obs, model, latents, constant=config.scale_constants)
+    desc = scale_equation(model, latents, constant=config.scale_constants)
     descriptions.append(f"Scale:        {desc}")
     if config.exclude_window is not None:
         record_constant(model, "exclude_window", config.exclude_window)
@@ -886,6 +911,8 @@ def run_estimate(
     if config.include_phillips:
         equations.append("Phillips")
     print(f"Equations:    {' + '.join(equations)}")
+    if config.inflation_lag:
+        print("Persistence:  last quarter's inflation in the Phillips curve (lambda_pi)")
     if not config.free_gap_component:
         print("Gap:          c x (pi - anchor), no free component (ystar's identity)")
     elif config.sigma_v is not None:
@@ -900,6 +927,7 @@ def run_estimate(
         end=config.end,
         gap_pi_basis=config.gap_pi_basis,
         include_phillips=config.include_phillips,
+        inflation_lag=config.inflation_lag,
         slack=config.slack,
         verbose=verbose,
     )

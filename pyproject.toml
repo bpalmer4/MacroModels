@@ -57,6 +57,7 @@ dependencies = [
     "types-selenium",
     "types-seaborn",
     "types-tabulate",
+    "truststore>=0.10.5",
 ]
 
 [tool.ruff]

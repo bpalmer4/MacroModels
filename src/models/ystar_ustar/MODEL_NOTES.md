@@ -16,7 +16,7 @@ STATES
   ue*_t = (1 − θ_t)·s*_t                            its underemployment counterpart
 
 GAP
-  gap_t = c·(4·pi_q,t - 2.5) + v_t                  v ~ N(0, sigma_v)
+  gap_t = c·(ann(pi_q,t) - 2.5) + v_t               v ~ N(0, sigma_v); ann() compounds
 
 OBSERVED
   log_gdp_t = y*_t + gap_t + e_c                    sigma_e estimated
@@ -394,6 +394,48 @@ repeatable, not as a candidate.
 - **The supply-term check**: `rho_pi` and `xi_gscpi` on the quarterly and annual gap bases.
 - **`--exclude-scope gdp`** and **`--two-sided-c`**: is `c` comparable with `ystar`'s, and is its
   sign a finding or a prior?
+
+---
+
+## Inflation persistence (`--inflation-lag`)
+
+```
+pi_q,t = q(a) + lambda·[pi_q,t-1 - q(a)] + (1 - lambda)·beta·excess_t + demand + supply + e_p
+```
+
+Off by default. Without it the Phillips curve has no persistence: once u reaches u\*, inflation
+is back at target the next quarter, so the model can never say unemployment must go *above* u\*
+to bring inflation down. The lag and the anchor share one unit of weight, so inflation still
+settles at target with no slack, excess or supply. Prior on `lambda_pi`: TruncatedNormal(0.5,
+0.3) on [0, 0.99] (`config.LAMBDA_PI_PRIOR`).
+
+With it on, the run also charts the unemployment rate that returns **year-ended** inflation to
+target in 8 quarters (`results.disinflation_unemployment`). From each quarter's observed
+inflation, it holds unemployment at one rate for the horizon, holds the expectations excess where
+it stands and sets supply to zero (shocks fade). Underemployment moves with unemployment through
+the shared gap. The headline also prints 4 quarters and a sacrifice ratio (point-years above u\*
+per point of year-ended inflation removed).
+
+**First run** (`--inflation-lag --prefix ystar_ustar_lag`, 2026-10-27, sample to 2026Q2, slack
+split, defined gap). Clean: r_hat 1.00 throughout.
+
+- `lambda_pi` 0.30 (90% 0.17 to 0.43), moved well off its 0.5 prior. The Phillips residual's
+  lag-1 autocorrelation falls from 0.23 to -0.08, so the lag takes up what was left.
+- `gamma_pi` weakens to -0.64 (90% -1.22 to +0.02) from -1.0 without the lag.
+- Year-ended inflation 3.55, +1.05 on target. Over the last four quarters: persistence 0.24,
+  demand 0.53, residual 0.24, supply 0.02, excess 0.00 (pp, quarterly terms summed).
+- U for target in 4 quarters 4.79 (+0.06 over u\* 4.73); in 8 quarters 4.73 (+0.00).
+  Unemployment is 4.35.
+
+So persistence is real but short: a quarterly lambda of 0.3 halves a deviation in about 0.6 of a
+quarter, and leaves under 1% of it after four. The model puts the overshoot mostly on the labour market being tight (u 0.38 below u\*),
+and its answer is to close that gap, not overshoot it.
+
+**Read that with the circularity in mind.** Under the defined gap, inflation builds the gap
+(`c·(pi - anchor)`) and the gap sets u - u\* through Okun, so inflation that stays high is
+mechanically booked as a tight labour market, and the demand term can take persistence that the
+lag would otherwise carry. The test is the same lag on a gap inflation does not define:
+`--gap-spec identity --one-sided-beta --inflation-lag`. Not yet run.
 
 ---
 

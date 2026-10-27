@@ -9,7 +9,7 @@ This directory contains a Bayesian model of trend inflation: a random-walk trend
 | Sample | 1983Q1 to present, quarterly | Extended early period using bonds, headline CPI, and HCOE |
 | Latent State | Regime-switching Student-t random walk | Innovation variance estimated (Short) or fixed (Unanchored, Long Run) |
 | Model Types | Unanchored, Short Run (1yr), Long Run (10yr) | Different observation equations per type |
-| Measures | market_1y, breakeven, business, market_yoy, inflation, HCOE, headline CPI (pre-1993), nominal bonds | Series-specific effects (α) and backward-looking bias (λ) for Unanchored only |
+| Measures | market_1y, breakeven, business, market_yoy, inflation, HCOE, private WPI, headline CPI (pre-1993), nominal bonds | Series-specific effects (α) and backward-looking bias (λ) for Unanchored only |
 
 ## Reference
 
@@ -92,11 +92,15 @@ qualification.
 | Weighted median | 1982Q2 | Quarterly weighted median CPI, annualised; year-ended for the survey λ terms | Unanchored, Short Run |
 | Headline CPI | 1987Q1 | Quarterly headline CPI, seasonally adjusted, annualised | Unanchored, Short Run (pre-1993 only, so 1987 to 1992) |
 
-### Wage Measures (ABS 5206.0, derived)
+### Wage and Labour-Market Measures
 | Series | Start | Description | Used In |
 |--------|-------|-------------|---------|
 | HCOE growth | 1978Q4 | Annual hourly compensation of employees growth | Unanchored |
 | MFP trend | 1978Q4 | Derived from wage data: MFP = LP - α×(g_K - g_L), HP-filtered, floored at zero | Unanchored |
+| Private WPI growth | 1998Q3 | Year-ended, private sector (ABS 6345.0); public wages are administered | Unanchored |
+| GDP per hour trend | — | Change in the annual-average log of GDP per hour worked over a trailing 5 years, per year, with the index flattened 2019Q4-2023Q1 (5206.0) | Unanchored (WPI) |
+| Job vacancies | 1979Q2 | ABS 6354.0, seasonally adjusted; surveyed mid-quarter, mapped to calendar quarters; suspended 2008Q3-2009Q3 | Unanchored (WPI) |
+| Labour-market tightness | — | log(vacancies / unemployed), centred on its full-history mean, averaged over four quarters | Unanchored (WPI) |
 
 ---
 
@@ -147,6 +151,54 @@ Hourly compensation of employees growth provides wage-based information about in
 - MFP is derived from wage data (goes back to 1978Q4, unlike ABS 5204.0 which starts 1995)
 - The `hcoe_adjustment` parameter is estimated
 - Noisier than the surveys, but informative especially pre-1993
+
+### 6a. WPI Growth Observation (Unanchored)
+
+Private WPI growth tells the model what wage setters behave as if they expect. Firms can pay
+expected inflation plus productivity growth without squeezing margins; what wages grow by
+beyond that is either a tight labour market or higher expectations. The tightness term takes
+the first, so a tight labour market is not read as expectations.
+
+- **Tightness is log(V/U)**, vacancies over unemployed persons. It needs no trend or u*, so it
+  is not circular (u* models read this one) and has no end-point problem. In an off-model
+  regression of WPI − πᵉ − productivity over 1998Q3-2019Q4 and 2023Q3 on, log V/U explained
+  75% of the variation (slope about 1.6, t about 16); unemployment less its trailing 10-year
+  average, the first version tried, explained 5% and left a gap persistent enough (b_wpi 0.97
+  in the model) that wages told the model nothing about the level of expectations.
+
+- **Productivity** is GDP per hour worked, not the wage identity (Δhcoe − Δulc): JobKeeper ran
+  through compensation of employees and would show up in a productivity backed out of it.
+- **The productivity trend is trailing, not HP.** A two-sided filter bends toward the latest
+  data at the sample end, which is where the question is, and around COVID. The log index is
+  first joined by a straight line from 2019Q4 to 2023Q1, the quarters at which it stood at the
+  same level, so the COVID rise and unwind are gone; the trend is then the change over a
+  trailing 5 years. Five rather than ten so it responds within a few years to a change in trend
+  (an AI lift, if it comes), at the cost of more noise before 2020. The change is between
+  annual averages of the level, not single quarters, so quarterly noise at the two ends does
+  not swing it; Henderson was rejected for the same reason as HP, since its end weights revise.
+  The index has been flat since 2019Q4: the trend reads about zero in 2026.
+- **COVID is left out** of this equation, 2020Q1 to 2023Q2: JobKeeper and the fall in
+  participation broke the link between measured unemployment and wages, and composition lifted
+  productivity and then took it back. GDP per hour peaked 2022Q1, about 5 above its 2019Q4
+  level, was back to that level by 2022Q4, and dipped below it until 2023Q2; the window
+  runs to the end of the dip. The AR(1) gap restarts after the hole, and after the vacancy
+  suspension, which with the four-quarter average leaves 2008Q3-2010Q2 out.
+- **Year-ended**, because wage rounds are annual, with an AR(1) gap for the overlap, as for
+  inflation.
+
+V/U has no trend correction, so a shift in the Beveridge curve (more vacancies per unemployed
+at the same tightness) reads as tightness. If the curve has moved out since COVID, today's
+tightness is overstated and less of the wage excess is left for expectations than should be.
+
+**What it found (October 2026).** With log V/U, wages carry information about the level of
+expectations: the gap's persistence is near what the year-ended overlap alone produces, and the
+tightness slope is well determined. They agree with the surveys. Recent wage growth is close to
+what expectations near 2.5%, near-zero productivity growth and a tight labour market explain,
+with a small unexplained excess. That conclusion rests on the constant, which is estimated over
+the whole sample. Over 2015-2019 wages ran about half a point below the equation; measured
+against those years, recent wages are well above it. Whether the 2010s were the normal state or
+the unusual one is a judgement the equation cannot make, and it decides whether recent wages
+point to higher expectations.
 
 ### 7. Inflation Observations: Quarterly Rates with an AR(1) Gap
 
@@ -209,6 +261,14 @@ gap_t = b_headline × gap_{t-1 quarter} + e_t,     e_t ~ N(0, σ_headline)
 b_headline ~ Beta(2, 2)
 ```
 
+**Private WPI growth** (year-ended, 1998Q3 onwards, 2008Q3-2010Q2 and COVID 2020Q1-2023Q2 excluded, Unanchored):
+```
+gap_t = wpi_t − (πᵉ_t + prod_t + wpi_adjustment + β × tight_t)
+gap_t = b_wpi × gap_{t-1 quarter} + e_t,          e_t ~ N(0, σ_wpi)    [restarts after the hole]
+prod_t  = 5-year change in annual-average log GDP per hour, per year, index flattened 2019Q4-2023Q1
+tight_t = four-quarter average of (log(V/U)_t − its full-history mean)
+```
+
 **Nominal 10y bonds** (multiplicative Fisher):
 ```
 nominal_t ~ N(πᵉ_t + real_rate + (πᵉ_t × real_rate / 100), σ_nominal)
@@ -236,6 +296,10 @@ hcoe_adjustment ~ N(0, 0.5)
 | σ_hcoe | HalfNormal(2.0) | Unanchored |
 | σ_late (innovation) | HalfNormal(0.075), scale from the config's sigma_late | Short Run |
 | hcoe_adjustment | N(0, 0.5) | Unanchored |
+| wpi_adjustment | N(0, 1.0) | Unanchored |
+| β (WPI tightness slope) | N(1.0, 1.0) | Unanchored |
+| b_wpi (gap persistence) | Beta(2, 2) | Unanchored |
+| σ_wpi (gap innovation) | HalfNormal(1.0) | Unanchored |
 | real_rate | N(5.0, 1.5) | Unanchored, Long Run |
 
 **Note on real_rate (r*)**: Estimates differ between Unanchored and Long Run because of the identification trade-off with π_exp. The Long Run estimate is less well pinned, since it has only a 2yr overlap to anchor r* against Unanchored's full pre-1993 period.
@@ -252,6 +316,7 @@ hcoe_adjustment ~ N(0, 0.5)
 | Headline CPI (1987-1992, AR(1) gap) | Yes | Yes | No |
 | Nominal bonds | Yes (pre-1993Q3) | No | Yes (pre-1988Q3, 2yr overlap) |
 | HCOE growth | Yes | No | No |
+| Private WPI growth (tightness, AR(1) gap) | Yes | No | No |
 | Inflation observation (AR(1) gap) | Yes | Yes (σ shared with market_1y) | No |
 
 ---
@@ -316,7 +381,7 @@ With one survey and its own free σ_obs, the survey noise collapses and the walk
 
 ### Unanchored: `unanchored`
 
-The full model, and the series downstream models read. Uses market_1y, breakeven, business, market_yoy (all with α, λ), plus inflation, headline CPI, nominal bonds and HCOE. No target observation. Innovation variance is fixed, to avoid funnel geometry in the posterior.
+The full model, and the series downstream models read. Uses market_1y, breakeven, business, market_yoy (all with α, λ), plus inflation, headline CPI, nominal bonds, HCOE and private WPI. No target observation. Innovation variance is fixed, to avoid funnel geometry in the posterior.
 
 **State equation:** Fixed innovation variance.
 ```
@@ -353,6 +418,9 @@ nominal_t = πᵉ_t + real_rate + (πᵉ_t × real_rate / 100) + ε_t   [pre-199
 
 hcoe_t = πᵉ_t + mfp_t + hcoe_adjustment + ε_t
   ε_t ~ N(0, σ_hcoe)
+
+wpi_t − (πᵉ_t + prod_t + wpi_adjustment + β × tight_t) = b_wpi × (previous gap) + e_t
+                                [AR(1) gap, 2008Q3-2010Q2 and COVID 2020Q1-2023Q2 excluded]
 ```
 
 ---
@@ -378,6 +446,8 @@ No model observes the target, so de-anchoring is read directly as distance from 
 3. Survey alphas shifting over time
 4. Breakeven inflation moving away from target
 5. HCOE growth exceeding π_exp + MFP
+6. Private WPI growth persistently above π_exp + productivity + tightness (the WPI equation's
+   gap staying positive), the sharper wage test since the tightness term was added
 
 ---
 

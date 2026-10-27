@@ -53,6 +53,7 @@ from src.data.labour_force import (
     get_participation_rate_qrtly,
 )
 from src.models.common.sources import SourceSet
+from src.utilities.rate_conversion import annualize
 
 _NAME_WIDTH = 27
 
@@ -123,14 +124,14 @@ def smooth_population(log_pop: pd.Series, terms: int) -> pd.Series:
 def _inflation(pi_basis: str, sources: SourceSet) -> pd.Series:
     """Return the Phillips curve's left-hand side, in annual per cent.
 
-    "quarterly" is the quarterly trimmed mean rate multiplied by four, so it is
+    "quarterly" is the quarterly trimmed mean rate compounded over four quarters, so it is
     on the same scale as the anchor but is *non-overlapping*: consecutive
     observations share no CPI quarters, and iid errors are therefore
     defensible. "annual" is the four-quarter rate, which overlaps three
     quarters out of four; see `ModelConfig.pi_basis`.
     """
     if pi_basis == "quarterly":
-        return sources.take(get_trimmed_mean_qrtly(), "trimmed mean q/q ann.", key="pi") * 4.0
+        return annualize(sources.take(get_trimmed_mean_qrtly(), "trimmed mean q/q ann.", key="pi"))
     return sources.take(get_trimmed_mean_annual(), "trimmed mean y/y", key="pi")
 
 

@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import mgplot as mg
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 from src.models.common import chart_annotations, prior_posterior
 from src.models.common.charts import excluded_span_style, ustar_structure_note
@@ -21,8 +22,9 @@ from src.models.ustar.results import UStarResults
 from src.models.ystar import analyse as ystar_analyse
 from src.models.ystar.decompose import decompose_potential_growth, print_decomposition
 from src.models.ystar.results import PotentialResults
-from src.models.ystar_ustar.config import CHART_DIR, DEFAULT_PREFIX
+from src.models.ystar_ustar.config import CHART_DIR, DEFAULT_PREFIX, LAMBDA_PI_PRIOR
 from src.models.ystar_ustar.results import JointResults, load_results
+from src.utilities.rate_conversion import annualize
 
 # Reference values from the separately estimated parents, for the comparison
 # table. Both are 2026Q2 vintage and both are recorded in their MODEL_NOTES.
@@ -36,6 +38,12 @@ _USTAR_GAMMA = -1.148
 _USTAR_LEVEL = 4.83
 
 _LFOOTER = "Australia. Joint y* and u* model. "
+
+# Horizons, in quarters, for the unemployment rate that returns year-ended
+# inflation to target under `inflation_lag`. A choice, not an estimate: one
+# year and two. The chart draws the longer.
+DISINFLATION_HORIZONS = (4, 8)
+_QUARTERS_PER_YEAR = 4
 
 
 def _lfooter(results: JointResults, extra: str = "") -> str:
@@ -138,6 +146,42 @@ def _print_headline(results: JointResults) -> None:
     print(f"  output gap             : {gap.iloc[-1]:+6.2f}   (ystar alone: {_YSTAR_GAP:+.2f})")
     print(f"  u*                     : {ustar.iloc[-1]:6.2f}   (ustar alone: {_USTAR_LEVEL})")
     print(f"  u - u*                 : {ugap.iloc[-1]:+6.2f}")
+    if results.has_inflation_lag and "gamma_pi" in results.posterior:
+        _print_disinflation(results, ustar.iloc[-1])
+
+
+def _year_ended_now(results: JointResults) -> float:
+    """Return the latest year-ended trimmed mean, compounded from the quarterly rates the curve fits."""
+    last_year = np.asarray(results.obs["pi_qtr"], dtype=float)[-_QUARTERS_PER_YEAR:]
+    return float((np.prod(1.0 + last_year / 100.0) - 1.0) * 100.0)
+
+
+def _print_disinflation(results: JointResults, ustar_now: float) -> None:
+    """Print the unemployment rate that returns year-ended inflation to target, and its cost.
+
+    The sacrifice ratio is point-years of unemployment above u* over the
+    horizon, per point of year-ended inflation removed. It is only defined
+    when inflation is above target.
+    """
+    lam = np.asarray(results.posterior["lambda_pi"].values).ravel()
+    lo, mid, hi = np.quantile(lam, [0.05, 0.5, 0.95])
+    print(f"  lambda_pi (persistence): {mid:6.2f}   (90% {lo:.2f} to {hi:.2f})")
+    year_ended = _year_ended_now(results)
+    excess_inflation = year_ended - float(results.anchor_annual[-1])
+    print(f"  year-ended inflation   : {year_ended:6.2f}   ({excess_inflation:+.2f} on target)")
+    for horizon in DISINFLATION_HORIZONS:
+        needed = results.disinflation_unemployment(horizon).iloc[-1]
+        lo_u, hi_u = needed.quantile([0.05, 0.95])
+        over = needed.median() - ustar_now
+        label = f"U for target in {horizon}q"
+        line = (
+            f"  {label:<23}: {needed.median():6.2f}   "
+            f"(90% {lo_u:.2f} to {hi_u:.2f}; {over:+.2f} over u*"
+        )
+        if excess_inflation > 0:
+            sacrifice = horizon / _QUARTERS_PER_YEAR * over / excess_inflation
+            line += f"; sacrifice ratio {sacrifice:.2f}"
+        print(line + ")")
 
 
 def _print_comparison(results: JointResults) -> None:
@@ -353,7 +397,11 @@ def _chart_phillips_curve(results: JointResults) -> None:
         ax,
         title="The Phillips curve as specified",
         xlabel=f"{_slack_noun(results)} gap, (u - u*) / u",
-        ylabel="Quarterly inflation less anchor,\nexpectations and supply terms",
+        ylabel=(
+            "Quarterly inflation less anchor, persistence,\nexpectations and supply terms"
+            if results.has_inflation_lag
+            else "Quarterly inflation less anchor,\nexpectations and supply terms"
+        ),
         legend={"loc": "best", "fontsize": "small"},
         lheader=f"gamma = {gamma_median:.2f}, 90% interval [{lo_g:.2f}, {hi_g:.2f}]",
         lfooter=_lfooter(results, "Axes not independent: see notes. "),
@@ -408,6 +456,89 @@ def _chart_implied_ustar(results: JointResults) -> None:
             f"correlation with u* {implied.corr(fitted):.2f}"
         ),
         lfooter=_lfooter(results, "Phillips inverted at posterior medians. "),
+        rfooter=_rfooter(results),
+        show=False,
+    )
+
+
+def _chart_inflation_decomposition(results: JointResults) -> None:
+    """Stack the Phillips curve's terms against observed inflation, persistence included.
+
+    `ustar`'s chart with one more bar: the share of last quarter's deviation
+    from target carried into this one. Annualised for display, term by term,
+    as `ustar` does.
+    """
+    decomp = annualize(results.inflation_decomposition())
+    if not isinstance(decomp, pd.DataFrame):
+        raise TypeError(f"expected the annualised decomposition to be a frame, got {type(decomp).__name__}")
+    bars = pd.DataFrame({
+        "Inflation target": decomp["anchor"],
+        "Persistence": decomp["persistence"],
+        "Expectations above target": decomp["excess"],
+        "Demand": decomp["demand"],
+        "Supply": decomp["supply"],
+        "Noise": decomp["residual"],
+    })
+    ax = mg.bar_plot(
+        bars,
+        stacked=True,
+        color=["#cccccc", "seagreen", "mediumpurple", "orange", "darkblue", "lightblue"],
+        annotate=False,
+        width=1.0,
+    )
+    observed = decomp["observed"].rename("Observed inflation (quarterly annualised)")
+    mg.line_plot(observed, ax=ax, color=["indigo"], width=1.5, annotate=False, zorder=10)
+    target = float(results.constants["anchor"])
+    mg.finalise_plot(
+        ax,
+        title="Price inflation decomposition",
+        ylabel="% p.a.",
+        axhline={"y": target, "color": "darkred", "linestyle": "--", "linewidth": 1, "label": f"{target:g}% target"},
+        legend={"loc": "best", "fontsize": "x-small"},
+        y0=True,
+        lheader="pi = target + persistence + expectations above target + demand + supply + noise",
+        lfooter=_lfooter(results, "Medians. "),
+        rfooter=_rfooter(results),
+        show=False,
+    )
+
+
+def _chart_disinflation(results: JointResults) -> None:
+    """Draw the unemployment rate that returns year-ended inflation to target in two years.
+
+    The calculation and its assumptions are in
+    `results.disinflation_unemployment`. Where the purple line sits above u*,
+    persistence means closing the gap is not enough: unemployment has to go
+    above u* for inflation to come down in time.
+    """
+    horizon = max(DISINFLATION_HORIZONS)
+    needed = results.disinflation_unemployment(horizon)
+    band = pd.DataFrame({
+        "lower": needed.quantile(0.05, axis=1),
+        "upper": needed.quantile(0.95, axis=1),
+    })
+    ax = mg.fill_between_plot(band, color="purple", alpha=0.15, label="90% credible interval")
+    mg.line_plot(
+        pd.DataFrame({
+            f"U needed for target in {horizon} quarters (median)": needed.median(axis=1),
+            "u*": results.ustar_posterior().median(axis=1),
+            "Unemployment rate": pd.Series(results.obs["u"], index=results.obs_index),
+        }),
+        ax=ax,
+        color=["purple", "blue", "darkorange"],
+        width=[2.0, 1.5, 1.5],
+        style=["-", "--", "-"],
+        annotate=True,
+        rounding=1,
+    )
+    mg.finalise_plot(
+        ax,
+        title=f"Unemployment needed to return inflation to target in {horizon} quarters",
+        ylabel="Per cent",
+        legend={"loc": "best", "fontsize": "x-small"},
+        axvspan=[*ustar_analyse.unidentified_span(UNIDENTIFIED_WINDOW), *_excluded_span(results)],
+        lheader="Held for the horizon from each quarter's inflation; supply shocks assumed to fade.",
+        lfooter=_lfooter(results, "Year-ended rate, to first order. "),
         rfooter=_rfooter(results),
         show=False,
     )
@@ -485,7 +616,16 @@ def _prior_for(results: JointResults, name: str) -> tuple[str, float, float] | N
         )
     if name == "beta_okun":
         return ("normal", 0.5, float(constants.get("beta_okun_prior_sd", 0.5)))
+    if name == "lambda_pi":
+        return _lambda_prior_pdf
     return _PRIORS.get(name)
+
+
+def _lambda_prior_pdf(grid: np.ndarray) -> np.ndarray:
+    """Density of `lambda_pi`'s truncated-normal prior on `grid`, zero outside its bounds."""
+    mu, sd = LAMBDA_PI_PRIOR["mu"], LAMBDA_PI_PRIOR["sigma"]
+    lower, upper = LAMBDA_PI_PRIOR["lower"], LAMBDA_PI_PRIOR["upper"]
+    return stats.truncnorm.pdf(grid, (lower - mu) / sd, (upper - mu) / sd, loc=mu, scale=sd)
 
 
 def _chart_parameter_posteriors(results: JointResults) -> int:
@@ -609,7 +749,12 @@ def _draw_charts(
     ustar_analyse.plot_ugap(ustar_view)
     ustar_analyse.plot_ustar_components(ustar_view)
     if results.has_phillips:
-        ustar_analyse.plot_inflation_decomposition(ustar_view)
+        # `ustar`'s chart knows nothing of the persistence term and would book
+        # it as noise, so a run with the lag draws its own.
+        if results.has_inflation_lag:
+            _chart_inflation_decomposition(results)
+        else:
+            ustar_analyse.plot_inflation_decomposition(ustar_view)
 
     # --- What neither parent can draw ---
     if results.has_defined_gap:
@@ -618,6 +763,8 @@ def _draw_charts(
         _chart_gap_decomposition(results)
     _chart_residuals(results)
     _chart_implied_ustar(results)
+    if results.has_inflation_lag and "gamma_pi" in results.posterior:
+        _chart_disinflation(results)
     _chart_phillips_curve(results)
     _chart_parameter_posteriors(results)
     if "sstar" in results.posterior:

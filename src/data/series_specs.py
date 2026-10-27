@@ -342,6 +342,21 @@ MFP_HOURS_WORKED = ReqsTuple(
     zip_file="",
 )
 
+# --- Job Vacancies (6354.0) ---
+
+# Surveyed in the middle month of each quarter, so published on Q-NOV quarters.
+# The survey was suspended from August 2008 to August 2009.
+JOB_VACANCIES = ReqsTuple(
+    cat="6354.0",
+    table="6354001",
+    did="Job Vacancies ;  Australia ;",
+    stype="SA",
+    unit="",
+    seek_yr_growth=False,
+    calc_growth=False,
+    zip_file="",
+)
+
 # --- Average Weekly Earnings (6302.0) ---
 
 AWE_FULL_TIME_ADULTS = ReqsTuple(
