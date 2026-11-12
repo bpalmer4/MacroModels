@@ -27,6 +27,7 @@ from src.models.expectations.stage2 import (
     generate_plots,
     load_all_results,
     load_results,
+    print_benchmark_validation,
     run_diagnostics,
 )
 
@@ -99,6 +100,8 @@ if __name__ == "__main__":
         print("GENERATING PLOTS")
         print("=" * 60)
         generate_plots(all_results)
+
+    print_benchmark_validation(all_results)
 
     print("\n" + "=" * 60)
     print("COMPLETE")

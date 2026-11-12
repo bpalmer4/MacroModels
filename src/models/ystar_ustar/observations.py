@@ -43,17 +43,22 @@ point of the exercise.
 import numpy as np
 import pandas as pd
 
-from src.data.expectations_model import get_model_expectations_unanchored
+from src.data.expectations_model import get_model_expectations_short, get_model_expectations_unanchored
 from src.data.gdp import get_log_gdp
 from src.data.gscpi_live import get_gscpi_qrtly_live
 from src.data.import_prices import get_import_price_growth_lagged_annual
-from src.data.inflation import get_trimmed_mean_annual, get_trimmed_mean_qrtly
+from src.data.inflation import (
+    get_trimmed_mean_annual,
+    get_trimmed_mean_qrtly,
+    get_trimmed_mean_qrtly_from_index,
+)
 from src.data.labour_force import (
     get_underemployment_rate_qrtly,
     get_underutilisation_rate_qrtly,
     get_unemployment_rate_qrtly,
 )
 from src.models.common.sources import SourceSet
+from src.models.ystar_ustar.config import SHORT_EXPECTATIONS_START
 from src.utilities.rate_conversion import annualize
 
 _NAME_WIDTH = 34
@@ -73,6 +78,53 @@ def _gscpi_lagged(index: pd.Index, sources: SourceSet, lag: int = 2) -> pd.Serie
     """
     gscpi = sources.take(get_gscpi_qrtly_live(), "GSCPI, lagged", key="gscpi").astype(float)
     return gscpi.shift(lag).reindex(index).fillna(0.0)
+
+
+def _phillips_columns(
+    sources: SourceSet,
+    *,
+    pi_source: str,
+    inflation_lag: bool,
+    inflation_lag_window: int,
+    expectations_series: str,
+) -> dict[str, pd.Series]:
+    """Return the series only the Phillips curve reads, on their full histories.
+
+    Quarterly inflation (published, or from the index), its lag, expectations
+    (and the short-run series for the excess when selected), import prices
+    and the GSCPI.
+    """
+    columns: dict[str, pd.Series] = {}
+    if pi_source == "index":
+        columns["pi_qtr"] = sources.take(
+            get_trimmed_mean_qrtly_from_index(), "trimmed mean q/q (from index)", key="pi_qtr")
+    else:
+        columns["pi_qtr"] = sources.take(get_trimmed_mean_qrtly(), "trimmed mean q/q", key="pi_qtr")
+    if inflation_lag:
+        # Shifted and averaged on the full history, so the first sample
+        # quarter still has its lags. A window of one is the plain lag.
+        columns["pi_qtr_lag"] = columns["pi_qtr"].shift(1).rolling(inflation_lag_window).mean()
+    try:
+        columns["pi_exp"] = sources.take(
+            get_model_expectations_unanchored(), "expectations", key="pi_exp",
+        ).astype(float)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            "No saved expectations model output found. The Phillips curve reads the "
+            "unanchored expectations series, so the expectations model must be run "
+            "first: ./run-expectations.sh. To estimate without it, use --no-phillips, "
+            "but note that u* is then a trend through unemployment rather than a NAIRU.",
+        ) from exc
+    if expectations_series == "short":
+        short = sources.take(get_model_expectations_short(), "short-run expectations", key="pi_exp_short")
+        short = short.astype(float).reindex(columns["pi_exp"].index)
+        first = pd.Period(SHORT_EXPECTATIONS_START, freq="Q")
+        columns["pi_exp_phillips"] = short.where(short.index >= first, columns["pi_exp"])
+    columns["d4pm"] = sources.take(
+        get_import_price_growth_lagged_annual(), "import price growth", key="d4pm",
+    )
+    columns["gscpi"] = _gscpi_lagged(columns["pi_qtr"].index, sources)
+    return columns
 
 
 def _align(columns: dict[str, pd.Series], start: str | None, end: str | None) -> pd.DataFrame:
@@ -103,6 +155,9 @@ def build_observations(
     gap_pi_basis: str = "annual",
     include_phillips: bool = True,
     inflation_lag: bool = False,
+    inflation_lag_window: int = 1,
+    expectations_series: str = "unanchored",
+    pi_source: str = "published",
     slack: str = "unemployment",
     verbose: bool = False,
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, pd.DataFrame, SourceSet]:
@@ -112,9 +167,13 @@ def build_observations(
     quarterly rate compounded over four quarters, so it sits on the anchor's scale; see
     `ModelConfig.gap_pi_basis` for why this is a switch and not a settled
     choice. `slack` selects the labour-market series observed as `u`: the
-    unemployment rate or the underutilisation rate. `inflation_lag` adds last
-    quarter's quarterly rate, `pi_qtr_lag`, for the Phillips curve's
-    persistence term.
+    unemployment rate or the underutilisation rate. `inflation_lag` adds
+    `pi_qtr_lag`, for the Phillips curve's persistence term: the mean of the
+    last `inflation_lag_window` quarters' rates. `expectations_series` "short"
+    adds `pi_exp_phillips`, the short-run series from SHORT_EXPECTATIONS_START
+    and the unanchored one before, for the Phillips curve's excess alone;
+    `pi_exp` stays unanchored. `pi_source` "index" takes the quarterly rate,
+    its lag and the quarterly-basis gap from the published index, unrounded.
 
     Returns:
         Tuple of:
@@ -127,9 +186,12 @@ def build_observations(
     sources = SourceSet()
 
     if gap_pi_basis == "quarterly":
-        gap_pi = annualize(sources.take(get_trimmed_mean_qrtly(), "trimmed mean q/q ann.", key="pi_gap"))
+        pi_qtr_loader = get_trimmed_mean_qrtly_from_index if pi_source == "index" else get_trimmed_mean_qrtly
+        gap_pi = annualize(sources.take(pi_qtr_loader(), "trimmed mean q/q ann.", key="pi_gap"))
     else:
         gap_pi = sources.take(get_trimmed_mean_annual(), "trimmed mean y/y", key="pi_gap")
+    if not isinstance(gap_pi, pd.Series):
+        raise TypeError("the gap's inflation series must be a Series")
 
     columns: dict[str, pd.Series] = {
         "log_gdp": sources.take(get_log_gdp(), "log GDP", key="log_gdp"),
@@ -144,25 +206,10 @@ def build_observations(
         columns["ue"] = sources.take(get_underemployment_rate_qrtly(), "underemployment rate", key="ue")
 
     if include_phillips:
-        columns["pi_qtr"] = sources.take(get_trimmed_mean_qrtly(), "trimmed mean q/q", key="pi_qtr")
-        if inflation_lag:
-            # Shifted on the full history, so the first sample quarter still has its lag.
-            columns["pi_qtr_lag"] = columns["pi_qtr"].shift(1)
-        try:
-            columns["pi_exp"] = sources.take(
-                get_model_expectations_unanchored(), "expectations", key="pi_exp",
-            ).astype(float)
-        except FileNotFoundError as exc:
-            raise FileNotFoundError(
-                "No saved expectations model output found. The Phillips curve reads the "
-                "unanchored expectations series, so the expectations model must be run "
-                "first: ./run-expectations.sh. To estimate without it, use --no-phillips, "
-                "but note that u* is then a trend through unemployment rather than a NAIRU.",
-            ) from exc
-        columns["d4pm"] = sources.take(
-            get_import_price_growth_lagged_annual(), "import price growth", key="d4pm",
-        )
-        columns["gscpi"] = _gscpi_lagged(columns["pi_qtr"].index, sources)
+        columns.update(_phillips_columns(
+            sources, pi_source=pi_source, inflation_lag=inflation_lag,
+            inflation_lag_window=inflation_lag_window, expectations_series=expectations_series,
+        ))
 
     if verbose:
         print("Input series coverage:")

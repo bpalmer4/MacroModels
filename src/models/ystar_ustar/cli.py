@@ -15,9 +15,12 @@ from src.models.ystar_ustar.config import (
     DEFAULT_EXCLUDE_WINDOW,
     DEFAULT_PREFIX,
     EXCLUDE_SCOPES,
+    EXPECTATIONS_SERIES,
     GAP_PI_BASES,
     GAP_SPECS,
     OKUN_FORMS,
+    PI_SOURCES,
+    SHORT_EXPECTATIONS_START,
     SLACK_MEASURES,
     STEPPED_WALK_END,
     USTAR_STRUCTURES,
@@ -50,9 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--gap-spec", default="defined", choices=list(GAP_SPECS),
-        help="How the gap is specified: 'defined' (c x (pi - anchor) + v) or "
-             "'cycle' (a free AR(1) latent that inflation observes). See "
-             "ModelConfig.gap_spec",
+        help="How the gap is specified: 'defined' (c x (pi - anchor) + v, the default), "
+             "'cycle' (a free AR(1) latent that inflation observes) or 'identity' "
+             "(y - y*). See ModelConfig.gap_spec",
     )
     parser.add_argument(
         "--slack", default=ModelConfig.slack, choices=list(SLACK_MEASURES),
@@ -118,10 +121,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Drop the Okun equation. sigma_v should return its prior: this is the "
              "control that shows the covariance is what identifies it",
     )
+    # Not given (None) means the default, so an explicit --inflation-lag can be
+    # told apart from it when the Phillips curve is dropped.
     parser.add_argument(
-        "--inflation-lag", action="store_true",
-        help="Put last quarter's inflation in the Phillips curve, so inflation is persistent "
-             "and returning it to target can need u above u*. See ModelConfig.inflation_lag",
+        "--inflation-lag", dest="inflation_lag", action="store_const", const=True, default=None,
+        help="Last quarter's inflation in the Phillips curve (the default; accepted so existing "
+             "scripts still run). See ModelConfig.inflation_lag",
+    )
+    parser.add_argument(
+        "--no-inflation-lag", dest="inflation_lag", action="store_const", const=False,
+        help="Drop last quarter's inflation from the Phillips curve, restoring the equation "
+             "without backward-looking expectations (the lag is on by default)",
+    )
+    parser.add_argument(
+        "--inflation-lag-window", type=int, default=ModelConfig.inflation_lag_window, metavar="N",
+        help=f"With the lag on, the backward-looking expectations term reads the mean of the last N quarters' "
+             f"inflation (default {ModelConfig.inflation_lag_window}: last quarter's alone)",
+    )
+    parser.add_argument(
+        "--expectations-series", default=ModelConfig.expectations_series, choices=list(EXPECTATIONS_SERIES),
+        help=f"The expectations series in the Phillips curve's excess term (default "
+             f"{ModelConfig.expectations_series}); 'short' is the 1-year model's from "
+             f"{SHORT_EXPECTATIONS_START}, unanchored before. u* drift always reads the unanchored series",
+    )
+    parser.add_argument(
+        "--pi-source", default=ModelConfig.pi_source, choices=list(PI_SOURCES),
+        help=f"The quarterly trimmed mean the Phillips curve fits (default {ModelConfig.pi_source}, "
+             "one decimal); 'index' computes it from the published index, unrounded",
     )
     parser.add_argument(
         "--two-sided-c", action="store_true",
@@ -208,10 +234,18 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_from_args(args: argparse.Namespace) -> None:
-    """Estimate the joint model, then chart it."""
-    if not args.analyse_only:
-        config = ModelConfig(
+def config_from_args(args: argparse.Namespace) -> ModelConfig:
+    """Return the model configuration the parsed arguments describe.
+
+    The lag is on by default. With the Phillips curve dropped there is no lag
+    term, so the default turns it off; an explicit --inflation-lag alongside
+    --no-phillips is left for the config to reject.
+    """
+    if args.inflation_lag is None:
+        inflation_lag = ModelConfig.inflation_lag and not args.no_phillips
+    else:
+        inflation_lag = args.inflation_lag
+    return ModelConfig(
             start=args.start,
             end=args.end,
             anchor=args.anchor,
@@ -255,8 +289,17 @@ def run_from_args(args: argparse.Namespace) -> None:
             include_phillips=not args.no_phillips,
             include_okun=not args.no_okun,
             okun_form=args.okun_form,
-            inflation_lag=args.inflation_lag,
-        )
+            inflation_lag=inflation_lag,
+            inflation_lag_window=args.inflation_lag_window,
+            expectations_series=args.expectations_series,
+            pi_source=args.pi_source,
+    )
+
+
+def run_from_args(args: argparse.Namespace) -> None:
+    """Estimate the joint model, then chart it."""
+    if not args.analyse_only:
+        config = config_from_args(args)
         sampler_config = SamplerConfig(
             draws=args.draws, tune=args.tune, chains=args.chains,
             target_accept=args.target_accept,

@@ -22,8 +22,8 @@ def main(
     print("=" * 70)
     print(f"U* SUMMARY [{len(SOURCES)} specifications from two models]")
     print("=" * 70)
-    frame, notes = gather(allow_refresh=allow_refresh, verbose=verbose)
-    run_analyse(frame, notes, load_unemployment(), start=start)
+    frame, combined, notes = gather(allow_refresh=allow_refresh, verbose=verbose)
+    run_analyse(frame, combined, notes, load_unemployment(), start=start)
 
 
 if __name__ == "__main__":

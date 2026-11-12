@@ -123,9 +123,13 @@ def build_observations(
     gap_source: str = "defined",
     gap_prefix: str = "ystar",
     include_phillips: bool = True,
+    inflation_lag: bool = True,
     verbose: bool = False,
 ) -> tuple[dict[str, np.ndarray], pd.PeriodIndex, pd.DataFrame, SourceSet]:
     """Build observation arrays for ustar estimation.
+
+    `inflation_lag` adds `pi_lag`, last quarter's quarterly inflation, for the
+    Phillips curve's backward-looking expectations term.
 
     Returns:
         Tuple of:
@@ -156,6 +160,9 @@ def build_observations(
         # construction and the excess term would be testing nothing. The
         # unanchored median is the one that can actually drift away.
         columns["pi"] = sources.take(get_trimmed_mean_qrtly(), "Trimmed mean (qtrly)", key="pi")
+        if inflation_lag:
+            # Shifted on the full history, so the first sample quarter still has its lag.
+            columns["pi_lag"] = columns["pi"].shift(1)
         try:
             columns["pi_exp"] = sources.take(
                 get_model_expectations_unanchored(), "Expectations", key="pi_exp",

@@ -22,8 +22,8 @@ def main(
     print("=" * 70)
     print("Y* SUMMARY [output gap, every live model that estimates y*]")
     print("=" * 70)
-    frame, notes, windows = gather(allow_refresh=allow_refresh, verbose=verbose)
-    run_analyse(frame, notes, windows, start=start)
+    frame, combined, notes, windows = gather(allow_refresh=allow_refresh, verbose=verbose)
+    run_analyse(frame, combined, notes, windows, start=start)
 
 
 if __name__ == "__main__":

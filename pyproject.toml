@@ -53,6 +53,7 @@ dependencies = [
     "mypy",
     # - typing
     "pandas-stubs",
+    "scipy-stubs",
     "numpy-typing",
     "types-selenium",
     "types-seaborn",

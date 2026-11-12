@@ -46,8 +46,13 @@ def ustar_structure_note(constants: dict[str, Any]) -> str:
     if not isinstance(law, str):
         return ""
     if law == "taper":
-        # The tapered walk is a random walk; "taper" is only its flag value.
-        return "u*: random walk. "
+        # "taper" is the flag value for both random walks; the stepped one
+        # records where its large step ends. Under the slack split the walk is
+        # on total slack, and u* is unemployment's share of it, not a walk.
+        # Short, so the footer does not run into the source line.
+        if constants.get("slack") == "both":
+            return "u*: slack split. "
+        return "u*: stepped walk. " if constants.get("stepped_walk_end") else "u*: tapered walk. "
     if law != "spline":
         return f"u*: {law}. "
     knots = [k for k in str(constants.get("spline_knots", "")).split(",") if k]

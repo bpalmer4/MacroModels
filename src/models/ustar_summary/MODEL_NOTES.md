@@ -1,8 +1,9 @@
 # u* Summary: Model Notes
 
 **NOT A MODEL.** This loads u* from four specifications of the two models in the repo that
-estimate one, puts them on a single chart against the unemployment rate, and charts the
-spread between them. Nothing here is estimated.
+estimate one, puts them on a single chart against the unemployment rate, charts the spread
+between them, and pools their posterior draws into a combined estimate. Nothing here is
+estimated.
 
 ```bash
 ./run-ustar-summary.sh                 # re-run stale specifications first, then chart
@@ -33,7 +34,23 @@ agreement between them is weak evidence: it says the shape assumptions do not ma
 that u* is well measured. Their disagreement is the informative part, and it is concentrated
 where the data place u* least well, the shaded 1993-2003 window both models flag.
 
-## The two charts
+## The combined estimate
+
+The posterior draws of all four are pooled, each specification carrying equal weight however
+many draws it holds, and the median and the 50% and 90% central bands are read off the pool
+quarter by quarter.
+
+- **The bands hold two things**: the uncertainty within each specification and the disagreement
+  between them. They are wider than any one specification's band where the specifications
+  disagree, and they are not the credible interval of any single model.
+- **Pooling adds no evidence.** All four see the same data, so more specifications do not narrow
+  the bands, which is the right behaviour given they are not independent votes.
+- **The equal weights are a choice**, not an estimate. No fit statistic picks them.
+- **The median can sit where no specification does.** Where the specifications split into two
+  clusters, as they do early in the shaded window, the pool has two humps and its median falls
+  between them. Read the bands there, not the line.
+
+## The three charts
 
 - **Every line**: the four posterior medians, with the unemployment rate in black behind them.
   mgplot chooses the colours and line styles, except that its gold is swapped for dark cyan,
@@ -42,6 +59,8 @@ where the data place u* least well, the shaded 1993-2003 window both models flag
   The mean is a value no specification produces; it describes where they sit and is not an
   estimate. The range is not an error band either, since the four differ in a structured way
   rather than at random.
+- **The combined estimate**: the pooled median with its 50% and 90% bands, and the unemployment
+  rate in black.
 
 ## Vintage and refreshing
 

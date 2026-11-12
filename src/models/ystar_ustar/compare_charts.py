@@ -174,8 +174,7 @@ def print_table(loaded: list[Loaded]) -> None:
     print(
         "\n  elpd diff is leave-one-out predictive accuracy against the best row, scored\n"
         "  ONLY on the two equations every specification observes, unemployment and\n"
-        "  inflation. The GDP equation is excluded because under the identity gap it is\n"
-        "  a definition carrying no likelihood. Read a difference against elpd se.\n"
+        "  inflation. The GDP equation is not scored. Read a difference against elpd se.\n"
         "  bad k counts observations where the LOO estimate is unreliable.\n"
         "\n  R-hat, min ESS and div are the gate, not the score: a specification that did\n"
         "  not sample is out however well it fits.\n"

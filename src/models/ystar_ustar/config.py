@@ -55,6 +55,16 @@ GAP_PI_BASES = ("annual", "quarterly")
 #   "identity" — gap = y - y*, actual less potential, with no GDP residual
 GAP_SPECS = ("defined", "cycle", "identity")
 
+# The expectations series the Phillips curve's excess term can read, and the
+# first quarter the short-run series is read by its survey (market_1y), before
+# which the unanchored series stands in for it.
+EXPECTATIONS_SERIES = ("unanchored", "short")
+SHORT_EXPECTATIONS_START = "1993Q3"
+
+# Where the quarterly trimmed mean comes from: the published, rounded rate, or
+# the rate computed from the published index.
+PI_SOURCES = ("published", "index")
+
 # The law u* follows. See `ModelConfig.ustar_structure`.
 #   "walk"     — driftless Gaussian random walk at the imposed sigma_ustar
 #   "decay" — the walk pulled toward one estimated equilibrium
@@ -529,13 +539,27 @@ class ModelConfig:
     #     pi_q,t = q(a) + lambda x [pi_q,t-1 - q(a)] + (1 - lambda) x beta x excess_t
     #              + demand + supply + e
     #
-    # Off by default, which keeps every existing run as it was. Without it the
-    # curve has no persistence: once u reaches u*, expected inflation is back
-    # at target the next quarter whatever it was before, so the model can never
-    # say unemployment must go above u* to bring inflation down. The weights on
-    # the lag and the anchor sum to one, so inflation still settles at target
-    # when slack, the excess and supply are all zero.
-    inflation_lag: bool = False
+    # On by default. It is what lets the model say unemployment must go above
+    # u* to bring inflation down: inflation above target this quarter carries
+    # into the next, and only slack works it off. Without it (--no-inflation-lag)
+    # the curve has no persistence, and once u reaches u* inflation is back at
+    # target the next quarter whatever it was before. The weights on the lag
+    # and the anchor sum to one, so inflation still settles at target when
+    # slack, the excess and supply are all zero.
+    inflation_lag: bool = True
+    # Under `inflation_lag`, the persistence regressor is the mean of the last
+    # `inflation_lag_window` quarters' rates (t-1 to t-N), less q(anchor). One
+    # is the single lag above.
+    inflation_lag_window: int = 1
+    # The expectations series in the Phillips curve's excess term: the
+    # unanchored model's, or the short-run (1 year) model's, which before
+    # SHORT_EXPECTATIONS_START is the unanchored series. u* drift always reads
+    # the unanchored series.
+    expectations_series: str = "unanchored"
+    # The quarterly trimmed mean the Phillips curve fits, its lag and the
+    # quarterly-basis gap: the published rate (one decimal) or the rate
+    # computed from the published index (unrounded).
+    pi_source: str = "published"
 
     output_dir: Path = field(default_factory=lambda: DEFAULT_OUTPUT_DIR)
 
@@ -636,8 +660,22 @@ class ModelConfig:
             raise ValueError(f"sigma_v must be non-negative, got {self.sigma_v}")
         if self.sigma_v is not None and not self.free_gap_component:
             raise ValueError("sigma_v is meaningless with free_gap_component off")
+        self._validate_phillips_options()
+
+    def _validate_phillips_options(self) -> None:
+        """Reject Phillips curve options that are illegal or would go unused."""
         if self.inflation_lag and not self.include_phillips:
             raise ValueError("inflation_lag puts a term in the Phillips curve, so it needs the Phillips curve")
+        if self.inflation_lag_window < 1:
+            raise ValueError(f"inflation_lag_window must be at least 1, got {self.inflation_lag_window}")
+        if self.inflation_lag_window > 1 and not self.inflation_lag:
+            raise ValueError("inflation_lag_window averages the lag, so it needs inflation_lag")
+        if self.expectations_series not in EXPECTATIONS_SERIES:
+            raise ValueError(
+                f"expectations_series must be one of {EXPECTATIONS_SERIES}, got {self.expectations_series!r}",
+            )
+        if self.pi_source not in PI_SOURCES:
+            raise ValueError(f"pi_source must be one of {PI_SOURCES}, got {self.pi_source!r}")
 
     @property
     def scale_constants(self) -> dict[str, float]:
@@ -677,6 +715,9 @@ class ModelConfig:
             } if self.slack == "both" else {}),
             "okun_form": self.okun_form,
             "inflation_lag": self.inflation_lag,
+            "inflation_lag_window": self.inflation_lag_window,
+            "expectations_series": self.expectations_series,
+            "pi_source": self.pi_source,
         }
         if self.ustar_structure == "spline":
             # Under the spline there is no innovation variance to report, and

@@ -6,6 +6,7 @@ import mgplot as mg
 import pandas as pd
 from mgplot.utilities import get_color_list
 
+from src.models.common.pooling import BAND_50, BAND_90, COMBINED_MEDIAN
 from src.models.ustar.analyse import UNIDENTIFIED_WINDOW as USTAR_WINDOW
 from src.models.ystar_ustar.analyse import UNIDENTIFIED_WINDOW as JOINT_WINDOW
 from src.paths import CHARTS
@@ -40,6 +41,11 @@ _RFOOTER = "Built from saved runs of ustar and ystar_ustar"
 def _from[T: (pd.DataFrame, pd.Series)](data: T, start: str | None) -> T:
     """Return `data` from `start` on, or all of it."""
     return data.loc[data.index >= pd.Period(start, freq="Q")] if start else data
+
+
+def _band_label(band: tuple[float, float]) -> str:
+    """Name a central band by the share of the pool it holds."""
+    return f"{round((band[1] - band[0]) * 100)}% band"
 
 
 def plot_summary(
@@ -124,14 +130,58 @@ def plot_spread(frame: pd.DataFrame, start: str | None = "1993Q1") -> None:
     )
 
 
+def plot_combined(
+    combined: pd.DataFrame,
+    unemployment: pd.Series,
+    specifications: int,
+    start: str | None = "1993Q1",
+) -> None:
+    """Plot the combined estimate's median and bands, against the unemployment rate."""
+    data = _from(combined, start)
+    ax = mg.fill_between_plot(data[list(BAND_90)], color="darkblue", alpha=0.12, label=_band_label(BAND_90))
+    mg.fill_between_plot(data[list(BAND_50)], ax=ax, color="darkblue", alpha=0.25, label=_band_label(BAND_50))
+    mg.line_plot(
+        data[COMBINED_MEDIAN].rename("Combined median"),
+        ax=ax,
+        color=["darkblue"],
+        width=2.0,
+        annotate=True,
+        rounding=2,
+        fontsize="x-small",
+    )
+    mg.line_plot(
+        _from(unemployment, start),
+        ax=ax,
+        color="black",
+        width=1.0,
+        zorder=1,
+        annotate=True,
+        rounding=2,
+        fontsize="x-small",
+    )
+    mg.finalise_plot(
+        ax,
+        title=f"Australian u*: combined estimate of {specifications} specifications",
+        ylabel="Per cent",
+        axvspan=_UNIDENTIFIED,
+        legend={"loc": "best", "fontsize": "x-small"},
+        lheader="Bands hold within-model uncertainty and between-model disagreement",
+        rfooter=_RFOOTER,
+        lfooter="Australia. Posterior draws pooled, equal weights. ",
+        show=False,
+    )
+
+
 def run_analyse(
     frame: pd.DataFrame,
+    combined: pd.DataFrame,
     notes: dict[str, str],
     unemployment: pd.Series,
+    *,
     start: str | None = "1993Q1",
     chart_dir: Path | str | None = None,
 ) -> None:
-    """Write both charts and print the latest readings."""
+    """Write the charts and print the latest readings."""
     directory = Path(chart_dir) if chart_dir else CHART_DIR
     directory.mkdir(parents=True, exist_ok=True)
     mg.set_chart_dir(str(directory))
@@ -139,6 +189,7 @@ def run_analyse(
 
     plot_summary(frame, unemployment, start=start)
     plot_spread(frame, start=start)
+    plot_combined(combined, unemployment, len(frame.columns), start=start)
 
     print("\nWhat each line is built from:")
     for label, note in notes.items():
@@ -149,6 +200,10 @@ def run_analyse(
         clean = series.dropna()
         if not clean.empty:
             print(f"  {column!s:<52} {clean.iloc[-1]:5.2f}   ({clean.index[-1]})")
+    latest = combined.iloc[-1]
+    print(f"  {'Combined median':<52} {latest[COMBINED_MEDIAN]:5.2f}   ({combined.index[-1]})")
+    for band in (BAND_50, BAND_90):
+        print(f"  {'Combined ' + _band_label(band):<52} {latest[band[0]]:5.2f} to {latest[band[1]]:.2f}")
     latest_u = unemployment.dropna()
     print(f"  {'Unemployment rate':<52} {latest_u.iloc[-1]:5.2f}   ({latest_u.index[-1]})")
     print(f"\nCharts written to: {directory}")

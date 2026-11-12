@@ -18,6 +18,7 @@ from src.data.series_specs import (
     CPI_HEADLINE_ANNUAL,
     CPI_HEADLINE_QUARTERLY,
     CPI_TRIMMED_MEAN_ANNUAL,
+    CPI_TRIMMED_MEAN_INDEX,
     CPI_TRIMMED_MEAN_QUARTERLY,
     CPI_WEIGHTED_MEDIAN,
     CPI_WEIGHTED_MEDIAN_QUARTERLY,
@@ -76,6 +77,28 @@ def get_trimmed_mean_qrtly() -> DataSeries:
 
     """
     return load_series(CPI_TRIMMED_MEAN_QUARTERLY)
+
+
+def get_trimmed_mean_qrtly_from_index() -> DataSeries:
+    """Get quarterly trimmed mean inflation, computed from the published index, unrounded.
+
+    The published quarterly rate is rounded to one decimal place; the
+    percentage change in the index is the same rate without the rounding.
+
+    Returns:
+        DataSeries with quarterly inflation (%)
+
+    """
+    index = load_series(CPI_TRIMMED_MEAN_INDEX)
+    return DataSeries(
+        data=index.data.pct_change() * 100.0,
+        source=index.source,
+        units="%",
+        description="Trimmed mean, quarterly % change computed from the index (unrounded)",
+        cat=index.cat,
+        table=index.table,
+        series_id=index.series_id,
+    )
 
 
 def get_trimmed_mean_annual() -> DataSeries:

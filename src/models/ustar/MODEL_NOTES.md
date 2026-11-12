@@ -9,6 +9,8 @@ u* path     random walk, step size 0.3 tapering to 0.10 by 2002Q1, flat after;
             (alternatives: the stepped and flat walks; a natural cubic spline,
             one interior knot at 2013Q1)
 equations   price Phillips curve only. The gap-form Okun equation is OFF
+phillips    hybrid: last quarter's inflation (backward-looking expectations)
+            beside trend expectations (--no-inflation-lag drops it)
 anchor      2.5% target, flat, with expectations entering as a deviation from it
 ```
 
@@ -40,7 +42,9 @@ u_t - u*_t  =  - u_t x (pi_t - pi^e_t) / gamma
 That is the definition operating here, not a by-product of it. No
 labour-market observable enters except `u`, which sits on both sides, so the
 path is inflation's deviation from expected inflation, rescaled by `u/gamma`,
-smoothed and given a shape.
+smoothed and given a shape. Here `pi^e` stands for the whole baseline the curve
+expects: the target, last quarter's inflation and trend expectations, weighted
+as in the equation below, with supply shocks netted off.
 
 Two things follow and are worth holding onto while reading the rest. Every
 argument below about the start date, Okun, the spline and the knots is an
@@ -48,6 +52,33 @@ argument about the smoothing and the scaling, never about adding information.
 And where inflation sits at expectations, the equation has nothing to say and
 u\* is whatever the smoothing puts there, which is what makes the 1990s the
 problem they are.
+
+### The Phillips curve
+
+A hybrid Phillips curve, on quarterly rates:
+
+```
+pi_t = q(2.5) + lambda x [pi_t-1 - q(2.5)] + (1 - lambda) x beta x [q(pi^e_t) - q(2.5)]
+       + gamma x (u_t - u*_t) / u_t + rho x d4pm_t + xi x GSCPI_t^2 + e_t
+```
+
+In words: inflation this quarter is the target, plus a share `lambda` of how
+far last quarter's inflation was from target, plus the rest of the weight on
+how far trend expectations sit above target, plus slack, plus import prices
+and supply-chain pressure.
+
+"Backward-looking expectations" is the name the charts and notes give the
+`lambda` term; the code calls it the inflation lag (`inflation_lag`,
+`lambda_pi`). Trend expectations are the expectations model's unanchored
+series. The lag and the target share one unit of weight, so with no slack, no
+excess expectations and no supply shock inflation settles at target. What the
+lag adds is persistence: inflation above target carries into the next quarter,
+and only slack works it off. `--no-inflation-lag` drops the term and gives the
+expectations term its full weight.
+
+The inflation decomposition chart stacks these terms against observed
+inflation, each bar coloured as labelled in the equation beneath it:
+backward-looking expectations in light purple, trend expectations in purple.
 
 ---
 
@@ -334,6 +365,7 @@ width over time. The 1993-2003 window is shaded.
 ```bash
 ./run-ustar.sh                                   # the default above
 ./run-ustar.sh --okun                            # restore the Okun equation
+./run-ustar.sh --no-inflation-lag                # drop last quarter's inflation from the Phillips curve
 ./run-ustar.sh --ustar-structure decay           # the decay law
 ./run-ustar.sh --taper-end 2004Q1                # --taper-* flags change the walk's schedule
 ./run-ustar.sh --flat-walk                       # the flat walk, written to ustar_flat_walk

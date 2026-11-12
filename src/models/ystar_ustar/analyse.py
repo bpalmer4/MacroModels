@@ -13,6 +13,8 @@ import mgplot as mg
 import numpy as np
 import pandas as pd
 from scipy import stats
+from statsmodels.stats.diagnostic import acorr_ljungbox
+from statsmodels.tsa.stattools import acf
 
 from src.models.common import chart_annotations, prior_posterior
 from src.models.common.charts import excluded_span_style, ustar_structure_note
@@ -37,13 +39,20 @@ _USTAR_BETA = 2.147
 _USTAR_GAMMA = -1.148
 _USTAR_LEVEL = 4.83
 
-_LFOOTER = "Australia. Joint y* and u* model. "
+_MODEL = "Joint y* and u* model. "
+_LFOOTER = "Australia. " + _MODEL
 
 # Horizons, in quarters, for the unemployment rate that returns year-ended
 # inflation to target under `inflation_lag`. A choice, not an estimate: one
 # year and two. The chart draws the longer.
 DISINFLATION_HORIZONS = (4, 8)
 _QUARTERS_PER_YEAR = 4
+# The Ljung-Box test on the Phillips residual looks this many quarters back.
+_LJUNG_BOX_LAGS = 8
+# Decomposition charts: the share of the data's range added below the bars as
+# padding, and above them as room for the legend.
+_PADDING = 0.03
+_LEGEND_ROOM = 0.30
 
 
 def _lfooter(results: JointResults, extra: str = "") -> str:
@@ -146,8 +155,6 @@ def _print_headline(results: JointResults) -> None:
     print(f"  output gap             : {gap.iloc[-1]:+6.2f}   (ystar alone: {_YSTAR_GAP:+.2f})")
     print(f"  u*                     : {ustar.iloc[-1]:6.2f}   (ustar alone: {_USTAR_LEVEL})")
     print(f"  u - u*                 : {ugap.iloc[-1]:+6.2f}")
-    if results.has_inflation_lag and "gamma_pi" in results.posterior:
-        _print_disinflation(results, ustar.iloc[-1])
 
 
 def _year_ended_now(results: JointResults) -> float:
@@ -156,19 +163,16 @@ def _year_ended_now(results: JointResults) -> float:
     return float((np.prod(1.0 + last_year / 100.0) - 1.0) * 100.0)
 
 
-def _print_disinflation(results: JointResults, ustar_now: float) -> None:
-    """Print the unemployment rate that returns year-ended inflation to target, and its cost.
+def _disinflation_lines(results: JointResults, ustar_now: float) -> list[str]:
+    """Return the unemployment rate that returns year-ended inflation to target, and its cost.
 
     The sacrifice ratio is point-years of unemployment above u* over the
     horizon, per point of year-ended inflation removed. It is only defined
     when inflation is above target.
     """
-    lam = np.asarray(results.posterior["lambda_pi"].values).ravel()
-    lo, mid, hi = np.quantile(lam, [0.05, 0.5, 0.95])
-    print(f"  lambda_pi (persistence): {mid:6.2f}   (90% {lo:.2f} to {hi:.2f})")
     year_ended = _year_ended_now(results)
     excess_inflation = year_ended - float(results.anchor_annual[-1])
-    print(f"  year-ended inflation   : {year_ended:6.2f}   ({excess_inflation:+.2f} on target)")
+    lines = [f"  year-ended inflation   : {year_ended:6.2f}   ({excess_inflation:+.2f} on target)"]
     for horizon in DISINFLATION_HORIZONS:
         needed = results.disinflation_unemployment(horizon).iloc[-1]
         lo_u, hi_u = needed.quantile([0.05, 0.95])
@@ -181,7 +185,49 @@ def _print_disinflation(results: JointResults, ustar_now: float) -> None:
         if excess_inflation > 0:
             sacrifice = horizon / _QUARTERS_PER_YEAR * over / excess_inflation
             line += f"; sacrifice ratio {sacrifice:.2f}"
-        print(line + ")")
+        lines.append(line + ")")
+    return lines
+
+
+def _phillips_report(results: JointResults) -> list[str]:
+    """Return the Phillips curve's summary, for the screen and the run's diagnostics file.
+
+    The residual is the decomposition's: observed quarterly inflation less the
+    equation at the posterior-median parameters, over the fitted quarters.
+    """
+    post = results.posterior
+    lines = ["--- Phillips curve ---"]
+    for name in ("lambda_pi", "gamma_pi", "beta_pi"):
+        if name in post:
+            lo, mid, hi = np.quantile(np.asarray(post[name].values).ravel(), [0.05, 0.5, 0.95])
+            lines.append(f"  {name:<23}: {mid:6.2f}   (90% {lo:.2f} to {hi:.2f})")
+    lam_draws = np.asarray(post["lambda_pi"].values).ravel() if results.has_inflation_lag else np.zeros(1)
+    lam = float(np.median(lam_draws))
+    excess_weight = (1.0 - lam) * float(post["beta_pi"].median())
+    expectations = "short-run expectations" if results.constants.get("expectations_series") == "short" \
+        else "trend expectations"
+    lines.append(f"  effective weights      : target {1.0 - lam - excess_weight:.2f}, {expectations} "
+                 f"{excess_weight:.2f}, last quarter's inflation {lam:.2f}")
+    if "gamma_pi" in post:
+        slope = np.asarray(post["gamma_pi"].values).ravel() / (1.0 - lam_draws)
+        lo, mid, hi = np.quantile(slope, [0.05, 0.5, 0.95])
+        lines.append(f"  long-run slope g/(1-l) : {mid:6.2f}   (90% {lo:.2f} to {hi:.2f})")
+
+    decomp = results.inflation_decomposition()
+    residual = decomp["residual"][results.fitted_mask()].to_numpy()
+    p_value = float(acorr_ljungbox(residual, lags=[_LJUNG_BOX_LAGS])["lb_pvalue"].iloc[0])
+    lines.append(f"  residual ACF(1)        : {acf(residual, nlags=1, fft=False)[1]:6.2f}   "
+                 f"(Ljung-Box p at {_LJUNG_BOX_LAGS} lags {p_value:.3f})")
+
+    end = results.obs_index[-1]
+    year = decomp.rolling(_QUARTERS_PER_YEAR).sum().iloc[-1]
+    names = {"persistence": "backward-looking", "excess": expectations, "demand": "demand", "supply": "supply",
+             "residual": "residual"}
+    lines.append(f"  year-ended deviation from target at {end}, {year['observed'] - year['anchor']:+.2f}:")
+    lines.append("    " + ", ".join(f"{name} {year[c]:+.2f}" for c, name in names.items() if c in year))
+    if results.has_inflation_lag and "gamma_pi" in post:
+        lines += _disinflation_lines(results, float(results.ustar_posterior().median(axis=1).iloc[-1]))
+    return lines
 
 
 def _print_comparison(results: JointResults) -> None:
@@ -390,6 +436,14 @@ def _chart_phillips_curve(results: JointResults) -> None:
                     label="90% interval for the slope", zorder=1)
     ax.plot(grid, gamma_median * grid, color="black", linewidth=2,
             label=f"Fitted: gamma = {gamma_median:.2f}", zorder=2)
+    header = f"Short-run slope gamma = {gamma_median:.2f}, 90% interval [{lo_g:.2f}, {hi_g:.2f}]"
+    if results.has_inflation_lag:
+        # The long-run slope, gamma / (1 - lambda), per draw: what slack does once the lag has played out.
+        long_run = gamma / (1.0 - np.asarray(results.posterior["lambda_pi"].values).ravel())
+        lo_l, mid_l, hi_l = np.percentile(long_run, [5, 50, 95])
+        ax.plot(grid, mid_l * grid, color="black", linewidth=1.5, linestyle="--",
+                label="Long-run: gamma / (1 - lambda)", zorder=2)
+        header += f"; long-run slope gamma / (1 - lambda) = {mid_l:.2f} [{lo_l:.2f}, {hi_l:.2f}]"
     ax.axhline(0.0, color="grey", linewidth=0.8)
     ax.axvline(0.0, color="grey", linewidth=0.8)
 
@@ -398,12 +452,12 @@ def _chart_phillips_curve(results: JointResults) -> None:
         title="The Phillips curve as specified",
         xlabel=f"{_slack_noun(results)} gap, (u - u*) / u",
         ylabel=(
-            "Quarterly inflation less anchor, persistence,\nexpectations and supply terms"
+            "Quarterly inflation less anchor,\nbackward-looking expectations,\ntrend expectations and supply terms"
             if results.has_inflation_lag
             else "Quarterly inflation less anchor,\nexpectations and supply terms"
         ),
-        legend={"loc": "best", "fontsize": "small"},
-        lheader=f"gamma = {gamma_median:.2f}, 90% interval [{lo_g:.2f}, {hi_g:.2f}]",
+        legend={"loc": "best", "fontsize": "x-small", "ncol": 2},
+        lheader=header,
         lfooter=_lfooter(results, "Axes not independent: see notes. "),
         rfooter=_rfooter(results),
         show=False,
@@ -461,43 +515,89 @@ def _chart_implied_ustar(results: JointResults) -> None:
     )
 
 
-def _chart_inflation_decomposition(results: JointResults) -> None:
-    """Stack the Phillips curve's terms against observed inflation, persistence included.
+# The decomposition chart's bars: decomposition column -> (legend label, colour).
+# The two expectations components are a pair: the trend series' excess in the
+# purple, last quarter's inflation in a lighter tint of it, stacked together
+# next to the target.
+EXPECTATIONS_PURPLE = "mediumpurple"
+BACKWARD_PURPLE = "#cbbdf0"
+DECOMPOSITION_BARS = {
+    "anchor": ("Inflation target", "#cccccc"),
+    "persistence": ("Backward-looking expectations (last quarter's inflation)", BACKWARD_PURPLE),
+    "excess": ("Trend expectations above target", EXPECTATIONS_PURPLE),
+    "demand": ("Demand", "orange"),
+    "supply": ("Supply", "darkblue"),
+    "residual": ("Noise", "lightblue"),
+}
+# The excess's label when a run reads the short-run expectations series instead.
+SHORT_EXCESS_LABEL = "Short-run expectations above target"
 
-    `ustar`'s chart with one more bar: the share of last quarter's deviation
-    from target carried into this one. Annualised for display, term by term,
-    as `ustar` does.
+
+def _phillips_equation(results: JointResults) -> str:
+    """Return the fitted Phillips curve as LaTeX, each term labelled with its bar's colour."""
+    lag = results.has_inflation_lag
+    if results.gap_spec == "cycle":
+        demand = r"\kappa\,gap_t"
+    else:
+        demand = r"\gamma\frac{U_t - U^*_t}{U_t}"
+        if "gamma_ue" in results.posterior:
+            demand += r" + \gamma_{ue}\frac{UE_t - UE^*_t}{UE_t}"
+    terms = [
+        r"\underbrace{\pi^{target}}_{\mathrm{grey}}",
+        *([r"\underbrace{\lambda\,(\pi_{t-1} - \pi^{target})}_{\mathrm{light\ purple}}"] if lag else []),
+        r"\underbrace{" + (r"(1-\lambda)\," if lag else "") + r"\beta\,(\pi^e_t - \pi^{target})}_{\mathrm{purple}}",
+        r"\underbrace{" + demand + r"}_{\mathrm{orange}}",
+        r"\underbrace{\rho\Delta_4 p^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}",
+        r"\underbrace{\varepsilon_t}_{\mathrm{light\ blue}}",
+    ]
+    return r"$\pi_t = " + " + ".join(terms) + "$"
+
+
+def _chart_inflation_decomposition(results: JointResults, *, year_ended: bool) -> None:
+    """Stack the Phillips curve's terms against observed inflation, backward-looking expectations included.
+
+    Year-ended, the headline: every quarterly term summed over four quarters,
+    against the four-quarter sum of the quarterly rates the equation fits.
+    Otherwise annualised quarter by quarter, as `ustar` draws it. The fitted
+    equation sits below the axis, as its label, so it covers no data.
     """
-    decomp = annualize(results.inflation_decomposition())
-    if not isinstance(decomp, pd.DataFrame):
-        raise TypeError(f"expected the annualised decomposition to be a frame, got {type(decomp).__name__}")
-    bars = pd.DataFrame({
-        "Inflation target": decomp["anchor"],
-        "Persistence": decomp["persistence"],
-        "Expectations above target": decomp["excess"],
-        "Demand": decomp["demand"],
-        "Supply": decomp["supply"],
-        "Noise": decomp["residual"],
-    })
-    ax = mg.bar_plot(
-        bars,
-        stacked=True,
-        color=["#cccccc", "seagreen", "mediumpurple", "orange", "darkblue", "lightblue"],
-        annotate=False,
-        width=1.0,
-    )
-    observed = decomp["observed"].rename("Observed inflation (quarterly annualised)")
-    mg.line_plot(observed, ax=ax, color=["indigo"], width=1.5, annotate=False, zorder=10)
+    quarterly_terms = results.inflation_decomposition()
+    if year_ended:
+        decomp = quarterly_terms.rolling(_QUARTERS_PER_YEAR).sum().dropna()
+    else:
+        annualised = annualize(quarterly_terms)
+        if not isinstance(annualised, pd.DataFrame):
+            raise TypeError(f"expected the annualised decomposition to be a frame, got {type(annualised).__name__}")
+        decomp = annualised
+    short = results.constants.get("expectations_series") == "short"
+    present = {column: ((SHORT_EXCESS_LABEL, color) if column == "excess" and short else (label, color))
+               for column, (label, color) in DECOMPOSITION_BARS.items() if column in decomp}
+    bars = pd.DataFrame({label: decomp[column] for column, (label, _) in present.items()})
+    # Fitted to the data, with a band at the top for the legend so it covers no bars.
+    low = min(float(bars.clip(upper=0).sum(axis=1).min()), float(decomp["observed"].min()))
+    high = max(float(bars.clip(lower=0).sum(axis=1).max()), float(decomp["observed"].max()))
+    ylim = (low - _PADDING * (high - low), high + _LEGEND_ROOM * (high - low))
+    ax = mg.bar_plot(bars, stacked=True, color=[color for _, color in present.values()], annotate=False, width=1.0)
+    observed_label = ("Observed inflation (four quarters' rates summed)" if year_ended
+                      else "Observed inflation (quarterly annualised)")
+    mg.line_plot(decomp["observed"].rename(observed_label), ax=ax, color=["indigo"], width=1.5, annotate=False,
+                 zorder=10)
+    # The axis label, so the layout makes room for it between the ticks and the footers.
+    ax.set_xlabel(_phillips_equation(results), usetex=True, fontsize=8)
     target = float(results.constants["anchor"])
     mg.finalise_plot(
         ax,
-        title="Price inflation decomposition",
-        ylabel="% p.a.",
+        title="Price inflation decomposition, " + ("year-ended" if year_ended else "quarterly annualised"),
+        ylabel="Per cent" if year_ended else "% p.a.",
+        ylim=ylim,
         axhline={"y": target, "color": "darkred", "linestyle": "--", "linewidth": 1, "label": f"{target:g}% target"},
-        legend={"loc": "best", "fontsize": "x-small"},
+        axvspan=_excluded_span(results),
+        legend={"loc": "upper left", "fontsize": "x-small", "ncol": 3},
         y0=True,
-        lheader="pi = target + persistence + expectations above target + demand + supply + noise",
-        lfooter=_lfooter(results, "Medians. "),
+        # The model and its u* structure go in the header: in the footer they
+        # run into the source line on the right.
+        lheader=_MODEL + ustar_structure_note(results.constants),
+        lfooter="Australia. Medians. ",
         rfooter=_rfooter(results),
         show=False,
     )
@@ -537,8 +637,9 @@ def _chart_disinflation(results: JointResults) -> None:
         ylabel="Per cent",
         legend={"loc": "best", "fontsize": "x-small"},
         axvspan=[*ustar_analyse.unidentified_span(UNIDENTIFIED_WINDOW), *_excluded_span(results)],
-        lheader="Held for the horizon from each quarter's inflation; supply shocks assumed to fade.",
-        lfooter=_lfooter(results, "Year-ended rate, to first order. "),
+        lheader=("Held for the horizon from each quarter's inflation; trend expectations held where they stand; "
+                 "supply shocks assumed to fade."),
+        lfooter="Australia. Year-ended rate, to first order. Conditional on the trend expectations series.",
         rfooter=_rfooter(results),
         show=False,
     )
@@ -600,7 +701,7 @@ _SEPARATE_VALUE = {
 }
 
 
-def _prior_for(results: JointResults, name: str) -> tuple[str, float, float] | None:
+def _prior_for(results: JointResults, name: str) -> prior_posterior.Prior | None:
     """Return (kind, mu, sd) for a parameter's prior, or None if unknown.
 
     Three priors depend on run settings rather than being fixed in the source,
@@ -749,12 +850,10 @@ def _draw_charts(
     ustar_analyse.plot_ugap(ustar_view)
     ustar_analyse.plot_ustar_components(ustar_view)
     if results.has_phillips:
-        # `ustar`'s chart knows nothing of the persistence term and would book
-        # it as noise, so a run with the lag draws its own.
-        if results.has_inflation_lag:
-            _chart_inflation_decomposition(results)
-        else:
-            ustar_analyse.plot_inflation_decomposition(ustar_view)
+        # Drawn here rather than by `ustar`, which knows nothing of the
+        # persistence term and would book it as noise. Year-ended is the headline.
+        _chart_inflation_decomposition(results, year_ended=True)
+        _chart_inflation_decomposition(results, year_ended=False)
 
     # --- What neither parent can draw ---
     if results.has_defined_gap:
@@ -839,7 +938,9 @@ def run_analysis(
     chart_dir = Path(chart_dir)
     mg.set_chart_dir(str(chart_dir))
     mg.clear_chart_dir()
-    save_diagnostics(results.trace, chart_dir, prefix, model="ystar_ustar")
+    phillips = _phillips_report(results) if results.has_phillips else []
+    print("\n" + "\n".join(phillips))
+    save_diagnostics(results.trace, chart_dir, prefix, model="ystar_ustar", notes=phillips)
 
     _annotate_views(results, ystar_view, ustar_view)
     _draw_charts(results, ystar_view, ustar_view)

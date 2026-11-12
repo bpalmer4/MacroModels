@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from src.models.common.pooling import combine
 from src.models.common.staleness import is_current
 from src.models.rstar_qpm.estimate import load_results as load_qpm_results
 from src.models.ystar.results import load_results as load_ystar_results
@@ -47,9 +48,9 @@ _WINDOW_LEN = 2
 
 @dataclass(frozen=True)
 class GapReading:
-    """One run's output gap and the window its GDP observation dropped."""
+    """One run's output gap draws (quarters x draws) and the window its GDP observation dropped."""
 
-    gap: pd.Series
+    draws: pd.DataFrame
     window: Window
 
 
@@ -61,8 +62,8 @@ class GapSource:
         label: how the chart names it
         prefix: the saved run this reads
         script: the run script that refreshes it
-        loader: returns the posterior median gap (per cent of potential) and
-            the run's excluded window
+        loader: returns the posterior draws of the gap (per cent of potential)
+            and the run's excluded window
         note: what this gap is, for the run log
         script_args: arguments the script needs to reproduce this run, when it
             is not the script's default run
@@ -99,7 +100,7 @@ def _load_ystar(prefix: str) -> GapReading:
     """Return the inflation-defined gap from `ystar`, c·(pi - anchor)."""
     results = load_ystar_results(prefix=prefix)
     return GapReading(
-        gap=results.output_gap_median(),
+        draws=results.output_gap_posterior(),
         window=_as_window(results.constants.get("exclude_window")),
     )
 
@@ -108,7 +109,7 @@ def _load_joint(prefix: str) -> GapReading:
     """Return the joint model's whole gap, c·(pi - anchor) + v."""
     results = load_joint_results(prefix=prefix)
     return GapReading(
-        gap=results.output_gap_posterior().median(axis=1),
+        draws=results.output_gap_posterior(),
         window=results.excluded_window,
     )
 
@@ -117,7 +118,7 @@ def _load_qpm(prefix: str) -> GapReading:
     """Return the `ygap` state from `rstar_qpm`, in y = y* + ygap."""
     _, _, constants, states = load_qpm_results(prefix=prefix)
     return GapReading(
-        gap=states["paths"]["ygap"].median(axis=1),
+        draws=states["paths"]["ygap"],
         window=_as_window((constants.get("exclude_start"), constants.get("exclude_end"))),
     )
 
@@ -165,8 +166,8 @@ def gather(
     *,
     allow_refresh: bool = True,
     verbose: bool = True,
-) -> tuple[pd.DataFrame, dict[str, str], dict[str, Window]]:
-    """Return every model's output gap on a shared quarterly index.
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, str], dict[str, Window]]:
+    """Return every model's output gap on a shared quarterly index, and their pooled draws.
 
     Args:
         allow_refresh: re-run any model whose saved trace is not from today,
@@ -174,8 +175,10 @@ def gather(
         verbose: print what was current, what was refreshed and what was read
 
     Returns:
-        (frame, notes, windows). `frame` holds one column per source; `notes`
-        maps each label to what its gap is; `windows` maps each label to the
+        (frame, combined, notes, windows). `frame` holds each source's
+        posterior median, one column per source; `combined` is the quantiles of
+        every source's draws pooled with equal weight per source; `notes` maps
+        each label to what its gap is; `windows` maps each label to the
         quarters its run dropped from the GDP observation.
 
     """
@@ -190,25 +193,26 @@ def gather(
             if not source.is_current():
                 refresh(source)
 
-    columns, notes, windows = _load_all(verbose=verbose)
-    if not columns:
+    draws, notes, windows = _load_all(verbose=verbose)
+    if not draws:
         raise RuntimeError("no output gaps could be loaded")
-    return pd.DataFrame(columns).sort_index(), notes, windows
+    medians = pd.DataFrame({label: frame.median(axis=1) for label, frame in draws.items()}).sort_index()
+    return medians, combine(draws), notes, windows
 
 
-def _as_quarterly(series: pd.Series) -> pd.Series:
-    """Return `series` on a quarterly PeriodIndex."""
-    index = series.index
+def _as_quarterly(frame: pd.DataFrame) -> pd.DataFrame:
+    """Return `frame` on a quarterly PeriodIndex."""
+    index = frame.index
     if isinstance(index, pd.PeriodIndex):
-        series.index = index.asfreq("Q")
+        frame.index = index.asfreq("Q")
     elif isinstance(index, pd.DatetimeIndex):
-        series.index = index.to_period("Q")
-    return series.astype(float)
+        frame.index = index.to_period("Q")
+    return frame.astype(float)
 
 
-def _load_all(*, verbose: bool) -> tuple[dict[str, pd.Series], dict[str, str], dict[str, Window]]:
-    """Load each source. One that cannot be read is named and skipped."""
-    columns: dict[str, pd.Series] = {}
+def _load_all(*, verbose: bool) -> tuple[dict[str, pd.DataFrame], dict[str, str], dict[str, Window]]:
+    """Load each source's draws. One that cannot be read is named and skipped."""
+    columns: dict[str, pd.DataFrame] = {}
     notes: dict[str, str] = {}
     windows: dict[str, Window] = {}
     if verbose:
@@ -219,7 +223,7 @@ def _load_all(*, verbose: bool) -> tuple[dict[str, pd.Series], dict[str, str], d
         except (FileNotFoundError, KeyError, ValueError) as exc:
             print(f"  SKIPPED {source.label}: {type(exc).__name__}: {exc}")
             continue
-        columns[source.label] = _as_quarterly(reading.gap)
+        columns[source.label] = _as_quarterly(reading.draws)
         notes[source.label] = source.note
         windows[source.label] = reading.window
         if verbose:

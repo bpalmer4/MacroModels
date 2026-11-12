@@ -22,7 +22,7 @@ from src.paths import CHARTS
 
 CHART_DIR = CHARTS / "RStarRBA"
 
-_LFOOTER = "Australia. Neutral inferred from the RBA's response to inflation. "
+_LFOOTER = "Australia. "
 _ERAS = {
     "1994-2007": ("1994Q1", "2007Q4"),
     "2008-2011": ("2008Q1", "2011Q4"),

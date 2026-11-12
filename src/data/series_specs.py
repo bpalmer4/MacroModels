@@ -151,6 +151,19 @@ CPI_TRIMMED_MEAN_QUARTERLY = ReqsTuple(
 )
 
 # Annual trimmed mean - percentage change from corresponding quarter previous year
+# The index the quarterly rate above is published from, rounded to one decimal.
+# Its own percentage change is the same rate unrounded.
+CPI_TRIMMED_MEAN_INDEX = ReqsTuple(
+    cat="6401.0",
+    table="64010Appendix1a",
+    did="Index Numbers ;  Trimmed Mean ;  Australia ;",
+    stype="S",
+    unit="Index Numbers",
+    seek_yr_growth=False,
+    calc_growth=False,
+    zip_file="",
+)
+
 CPI_TRIMMED_MEAN_ANNUAL = ReqsTuple(
     cat="6401.0",
     table="64010Appendix1a",

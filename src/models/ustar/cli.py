@@ -55,6 +55,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Okun only: drop the Phillips curve and the expectations dependency",
     )
     parser.add_argument(
+        "--no-inflation-lag", action="store_true",
+        help="Drop backward-looking expectations (last quarter's inflation) from the Phillips curve. "
+             "See ModelConfig.inflation_lag",
+    )
+    parser.add_argument(
         "--one-sided-beta", action="store_true",
         help="Truncate beta at zero, asserting Okun's law rather than testing it",
     )
@@ -165,6 +170,8 @@ def config_from_args(args: argparse.Namespace) -> ModelConfig:
         gap_measurement_error=not args.no_gap_error,
         use_output_gap=not args.no_output_gap,
         include_phillips=not args.no_phillips,
+        # The lag is a Phillips curve term, so it goes when the curve does.
+        inflation_lag=not (args.no_inflation_lag or args.no_phillips),
         include_okun=args.okun,
         quadratic_gap=args.quadratic_gap,
         ustar_structure=args.ustar_structure,

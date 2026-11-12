@@ -1,7 +1,8 @@
 # y* Summary: Model Notes
 
 **NOT A MODEL.** This loads the output gap from every live model that estimates potential
-output (y\*) and puts them on one chart. Nothing here is estimated.
+output (y\*) and puts them on one chart, with a chart of the range across them and a combined
+estimate that pools their posterior draws. Nothing here is estimated.
 
 ```bash
 ./run-ystar-summary.sh                 # re-run stale models first, then chart
@@ -36,7 +37,14 @@ In plain English:
 
 **What the chart can and cannot say.** Agreement on the sign and timing of the gap is
 informative. Disagreement on amplitude is mostly definitional: comparing the `ystar` line's
-size with the others is comparing a component with a whole.
+size with the others is comparing a component with a whole. The range chart shows that
+disagreement quarter by quarter; it draws no mean, since an average of a component and a whole
+describes nothing.
+
+**The combined estimate pools different objects.** It weights each model's draws equally and
+reports the pooled median and 50% and 90% bands. Because the three gaps are defined differently,
+the bands hold the difference in definition as well as each model's uncertainty and the models'
+disagreement. Read it as where the three definitions jointly sit, not as an estimate of one gap.
 
 ## The lockdown window
 

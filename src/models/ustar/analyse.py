@@ -10,13 +10,16 @@ from pathlib import Path
 from typing import Any
 
 import mgplot as mg
+import numpy as np
 import pandas as pd
+from scipy import stats
 
 from src.data.inflation import get_trimmed_mean_qrtly
 from src.models.common import chart_annotations, prior_posterior
 from src.models.common.chart_annotations import Window
 from src.models.common.charts import excluded_span_style, ustar_structure_note
 from src.models.common.diagnostics import save_diagnostics
+from src.models.ustar.config import LAMBDA_PI_PRIOR
 from src.models.ustar.results import DEFAULT_CHART_BASE, UStarResults, load_results
 from src.utilities.rate_conversion import annualize
 
@@ -136,17 +139,37 @@ def _with_excluded(
     kwargs["axvspan"] = [*spans, *existing] if isinstance(existing, list) else [*spans, existing]
     return kwargs
 
-# The Phillips curve as drawn, with each term labelled by its bar colour.
-# Written out here rather than imported from `nairu.analysis`: that builder is a
-# private helper carrying the regime and wage variants this model does not have,
-# and this equation is fixed, so a literal is clearer than a constructor call.
-_PHILLIPS_EQUATION = (
-    r"$\pi_t = \underbrace{\pi^{target}}_{\mathrm{grey}}"
-    r" + \underbrace{\beta\,(\pi^e_t - \pi^{target})}_{\mathrm{purple}}"
-    r" + \underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}"
-    r" + \underbrace{\rho\Delta_4\rho^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}"
-    r" + \underbrace{\varepsilon_t}_{\mathrm{light\ blue}}$"
-)
+# The decomposition's bars: column, legend label and colour. Two purples for the
+# two expectations terms, light for backward-looking, darker for trend.
+EXPECTATIONS_PURPLE = "mediumpurple"
+BACKWARD_PURPLE = "#cbbdf0"
+DECOMPOSITION_BARS = {
+    "anchor": ("Inflation target", "#cccccc"),
+    "persistence": ("Backward-looking expectations (last quarter's inflation)", BACKWARD_PURPLE),
+    "excess": ("Trend expectations above target", EXPECTATIONS_PURPLE),
+    "demand": ("Demand", "orange"),
+    "supply": ("Supply", "darkblue"),
+    "residual": ("Noise", "lightblue"),
+}
+
+# The decomposition's y-axis: fitted to the data, with a margin below and a band
+# above, as fractions of the data's range, the band holding the legend.
+_PADDING = 0.03
+_LEGEND_ROOM = 0.30
+
+
+def _phillips_equation(results: UStarResults) -> str:
+    """Return the fitted Phillips curve as LaTeX, each term labelled with its bar's colour."""
+    lag = results.has_inflation_lag
+    terms = [
+        r"\underbrace{\pi^{target}}_{\mathrm{grey}}",
+        *([r"\underbrace{\lambda\,(\pi_{t-1} - \pi^{target})}_{\mathrm{light\ purple}}"] if lag else []),
+        r"\underbrace{" + (r"(1-\lambda)\," if lag else "") + r"\beta\,(\pi^e_t - \pi^{target})}_{\mathrm{purple}}",
+        r"\underbrace{\gamma\frac{U_t - U^*_t}{U_t}}_{\mathrm{orange}}",
+        r"\underbrace{\rho\Delta_4 p^m_t + \xi\cdot GSCPI^2}_{\mathrm{blue}}",
+        r"\underbrace{\varepsilon_t}_{\mathrm{light\ blue}}",
+    ]
+    return r"$\pi_t = " + " + ".join(terms) + "$"
 
 # The drawn band is the posterior band scaled about its median by this factor,
 # to stand in for uncertainty about the IMPOSED STRUCTURE, which the posterior
@@ -404,36 +427,33 @@ def plot_inflation_decomposition(results: UStarResults) -> None:
     if not isinstance(decomp, pd.DataFrame):
         raise TypeError(f"expected the annualised decomposition to be a frame, got {type(decomp).__name__}")
 
-    bars = pd.DataFrame({
-        "Inflation target": decomp["anchor"],
-        "Expectations above target": decomp["excess"],
-        "Demand": decomp["demand"],
-        "Supply": decomp["supply"],
-        "Noise": decomp["residual"],
-    })
+    present = {column: entry for column, entry in DECOMPOSITION_BARS.items() if column in decomp}
+    bars = pd.DataFrame({label: decomp[column] for column, (label, _) in present.items()})
+    # Fitted to the data, with a band at the top for the legend so it covers no bars.
+    low = min(float(bars.clip(upper=0).sum(axis=1).min()), float(decomp["observed"].min()))
+    high = max(float(bars.clip(lower=0).sum(axis=1).max()), float(decomp["observed"].max()))
+    ylim = (low - _PADDING * (high - low), high + _LEGEND_ROOM * (high - low))
 
     ax = mg.bar_plot(
         bars,
         stacked=True,
-        color=["#cccccc", "mediumpurple", "orange", "darkblue", "lightblue"],
+        color=[color for _, color in present.values()],
         annotate=False,
         width=1.0,
     )
     observed = decomp["observed"].rename("Observed inflation (quarterly annualised)")
     mg.line_plot(observed, ax=ax, color=["indigo"], width=1.5, annotate=False, zorder=10)
-    ax.text(
-        0.5, 0.02, _PHILLIPS_EQUATION, transform=ax.transAxes, fontsize=9,
-        va="bottom", ha="center", usetex=True,
-        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.9, "edgecolor": "grey"},
-    )
+    # The axis label, so the layout makes room for it between the ticks and the footers.
+    ax.set_xlabel(_phillips_equation(results), usetex=True, fontsize=8)
+    target = float(results.constants["anchor"])
     mg.finalise_plot(
         ax,
         title="Price inflation decomposition",
         ylabel="% p.a.",
-        axhline={"y": 2.5, "color": "darkred", "linestyle": "--", "linewidth": 1, "label": "2.5% target"},
-        legend={"loc": "best", "fontsize": "x-small"},
+        ylim=ylim,
+        axhline={"y": target, "color": "darkred", "linestyle": "--", "linewidth": 1, "label": f"{target:g}% target"},
+        legend={"loc": "upper left", "fontsize": "x-small", "ncol": 3},
         y0=True,
-        lheader="pi = target + expectations above target + demand + supply + noise",
         rfooter=_rfooter(results),
         lfooter=_lfooter(results),
         show=False,
@@ -541,12 +561,22 @@ _PRIORS: dict[str, tuple[str, float, float]] = {
 }
 
 
-def _prior_for(results: UStarResults, name: str) -> tuple[str, float, float] | None:
-    """Return (kind, mu, sd) for a parameter's prior, or None if unknown.
+def _lambda_prior_pdf(grid: np.ndarray) -> np.ndarray:
+    """Density of `lambda_pi`'s truncated-normal prior on `grid`, zero outside its bounds."""
+    mu, sd = LAMBDA_PI_PRIOR["mu"], LAMBDA_PI_PRIOR["sigma"]
+    lower, upper = LAMBDA_PI_PRIOR["lower"], LAMBDA_PI_PRIOR["upper"]
+    return stats.truncnorm.pdf(grid, (lower - mu) / sd, (upper - mu) / sd, loc=mu, scale=sd)
+
+
+def _prior_for(results: UStarResults, name: str) -> prior_posterior.Prior | None:
+    """Return a parameter's prior, as (kind, mu, sd) or a density, or None if unknown.
 
     Two depend on run settings rather than being fixed in the source, so they
-    are read from the constants the run recorded.
+    are read from the constants the run recorded. `lambda_pi`'s is truncated,
+    so it is given as its density.
     """
+    if name == "lambda_pi":
+        return _lambda_prior_pdf
     if name == "beta_okun":
         two_sided = bool(results.constants.get("two_sided_beta", True))
         return ("normal", 0.5, 0.5) if two_sided else ("half", 0.5, 0.5)

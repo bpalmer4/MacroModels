@@ -18,6 +18,11 @@ Each source is a specification from its package's `--compare`, found by
 prefix, so the flags that reproduce it, its refresh and its chart directory
 are defined once, there. A prefix missing from its package stops this at
 import rather than quietly charting fewer lines.
+
+THE COMBINED ESTIMATE pools every specification's posterior draws, each
+specification carrying equal weight, and reads quantiles off the pool. Its
+bands hold both the uncertainty within each specification and the disagreement
+between them. Pooling adds no evidence, so more specifications do not narrow it.
 """
 
 from dataclasses import dataclass
@@ -25,6 +30,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from src.models.common.pooling import combine
 from src.models.ustar import compare as ustar_compare
 from src.models.ustar.config import ModelConfig
 from src.models.ustar.results import load_results as load_ustar_results
@@ -49,7 +55,7 @@ class UstarSource:
         name: the u* structure, worded the same for every model so that one
             structure reads as one thing on the shared legend
         spec: the `--compare` specification that reproduces this run
-        loader: returns the posterior median of u*, per cent
+        loader: returns the posterior draws of u*, per cent, one row per quarter
         note: what this u* is built from, for the run log
 
     """
@@ -57,7 +63,7 @@ class UstarSource:
     model: str
     name: str
     spec: Specification
-    loader: Callable[[str], pd.Series]
+    loader: Callable[[str], pd.DataFrame]
     note: str
 
     @property
@@ -92,14 +98,14 @@ def _find(specifications: Sequence[Specification], prefix: str) -> Specification
     raise KeyError(f"no --compare specification with prefix {prefix!r}")
 
 
-def _load_ustar(prefix: str) -> pd.Series:
-    """u* from `ustar`, on whichever specification `prefix` was run with."""
-    return load_ustar_results(prefix=prefix).ustar_posterior().median(axis=1)
+def _load_ustar(prefix: str) -> pd.DataFrame:
+    """u* draws from `ustar`, on whichever specification `prefix` was run with."""
+    return load_ustar_results(prefix=prefix).ustar_posterior()
 
 
-def _load_joint(prefix: str) -> pd.Series:
-    """u* from the joint y*/u* model."""
-    return load_joint_results(prefix=prefix).ustar_posterior().median(axis=1)
+def _load_joint(prefix: str) -> pd.DataFrame:
+    """u* draws from the joint y*/u* model."""
+    return load_joint_results(prefix=prefix).ustar_posterior()
 
 
 _USTAR = "u*"
@@ -160,8 +166,8 @@ def gather(
     *,
     allow_refresh: bool = True,
     verbose: bool = True,
-) -> tuple[pd.DataFrame, dict[str, str]]:
-    """Return every specification's u* on a shared quarterly index.
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, str]]:
+    """Return every specification's u* on a shared quarterly index, and their combination.
 
     Args:
         allow_refresh: re-run any specification whose saved trace is not from
@@ -169,8 +175,9 @@ def gather(
         verbose: print what was current, what was refreshed and what was read
 
     Returns:
-        (frame, notes). `frame` holds one column per source; `notes` maps each
-        label to what its u* is built from.
+        (frame, combined, notes). `frame` holds each source's posterior median,
+        one column per source; `combined` is `combine` of their draws; `notes`
+        maps each label to what its u* is built from.
 
     """
     if verbose:
@@ -184,36 +191,37 @@ def gather(
             if not source.is_current():
                 source.refresh()
 
-    columns, notes = _load_all(verbose=verbose)
-    if not columns:
+    draws, notes = _load_all(verbose=verbose)
+    if not draws:
         raise RuntimeError("no u* specifications could be loaded")
-    return pd.DataFrame(columns).sort_index(), notes
+    medians = {label: frame.median(axis=1) for label, frame in draws.items()}
+    return pd.DataFrame(medians).sort_index(), combine(draws), notes
 
 
-def _as_quarterly(series: pd.Series) -> pd.Series:
-    """Return `series` on a quarterly PeriodIndex."""
-    index = series.index
+def _as_quarterly(draws: pd.DataFrame) -> pd.DataFrame:
+    """Return `draws` on a quarterly PeriodIndex."""
+    index = draws.index
     if isinstance(index, pd.PeriodIndex):
-        series.index = index.asfreq("Q")
+        draws.index = index.asfreq("Q")
     elif isinstance(index, pd.DatetimeIndex):
-        series.index = index.to_period("Q")
-    return series.astype(float)
+        draws.index = index.to_period("Q")
+    return draws.astype(float)
 
 
-def _load_all(*, verbose: bool) -> tuple[dict[str, pd.Series], dict[str, str]]:
-    """Load each source. One that cannot be read is named and skipped."""
-    columns: dict[str, pd.Series] = {}
+def _load_all(*, verbose: bool) -> tuple[dict[str, pd.DataFrame], dict[str, str]]:
+    """Load each source's draws. One that cannot be read is named and skipped."""
+    draws: dict[str, pd.DataFrame] = {}
     notes: dict[str, str] = {}
     if verbose:
         print("\nLoading:")
     for source in SOURCES:
         try:
-            series = _as_quarterly(source.loader(source.prefix))
+            frame = _as_quarterly(source.loader(source.prefix))
         except (FileNotFoundError, KeyError, ValueError) as exc:
             print(f"  SKIPPED {source.label}: {type(exc).__name__}: {exc}")
             continue
-        columns[source.label] = series
+        draws[source.label] = frame
         notes[source.label] = source.note
         if verbose:
             print(f"  {source.label:<52} {source.prefix}")
-    return columns, notes
+    return draws, notes

@@ -7,6 +7,7 @@ from pathlib import Path
 import arviz as az
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from src.models.common.results import PosteriorResults, posterior_summary
 from src.paths import CHARTS, MODEL_OUTPUTS
@@ -27,6 +28,23 @@ class UStarResults(PosteriorResults):
     def has_phillips(self) -> bool:
         """Whether this run included the Phillips curve, read from the trace."""
         return "gamma_pi" in self.posterior
+
+    @property
+    def has_inflation_lag(self) -> bool:
+        """Whether the Phillips curve carried last quarter's inflation, read from the trace."""
+        return "lambda_pi" in self.posterior
+
+    def _persistence(self, median: xr.Dataset, anchor: pd.Series) -> tuple[pd.Series, float]:
+        """Return the backward-looking term, `lambda x [pi_{t-1} - anchor]`, and the excess's weight.
+
+        Zero and one when the run had no lag. The weight is `1 - lambda`: the
+        lag and the target share one unit, as in the estimated equation.
+        """
+        if not self.has_inflation_lag:
+            return pd.Series(0.0, index=self.obs_index), 1.0
+        lam = float(median["lambda_pi"])
+        lagged = pd.Series(self.obs["pi_lag"], index=self.obs_index)
+        return lam * (lagged - anchor), 1.0 - lam
 
     # --- The object the model exists to estimate ---
 
@@ -159,10 +177,12 @@ class UStarResults(PosteriorResults):
         Columns are the equation term by term, on the quarterly basis the model
         fits, so they sum to observed inflation exactly:
 
-            pi = target + excess + demand + supply + residual
+            pi = target + persistence + excess + demand + supply + residual
 
-        `target` is the flat 2.5 anchor and `excess` is beta x (expectations -
-        target), so the two are distinct objects rather than two readings of
+        `target` is the flat 2.5 anchor, `persistence` is lambda x (last
+        quarter's inflation - target), present only when the run carried the
+        lag, and `excess` is (1 - lambda) x beta x (expectations - target), so
+        target and excess are distinct objects rather than two readings of
         the same one. `demand` is the only term carrying u*, which is what
         makes this the readable statement of how much the model attributes to
         the labour market as against anchoring and supply.
@@ -175,7 +195,8 @@ class UStarResults(PosteriorResults):
         pi_exp = pd.Series(self.obs["pi_exp"], index=index)
 
         anchor = pd.Series(quarterly(float(self.constants["anchor"])), index=index)
-        excess = float(median["beta_pi"]) * (quarterly(pi_exp) - anchor)
+        persistence, excess_weight = self._persistence(median, anchor)
+        excess = excess_weight * float(median["beta_pi"]) * (quarterly(pi_exp) - anchor)
         demand = float(median["gamma_pi"]) * pd.Series(
             np.asarray(median["ugap"].values), index=index,
         )
@@ -185,9 +206,9 @@ class UStarResults(PosteriorResults):
             + float(median["xi_gscpi"]) * gscpi**2 * np.sign(gscpi)
         )
         observed = pd.Series(self.obs["pi"], index=index)
-        fitted = anchor + excess + demand + supply
+        fitted = anchor + persistence + excess + demand + supply
 
-        return pd.DataFrame({
+        frame = pd.DataFrame({
             "observed": observed,
             "anchor": anchor,
             "excess": excess,
@@ -195,6 +216,9 @@ class UStarResults(PosteriorResults):
             "supply": supply,
             "residual": observed - fitted,
         })
+        if self.has_inflation_lag:
+            frame.insert(2, "persistence", persistence)
+        return frame
 
     def implied_ustar(self) -> pd.Series:
         """Return the u* each quarter's inflation would need, taken on its own.
@@ -202,8 +226,12 @@ class UStarResults(PosteriorResults):
         Invert the Phillips curve with the residual set to zero and solve for
         u*. Writing the equation's non-demand terms as `R`,
 
-            R      = pi - q(anchor) - beta_pi x [q(pi_exp) - q(anchor)]
+            R      = pi - q(anchor) - lambda_pi x [pi_{t-1} - q(anchor)]
+                     - (1 - lambda_pi) x beta_pi x [q(pi_exp) - q(anchor)]
                      - rho_pi x d4pm - xi_gscpi x GSCPI^2 x sign(GSCPI)
+
+        with the lag term absent, and beta_pi at full weight, when the run had
+        no lag.
             u*_t   = u_t x (1 - R_t / gamma_pi)
 
         Not an estimator. It is the diagnostic that makes the state law
@@ -224,13 +252,16 @@ class UStarResults(PosteriorResults):
 
         index = self.obs_index
         median = self.posterior.median(dim=("chain", "draw"))
-        anchor = quarterly(float(self.constants["anchor"]))
+        anchor = pd.Series(quarterly(float(self.constants["anchor"])), index=index)
         gscpi = pd.Series(self.obs["gscpi"], index=index)
+        persistence, excess_weight = self._persistence(median, anchor)
 
         residual_free = (
             pd.Series(self.obs["pi"], index=index)
             - anchor
-            - float(median["beta_pi"]) * (quarterly(pd.Series(self.obs["pi_exp"], index=index)) - anchor)
+            - persistence
+            - excess_weight * float(median["beta_pi"])
+            * (quarterly(pd.Series(self.obs["pi_exp"], index=index)) - anchor)
             - float(median["rho_pi"]) * pd.Series(self.obs["d4pm"], index=index)
             - float(median["xi_gscpi"]) * gscpi**2 * np.sign(gscpi)
         )
@@ -247,7 +278,8 @@ class UStarResults(PosteriorResults):
             if self.free_sigma_ustar:
                 var_names.insert(0, "sigma_ustar")
             if self.has_phillips:
-                var_names += ["gamma_pi", "beta_pi", "rho_pi", "xi_gscpi", "epsilon_pi"]
+                var_names += ["gamma_pi", *(["lambda_pi"] if self.has_inflation_lag else []),
+                              "beta_pi", "rho_pi", "xi_gscpi", "epsilon_pi"]
         return posterior_summary(self.trace, var_names=var_names)
 
 

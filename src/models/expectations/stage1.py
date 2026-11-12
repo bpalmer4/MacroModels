@@ -43,6 +43,8 @@ from src.models.expectations.common import (
     MODEL_NAMES,
     MODEL_TYPES,
     OUTPUT_DIR,
+    RESET_END,
+    RESET_START,
 )
 from src.utilities.rate_conversion import annualize
 
@@ -59,6 +61,10 @@ MONTHS_PER_QUARTER = 3
 
 # An AR(1) gap needs a previous quarter to condition on.
 MIN_GAP_OBSERVATIONS = 2
+
+# Scale of the Normal(0, .) prior on each survey's level effect alpha. A config
+# may override it with `alpha_prior_sigma`.
+ALPHA_PRIOR_SIGMA = 0.5
 
 # --- Wage Price Index ---
 
@@ -94,6 +100,13 @@ WPI_SIGMA_PRIOR = 1.0
 # --- Model Configurations ---
 
 
+class MeanResetDict(TypedDict):
+    """A window, in quarters, over which expectations are set to average inflation."""
+
+    start: str
+    end: str
+
+
 class ModelConfigDict(TypedDict, total=False):
     """Configuration options for expectation model variants."""
 
@@ -105,6 +118,11 @@ class ModelConfigDict(TypedDict, total=False):
     use_wpi: bool
     use_inflation: bool
     use_survey_bias: bool
+    alpha_prior_sigma: float
+    # Survey intercepts constrained to sum to zero, so the surveys carry no level.
+    zero_sum_alpha: bool
+    # Shift the walk so its mean over the window equals mean inflation there.
+    mean_reset: MeanResetDict
     inflation_sigma_prior: float
     tie_inflation_sigma: bool
     estimate_innovation: bool
@@ -159,6 +177,25 @@ MODEL_CONFIGS: dict[str, ModelConfigDict] = {
         "sigma_early": 0.12,
         "sigma_late": 0.075,
         "quarterly": True,  # Run quarterly — too sparse for monthly identification
+    },
+    # Survey-only expectations, after Cusbert (2017): a common signal from the surveys,
+    # net of their co-movement with recent inflation, with the level set by a
+    # mean reset to inflation. The surveys supply movements only.
+    "cusbert": {
+        "survey_series": ["market_1y", "breakeven", "business", "market_yoy"],
+        "use_headline": False,
+        "use_nominal": False,
+        "use_hcoe": False,
+        "use_wpi": False,
+        "use_inflation": False,
+        "use_survey_bias": True,
+        "zero_sum_alpha": True,
+        "mean_reset": {"start": RESET_START, "end": RESET_END},
+        "estimate_innovation": False,
+        "sigma_early": 0.30,
+        "sigma_late": 0.07,
+        "start": "1989Q3",  # the first quarter with two measures
+        "quarterly": True,
     },
 }
 
@@ -237,7 +274,9 @@ def load_data(
 
     if monthly:
         # Convert quarterly PeriodIndex to the last month of each quarter
-        inflation.index = inflation.index.asfreq("M", how="end")
+        if not isinstance(inflation.index, pd.PeriodIndex):
+            raise TypeError("inflation needs a PeriodIndex")
+        inflation.index = inflation.index.asfreq("M", how="E")
 
     # Align to common index
     common_end = min(measures.index.max(), inflation.index.max())
@@ -276,7 +315,10 @@ def _add_survey_obs(
     sigma_obs = pm.HalfNormal("sigma_obs", sigma=1.0, shape=n_series)
 
     if use_bias:
-        alpha = pm.Normal("alpha", mu=0, sigma=0.5, shape=n_series)
+        # Each survey's level effect: independent Normals centred on zero, or
+        # constrained to sum to zero so the surveys carry no level between them.
+        alpha_prior = pm.ZeroSumNormal if config.get("zero_sum_alpha", False) else pm.Normal
+        alpha = alpha_prior("alpha", sigma=config.get("alpha_prior_sigma", ALPHA_PRIOR_SIGMA), shape=n_series)
         lambda_bias = pm.Normal("lambda_bias", mu=0.1, sigma=0.15, shape=n_series)
 
     for i, col in enumerate(survey_series):
@@ -315,7 +357,9 @@ def _on_index(quarterly: pd.Series, index: pd.PeriodIndex) -> pd.Series:
     """
     series = quarterly.copy()
     if index.freqstr.startswith("M"):
-        series.index = series.index.asfreq("M", how="end")
+        if not isinstance(series.index, pd.PeriodIndex):
+            raise TypeError("a quarterly series needs a PeriodIndex")
+        series.index = series.index.asfreq("M", how="E")
     return series.reindex(index)
 
 
@@ -364,6 +408,8 @@ def _add_inflation_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config:
         return
 
     underlying = annualize((get_trimmed_mean_qrtly().data + get_weighted_median_qrtly().data) / 2)
+    if not isinstance(underlying, pd.Series):
+        raise TypeError("annualize did not return a Series")
     observed = _lagged_on_index(underlying, index)
     # The survey's sigma_obs exists because survey observations are added first.
     shared = pm.modelcontext(None)["sigma_obs"][0] if config.get("tie_inflation_sigma", False) else None
@@ -376,7 +422,10 @@ def _add_headline_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: 
     if not config.get("use_headline", False):
         return
 
-    observed = _lagged_on_index(annualize(get_headline_qrtly().data), index)
+    headline = annualize(get_headline_qrtly().data)
+    if not isinstance(headline, pd.Series):
+        raise TypeError("annualize did not return a Series")
+    observed = _lagged_on_index(headline, index)
     pre_targeting = index < _to_period("1993Q1", index.freqstr.startswith("M"))
     _add_ar1_gap_obs("headline", pi_exp, observed, ~np.isnan(observed) & pre_targeting, index=index,
                      sigma_prior=2.0)
@@ -475,10 +524,14 @@ def _add_hcoe_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: Mode
     hours_q = get_hours_growth_qrtly().data
     mfp_trend_q = compute_mfp_trend_floored(ulc_q, hcoe_q, capital_q, hours_q, alpha=0.3).data
     mfp_annual = annualize(mfp_trend_q)
+    if not isinstance(mfp_annual, pd.Series):
+        raise TypeError("annualize did not return a Series")
 
     if monthly:
-        hcoe_raw.index = hcoe_raw.index.asfreq("M", how="end")
-        mfp_annual.index = mfp_annual.index.asfreq("M", how="end")
+        if not (isinstance(hcoe_raw.index, pd.PeriodIndex) and isinstance(mfp_annual.index, pd.PeriodIndex)):
+            raise TypeError("HCOE and MFP need a PeriodIndex")
+        hcoe_raw.index = hcoe_raw.index.asfreq("M", how="E")
+        mfp_annual.index = mfp_annual.index.asfreq("M", how="E")
 
     hcoe = hcoe_raw.reindex(index)
     mfp = mfp_annual.reindex(index)
@@ -489,6 +542,39 @@ def _add_hcoe_obs(pi_exp: pt.TensorVariable, index: pd.PeriodIndex, config: Mode
         sigma = pm.HalfNormal("sigma_hcoe", sigma=2.0)
         pm.Normal("obs_hcoe", mu=pi_exp[mask] + mfp.to_numpy()[mask] + adjustment, sigma=sigma,
                   observed=hcoe.to_numpy()[mask])
+
+
+# --- Mean Reset ---
+
+
+def _reset_mask(inflation: pd.Series, index: pd.PeriodIndex, start: str, end: str) -> np.ndarray:
+    """Boolean mask for a reset window, which must lie in the sample with inflation observed throughout."""
+    lo, hi = pd.Period(start, freq="Q"), pd.Period(end, freq="Q")
+    if lo > hi or lo < index[0] or hi > index[-1]:
+        raise ValueError(f"mean reset window {lo} to {hi} is not inside the sample {index[0]} to {index[-1]}")
+    mask = np.asarray((index >= lo) & (index <= hi))
+    missing = inflation[mask].isna()
+    if missing.any():
+        raise ValueError(f"mean reset window {lo} to {hi} has no inflation in {list(missing[missing].index)}")
+    return mask
+
+
+def _add_mean_reset(
+    raw: pt.TensorVariable, inflation: pd.Series, index: pd.PeriodIndex, reset: MeanResetDict,
+) -> None:
+    """Register `pi_exp` and `pi_exp_todate`: the walk shifted so its window mean equals inflation's.
+
+    The shift is computed per draw, so the reset holds exactly in every draw.
+    `pi_exp_todate` runs the window from the reset start to the last quarter
+    with inflation observed.
+    """
+    if not index.freqstr.startswith("Q"):
+        raise ValueError("the mean reset is defined on a quarterly sample only")
+    windows = {"pi_exp": reset["end"], "pi_exp_todate": str(inflation.dropna().index[-1])}
+    for name, end in windows.items():
+        mask = _reset_mask(inflation, index, reset["start"], end)
+        target = float(inflation[mask].mean())
+        pm.Deterministic(name, raw + (target - raw[mask].mean()))
 
 
 # --- Model Building ---
@@ -557,7 +643,13 @@ def _build_pymc_model(
             pt.concatenate([pi_exp_early[-1:], pi_exp_early[-1] + pt.cumsum(raw_late * sigma_late)]),
         )
 
-        pi_exp = pm.Deterministic("pi_exp", pt.concatenate([pi_exp_early, pi_exp_late]))
+        # With a mean reset, the walk the observations see is `pi_exp_raw`, and
+        # `pi_exp` is that walk shifted onto inflation's mean over the window.
+        mean_reset = config.get("mean_reset")
+        walk_name = "pi_exp" if mean_reset is None else "pi_exp_raw"
+        pi_exp = pm.Deterministic(walk_name, pt.concatenate([pi_exp_early, pi_exp_late]))
+        if mean_reset is not None:
+            _add_mean_reset(pi_exp, inflation, index, mean_reset)
 
         # --- Observation Equations ---
         _add_survey_obs(pi_exp, measures, inflation_lag, index, config)
@@ -578,7 +670,7 @@ def build_model(
 ) -> pm.Model:
     """Build signal extraction model for a specific expectation type."""
     match model_type:
-        case "unanchored" | "short" | "market":
+        case "unanchored" | "short" | "market" | "cusbert":
             config = MODEL_CONFIGS[model_type]
         case _:
             raise ValueError(f"Unknown model type: {model_type}")
@@ -601,9 +693,10 @@ def run_model(
 ) -> tuple[xr.DataTree, pd.DataFrame, pd.Series, pd.PeriodIndex]:
     """Run model and return trace + data."""
     model_desc = {
-        "unanchored": "Expectations (all surveys, no anchor)",
+        "unanchored": "Trend expectations (surveys, inflation and wages; no target imposed)",
         "short": "Short-run (market_1y, no anchor)",
         "market": "Market (breakeven only, no anchor)",
+        "cusbert": f"Survey-only expectations (level set to {RESET_START}-{RESET_END} inflation; Cusbert-style)",
     }
 
     # Per-model overrides
@@ -627,7 +720,9 @@ def run_model(
 
     if verbose:
         print("Sampling posterior...")
-    target_accept = {"market": 0.9}.get(model_type, 0.8)
+    # 0.9 for short: its estimated step size has an upper tail where the walk
+    # chases the survey and the shared noise shrinks, and the default step diverges there.
+    target_accept = {"short": 0.9, "market": 0.9, "cusbert": 0.9}.get(model_type, 0.8)
 
     with model:
         trace = pm.sample(
@@ -679,15 +774,7 @@ def save_results(
         pickle.dump(metadata, f)
 
     # Save HDI for quick access
-    samples = trace.posterior["pi_exp"].to_numpy()
-    n_chains, n_draws, n_time = samples.shape
-    flat = samples.reshape(n_chains * n_draws, n_time).T
-    post = pd.DataFrame(flat, index=index)
-    hdi = pd.DataFrame({
-        "lower": post.quantile(0.05, axis=1),
-        "median": post.median(axis=1),
-        "upper": post.quantile(0.95, axis=1),
-    }, index=index)
+    hdi = _hdi(trace, "pi_exp", index)
     hdi.to_parquet(output_dir / f"expectations_{model_type}_hdi.parquet")
     hdi.to_csv(output_dir / f"expectations_{model_type}_hdi.csv")
 
@@ -695,12 +782,32 @@ def save_results(
     # the loader prefers it, so a run that skipped it would leave an older
     # run's file to be read in its place.
     if monthly:
-        hdi_q = hdi.loc[_quarter_end_mask(index)].copy()
-        hdi_q.index = hdi_q.index.to_timestamp().to_period("Q")
+        quarter_ends = _quarter_end_mask(index)
+        hdi_q = hdi.loc[quarter_ends].copy()
+        hdi_q.index = index[quarter_ends].to_timestamp().to_period("Q")
     else:
         hdi_q = hdi
     hdi_q.to_parquet(output_dir / f"expectations_{model_type}_hdi_quarterly.parquet")
     hdi_q.to_csv(output_dir / f"expectations_{model_type}_hdi_quarterly.csv")
+
+    # A mean-reset model also carries the reset run to date; it is quarterly only.
+    if "pi_exp_todate" in trace.posterior.data_vars:
+        todate = _hdi(trace, "pi_exp_todate", index)
+        todate.to_parquet(output_dir / f"expectations_{model_type}_todate_hdi_quarterly.parquet")
+        todate.to_csv(output_dir / f"expectations_{model_type}_todate_hdi_quarterly.csv")
+
+
+def _hdi(trace: xr.DataTree, var: str, index: pd.PeriodIndex) -> pd.DataFrame:
+    """5th percentile, median and 95th percentile of a time-indexed variable."""
+    samples = trace.posterior[var].to_numpy()
+    n_chains, n_draws, n_time = samples.shape
+    flat = samples.reshape(n_chains * n_draws, n_time).T
+    post = pd.DataFrame(flat, index=index)
+    return pd.DataFrame({
+        "lower": post.quantile(0.05, axis=1),
+        "median": post.median(axis=1),
+        "upper": post.quantile(0.95, axis=1),
+    }, index=index)
 
 
 # --- CLI ---

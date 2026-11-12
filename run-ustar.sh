@@ -23,5 +23,6 @@ uv run python -m src.models.ustar.run "$@"
 #                                        #   (--no-phillips alone leaves no equation
 #                                        #    at all, so u* returns its random walk)
 #   ./run-ustar.sh --okun                # add Okun back beside the Phillips curve
+#   ./run-ustar.sh --no-inflation-lag    # drop last quarter's inflation from the Phillips curve
 #   ./run-ustar.sh --gap-source actual   # log_gdp - y* instead of the defined gap
 #   ./run-ustar.sh --sigma-ustar 0.30    # let u* move more freely

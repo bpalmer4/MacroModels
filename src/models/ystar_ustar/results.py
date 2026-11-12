@@ -208,7 +208,8 @@ class JointResults(PosteriorResults):
 
         index = self.obs_index
         median = self.posterior.median(dim=("chain", "draw"))
-        pi_exp = pd.Series(self.obs["pi_exp"], index=index)
+        # The series the Phillips excess read: short-run where the run selected it.
+        pi_exp = pd.Series(self.obs.get("pi_exp_phillips", self.obs["pi_exp"]), index=index)
 
         anchor = pd.Series(quarterly(self.anchor_annual), index=index)
         persistence, excess_weight = self._persistence(median, anchor)
@@ -273,7 +274,8 @@ class JointResults(PosteriorResults):
 
         u = pd.Series(self.obs["u"], index=index)
         pi_q = pd.Series(self.obs["pi_qtr"], index=index)
-        pi_exp = pd.Series(self.obs["pi_exp"], index=index)
+        # The series the Phillips excess read: short-run where the run selected it.
+        pi_exp = pd.Series(self.obs.get("pi_exp_phillips", self.obs["pi_exp"]), index=index)
         gscpi = pd.Series(self.obs["gscpi"], index=index)
         d4pm = pd.Series(self.obs["d4pm"], index=index)
         ustar = self.ustar_posterior().median(axis=1)
@@ -362,6 +364,12 @@ class JointResults(PosteriorResults):
         the four quarters' deviations to sum to zero (year-ended on target, to
         first order) gives `D` in closed form; `D` is then inverted for u.
 
+        That is the single lag. When the persistence term reads the mean of the
+        last N quarters (`inflation_lag_window`), the deviations follow
+        `x_k = lambda x mean(x_{k-1}..x_{k-N}) + D + c` from the N quarters
+        observed to t, which is stepped forward rather than written out; the
+        answer is still linear in `D`, so it is still solved exactly.
+
         Under slack "both" underemployment moves with unemployment through the
         shared output gap, `ue - ue* = (beta_ue / beta) x (u - u*)`, so both
         demand terms carry the slack and the inversion is by bisection. Holding
@@ -380,17 +388,34 @@ class JointResults(PosteriorResults):
         if horizon < _YEAR_QUARTERS:
             raise ValueError(f"horizon must cover a year-ended rate: at least {_YEAR_QUARTERS} quarters")
 
-        anchor_q = quarterly(self.anchor_annual)
-        x0 = np.asarray(self.obs["pi_qtr"], dtype=float) - anchor_q  # (T,)
-        excess = quarterly(np.asarray(self.obs["pi_exp"], dtype=float)) - anchor_q
+        anchor_q = np.asarray(quarterly(self.anchor_annual), dtype=float)
+        deviation = np.asarray(self.obs["pi_qtr"], dtype=float) - anchor_q  # (T,)
+        expectations = self.obs.get("pi_exp_phillips", self.obs["pi_exp"])
+        excess = np.asarray(quarterly(np.asarray(expectations, dtype=float)), dtype=float) - anchor_q
         lam = self._scalar("lambda_pi")  # (S,)
         carried = (1.0 - lam)[None, :] * self._scalar("beta_pi")[None, :] * excess[:, None]  # (T, S)
 
-        # The four quarters of the year-ended rate at the horizon.
-        powers = lam[:, None] ** np.arange(horizon - _YEAR_QUARTERS + 1, horizon + 1)[None, :]  # (S, 4)
-        decay = powers.sum(axis=1)
-        build = ((1.0 - powers) / (1.0 - lam)[:, None]).sum(axis=1)
-        demand = -carried - x0[:, None] * (decay / build)[None, :]  # (T, S)
+        # Each quarter's deviation is x_k = a_k + b_k x F, with F = c + D the
+        # forcing held constant: a_k carries the observed history with no
+        # forcing, b_k is the response to a unit of forcing from rest. The
+        # persistence term reads the mean of the last `window` deviations, so
+        # both are stepped forward from the last `window` quarters observed at
+        # t; quarters too early to have that many are NaN. With a window of
+        # one this is a_k = lambda^k x_0 and b_k = (1 - lambda^k)/(1 - lambda).
+        window = int(self.constants.get("inflation_lag_window", 1))
+        history = pd.Series(deviation)
+        shape = (len(deviation), len(lam))
+        carried_path = [np.broadcast_to(history.shift(lag).to_numpy()[:, None], shape)
+                        for lag in range(window - 1, -1, -1)]  # (T, S)
+        response_path = [np.zeros_like(lam) for _ in range(window)]  # (S,)
+        for _ in range(horizon):
+            carried_path.append(lam[None, :] * np.mean(carried_path[-window:], axis=0))
+            response_path.append(lam * np.mean(response_path[-window:], axis=0) + 1.0)
+
+        # The four quarters of the year-ended rate at the horizon sum to zero.
+        decay = np.sum(carried_path[-_YEAR_QUARTERS:], axis=0)  # (T, S)
+        build = np.sum(response_path[-_YEAR_QUARTERS:], axis=0)  # (S,)
+        demand = -carried - decay / build[None, :]  # (T, S)
 
         ustar = self.ustar_posterior().to_numpy()
         gamma = self._scalar("gamma_pi")[None, :]

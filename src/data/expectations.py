@@ -20,7 +20,7 @@ G3_SERIES = {
     "union_1y": "GUNIEXPY",     # Union expectations 1yr (1996-2023)
     "union_yoy": "GUNIEXPYY",   # Union expectations YoY (1997-2023)
     "market_1y": "GMAREXPY",    # Market/professional 1yr (1993+)
-    "market_yoy": "GMAREXPYY",  # Market/professional YoY (1994+)
+    "market_yoy": "GMAREXPYY",  # Market/professional 2yr ahead, year-ended (1994+)
 }
 
 
@@ -40,7 +40,7 @@ def get_expectations_surveys(*, monthly: bool = False) -> dict[str, DataSeries]:
         - union_1y: Union expectations 1 year ahead
         - union_yoy: Union expectations year-on-year
         - market_1y: Market/professional forecasters 1 year ahead
-        - market_yoy: Market/professional forecasters year-on-year
+        - market_yoy: Market/professional forecasters 2 years ahead (year-ended)
 
     """
     df = pd.read_excel(G3_URL, sheet_name="Data", skiprows=10, index_col=0)

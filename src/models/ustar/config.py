@@ -4,15 +4,22 @@ One Phillips curve, and a u* that is a random walk with a tapering step size.
 Under the defaults the whole specification is:
 
     u*_t   = u*_{t-1} + sigma_t·z_t              sigma_t tapering from loose to tight by `taper_end`
-    pi_t   = q(2.5) + beta_pi·[q(pi_exp_t) - q(2.5)] + gamma·ugap_t
-             + rho·d4pm_t + xi·GSCPI_t²·sign(GSCPI_t) + e_p          e_p ~ N(0, sigma_p)
+    pi_t   = q(2.5) + lambda·[pi_{t-1} - q(2.5)] + (1 - lambda)·beta_pi·[q(pi_exp_t) - q(2.5)]
+             + gamma·ugap_t + rho·d4pm_t + xi·GSCPI_t²·sign(GSCPI_t) + e_p          e_p ~ N(0, sigma_p)
     ugap_t = (u_t - u*_t) / u_t
 
 with `pi` quarterly trimmed mean inflation, `pi_exp` the expectations model's
 plain (unanchored) series, `d4pm` lagged annual import price growth, GSCPI the
 lagged supply-chain pressure index, and `q()` the conversion from annual to
-quarterly rates. Estimated: u*'s path, gamma, beta_pi, rho, xi and sigma_p.
-Asserted: the 2.5% target and the walk's step-size schedule and start prior.
+quarterly rates. Estimated: u*'s path, lambda, gamma, beta_pi, rho, xi and
+sigma_p. Asserted: the 2.5% target and the walk's step-size schedule and start
+prior.
+
+**Why last quarter's inflation.** It is the hybrid Phillips curve: lambda is
+backward-looking expectations, the weight on last quarter's inflation, and
+`1 - lambda` is left for the target and trend expectations. The weights on the
+lag and the target sum to one, so inflation settles at target when slack,
+excess expectations and supply are all zero. `inflation_lag` has the argument.
 
 **Why a random walk.** It imposes no shape on u*, only how far it may move
 each quarter, so u* can fall, level off or turn wherever the data push it. The
@@ -75,6 +82,13 @@ FLAT_WALK_INIT_SD = 1.0
 # of it and then settles.
 STEPPED_WALK_END = "2003Q4"
 
+# Prior on `lambda_pi`, the weight on last quarter's inflation under
+# `inflation_lag`. Centred on half, wide enough to reach either end, and capped
+# below one: the weights on the lag and the target sum to one, so lambda = 1 is
+# the pure accelerationist curve with no anchor at all, and inflation then has
+# no level to return to.
+LAMBDA_PI_PRIOR = {"mu": 0.5, "sigma": 0.3, "lower": 0.0, "upper": 0.99}
+
 
 @dataclass
 class ModelConfig:
@@ -126,6 +140,19 @@ class ModelConfig:
 
     # --- Equations ---
     include_phillips: bool = True
+
+    # Backward-looking expectations: last quarter's inflation in the Phillips
+    # curve, as a deviation from target, with weight lambda, and the excess
+    # expectations term scaled by 1 - lambda:
+    #
+    #     pi_t = q(a) + lambda x [pi_{t-1} - q(a)] + (1 - lambda) x beta x excess_t
+    #            + demand + supply + e
+    #
+    # On by default. Inflation above target this quarter carries into the
+    # next, and only slack works it off. Without it (--no-inflation-lag) the
+    # curve has no persistence, and once u reaches u* inflation is back at
+    # target the next quarter whatever it was before.
+    inflation_lag: bool = True
 
     # Include the GAP-FORM Okun equation, u - u* = -beta x ygap: the
     # unemployment gap against the output gap, not Okun's original relating
@@ -445,6 +472,8 @@ class ModelConfig:
             if isinstance(self.start, str) and pd.Period(self.taper_end, freq="Q") <= pd.Period(self.start, freq="Q"):
                 raise ValueError(f"taper_end {self.taper_end} must fall after the sample start {self.start}")
         self._validate_stepped_walk()
+        if self.inflation_lag and not self.include_phillips:
+            raise ValueError("inflation_lag puts a term in the Phillips curve, so it needs the Phillips curve")
         if self.gap_source not in GAP_SOURCES:
             raise ValueError(f"gap_source must be one of {GAP_SOURCES}, got {self.gap_source!r}")
 
@@ -471,7 +500,11 @@ class ModelConfig:
         with a posterior, and listing it as an imposed constant would misreport the
         run in the log and in the diagnostics.
         """
-        constants: dict[str, Any] = {"anchor": self.anchor, "ustar_structure": self.ustar_structure}
+        constants: dict[str, Any] = {
+            "anchor": self.anchor,
+            "ustar_structure": self.ustar_structure,
+            "inflation_lag": self.inflation_lag,
+        }
         if self.ustar_structure == "spline":
             # The knot count is what a reader cannot infer from the fitted
             # curve, so the charts state it and read it from here.

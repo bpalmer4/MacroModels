@@ -1,6 +1,6 @@
 """Load inflation expectations from signal extraction model output.
 
-Provides the expectations model's unanchored median, quarterly.
+Provides the expectations model's unanchored and short-run medians, quarterly.
 """
 
 import pandas as pd
@@ -35,6 +35,31 @@ def get_model_expectations_unanchored() -> DataSeries:
         units="%",
         description="Inflation Expectations (Unanchored)",
         table="expectations_unanchored_hdi",
+        series_id="median",
+    )
+
+
+def get_model_expectations_short() -> DataSeries:
+    """Load short-run (1 year) inflation expectations from signal extraction model.
+
+    Returns the median of the short-run estimate, read by the market
+    economists' one-year survey. Before that survey begins (1993Q3) the
+    series is a proxy and carries little information.
+
+    Returns:
+        DataSeries with quarterly expectations median (%)
+
+    Raises:
+        FileNotFoundError: If model output not found (run expectations model first)
+
+    """
+    median = _load_model_output("short")["median"]
+    return DataSeries(
+        data=median,
+        source="Model",
+        units="%",
+        description="Inflation Expectations (Short Run, 1 Year)",
+        table="expectations_short_hdi",
         series_id="median",
     )
 

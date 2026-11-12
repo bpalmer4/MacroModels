@@ -14,7 +14,7 @@ import xarray as xr
 from src.models.common.model_constants import attach, get_dictionary
 from src.models.common.spline import basis
 from src.models.common.taper import tapered_walk
-from src.models.ustar.config import DEFAULT_OUTPUT_DIR, ModelConfig
+from src.models.ustar.config import DEFAULT_OUTPUT_DIR, LAMBDA_PI_PRIOR, ModelConfig
 from src.models.ustar.observations import build_observations
 from src.models.ystar.base import (
     SamplerConfig,
@@ -258,8 +258,14 @@ def _phillips_equation(
 ) -> str:
     """Fit the price Phillips curve, anchored on the target.
 
-        pi = quarterly(anchor) + beta_pi x [quarterly(pi_exp) - quarterly(anchor)]
+        pi = q(anchor) + lambda_pi x [pi_{t-1} - q(anchor)]
+             + (1 - lambda_pi) x beta_pi x [q(pi_exp) - q(anchor)]
              + gamma_pi x u_gap + rho_pi x d4pm + xi_gscpi x GSCPI^2 x sign(GSCPI) + e
+
+    The hybrid Phillips curve: `lambda_pi` is backward-looking expectations,
+    the weight on last quarter's inflation, and the target and trend
+    expectations share the rest. Under `--no-inflation-lag` the lag term goes
+    and beta_pi keeps its full weight.
 
     Two distinct objects on the nominal side, which is what makes the pair
     coherent: a constant target, and one expectations series entering only as
@@ -284,6 +290,7 @@ def _phillips_equation(
                 "gamma_pi": {"mu": -1.5, "sigma": 1.0},
                 **({"delta_pi": {"mu": 0.0, "sigma": config.delta_pi_prior_sd}}
                    if config.quadratic_gap else {}),
+                **({"lambda_pi": dict(LAMBDA_PI_PRIOR)} if config.inflation_lag else {}),
                 "beta_pi": {"mu": 0.5, "sigma": 0.3},
                 "rho_pi": {"mu": 0.0, "sigma": 0.1},
                 "xi_gscpi": {"mu": 0.0, "sigma": 0.1},
@@ -297,12 +304,19 @@ def _phillips_equation(
         # A quarterly-space difference, so beta_pi = 1 exactly reproduces
         # quarterly(expectations) and beta_pi = 0 leaves the bare target.
         excess_quarterly = quarterly(obs["pi_exp"]) - anchor_quarterly
+        # The lag and the target share one unit of weight, so the excess keeps
+        # 1 - lambda of it; without the lag it keeps all of it.
+        persistence = (
+            mc["lambda_pi"] * (obs["pi_lag"] - anchor_quarterly) if config.inflation_lag else 0.0
+        )
+        excess_weight = 1.0 - mc["lambda_pi"] if config.inflation_lag else 1.0
 
         mu = (
             anchor_quarterly
+            + persistence
             + mc["gamma_pi"] * ugap
             + (mc["delta_pi"] * ugap * pt.abs(ugap) if config.quadratic_gap else 0.0)
-            + mc["beta_pi"] * excess_quarterly
+            + excess_weight * mc["beta_pi"] * excess_quarterly
             + mc["rho_pi"] * obs["d4pm"]
             + mc["xi_gscpi"] * obs["gscpi"] ** 2 * np.sign(obs["gscpi"])
         )
@@ -312,8 +326,10 @@ def _phillips_equation(
             sigma=mc["epsilon_pi"],
             observed=obs["pi"],
         )
+    lag_term = f" + lambda_pi x [pi_t-1 - q({anchor:g})]" if config.inflation_lag else ""
+    weight = "(1 - lambda_pi) x " if config.inflation_lag else ""
     return (
-        f"pi = q({anchor:g}) + beta_pi x [q(pi_exp) - q({anchor:g})]"
+        f"pi = q({anchor:g}){lag_term} + {weight}beta_pi x [q(pi_exp) - q({anchor:g})]"
         " + gamma_pi x u_gap + rho_pi x d4pm + xi_gscpi x GSCPI^2 + e"
     )
 
@@ -421,6 +437,8 @@ def run_estimate(
           f"measurement error {'on' if config.gap_measurement_error else 'off'}")
     on = [n for n, keep in (("Okun", config.include_okun), ("Phillips", config.include_phillips)) if keep]
     print(f"Equations:    {' + '.join(on)}")
+    if config.inflation_lag:
+        print("Backward-looking expectations: last quarter's inflation in the Phillips curve (lambda_pi)")
     if config.ustar_structure == "taper":
         print(f"Imposed:      u* step {_step_schedule(config)}, "
               f"start prior N({config.taper_start_mu:g}, {config.taper_init_sd:g})")
@@ -439,6 +457,7 @@ def run_estimate(
         gap_source=config.gap_source,
         gap_prefix=config.gap_prefix,
         include_phillips=config.include_phillips,
+        inflation_lag=config.inflation_lag,
         verbose=verbose,
     )
 

@@ -67,7 +67,7 @@ uv run python -m src.models.common.diagnostics_report  # MCMC diagnostics for EV
 ./run-ystar-ustar.sh               # Run joint y*/u* model (gap partly free, slack split: u and underemployment;
                                    #   needs expectations)
 ./run-ystar.sh --compare           # five specifications of the y* model on one chart
-./run-ystar-ustar.sh --compare     # eleven specifications (slack split default; u* structure x gap on unemployment alone)
+./run-ystar-ustar.sh --compare     # seven specifications (slack split default; u* structures on unemployment alone)
 uv run python -m src.models.dsge.fa_nk_model         # Run financial-accelerator DSGE (two r* + EFP wedge)
 uv run python -m src.models.dsge.fa_nk_wage_model    # Run FA-NK + sticky wages + Galí unemployment
 uv run python -m src.models.dsge.nk_twostar_model    # Run NK two-star linear probe
@@ -122,14 +122,16 @@ src/
 │   ├── bank_costs/                # Exploratory charts only
 │   ├── participation_rate/        # Exploratory: participation after RBA hikes; a pattern, not a cause
 │   ├── twi_gap/                   # Exploratory: real TWI vs commodity prices; FX conditions, not policy stance
-│   │   # RETIRED, SUPERSEDED OR NOT WORKING (kept for their notes; don't quote)
-│   ├── nairu/                     # SUPERSEDED for potential, gap and NAIRU; still runs, kept for wages, LOO
-│   ├── rstar_hlw/                 # NOT a source of r*; still runs, its trend/cycle split does work
-│   ├── rstar_hlw_kalman/          # Failed attempt at canonical HLW (Kalman + ML); degenerate
-│   ├── rstar_tvpvar/              # RETIRED: r* comes back as the real cash rate
-│   ├── rstar_invert/              # r* from an ASSERTED IS curve; not an estimate
-│   ├── is_curve/                  # The IS curve plotted, not estimated; the search found none
-│   ├── dsge/                      # Experimental DSGE family; not usable (see MODELS_EXPLAINED.md)
+│   │   # NOT LIVE (kept for their notes; don't quote)
+│   │   # A model directory with a STATUS.md is not live: read it before running or quoting
+│   │   #   the model, and leave it out of downstream refreshes.
+│   ├── nairu/                     # see STATUS.md
+│   ├── rstar_hlw/                 # see STATUS.md
+│   ├── rstar_hlw_kalman/          # see STATUS.md
+│   ├── rstar_tvpvar/              # see STATUS.md
+│   ├── rstar_invert/              # see STATUS.md
+│   ├── is_curve/                  # see STATUS.md
+│   ├── dsge/                      # see STATUS.md
 │   └── common/                    # Shared machinery, no economics (results, cli, diagnostics, charts)
 │
 └── utilities/                     # General utilities (rate_conversion)
