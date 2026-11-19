@@ -85,6 +85,7 @@ from src.models.common.nowcast_core import (
     detect_target_quarter,
     print_qoq_tty_header,
     truncate_monthly,
+    value_at,
 )
 from src.models.common.nowcast_diagnostics import print_capex_imports_hotness
 
@@ -192,7 +193,7 @@ class DataAvailability:
             last = ds.data.dropna().index[-1]
             setattr(avail, name, min(last, q3_month))
         for q_name, series in quarterly_indicators.items():
-            available = target_quarter in series.index and pd.notna(series.loc[target_quarter])
+            available = target_quarter in series.index and pd.notna(value_at(series, target_quarter))
             setattr(avail, q_name, available)
         return avail
 
@@ -284,6 +285,7 @@ class NowcastResult:
     gdp_qoq_90: tuple[float, float]
     gdp_tty_70: tuple[float, float]
     gdp_tty_90: tuple[float, float]
+    qoq_sigma: float  # std (ppt) of the normal Q/Q nowcast distribution the intervals come from
     n_factors: int
     factor_order: int
     n_monthly: int
@@ -377,6 +379,9 @@ def _labour_productivity_trend_monthly() -> pd.Series:
 
     monthly = {}
     for quarter, value in lp_trend_q.items():
+        if not isinstance(quarter, pd.Period):
+            msg = f"labour productivity trend: expected a quarterly Period index, got {type(quarter).__name__}"
+            raise TypeError(msg)
         for offset in range(3):
             month = pd.Period(year=quarter.year, month=(quarter.quarter - 1) * 3 + 1 + offset, freq="M")
             monthly[month] = value / 3.0
@@ -443,8 +448,11 @@ def _build_monthly_panel(
         raise RuntimeError(msg)
 
     panel = pd.DataFrame(series_dict)
-    if not isinstance(panel.index, pd.PeriodIndex):
+    if isinstance(panel.index, pd.DatetimeIndex):
         panel.index = panel.index.to_period("M")
+    elif not isinstance(panel.index, pd.PeriodIndex):
+        msg = f"monthly panel: expected a Period or Datetime index, got {type(panel.index).__name__}"
+        raise TypeError(msg)
 
     # Extend the panel index to include month 3 of the target quarter so the
     # Kalman filter forecasts the missing values forward.
@@ -492,8 +500,11 @@ def _build_quarterly_panel(
             series_dict[name] = series.loc[series.index < target_quarter]
 
     panel = pd.DataFrame(series_dict)
-    if not isinstance(panel.index, pd.PeriodIndex):
+    if isinstance(panel.index, pd.DatetimeIndex):
         panel.index = panel.index.to_period("Q-DEC")
+    elif not isinstance(panel.index, pd.PeriodIndex):
+        msg = f"quarterly panel: expected a Period or Datetime index, got {type(panel.index).__name__}"
+        raise TypeError(msg)
 
     panel = panel.loc[panel.index >= SAMPLE_START]
 
@@ -541,8 +552,8 @@ def _extract_nowcast(
     result: DynamicFactorMQ,
     target_quarter: pd.Period,
     gdp: pd.Series,
-) -> tuple[float, tuple[float, float], tuple[float, float]]:
-    """Extract GDP growth nowcast and prediction intervals from the fitted DFM.
+) -> tuple[float, tuple[float, float], tuple[float, float], float]:
+    """Extract GDP growth nowcast, prediction intervals and their sigma from the fitted DFM.
 
     The Kalman smoother produces filtered estimates for all variables including
     GDP growth for the target quarter. Prediction uncertainty comes from the
@@ -587,18 +598,13 @@ def _extract_nowcast(
     gdp_se = pred_se[gdp_col]
     se = float(gdp_se.loc[q3_month]) if q3_month in gdp_se.index else np.nan
 
-    # Compute prediction intervals
-    if np.isfinite(se) and se > 0:
-        ci_70 = (nowcast_qoq - 1.04 * se, nowcast_qoq + 1.04 * se)
-        ci_90 = (nowcast_qoq - 1.645 * se, nowcast_qoq + 1.645 * se)
-    else:
-        # Fallback: use historical GDP growth volatility, in the same log-difference
-        # units as nowcast_qoq (compute_gdp_growth already scales by 100).
-        hist_std = compute_gdp_growth(gdp).dropna().std()
-        ci_70 = (nowcast_qoq - 1.04 * hist_std, nowcast_qoq + 1.04 * hist_std)
-        ci_90 = (nowcast_qoq - 1.645 * hist_std, nowcast_qoq + 1.645 * hist_std)
+    # Compute prediction intervals. Fallback sigma: historical GDP growth volatility,
+    # in the same log-difference units as nowcast_qoq (compute_gdp_growth scales by 100).
+    sigma = se if np.isfinite(se) and se > 0 else float(compute_gdp_growth(gdp).dropna().std())
+    ci_70 = (nowcast_qoq - 1.04 * sigma, nowcast_qoq + 1.04 * sigma)
+    ci_90 = (nowcast_qoq - 1.645 * sigma, nowcast_qoq + 1.645 * sigma)
 
-    return nowcast_qoq, ci_70, ci_90
+    return nowcast_qoq, ci_70, ci_90, sigma
 
 
 # --- GDP helpers ---
@@ -631,6 +637,7 @@ def _resolve_inputs(
 
 
 def nowcast(
+    *,
     target_quarter: pd.Period | None = None,
     availability: DataAvailability | None = None,
     gdp: pd.Series | None = None,
@@ -686,7 +693,7 @@ def nowcast(
     dfm_result = _fit_dfm(monthly_panel, quarterly_panel, n_factors, factor_order)
 
     # 5. Extract nowcast
-    nowcast_qoq, ci_70_qoq, ci_90_qoq = _extract_nowcast(
+    nowcast_qoq, ci_70_qoq, ci_90_qoq, qoq_sigma = _extract_nowcast(
         dfm_result, target_quarter, gdp_truncated,
     )
 
@@ -731,6 +738,7 @@ def nowcast(
         gdp_qoq_90=ci_90_qoq,
         gdp_tty_70=tty_70,
         gdp_tty_90=tty_90,
+        qoq_sigma=qoq_sigma,
         n_factors=n_factors,
         factor_order=factor_order,
         n_monthly=len(monthly_panel.columns),

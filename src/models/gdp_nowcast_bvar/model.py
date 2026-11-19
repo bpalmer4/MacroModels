@@ -29,6 +29,7 @@ Usage:
     # Programmatic use
     from src.models.gdp_nowcast_bvar.model import nowcast
     result = nowcast(target_quarter=pd.Period("2025Q4", "Q-DEC"))
+
 """
 
 import logging
@@ -102,11 +103,10 @@ def _build_lag_matrix(data: np.ndarray, n_lags: int) -> tuple[np.ndarray, np.nda
     Y is (T-p) x N (target observations)
     X is (T-p) x (1 + N*p) (constant + lagged regressors)
     """
-    T, n = data.shape
+    T = data.shape[0]
     Y = data[n_lags:]
     X_blocks = [np.ones((T - n_lags, 1))]
-    for k in range(1, n_lags + 1):
-        X_blocks.append(data[n_lags - k : T - k])
+    X_blocks.extend(data[n_lags - k : T - k] for k in range(1, n_lags + 1))
     X = np.hstack(X_blocks)
     return Y, X
 
@@ -225,9 +225,10 @@ def conditional_nowcast(
     target_var: str,
     contemporaneous: pd.Series,
 ) -> tuple[float, float, list[str]]:
-    """Compute the conditional forecast of `target_var` at `target_quarter`,
-    given the contemporaneous values of *whichever* other variables are
-    available in the panel for that quarter.
+    """Compute the conditional forecast of `target_var` at `target_quarter`.
+
+    Conditions on the contemporaneous values of *whichever* other variables
+    are available in the panel for that quarter.
 
     Uses the Gaussian conditioning formula on the observed subset:
         E[y_t | obs, lags] = ŷ_t + Σ_{y,o} Σ_{o,o}⁻¹ (obs - ŷ_other,t)
@@ -257,10 +258,10 @@ def conditional_nowcast(
         raise RuntimeError(msg)
 
     lagged = hist.iloc[-n_lags:].to_numpy()  # n_lags x n_vars, most recent at the bottom
-    x_row = [1.0]
+    x_list: list[float] = [1.0]
     for k in range(1, n_lags + 1):
-        x_row.extend(lagged[-k])  # lag k = the k-th most recent observation
-    x_row = np.array(x_row)
+        x_list.extend(lagged[-k])  # lag k = the k-th most recent observation
+    x_row = np.array(x_list)
 
     # Unconditional forecast for all variables at target_quarter
     y_uncond = x_row @ fit.coefficients  # shape (n_vars,)
@@ -340,11 +341,13 @@ def _load_panel() -> pd.DataFrame:
         "capex_growth": get_total_capex_growth_qrtly().data,
     }
     panel = pd.DataFrame(series)
-    if not isinstance(panel.index, pd.PeriodIndex):
+    if isinstance(panel.index, pd.DatetimeIndex):
         panel.index = panel.index.to_period("Q-DEC")
+    elif not isinstance(panel.index, pd.PeriodIndex):
+        msg = f"BVAR panel: expected a Period or Datetime index, got {type(panel.index).__name__}"
+        raise TypeError(msg)
     panel = panel.sort_index()
-    panel = panel.loc[panel.index >= SAMPLE_START]
-    return panel
+    return panel.loc[panel.index >= SAMPLE_START]
 
 
 # --- Result types ---
@@ -361,6 +364,7 @@ class NowcastResult:
     gdp_qoq_90: tuple[float, float]
     gdp_tty_70: tuple[float, float]
     gdp_tty_90: tuple[float, float]
+    qoq_sigma: float  # std (ppt) of the conditional Gaussian the Q/Q intervals come from
     n_vars: int
     n_lags: int
     panel: pd.DataFrame
@@ -420,7 +424,48 @@ def _detect_target_quarter(
 # --- Core nowcast ---
 
 
+def _print_hindcast_notice(report: dict[str, list[str]], target_quarter: pd.Period) -> None:
+    """Explain why the next quarter cannot be nowcast and a hindcast runs instead."""
+    next_q = report["next_quarter"]
+    available = report["available"]
+    missing = report["missing"]
+    print()
+    print(f"  ⓘ Cannot nowcast {next_q} yet — too few indicators published.")
+    print(f"    Available for {next_q} ({len(available)}/{len(available)+len(missing)}):")
+    if available:
+        for ind in available:
+            print(f"      ✓ {ind}")
+    else:
+        print("      (none)")
+    print(f"    Still missing for {next_q}:")
+    for ind in missing:
+        print(f"      ✗ {ind}")
+    print(f"    Falling back to hindcast of last published quarter ({target_quarter}).")
+    print()
+
+
+def _print_missing_indicators(
+    missing: list[str],
+    used: list[str],
+    n_indicators: int,
+    target_quarter: pd.Period,
+) -> None:
+    """List the indicators not yet published for the target quarter, and those conditioned on."""
+    print()
+    print(f"  ⚠ {len(missing)} of {n_indicators} indicators missing for {target_quarter}:")
+    for c in missing:
+        print(f"      ✗ {c}")
+    if used:
+        print(f"    Conditioning on the {len(used)} available indicators:")
+        for c in used:
+            print(f"      ✓ {c}")
+    else:
+        print("    No contemporaneous indicators — falling back to unconditional VAR forecast.")
+    print()
+
+
 def nowcast(
+    *,
     target_quarter: pd.Period | None = None,
     panel: pd.DataFrame | None = None,
     gdp: pd.Series | None = None,
@@ -442,6 +487,7 @@ def nowcast(
 
     Returns:
         NowcastResult with the conditional GDP forecast and prediction intervals.
+
     """
     if panel is None:
         panel = _load_panel()
@@ -452,22 +498,7 @@ def nowcast(
     if target_quarter is None:
         target_quarter, is_hindcast, report = _detect_target_quarter(panel)
         if is_hindcast and not quiet:
-            next_q = report["next_quarter"]
-            available = report["available"]
-            missing = report["missing"]
-            print()
-            print(f"  ⓘ Cannot nowcast {next_q} yet — too few indicators published.")
-            print(f"    Available for {next_q} ({len(available)}/{len(available)+len(missing)}):")
-            if available:
-                for ind in available:
-                    print(f"      ✓ {ind}")
-            else:
-                print("      (none)")
-            print(f"    Still missing for {next_q}:")
-            for ind in missing:
-                print(f"      ✗ {ind}")
-            print(f"    Falling back to hindcast of last published quarter ({target_quarter}).")
-            print()
+            _print_hindcast_notice(report, target_quarter)
 
     # Training data: everything strictly before target_quarter
     train = panel.loc[panel.index < target_quarter]
@@ -483,7 +514,11 @@ def nowcast(
     # Indicators not yet published are NaN; conditional_nowcast() will use
     # whichever subset is available and report any that are missing.
     if target_quarter in panel.index:
-        target_row = panel.loc[target_quarter].drop("gdp_growth")
+        position = panel.index.get_loc(target_quarter)
+        if not isinstance(position, int):
+            msg = f"BVAR panel: {target_quarter} is not a unique entry in the index"
+            raise KeyError(msg)
+        target_row = panel.iloc[position].drop("gdp_growth")
     else:
         # Build a row of NaNs so the conditional update degrades gracefully
         target_row = pd.Series(
@@ -503,18 +538,7 @@ def nowcast(
     all_indicators = [c for c in panel.columns if c != "gdp_growth"]
     missing_indicators = [c for c in all_indicators if c not in used_indicators]
     if missing_indicators and not quiet:
-        print()
-        print(f"  ⚠ {len(missing_indicators)} of {len(all_indicators)} indicators "
-              f"missing for {target_quarter}:")
-        for c in missing_indicators:
-            print(f"      ✗ {c}")
-        if used_indicators:
-            print(f"    Conditioning on the {len(used_indicators)} available indicators:")
-            for c in used_indicators:
-                print(f"      ✓ {c}")
-        else:
-            print("    No contemporaneous indicators — falling back to unconditional VAR forecast.")
-        print()
+        _print_missing_indicators(missing_indicators, used_indicators, len(all_indicators), target_quarter)
 
     # Prediction intervals from the conditional Gaussian
     ci_70 = (cond_mean - 1.04 * cond_std, cond_mean + 1.04 * cond_std)
@@ -540,6 +564,7 @@ def nowcast(
         gdp_qoq_90=ci_90,
         gdp_tty_70=tty_70,
         gdp_tty_90=tty_90,
+        qoq_sigma=cond_std,
         n_vars=fit.n_vars,
         n_lags=n_lags,
         panel=train,

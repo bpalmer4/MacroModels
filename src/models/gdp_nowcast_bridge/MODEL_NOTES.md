@@ -12,7 +12,7 @@ Bridge equation model for nowcasting the next unpublished quarterly GDP growth (
 | Production function | Cobb-Douglas with unfloored MFP trend | Independent inputs from Modellers Database + wage data |
 | Labour adjustment | HMA(13) labour productivity trend | Corrects for productivity drag on labour bridges |
 | Combination | Inverse out-of-sample MSE weights | Expanding-window evaluation |
-| Uncertainty | Bootstrap residual resampling (1000 draws) | 70% and 90% prediction intervals |
+| Uncertainty | Normal, σ = RMSE of the combined nowcast's forecast record since 2015 | 70% and 90% prediction intervals |
 | Data availability | `DataAvailability` dataclass | Per-indicator cutoffs for backtesting |
 
 ---
@@ -254,30 +254,32 @@ The general principle: **bridge equations degrade gracefully**, joint-covariance
 
 ## Uncertainty
 
-Bootstrap prediction intervals via a **row-wise (block) bootstrap** over bridge residuals:
+The nowcast distribution is **normal**, centred on the combined nowcast (the inverse-MSE
+weighted mean of the equations, not bias-corrected), so the headline is also its median.
+The 70% and 90% intervals are ±`Z_70`σ and ±`Z_90`σ.
 
-1. Align active bridges' residuals on the common window where every bridge has a value
-2. Each of the 1000 draws picks one quarter `t*` and sums every active bridge's residual **at that same quarter**, weighted: `Σ_i w_i · e_i(t*)`
-3. Add that combined residual draw to the combined nowcast point estimate
-4. Report 70% (15th-85th percentile) and 90% (5th-95th percentile) intervals
+**σ is the RMSE of the combined nowcast's own forecast record.** `forecast_record`
+re-runs the whole procedure (bridges, weights, combination) for every quarter from
+`SIGMA_RECORD_START` (2015Q1) to the quarter before the target, each estimated only on GDP
+before it and given the same information set as today's run, shifted back. σ is the RMSE
+of those errors. RMSE rather than sd, because without a bias correction the bias is part of
+how far the nowcast misses.
 
-### Why row-wise (preserving cross-bridge correlation)
+Why the combined record and not the equations: the headline is an average, and averaging
+cancels much of each equation's own error. A distribution built from the equations (their
+individual errors, or their disagreement with each other) comes out more than twice as wide
+as the combined nowcast's actual misses.
 
-The combined error is `e_c = Σ_i w_i e_i`, a weighted sum over bridges that all predict
-the **same** GDP quarter, so the residuals `e_i` are positively correlated. An earlier
-version pooled all weighted residuals and drew each summand *independently*; that
-reproduces only the independent-sum variance `Σ_i w_i² Var(e_i)` and drops the positive
-covariance `2 Σ_{i<j} w_i w_j Cov(e_i, e_j)`, so the bands came out too tight. Drawing a
-whole quarter's residuals together keeps `Cov(e_i, e_j)` intact and widens the intervals
-to a properly-calibrated level.
+Why 2015: from there the full set of today's bridges is in use. Earlier quarters come from
+fewer bridges in a more volatile economy.
 
-If a short-history bridge collapses the common window below `MIN_BOOTSTRAP_ROWS` (20
-quarters), the code falls back to the old independent pooled resample and logs a warning, in that case the bands again understate uncertainty.
+**COVID quarters (2020Q1 to 2021Q4) are left out of the record**, so the bands are
+conditional on no shock of that size. The data are latest-revised, not real-time vintages,
+so the record if anything understates the errors.
 
-**Known residual gap (not yet addressed):** the bootstrap uses *in-sample* OLS residuals
-(`fit.resid`), which are smaller than genuine out-of-sample errors, and it ignores
-parameter-estimation uncertainty. Both push intervals narrower. Capturing them would need
-the per-quarter out-of-sample errors retained (only the scalar `mse_oos` is kept today).
+The live run re-nowcasts every record quarter, so it takes a minute or two. The backtest
+builds one record per information set and gives each backtest quarter a σ from the record
+before it only.
 
 ---
 
@@ -317,7 +319,7 @@ The backtest reports RMSE, MAE, bias, direction accuracy, and 90% CI coverage at
 - **The model only beats the naive benchmark once enough in-quarter hard data has landed, at T-0, with a near-tie at T-1m.** At T-3m and T-2m its RMSE is actually *worse* than just carrying the trailing-4-quarter average, because there is too little hard data in the target quarter for the bridges to add signal over persistence. **Treat T-3m/T-2m as indicative, not forecasts**; the nowcast earns its keep from ~1 month out. (The asymmetric early-horizon bias and the >naive RMSE are two faces of the same thing: extra variance, not extra signal.)
 - **NAB business conditions adds mid-cycle value**, lifting accuracy at T-2m and T-1m. At T-0 the effect is marginal because hard data dominates.
 - **The bridge framework degrades gracefully** when noisy indicators are added: inverse-MSE weighting automatically discounts them. This is in contrast to joint-covariance models (BVAR, DFM) where a single noisy indicator can corrupt the whole posterior.
-- **Bootstrap CI coverage is now close to nominal** after the row-wise bootstrap fix (see *Uncertainty*): 90% CI coverage runs ~94–100% across horizons and 70% CI coverage ~56–94% (lightest at T-3m). Earlier, the independent pooled resample dropped the cross-bridge residual correlation and the bands under-covered. Residual narrowing remains from using in-sample residuals and ignoring parameter uncertainty (noted under *Uncertainty*); coverage rates are coarse on the 16-quarter backtest (~6pts per quarter).
+- **Interval coverage** is in the backtest summary; rates are coarse on the short window (~6pts per quarter).
 - **Correlation with actual GDP is the lowest of the three models** despite the lowest RMSE. The bridge tends toward the historical mean more than the DFM or BVAR, its small RMSE is partly an artefact of GDP growth being moderately variable around a stable mean, not necessarily of accurately tracking turning points.
 
 ### Caveats

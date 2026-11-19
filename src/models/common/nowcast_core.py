@@ -4,6 +4,7 @@ Small pieces every GDP nowcast model needs, previously copy-pasted across the
 bridge/DFM/BVAR/components modules:
 
   * :func:`compute_tty`          — Q/Q nowcast → through-the-year (annual) growth
+  * :func:`value_at`             — a series' value at a Period, typed as float
   * :func:`compute_gdp_growth`   — CVM level → Q/Q log-difference growth (%)
   * :func:`detect_target_quarter`— next unpublished quarter from a GDP series
   * :func:`truncate_monthly`     — clip a monthly series to an as-of cutoff
@@ -40,8 +41,23 @@ def compute_tty(qoq: float, gdp: pd.Series, target_quarter: pd.Period) -> float:
             f"(need {prev_q} and {q_minus_4}; index spans {gdp.index[0]}..{gdp.index[-1]})."
         )
         raise KeyError(msg)
-    projected = gdp.loc[prev_q] * np.exp(qoq / 100)
-    return float((projected / gdp.loc[q_minus_4] - 1) * 100)
+    projected = value_at(gdp, prev_q) * np.exp(qoq / 100)
+    return float((projected / value_at(gdp, q_minus_4) - 1) * 100)
+
+
+def value_at(series: pd.Series, period: pd.Period) -> float:
+    """Value of ``series`` at ``period``, as a float.
+
+    Goes via the integer position rather than ``series.loc[period]``: pandas-stubs
+    types a ``Series`` generically, so a ``Period`` key is not an accepted
+    overload. ``get_loc`` returns an int for a unique index; anything else means
+    the caller handed us a duplicated or unsorted index, which is a bug.
+    """
+    loc = series.index.get_loc(period)
+    if not isinstance(loc, int):
+        msg = f"value_at: {period} is not a unique entry in the series index"
+        raise KeyError(msg)
+    return float(series.to_numpy()[loc])
 
 
 def compute_gdp_growth(gdp: pd.Series) -> pd.Series:

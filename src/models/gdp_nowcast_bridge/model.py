@@ -18,7 +18,8 @@ Bridge groups:
    10. Consumption:  household spending 5682.0 CVM (quarterly, ~5 weeks lead)
    11. Production:   Cobb-Douglas (time-varying α from factor income shares)
 
-Uncertainty is estimated via bootstrap resampling of bridge equation residuals.
+Uncertainty is a normal around the combined nowcast, with sigma the RMSE of the
+combined nowcast's own pseudo real-time errors since 2015 under the same information set.
 
 Usage:
     # Live nowcast
@@ -35,7 +36,8 @@ Usage:
 
 import logging
 import warnings
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 
 import matplotlib.pyplot as plt
 import mgplot as mg
@@ -83,6 +85,7 @@ from src.models.common.nowcast_core import (
     detect_target_quarter,
     print_qoq_tty_header,
     truncate_monthly,
+    value_at,
 )
 from src.models.common.nowcast_diagnostics import print_capex_imports_hotness
 
@@ -94,16 +97,22 @@ warnings.filterwarnings("ignore", category=UserWarning, module="statsmodels")
 # --- Constants ---
 
 CHART_DIR = "./charts/GDP-Nowcast-Bridge/"
-N_BOOTSTRAP = 1000
-MIN_BOOTSTRAP_ROWS = 20  # min common-window quarters for the row-wise (correlated) bootstrap
 COVID_START = "2020Q1"
 COVID_END = "2021Q1"
-# Quarters excluded from bootstrap resampling. Wider than the COVID_START/COVID_END
-# regression dummy above, which is a different decision: the dummy marks the quarters
-# whose *level* needs a shift, whereas 2021Q3 (-1.6pp) and 2021Q4 (+2.2pp) still carry
-# combined residuals ~6x the quiet-year spread and would otherwise set the 90% band.
-BOOTSTRAP_EXCLUDE_START = "2020Q1"
-BOOTSTRAP_EXCLUDE_END = "2021Q4"
+# Quarters left out of the forecast record that sets sigma. Wider than the
+# COVID_START/COVID_END regression dummy above, which is a different decision: the dummy
+# marks the quarters whose *level* needs a shift, whereas 2021Q3 (-1.6pp) and 2021Q4
+# (+2.2pp) still carry errors several times the quiet-year spread and would set sigma.
+ERROR_EXCLUDE_START = pd.Period("2020Q1", freq="Q")
+ERROR_EXCLUDE_END = pd.Period("2021Q4", freq="Q")
+# First quarter of the forecast record. From here the full set of today's bridges is in
+# use; earlier quarters come from fewer bridges in a more volatile economy.
+SIGMA_RECORD_START = pd.Period("2015Q1", freq="Q")
+# Fewest record quarters an RMSE is taken from; below this sigma is too noisy to report.
+MIN_RECORD_QUARTERS = 12
+# Two-sided normal quantiles for the 70% and 90% intervals.
+Z_70 = 1.04
+Z_90 = 1.645
 SHOW = False
 
 # SARIMA candidate orders (p, d, q) — kept small for 1-2 month forecasts
@@ -211,7 +220,7 @@ class DataAvailability:
 
         # Check quarterly indicators
         for q_name, series in quarterly_indicators.items():
-            available = target_quarter in series.index and pd.notna(series.loc[target_quarter])
+            available = target_quarter in series.index and pd.notna(value_at(series, target_quarter))
             setattr(avail, q_name, available)
 
         return avail
@@ -328,6 +337,7 @@ class NowcastResult:
     gdp_qoq_90: tuple[float, float]
     gdp_tty_70: tuple[float, float]
     gdp_tty_90: tuple[float, float]
+    qoq_sigma: float  # sigma (ppt) of the normal Q/Q distribution, from the forecast record
     bridge_results: list[BridgeResult]
     weights: dict[str, float]
     data_status: dict[str, str]
@@ -387,9 +397,9 @@ def complete_quarter_sarima(
     values = []
 
     for month in months:
-        if month in monthly_series.index and pd.notna(monthly_series.loc[month]):
+        if month in monthly_series.index and pd.notna(value_at(monthly_series, month)):
             statuses.append("observed")
-            values.append(monthly_series.loc[month])
+            values.append(value_at(monthly_series, month))
         else:
             statuses.append("forecast")
             values.append(np.nan)
@@ -536,18 +546,18 @@ def _bridge_nowcast(
     target_quarter: pd.Period,
 ) -> float:
     """Generate a nowcast from a fitted bridge equation."""
-    row = {}
+    row: dict[str, float] = {}
     for col in indicators_nowcast.columns:
         if target_quarter in indicators_nowcast.index:
-            row[col] = indicators_nowcast.loc[target_quarter, col]
+            row[col] = value_at(indicators_nowcast[col], target_quarter)
         prev_q = target_quarter - 1
         if prev_q in indicators_nowcast.index:
-            row[f"{col}_L1"] = indicators_nowcast.loc[prev_q, col]
+            row[f"{col}_L1"] = value_at(indicators_nowcast[col], prev_q)
 
     if target_quarter - 1 in gdp_growth.index:
-        row["gdp_growth_L1"] = gdp_growth.loc[target_quarter - 1]
+        row["gdp_growth_L1"] = value_at(gdp_growth, target_quarter - 1)
     else:
-        row["gdp_growth_L1"] = gdp_growth.iloc[-1]
+        row["gdp_growth_L1"] = float(gdp_growth.to_numpy()[-1])
 
     # Period comparison, matching _add_covid_dummy's convention (not string comparison).
     row["covid"] = 1.0 if pd.Period(COVID_START) <= target_quarter <= pd.Period(COVID_END) else 0.0
@@ -564,7 +574,7 @@ def _bridge_nowcast(
             X_new[col] = 0.0
     X_new = X_new[bridge.coefficients.index]
 
-    return float(bridge.coefficients @ X_new.iloc[0])
+    return float(np.dot(bridge.coefficients.to_numpy(), X_new.iloc[0].to_numpy()))
 
 
 # --- Production bridge (Cobb-Douglas) ---
@@ -765,7 +775,8 @@ def _get_labour_productivity_trend(target_quarter: pd.Period) -> pd.Series:
     # Truncate and carry forward latest value for target quarter
     lp_trend = _truncate_quarterly(lp_trend, target_quarter)
     if len(lp_trend) > 0:
-        lp_trend.loc[target_quarter] = lp_trend.iloc[-1]
+        carried = pd.Series([lp_trend.to_numpy()[-1]], index=pd.PeriodIndex([target_quarter]))
+        lp_trend = carried.combine_first(lp_trend)
 
     return lp_trend
 
@@ -854,12 +865,12 @@ def _build_monthly_bridges(
             quarterly_hist = ra.monthly_to_qtly(monthly, q_ending="DEC", f="mean")
 
         # Append completed target quarter
-        quarterly_full = quarterly_hist.copy()
-        quarterly_full.loc[target_quarter] = q_value
+        target_value = pd.Series([q_value], index=pd.PeriodIndex([target_quarter]))
+        quarterly_full = target_value.combine_first(quarterly_hist)
 
         # Convert to growth if needed
         if calc_growth:
-            log_q = np.log(quarterly_full) * 100
+            log_q = pd.Series(np.log(quarterly_full.to_numpy()) * 100, index=quarterly_full.index)
             growth_q = log_q.diff(1)
         else:
             growth_q = quarterly_full
@@ -922,7 +933,7 @@ def _build_quarterly_bridges(
     return bridges
 
 
-# --- Combination and bootstrap ---
+# --- Combination ---
 
 
 def _combine_bridges(
@@ -957,94 +968,111 @@ def _combine_bridges(
     return combined, weights
 
 
-def _bootstrap_eligible(index: pd.Index) -> np.ndarray:
-    """Mask selecting quarters the bootstrap may resample (i.e. excluding COVID).
-
-    Args:
-        index: Quarterly PeriodIndex of residuals.
-
-    Returns:
-        Boolean array, True for quarters outside the excluded COVID window.
-
-    """
-    excluded = (index >= BOOTSTRAP_EXCLUDE_START) & (index <= BOOTSTRAP_EXCLUDE_END)
-    return ~np.asarray(excluded)
-
-
-def _bootstrap_intervals(
-    bridges: list[BridgeResult],
-    weights: dict[str, float],
-    n_bootstrap: int = N_BOOTSTRAP,
-) -> tuple[tuple[float, float], tuple[float, float]]:
-    """Bootstrap prediction intervals from bridge residuals.
-
-    The combined nowcast error is e_c = Σ_i w_i e_i, a weighted sum over bridges that
-    all predict the SAME GDP quarter — so the per-bridge residuals e_i are positively
-    correlated. We use a row-wise (block) bootstrap: each draw picks one quarter t* and
-    sums every active bridge's residual AT THAT SAME QUARTER, Σ_i w_i e_i(t*). This keeps
-    Cov(e_i, e_j) intact, unlike an independent pooled resample which reproduces only
-    Σ_i w_i² Var(e_i) and drops the (positive) covariance term, yielding too-narrow bands.
-    """
-    active = [b for b in bridges if b.name in weights]
-    combined_nowcast = sum(b.nowcast_qoq * weights[b.name] for b in active)
-
-    rng = np.random.default_rng(42)
-
-    # Align residuals on the common window where every active bridge has a value, so each
-    # bootstrap row is one real quarter with the bridges' co-movement preserved.
-    resid_df = pd.DataFrame({b.name: b.residuals for b in active}).dropna(how="any")
-
-    # Drop the COVID quarters before counting rows: their combined residuals run 1.4-4.3pp
-    # against a sub-0.55pp spread elsewhere, so resampling them makes the 90% band report
-    # the odds of a COVID-scale repeat rather than this quarter's uncertainty. Bands are
-    # therefore conditional on no shock of that size.
-    resid_df = resid_df.loc[_bootstrap_eligible(resid_df.index)]
-
-    if len(resid_df) >= MIN_BOOTSTRAP_ROWS:
-        w = np.array([weights[b.name] for b in active])  # ordered to match resid_df columns
-        residual_matrix = resid_df[[b.name for b in active]].to_numpy()
-        idx = rng.integers(0, len(residual_matrix), size=n_bootstrap)
-        bootstrap_draws = combined_nowcast + residual_matrix[idx] @ w
-    else:
-        # Thin overlap (a short-history bridge collapses the common window): fall back to
-        # the independent pooled resample. Correlation is NOT captured, so these bands
-        # understate uncertainty — warn so it is visible in the run log.
-        logger.warning(
-            "Bootstrap: only %d common-window quarters across %d active bridges "
-            "(< %d); falling back to independent pooled resample (intervals too narrow).",
-            len(resid_df), len(active), MIN_BOOTSTRAP_ROWS,
-        )
-        pooled = np.concatenate([
-            (b.residuals.loc[_bootstrap_eligible(b.residuals.index)] * weights[b.name]).to_numpy()
-            for b in active
-        ])
-        pooled = pooled[np.isfinite(pooled)]
-        bootstrap_draws = np.array([
-            combined_nowcast + rng.choice(pooled, size=len(active)).sum()
-            for _ in range(n_bootstrap)
-        ])
-
-    ci_70 = (float(np.percentile(bootstrap_draws, 15)), float(np.percentile(bootstrap_draws, 85)))
-    ci_90 = (float(np.percentile(bootstrap_draws, 5)), float(np.percentile(bootstrap_draws, 95)))
-
-    return ci_70, ci_90
-
-
-# --- GDP helpers ---
-
-
 # --- Core nowcast function ---
 
 
+def _point_nowcast(
+    target_quarter: pd.Period,
+    availability: DataAvailability,
+    gdp: pd.Series,
+    monthly_indicators: dict[str, DataSeries],
+    quarterly_indicators: dict[str, pd.Series],
+) -> tuple[float, dict[str, float], list[BridgeResult]]:
+    """Build and combine the bridges for one quarter: (weighted mean, weights, bridges).
+
+    Everything is estimated on GDP before ``target_quarter``. No intervals: this is the
+    part re-run across past quarters to build the forecast record that sets sigma.
+    """
+    gdp_growth = compute_gdp_growth(gdp.loc[gdp.index < target_quarter])
+
+    monthly_bridges = _build_monthly_bridges(
+        gdp_growth, monthly_indicators, target_quarter, availability,
+    )
+    quarterly_bridges = _build_quarterly_bridges(
+        gdp_growth, quarterly_indicators, target_quarter, availability,
+    )
+    production_bridge = _build_production_bridge(gdp_growth, target_quarter, availability)
+
+    all_bridges = monthly_bridges + quarterly_bridges
+    if production_bridge is not None:
+        all_bridges.append(production_bridge)
+
+    combined, weights = _combine_bridges(all_bridges)
+    return combined, weights, all_bridges
+
+
+def forecast_record(
+    availability_for: Callable[[pd.Period], DataAvailability],
+    end: pd.Period,
+    gdp: pd.Series,
+    monthly_indicators: dict[str, DataSeries],
+    quarterly_indicators: dict[str, pd.Series],
+) -> pd.Series:
+    """Pseudo real-time errors (actual - nowcast) of the combined nowcast, by quarter.
+
+    Covers SIGMA_RECORD_START to ``end``, skipping the COVID window. Each quarter is
+    nowcast with ``availability_for(quarter)`` and estimated on GDP before it. Inputs are
+    latest-revised data, so the errors are if anything understated.
+    """
+    gdp_growth = compute_gdp_growth(gdp)
+    errors: dict[pd.Period, float] = {}
+    for q in pd.period_range(SIGMA_RECORD_START, end, freq="Q"):
+        if ERROR_EXCLUDE_START <= q <= ERROR_EXCLUDE_END or q not in gdp_growth.index:
+            continue
+        try:
+            point, _, _ = _point_nowcast(
+                q, availability_for(q), gdp, monthly_indicators, quarterly_indicators,
+            )
+        except RuntimeError:
+            logger.warning("Forecast record: no nowcast for %s", q)
+            continue
+        errors[q] = value_at(gdp_growth, q) - point
+    return pd.Series(errors, dtype=float)
+
+
+def record_sigma(errors: pd.Series, target_quarter: pd.Period) -> float:
+    """RMSE of the forecast-record errors before ``target_quarter``.
+
+    RMSE rather than sd: the nowcast is not bias-corrected, so its bias is part of how
+    far it misses.
+    """
+    index = errors.index
+    if not isinstance(index, pd.PeriodIndex):
+        index = pd.PeriodIndex(index, freq="Q")
+    past = errors.to_numpy()[np.asarray(index < target_quarter)]
+    if len(past) < MIN_RECORD_QUARTERS:
+        msg = (
+            f"Bridge sigma for {target_quarter}: only {len(past)} record quarters "
+            f"from {SIGMA_RECORD_START} (need {MIN_RECORD_QUARTERS})"
+        )
+        raise RuntimeError(msg)
+    return float(np.sqrt(np.mean(past**2)))
+
+
+def _shift_availability(availability: DataAvailability, quarters: int) -> DataAvailability:
+    """Move an information set by ``quarters``: monthly cut-offs shift, flags do not."""
+    shifted = replace(availability)
+    for name, value in vars(availability).items():
+        if isinstance(value, pd.Period):
+            setattr(shifted, name, value + 3 * quarters)
+    return shifted
+
+
 def nowcast(
+    *,
     target_quarter: pd.Period | None = None,
     availability: DataAvailability | None = None,
     gdp: pd.Series | None = None,
     monthly_indicators: dict[str, DataSeries] | None = None,
     quarterly_indicators: dict[str, pd.Series] | None = None,
+    qoq_sigma: float | None = None,
     quiet: bool = False,
 ) -> NowcastResult:
     """Run the GDP nowcast model.
+
+    The nowcast is the inverse-MSE weighted mean of the bridge equations, with a normal
+    distribution around it whose sigma is the RMSE of the same procedure's pseudo
+    real-time errors from SIGMA_RECORD_START, under the same information set.
 
     Args:
         target_quarter: The quarter to nowcast. If None, auto-detected.
@@ -1052,6 +1080,8 @@ def nowcast(
         gdp: GDP series (CVM, SA). If None, fetched from ABS.
         monthly_indicators: Pre-loaded monthly indicators. If None, fetched from ABS.
         quarterly_indicators: Pre-loaded quarterly indicators. If None, fetched from ABS.
+        qoq_sigma: Sigma of the Q/Q distribution. If None, built from the forecast record
+            (re-nowcasts every record quarter, so it takes a minute or two).
         quiet: If True, suppress terminal output.
 
     Returns:
@@ -1067,7 +1097,6 @@ def nowcast(
 
     # Truncate GDP to before target quarter (for backtesting)
     gdp = gdp.loc[gdp.index < target_quarter]
-    gdp_growth = compute_gdp_growth(gdp)
 
     if monthly_indicators is None:
         monthly_indicators = _load_monthly_indicators()
@@ -1087,41 +1116,43 @@ def nowcast(
         print(f"Target quarter: {target_quarter}")
         print(f"Last published GDP: {gdp.index[-1]}")
 
-    # 3. Build bridges
-    monthly_bridges = _build_monthly_bridges(
-        gdp_growth, monthly_indicators, target_quarter, availability,
+    # 3. Build and combine the bridges
+    point_qoq, weights, all_bridges = _point_nowcast(
+        target_quarter, availability, gdp, monthly_indicators, quarterly_indicators,
     )
-    quarterly_bridges = _build_quarterly_bridges(
-        gdp_growth, quarterly_indicators, target_quarter, availability,
-    )
-    production_bridge = _build_production_bridge(gdp_growth, target_quarter, availability)
 
-    all_bridges = monthly_bridges + quarterly_bridges
-    if production_bridge is not None:
-        all_bridges.append(production_bridge)
+    # 4. Sigma from the forecast record: the same information set, shifted back to each
+    # record quarter. The distribution is normal, so the point is also its median.
+    if qoq_sigma is None:
+        live = availability
 
-    # 4. Combine
-    combined_qoq, weights = _combine_bridges(all_bridges)
+        def same_information(q: pd.Period) -> DataAvailability:
+            return _shift_availability(live, (q - target_quarter).n)
 
-    # 5. Bootstrap intervals
-    ci_70_qoq, ci_90_qoq = _bootstrap_intervals(all_bridges, weights)
+        errors = forecast_record(
+            same_information, target_quarter - 1, gdp, monthly_indicators, quarterly_indicators,
+        )
+        qoq_sigma = record_sigma(errors, target_quarter)
+    ci_70_qoq = (point_qoq - Z_70 * qoq_sigma, point_qoq + Z_70 * qoq_sigma)
+    ci_90_qoq = (point_qoq - Z_90 * qoq_sigma, point_qoq + Z_90 * qoq_sigma)
 
-    # 6. Compute TTY
-    tty = compute_tty(combined_qoq, gdp, target_quarter)
+    # 5. Compute TTY
+    tty = compute_tty(point_qoq, gdp, target_quarter)
     tty_70 = (compute_tty(ci_70_qoq[0], gdp, target_quarter),
               compute_tty(ci_70_qoq[1], gdp, target_quarter))
     tty_90 = (compute_tty(ci_90_qoq[0], gdp, target_quarter),
               compute_tty(ci_90_qoq[1], gdp, target_quarter))
 
-    # 7. Assemble result
+    # 6. Assemble result
     result = NowcastResult(
         target_quarter=target_quarter,
-        gdp_qoq=combined_qoq,
+        gdp_qoq=point_qoq,
         gdp_tty=tty,
         gdp_qoq_70=ci_70_qoq,
         gdp_qoq_90=ci_90_qoq,
         gdp_tty_70=tty_70,
         gdp_tty_90=tty_90,
+        qoq_sigma=qoq_sigma,
         bridge_results=all_bridges,
         weights=weights,
         data_status=data_status,

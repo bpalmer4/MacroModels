@@ -43,7 +43,7 @@ import numpy as np
 import pandas as pd
 
 from src.models.common.nowcast_charts import NowcastChartSpec, plot_nowcast_charts
-from src.models.common.nowcast_core import compute_tty, detect_target_quarter
+from src.models.common.nowcast_core import compute_tty, detect_target_quarter, value_at
 from src.models.gdp_nowcast_components import CHART_DIR, diagnostics
 from src.models.gdp_nowcast_components import data as cd
 
@@ -140,26 +140,11 @@ class NowcastResult:
 # --- Contribution primitives (shared) -----------------------------------------
 
 
-def _at(series: pd.Series, period: pd.Period) -> float:
-    """Value of ``series`` at ``period``, as a float.
-
-    Goes via the integer position rather than ``series[period]``: pandas-stubs
-    types a ``Series`` generically, so a ``Period`` key is not an accepted
-    overload. ``get_loc`` returns an int for a unique index; anything else means
-    the caller handed us a duplicated or unsorted index, which is a bug.
-    """
-    loc = series.index.get_loc(period)
-    if not isinstance(loc, int):
-        msg = f"components: {period} is not a unique entry in the series index"
-        raise KeyError(msg)
-    return float(series.to_numpy()[loc])
-
-
 def _level_contribution(level: pd.Series, target: pd.Period, gdp_tm1: float) -> float:
     """(level_T - level_{T-1}) / GDP_{T-1} * 100 — for flow components (C, G, NX)."""
     prev = target - 1
     if target in level.index and prev in level.index:
-        return float((_at(level, target) - _at(level, prev)) / gdp_tm1 * 100)
+        return float((value_at(level, target) - value_at(level, prev)) / gdp_tm1 * 100)
     return float("nan")
 
 
@@ -190,8 +175,8 @@ def _inventory_contribution(
         return float("nan")
 
     b1, b0 = np.polyfit(df["x"].to_numpy(), df["y"].to_numpy(), 1)
-    flow_t = b0 + b1 * _at(d_stock, target)
-    return float((flow_t - _at(na_flow, prev)) / gdp_tm1 * 100)
+    flow_t = b0 + b1 * value_at(d_stock, target)
+    return float((flow_t - value_at(na_flow, prev)) / gdp_tm1 * 100)
 
 
 def _growth(level: pd.Series) -> pd.Series:
@@ -246,7 +231,7 @@ def _consumption_contribution(asof: AsOf, gdp_tm1: float) -> float:
 
     b1, b0 = np.polyfit(df["x"].to_numpy(), df["y"].to_numpy(), 1)
     pred_growth = b0 + b1 * x_t
-    hfce_prev = _at(asof.hfce, prev)
+    hfce_prev = value_at(asof.hfce, prev)
     d_hfce = hfce_prev * (np.exp(pred_growth / 100) - 1)  # predicted ΔHFCE in CVM $m
     return d_hfce / gdp_tm1 * 100
 
@@ -270,7 +255,7 @@ def _contribute(asof: AsOf) -> tuple[dict[str, float], float, float]:
             f"(index ends at {asof.gdp.index[-1]})."
         )
         raise KeyError(msg)
-    gdp_tm1 = _at(asof.gdp, prev)
+    gdp_tm1 = value_at(asof.gdp, prev)
 
     # Accounting-exact components (direct from real $m levels).
     gov_c = _level_contribution(asof.gov_c, t, gdp_tm1)

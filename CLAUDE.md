@@ -30,6 +30,7 @@ uv sync                            # Install dependencies
 ./run-gdp-nowcast-dfm.sh           # Run GDP nowcast (Dynamic Factor Model)
 ./run-gdp-nowcast-bvar.sh          # Run GDP nowcast (Bayesian VAR, T-0 only)
 ./run-gdp-nowcast-components.sh    # Run GDP nowcast (expenditure-identity components, T-0 only)
+./run-gdp-nowcast-summary.sh       # every GDP nowcast's Q/Q and annual distribution on one chart
 ./run-rstar-hlw.sh                 # Run HLW: trend/cycle decomposition. NOT a source of r*
 ./run-ystar.sh                     # Run y* potential output model (inflation-defined output gap)
 ./run-ustar.sh                     # Run u* model (ONE Phillips curve, u* a random walk; Okun is OFF)
@@ -119,6 +120,7 @@ src/
 │   ├── gdp_nowcast_dfm/           # GDP nowcast, dynamic factor model
 │   ├── gdp_nowcast_bvar/          # GDP nowcast, Bayesian VAR (T-0 only)
 │   ├── gdp_nowcast_components/    # GDP nowcast, expenditure components (T-0 only)
+│   ├── gdp_nowcast_summary/       # NOT A MODEL: every nowcast's distribution on one chart
 │   ├── bank_costs/                # Exploratory charts only
 │   ├── participation_rate/        # Exploratory: participation after RBA hikes; a pattern, not a cause
 │   ├── twi_gap/                   # Exploratory: real TWI vs commodity prices; FX conditions, not policy stance

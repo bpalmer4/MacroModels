@@ -22,12 +22,14 @@ import numpy as np
 import pandas as pd
 
 from src.data.gdp import get_gdp
-from src.models.common.nowcast_core import compute_gdp_growth
+from src.models.common.nowcast_core import compute_gdp_growth, value_at
 from src.models.gdp_nowcast_bridge.model import (
     DataAvailability,
     _load_monthly_indicators,
     _load_quarterly_indicators,
+    forecast_record,
     nowcast,
+    record_sigma,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,12 +66,15 @@ def _get_backtest_quarters(config: BacktestConfig, gdp: pd.Series) -> list[pd.Pe
     """Generate list of quarters to backtest."""
     start = pd.Period(config.start, "Q-DEC")
     end = pd.Period(config.end, "Q-DEC") if config.end is not None else gdp.dropna().index[-1]
+    if not isinstance(end, pd.Period):
+        msg = f"backtest: GDP index must hold quarterly Periods, got {type(end).__name__}"
+        raise TypeError(msg)
 
     # Only include quarters where we have actual GDP to evaluate against
-    quarters = []
+    quarters: list[pd.Period] = []
     current = start
     while current <= end:
-        if current in gdp.index and pd.notna(gdp.loc[current]):
+        if current in gdp.index and pd.notna(value_at(gdp, current)):
             quarters.append(current)
         current = current + 1
 
@@ -101,11 +106,19 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
     quarters = _get_backtest_quarters(config, gdp)
     print(f"Backtesting {len(quarters)} quarters: {quarters[0]} to {quarters[-1]}")
 
+    # Forecast record per information set, built once. Each backtest quarter's sigma
+    # comes only from the record before it, as it would have in real time.
+    print("Building forecast records...")
+    records = {
+        name: forecast_record(factory, quarters[-1], gdp, monthly_indicators, quarterly_indicators)
+        for name, factory in INFO_SETS.items()
+    }
+
     # Run nowcasts
     rows = []
     for i, target_q in enumerate(quarters):
-        actual_qoq = gdp_growth.loc[target_q] if target_q in gdp_growth.index else np.nan
-        actual_tty = ((gdp.loc[target_q] / gdp.loc[target_q - 4] - 1) * 100
+        actual_qoq = value_at(gdp_growth, target_q) if target_q in gdp_growth.index else np.nan
+        actual_tty = ((value_at(gdp, target_q) / value_at(gdp, target_q - 4) - 1) * 100
                       if target_q - 4 in gdp.index else np.nan)
 
         for info_name, info_factory in INFO_SETS.items():
@@ -118,6 +131,7 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
                     gdp=gdp.copy(),
                     monthly_indicators=monthly_indicators,
                     quarterly_indicators=quarterly_indicators,
+                    qoq_sigma=record_sigma(records[info_name], target_q),
                     quiet=True,
                 )
 
