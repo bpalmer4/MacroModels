@@ -5,7 +5,7 @@ charts from a Q/Q nowcast and its annual (through-the-year) re-expression:
 
   1. Q/Q fan      — q/q GDP growth history + nowcast + 70/90% CI fan
   2. TTY fan      — through-the-year growth history + nowcast + 70/90% CI fan
-  3. Combined     — annual growth line + quarterly growth bars
+  3. Combined     — annual growth line + quarterly growth bars, 80% interval at the nowcast
 
 This module is the single source of that chart code (previously copy-pasted into
 each model). A model fills a :class:`NowcastChartSpec` and calls
@@ -23,6 +23,8 @@ import mgplot as mg
 import numpy as np
 import pandas as pd
 
+from src.models.common.nowcast_core import NowcastIntervals
+
 
 @dataclass
 class NowcastChartSpec:
@@ -30,8 +32,7 @@ class NowcastChartSpec:
 
     ``gdp`` is the CVM SA GDP **level** series (ending at the last published
     quarter); both fan histories and the combined chart are derived from it. The
-    CI fields are ``(lower, upper)`` tuples in the same units as ``gdp_qoq`` /
-    ``gdp_tty`` (per cent).
+    ``intervals`` bounds are in the same units as ``gdp_qoq`` / ``gdp_tty`` (per cent).
     """
 
     model_label: str          # e.g. "BVAR", "DFM", "Bridge Model", "Components"
@@ -39,10 +40,7 @@ class NowcastChartSpec:
     gdp: pd.Series
     gdp_qoq: float
     gdp_tty: float
-    gdp_qoq_70: tuple[float, float]
-    gdp_qoq_90: tuple[float, float]
-    gdp_tty_70: tuple[float, float]
-    gdp_tty_90: tuple[float, float]
+    intervals: NowcastIntervals
     accent: str = "green"     # CI-fan colour
     source: str = "Source: ABS 5206.0"
     show: bool = False
@@ -107,32 +105,45 @@ def plot_nowcast_charts(spec: NowcastChartSpec) -> None:
     tty_hist = ((gdp / gdp.shift(4)) - 1) * 100
 
     _fan(
-        qoq_hist, spec.gdp_qoq, spec.gdp_qoq_70, spec.gdp_qoq_90, t,
+        qoq_hist, spec.gdp_qoq, spec.intervals.qoq_70, spec.intervals.qoq_90, t,
         title=f"GDP Growth {label} Nowcast (Q/Q): {t}",
         lfooter=f"Australia. {label} nowcast: {spec.gdp_qoq:+.2f}%. {spec.date}. ",
         accent=spec.accent, source=spec.source, show=spec.show, n_history=spec.n_history,
     )
     _fan(
-        tty_hist.dropna(), spec.gdp_tty, spec.gdp_tty_70, spec.gdp_tty_90, t,
+        tty_hist.dropna(), spec.gdp_tty, spec.intervals.tty_70, spec.intervals.tty_90, t,
         title=f"GDP Growth {label} Nowcast (TTY): {t}",
         lfooter=f"Australia. {label} nowcast: {spec.gdp_tty:+.2f}%. {spec.date}. ",
         accent=spec.accent, source=spec.source, show=spec.show, n_history=spec.n_history,
     )
 
     # Combined: annual line + quarterly bars, nowcast appended at the target.
-    qoq = qoq_hist.loc[qoq_hist.index < t].copy()
-    tty = tty_hist.dropna().loc[tty_hist.dropna().index < t].copy()
-    qoq.loc[t] = spec.gdp_qoq
-    tty.loc[t] = spec.gdp_tty
+    target_idx = pd.PeriodIndex([t])
+    qoq = pd.concat([qoq_hist.loc[qoq_hist.index < t], pd.Series([spec.gdp_qoq], index=target_idx)])
+    tty_clean = tty_hist.dropna()
+    tty = pd.concat([tty_clean.loc[tty_clean.index < t], pd.Series([spec.gdp_tty], index=target_idx)])
     growth_df = pd.DataFrame({
         "Annual Growth": tty,        # first column → line
         "Quarterly Growth": qoq,     # second column → bars
     }).iloc[-spec.n_history:]
-    # Highlight the nowcast quarter behind the final bar (mgplot positions bars by
-    # Period ordinal), matching the components stacked-contributions chart.
+    # mgplot positions bars and line by Period ordinal, so the nowcast quarter sits at
+    # t.ordinal: shade it behind the final bar (matching the components stacked-
+    # contributions chart) and put the 80% interval on the bar top and the line end.
     forecast_pos = t.ordinal
-    mg.growth_plot_finalise(
-        growth_df,
+    ax = mg.growth_plot(growth_df)
+    centres = [spec.gdp_qoq, spec.gdp_tty]
+    intervals = [spec.intervals.qoq_80, spec.intervals.tty_80]
+    ax.errorbar(
+        [forecast_pos, forecast_pos],
+        centres,
+        yerr=[[c - lo for c, (lo, _) in zip(centres, intervals, strict=True)],
+              [hi - c for c, (_, hi) in zip(centres, intervals, strict=True)]],
+        # zorder above bars (1) and lines (2), below the value annotations (text, 3).
+        fmt="none", ecolor="dimgrey", elinewidth=2, capsize=4, zorder=2.5,
+        label="80% interval",
+    )
+    mg.finalise_plot(
+        ax,
         title=f"GDP Growth {label} Nowcast: {t}",
         ylabel="Per cent",
         rfooter=spec.source,

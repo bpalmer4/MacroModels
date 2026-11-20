@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 from src.data.gdp import get_gdp
-from src.models.common.nowcast_core import compute_gdp_growth
+from src.models.common.nowcast_core import compute_gdp_growth, value_at
 from src.models.gdp_nowcast_dfm.model import (
     DataAvailability,
     _load_monthly_indicators,
@@ -64,10 +64,10 @@ def _get_backtest_quarters(config: BacktestConfig, gdp: pd.Series) -> list[pd.Pe
     start = pd.Period(config.start, "Q-DEC")
     end = pd.Period(config.end, "Q-DEC") if config.end is not None else gdp.dropna().index[-1]
 
-    quarters = []
+    quarters: list[pd.Period] = []
     current = start
     while current <= end:
-        if current in gdp.index and pd.notna(gdp.loc[current]):
+        if current in gdp.index and pd.notna(value_at(gdp, current)):
             quarters.append(current)
         current = current + 1
 
@@ -95,8 +95,8 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
 
     rows = []
     for i, target_q in enumerate(quarters):
-        actual_qoq = gdp_growth.loc[target_q] if target_q in gdp_growth.index else np.nan
-        actual_tty = ((gdp.loc[target_q] / gdp.loc[target_q - 4] - 1) * 100
+        actual_qoq = value_at(gdp_growth, target_q) if target_q in gdp_growth.index else np.nan
+        actual_tty = ((value_at(gdp, target_q) / value_at(gdp, target_q - 4) - 1) * 100
                       if target_q - 4 in gdp.index else np.nan)
 
         for info_name, info_factory in INFO_SETS.items():
@@ -121,10 +121,10 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
                     "nowcast_tty": result.gdp_tty,
                     "actual_tty": actual_tty,
                     "error_tty": result.gdp_tty - actual_tty,
-                    "ci_70_lower": result.gdp_qoq_70[0],
-                    "ci_70_upper": result.gdp_qoq_70[1],
-                    "ci_90_lower": result.gdp_qoq_90[0],
-                    "ci_90_upper": result.gdp_qoq_90[1],
+                    "ci_70_lower": result.intervals.qoq_70[0],
+                    "ci_70_upper": result.intervals.qoq_70[1],
+                    "ci_90_lower": result.intervals.qoq_90[0],
+                    "ci_90_upper": result.intervals.qoq_90[1],
                 })
 
             except RuntimeError:

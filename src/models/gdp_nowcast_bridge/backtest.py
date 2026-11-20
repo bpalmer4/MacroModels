@@ -145,10 +145,10 @@ def run_backtest(config: BacktestConfig | None = None) -> BacktestResults:
                     "actual_tty": actual_tty,
                     "error_tty": result.gdp_tty - actual_tty,
                     "n_active_bridges": sum(1 for b in result.bridge_results if b.available),
-                    "ci_70_lower": result.gdp_qoq_70[0],
-                    "ci_70_upper": result.gdp_qoq_70[1],
-                    "ci_90_lower": result.gdp_qoq_90[0],
-                    "ci_90_upper": result.gdp_qoq_90[1],
+                    "ci_70_lower": result.intervals.qoq_70[0],
+                    "ci_70_upper": result.intervals.qoq_70[1],
+                    "ci_90_lower": result.intervals.qoq_90[0],
+                    "ci_90_upper": result.intervals.qoq_90[1],
                 })
 
             except RuntimeError:

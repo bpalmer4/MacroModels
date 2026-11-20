@@ -53,7 +53,12 @@ from src.data.gdp import get_gdp
 from src.data.surveys import get_nab_business_conditions_qrtly
 from src.data.wpi import get_wpi_growth_qrtly
 from src.models.common.nowcast_charts import NowcastChartSpec, plot_nowcast_charts
-from src.models.common.nowcast_core import compute_tty, print_qoq_tty_header
+from src.models.common.nowcast_core import (
+    NowcastIntervals,
+    compute_tty,
+    nowcast_intervals,
+    print_qoq_tty_header,
+)
 from src.models.common.nowcast_diagnostics import print_capex_imports_hotness
 
 logger = logging.getLogger(__name__)
@@ -360,10 +365,7 @@ class NowcastResult:
     target_quarter: pd.Period
     gdp_qoq: float
     gdp_tty: float
-    gdp_qoq_70: tuple[float, float]
-    gdp_qoq_90: tuple[float, float]
-    gdp_tty_70: tuple[float, float]
-    gdp_tty_90: tuple[float, float]
+    intervals: NowcastIntervals
     qoq_sigma: float  # std (ppt) of the conditional Gaussian the Q/Q intervals come from
     n_vars: int
     n_lags: int
@@ -540,30 +542,15 @@ def nowcast(
     if missing_indicators and not quiet:
         _print_missing_indicators(missing_indicators, used_indicators, len(all_indicators), target_quarter)
 
-    # Prediction intervals from the conditional Gaussian
-    ci_70 = (cond_mean - 1.04 * cond_std, cond_mean + 1.04 * cond_std)
-    ci_90 = (cond_mean - 1.645 * cond_std, cond_mean + 1.645 * cond_std)
-
-    # Convert to TTY
+    # Convert to TTY; intervals come from the conditional Gaussian
     gdp_truncated = gdp.loc[gdp.index < target_quarter]
     tty = compute_tty(cond_mean, gdp_truncated, target_quarter)
-    tty_70 = (
-        compute_tty(ci_70[0], gdp_truncated, target_quarter),
-        compute_tty(ci_70[1], gdp_truncated, target_quarter),
-    )
-    tty_90 = (
-        compute_tty(ci_90[0], gdp_truncated, target_quarter),
-        compute_tty(ci_90[1], gdp_truncated, target_quarter),
-    )
 
     result = NowcastResult(
         target_quarter=target_quarter,
         gdp_qoq=cond_mean,
         gdp_tty=tty,
-        gdp_qoq_70=ci_70,
-        gdp_qoq_90=ci_90,
-        gdp_tty_70=tty_70,
-        gdp_tty_90=tty_90,
+        intervals=nowcast_intervals(cond_mean, cond_std, gdp_truncated, target_quarter),
         qoq_sigma=cond_std,
         n_vars=fit.n_vars,
         n_lags=n_lags,
@@ -614,10 +601,7 @@ def run_nowcast() -> NowcastResult:
         gdp=gdp,
         gdp_qoq=result.gdp_qoq,
         gdp_tty=result.gdp_tty,
-        gdp_qoq_70=result.gdp_qoq_70,
-        gdp_qoq_90=result.gdp_qoq_90,
-        gdp_tty_70=result.gdp_tty_70,
-        gdp_tty_90=result.gdp_tty_90,
+        intervals=result.intervals,
         accent="green",
         show=SHOW,
     ))

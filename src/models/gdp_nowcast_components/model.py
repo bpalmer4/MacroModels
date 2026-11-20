@@ -43,7 +43,15 @@ import numpy as np
 import pandas as pd
 
 from src.models.common.nowcast_charts import NowcastChartSpec, plot_nowcast_charts
-from src.models.common.nowcast_core import compute_tty, detect_target_quarter, value_at
+from src.models.common.nowcast_core import (
+    Z_70,
+    Z_90,
+    NowcastIntervals,
+    compute_tty,
+    detect_target_quarter,
+    nowcast_intervals,
+    value_at,
+)
 from src.models.gdp_nowcast_components import CHART_DIR, diagnostics
 from src.models.gdp_nowcast_components import data as cd
 
@@ -127,13 +135,8 @@ class NowcastResult:
     private_gfcf: float              # GFCF split (private), ppt
     public_gfcf: float               # GFCF split (public), ppt
     disc_sigma: float                # std of the statistical-discrepancy contribution (ppt)
-    band_70: float                   # symmetric ±band on the Q/Q nowcast (ppt)
-    band_90: float
     gdp_tty: float                   # through-the-year (annual) growth implied by the Q/Q nowcast
-    gdp_qoq_70: tuple[float, float]  # Q/Q 70% interval (gdp_qoq ∓ band_70)
-    gdp_qoq_90: tuple[float, float]  # Q/Q 90% interval
-    gdp_tty_70: tuple[float, float]  # annual 70% interval (Q/Q bounds rolled through compute_tty)
-    gdp_tty_90: tuple[float, float]  # annual 90% interval
+    intervals: NowcastIntervals      # gdp_qoq ± Z·disc_sigma, and the same bounds as TTY
     pub: pd.DataFrame = field(repr=False, default_factory=pd.DataFrame)
 
 
@@ -374,17 +377,6 @@ def nowcast(target_quarter: pd.Period | None = None) -> NowcastResult:
     contributions, priv_gfcf, pub_gfcf = _contribute(asof)
     gdp_qoq = _nan_sum(*(v for k, v in contributions.items() if k != "Statistical discrepancy"))
     sigma = _discrepancy_sigma(asof.pub)
-    band_70, band_90 = 1.04 * sigma, 1.645 * sigma
-
-    # Re-express the central Q/Q nowcast and its symmetric band as annual (TTY)
-    # growth, using the same Q/Q→annual roll-forward as the sibling models.
-    tty = compute_tty(gdp_qoq, asof.gdp, asof.target)
-    qoq_70 = (gdp_qoq - band_70, gdp_qoq + band_70)
-    qoq_90 = (gdp_qoq - band_90, gdp_qoq + band_90)
-    tty_70 = (compute_tty(qoq_70[0], asof.gdp, asof.target),
-              compute_tty(qoq_70[1], asof.gdp, asof.target))
-    tty_90 = (compute_tty(qoq_90[0], asof.gdp, asof.target),
-              compute_tty(qoq_90[1], asof.gdp, asof.target))
 
     return NowcastResult(
         target=asof.target,
@@ -393,13 +385,8 @@ def nowcast(target_quarter: pd.Period | None = None) -> NowcastResult:
         private_gfcf=priv_gfcf,
         public_gfcf=pub_gfcf,
         disc_sigma=sigma,
-        band_70=band_70,
-        band_90=band_90,
-        gdp_tty=tty,
-        gdp_qoq_70=qoq_70,
-        gdp_qoq_90=qoq_90,
-        gdp_tty_70=tty_70,
-        gdp_tty_90=tty_90,
+        gdp_tty=compute_tty(gdp_qoq, asof.gdp, asof.target),
+        intervals=nowcast_intervals(gdp_qoq, sigma, asof.gdp, asof.target),
         pub=asof.pub,
     )
 
@@ -434,10 +421,12 @@ def print_summary(result: NowcastResult) -> None:
     print("-" * 64)
     status = "PARTIAL — sources pending" if pending else "complete (all sources in)"
     print(f"  {'GDP growth Q/Q (nowcast)':<26} {result.gdp_qoq:+6.2f} %   [{status}]")
-    print(f"  {'70% band':<26} ±{result.band_70:.2f} ppt   90% band ±{result.band_90:.2f} ppt")
+    ci = result.intervals
+    print(f"  {'70% band':<26} ±{Z_70 * result.disc_sigma:.2f} ppt   "
+          f"90% band ±{Z_90 * result.disc_sigma:.2f} ppt")
     print(f"  {'GDP growth TTY (annual)':<26} {result.gdp_tty:+6.2f} %")
-    print(f"  {'70% interval':<26} [{result.gdp_tty_70[0]:+.2f}%, {result.gdp_tty_70[1]:+.2f}%]   "
-          f"90% [{result.gdp_tty_90[0]:+.2f}%, {result.gdp_tty_90[1]:+.2f}%]")
+    print(f"  {'70% interval':<26} [{ci.tty_70[0]:+.2f}%, {ci.tty_70[1]:+.2f}%]   "
+          f"90% [{ci.tty_90[0]:+.2f}%, {ci.tty_90[1]:+.2f}%]")
     if pending:
         print(f"  Not yet released: {', '.join(pending)}.")
     print("  Statistical discrepancy assumed 0 in the central nowcast.\n")
@@ -689,10 +678,7 @@ def run_nowcast() -> NowcastResult:
         gdp=cd.gdp_level(),
         gdp_qoq=result.gdp_qoq,
         gdp_tty=result.gdp_tty,
-        gdp_qoq_70=result.gdp_qoq_70,
-        gdp_qoq_90=result.gdp_qoq_90,
-        gdp_tty_70=result.gdp_tty_70,
-        gdp_tty_90=result.gdp_tty_90,
+        intervals=result.intervals,
         accent="goldenrod",
         show=SHOW,
     ))
